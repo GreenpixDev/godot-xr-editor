@@ -56,6 +56,8 @@ scripts/parse_all.gd       загрузчик всех скриптов для c
 scripts/test_tools.gd      headless-тесты пикера, снапа и манипуляции с фейковыми трекерами (для check.sh)
 scripts/test_controller_model.gd  headless-тест выбора модели контроллера (для check.sh)
 scripts/xr_extensions.py   расширения OpenXR-рантайма без шлема и без Godot
+scripts/xr_editor.py       запуск редактора: сам выбирает рантайм со шлемом (SteamVR, Meta) или запуск без VR
+.run/XR Editor.run.xml     конфигурация запуска Rider: scripts/xr_editor.py
 scripts/build_gdextension.sh  сборка нативной части (MSVC + CMake + Ninja из Visual Studio)
 docs/                      план и дневник решений (на русском)
 ```
@@ -65,6 +67,7 @@ docs/                      план и дневник решений (на ру�
 ## Команды
 
 ```bash
+py scripts/xr_editor.py [--runtime auto|steamvr|meta|off] [--check] [сцена] [-- --xre-benchmark]  # редактор: в VR на рантайме, который видит шлем, иначе без VR; лог в logs/editor_<рантайм>_<время>.log
 scripts/check.sh                              # все скрипты парсятся и типизированы, headless-тесты инструментов и моделей контроллеров проходят, нативная библиотека и плагин грузятся в headless-редакторе
 py scripts/xr_extensions.py ["<манифест рантайма.json>"] [фильтр]  # расширения рантайма; по умолчанию XR_RUNTIME_JSON или активный рантайм
 scripts/build_gdextension.sh                  # собрать gdextension/ в addons/xr_editor/bin/ (редактор перед этим закрыть)
@@ -117,6 +120,7 @@ godot --path . --editor --xr-mode on --log-file logs/xr_handoff.log -- --xre-han
   - модели контроллеров от рантайма (`OpenXRRenderModelManager`) в редакторе не появятся, даже если рантайм их даёт: расширение движка обновляется в `on_sync_actions`, а его вызывает только успешный `sync_action_sets`. Рантайм Meta по Link таких расширений и не даёт, поэтому модели статические (D-010);
   - сессия создаётся при старте, на уровне инициализации SCENE: до загрузки плагинов и до GDExtension уровня SCENE.
 - Windows блокирует загруженную DLL: пока редактор открыт, библиотеку не пересобрать (`reloadable = false` — горячая перезагрузка оставила бы движку висячий указатель на обёртку).
+- Второй редактор на том же проекте не загрузит нативную библиотеку (её копию `~xre_native…dll` держит первый) и стартует без обходов D-005: VR в нём не работает, плагин не грузится. `scripts/xr_editor.py` проверяет это перед запуском.
 - В `build/`, `gdextension/` и `benchmarks/results/` лежит `.gdignore`: иначе Godot сканирует тысячи C++-файлов как ресурсы, а каждый `.csv` импортирует как файл переводов (по `.translation` на столбец).
 - Запись файла посреди замера кадра (CSV между сегментами) давала заминку главного цикла, после которой рантайм Meta уходил на 45 Гц и при видимом UI не возвращался (наблюдение 2026-10-05). `XREFrameTimer` копит весь прогон в памяти и пишет один CSV в конце.
 - Удалённая через `remove_child` нода теряет `owner` у себя и потомков, если владелец больше не предок. Undo удаления должен восстанавливать owner — см. `XREPluginDocument.remove_node`.

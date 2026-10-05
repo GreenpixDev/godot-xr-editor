@@ -28,3 +28,6 @@ desktop.ini
 
 # Local editor logs (spike runs with --log-file logs/...)
 /logs/
+
+# Python bytecode (scripts/ import each other)
+__pycache__/

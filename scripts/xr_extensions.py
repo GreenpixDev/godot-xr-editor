@@ -23,6 +23,7 @@ import os
 import sys
 import winreg
 from ctypes import POINTER, byref, c_char, c_char_p, c_int32, c_size_t, c_uint32, c_uint64, c_void_p
+from typing import Any, NamedTuple
 
 XR_LOADER_INTERFACE_STRUCT_LOADER_INFO = 1
 XR_LOADER_INTERFACE_STRUCT_RUNTIME_REQUEST = 3
@@ -81,9 +82,17 @@ def default_manifest() -> str:
         return winreg.QueryValueEx(key, "ActiveRuntime")[0]
 
 
-def main() -> int:
-    manifest_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else default_manifest())
-    name_filter = sys.argv[2].lower() if len(sys.argv) > 2 else ""
+class Runtime(NamedTuple):
+    name: str
+    library: str
+    api_version: int
+    get_instance_proc_addr: Any  # PFN_GetInstanceProcAddr
+
+
+def load_runtime(manifest_path: str) -> Runtime:
+    """Loads the runtime library named in a manifest and negotiates the
+    loader-runtime interface with it, as the OpenXR loader does. Raises
+    RuntimeError if the runtime refuses."""
     with open(manifest_path, encoding="utf-8") as f:
         runtime = json.load(f)["runtime"]
     library = os.path.normpath(os.path.join(os.path.dirname(manifest_path), runtime["library_path"]))
@@ -100,12 +109,23 @@ def main() -> int:
     negotiate.restype = c_int32
     result = negotiate(byref(loader_info), byref(request))
     if result != 0:
-        print(f"xrNegotiateLoaderRuntimeInterface failed: {result}")
-        return 1
-    print(f"runtime: {runtime.get('name', '?')} ({library})")
-    print(f"OpenXR API version: {xr_version_string(request.runtimeApiVersion)}")
+        raise RuntimeError(f"xrNegotiateLoaderRuntimeInterface failed: {result}")
+    return Runtime(runtime.get("name", "?"), library, request.runtimeApiVersion,
+                   PFN_GetInstanceProcAddr(request.getInstanceProcAddr))
 
-    get_proc = PFN_GetInstanceProcAddr(request.getInstanceProcAddr)
+
+def main() -> int:
+    manifest_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else default_manifest())
+    name_filter = sys.argv[2].lower() if len(sys.argv) > 2 else ""
+    try:
+        runtime = load_runtime(manifest_path)
+    except RuntimeError as error:
+        print(error)
+        return 1
+    print(f"runtime: {runtime.name} ({runtime.library})")
+    print(f"OpenXR API version: {xr_version_string(runtime.api_version)}")
+
+    get_proc = runtime.get_instance_proc_addr
     function = c_void_p()
     result = get_proc(0, b"xrEnumerateInstanceExtensionProperties", byref(function))
     if result != 0:
