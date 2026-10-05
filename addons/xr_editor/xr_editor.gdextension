@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "xre_native_init"
+compatibility_minimum = "4.7"
+; OpenXR keeps raw pointers to the registered wrapper: unloading the library would leave them dangling.
+reloadable = false
+
+[libraries]
+
+; Built by scripts/build_gdextension.sh. Only the editor needs the library for now.
+windows.debug.x86_64 = "res://addons/xr_editor/bin/xre_native.windows.template_debug.x86_64.dll"

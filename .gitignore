@@ -4,7 +4,9 @@
 /build/
 /export/
 
-# GDExtension build output
+# GDExtension build output (scripts/build_gdextension.sh)
+/addons/xr_editor/bin/
+/gdextension/bin/
 *.o
 *.os
 *.obj
@@ -23,3 +25,6 @@ Thumbs.db
 desktop.ini
 .idea/
 .vs/
+
+# Local editor logs (spike runs with --log-file logs/...)
+/logs/

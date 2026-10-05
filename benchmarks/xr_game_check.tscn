@@ -1,0 +1,40 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://benchmarks/xr_game_check.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://benchmarks/xr_view_check.tscn" id="2_view"]
+
+[sub_resource type="BoxMesh" id="controller_mesh"]
+size = Vector3(0.04, 0.04, 0.12)
+
+[sub_resource type="StandardMaterial3D" id="controller_material"]
+shading_mode = 0
+albedo_color = Color(1, 0.6, 0.2, 1)
+
+[node name="XRGameCheck" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="XRViewCheck" parent="." instance=ExtResource("2_view")]
+
+[node name="XROrigin3D" type="XROrigin3D" parent="."]
+
+[node name="XRCamera3D" type="XRCamera3D" parent="XROrigin3D"]
+
+[node name="LeftHand" type="XRController3D" parent="XROrigin3D"]
+tracker = &"left_hand"
+pose = &"aim"
+show_when_tracked = true
+
+[node name="Body" type="MeshInstance3D" parent="XROrigin3D/LeftHand"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.06)
+mesh = SubResource("controller_mesh")
+surface_material_override/0 = SubResource("controller_material")
+
+[node name="RightHand" type="XRController3D" parent="XROrigin3D"]
+tracker = &"right_hand"
+pose = &"aim"
+show_when_tracked = true
+
+[node name="Body" type="MeshInstance3D" parent="XROrigin3D/RightHand"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.06)
+mesh = SubResource("controller_mesh")
+surface_material_override/0 = SubResource("controller_material")

@@ -1,6 +1,10 @@
 extends SceneTree
 ## Loads every GDScript in the project so that parse and type errors surface
-## in a single headless run. Used by scripts/check.sh, not shipped with the plugin.
+## in a single headless run, and checks that the plugin's native library is
+## loaded. Used by scripts/check.sh, not shipped with the plugin.
+
+## A class registered by gdextension/ (see scripts/build_gdextension.sh).
+const NATIVE_CLASS := "XREEditorControllers"
 
 
 func _init() -> void:
@@ -14,11 +18,18 @@ func _init() -> void:
 			failed += 1
 			printerr("parse_all: FAILED ", path)
 	print("parse_all: %d of %d script(s) failed to load" % [failed, scripts.size()])
+	if not ClassDB.class_exists(NATIVE_CLASS):
+		failed += 1
+		printerr("parse_all: FAILED native library not loaded, run scripts/build_gdextension.sh")
 	quit(1 if failed > 0 else 0)
 
 
+## Paths of all .gd files under [param dir_path], skipping hidden folders and
+## folders Godot ignores ([code].gdignore[/code]).
 func _scripts_under(dir_path: String) -> PackedStringArray:
 	var result := PackedStringArray()
+	if FileAccess.file_exists(dir_path.path_join(".gdignore")):
+		return result
 	for file in DirAccess.get_files_at(dir_path):
 		if file.get_extension() == "gd":
 			result.append(dir_path.path_join(file))

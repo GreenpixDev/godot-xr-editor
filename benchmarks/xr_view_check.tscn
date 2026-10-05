@@ -1,0 +1,68 @@
+[gd_scene format=3]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_material"]
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_material")
+
+[sub_resource type="Environment" id="environment"]
+background_mode = 2
+sky = SubResource("sky")
+tonemap_mode = 2
+
+[sub_resource type="PlaneMesh" id="floor_mesh"]
+size = Vector2(4, 4)
+
+[sub_resource type="StandardMaterial3D" id="grey"]
+albedo_color = Color(0.45, 0.45, 0.45, 1)
+
+[sub_resource type="BoxMesh" id="cube_mesh"]
+size = Vector3(0.2, 0.2, 0.2)
+
+[sub_resource type="BoxMesh" id="pillar_mesh"]
+size = Vector3(0.1, 1.7, 0.1)
+
+[sub_resource type="StandardMaterial3D" id="red"]
+albedo_color = Color(0.9, 0.15, 0.15, 1)
+
+[sub_resource type="StandardMaterial3D" id="green"]
+albedo_color = Color(0.15, 0.8, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="blue"]
+albedo_color = Color(0.15, 0.3, 0.95, 1)
+
+[sub_resource type="StandardMaterial3D" id="white"]
+albedo_color = Color(0.95, 0.95, 0.95, 1)
+
+[node name="XRViewCheck" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 3, 0)
+shadow_enabled = true
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("floor_mesh")
+surface_material_override/0 = SubResource("grey")
+
+[node name="RedPlusX" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.1, 0)
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("red")
+
+[node name="BlueMinusZ" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -1)
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("blue")
+
+[node name="Pillar170cm" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, -2)
+mesh = SubResource("pillar_mesh")
+surface_material_override/0 = SubResource("white")
+
+[node name="GreenOnPillar" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, -2)
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("green")

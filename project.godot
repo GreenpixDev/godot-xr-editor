@@ -12,6 +12,7 @@ config_version=5
 
 config/name="XR Editor (dev)"
 config/description="Host project for developing and testing the XR Editor plugin."
+run/main_scene="res://benchmarks/xr_view_check.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [debug]
@@ -20,6 +21,8 @@ gdscript/warnings/directory_rules={
 "res://addons/xr_editor": 1
 }
 gdscript/warnings/untyped_declaration=2
+gdscript/warnings/unsafe_property_access=2
+gdscript/warnings/unsafe_method_access=2
 
 [editor_plugins]
 
