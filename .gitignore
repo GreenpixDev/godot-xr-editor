@@ -1,0 +1,25 @@
+# Godot
+.godot/
+*.translation
+/build/
+/export/
+
+# GDExtension build output
+*.o
+*.os
+*.obj
+*.lib
+*.exp
+*.pdb
+*.ilk
+.sconsign*.dblite
+
+# Study: raw participant data (audio, questionnaires, identifiable logs) never goes into git
+/study/data/raw/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vs/

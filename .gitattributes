@@ -1,0 +1,16 @@
+# Godot writes LF everywhere; keep it that way regardless of core.autocrlf.
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.exr binary
+*.hdr binary
+*.glb binary
+*.wav binary
+*.ogg binary
+*.res binary
+*.scn binary
