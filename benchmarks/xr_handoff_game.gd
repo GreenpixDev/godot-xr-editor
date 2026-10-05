@@ -7,8 +7,8 @@ extends Node3D
 const PLAY_SEC := 5.0
 ## Quits anyway if the headset never comes to this game.
 const GIVE_UP_SEC := 30.0
-## The editor and a game run from it share user://.
-const TIMELINE := "user://xre_handoff_game.json"
+## Read by the editor (XREHandoffBenchmark.GAME_TIMELINE).
+const TIMELINE := "res://.godot/xre_handoff_game.json"
 
 var _xr: OpenXRInterface
 var _events := {}

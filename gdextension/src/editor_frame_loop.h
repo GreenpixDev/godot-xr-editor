@@ -31,7 +31,9 @@ namespace xre {
 /// Also feeds XREFrameTimer with the phases of every frame.
 ///
 /// Spike diagnostics: logs every session state change, the first frames and
-/// the first closed frames with timestamps.
+/// the first closed frames with timestamps. Frame counting starts over with
+/// every session: the plugin may destroy the session and create a new one
+/// while the editor runs (XRESession.release_session).
 class XREEditorFrameLoop : public godot::OpenXRExtensionWrapper {
 	GDCLASS(XREEditorFrameLoop, godot::OpenXRExtensionWrapper);
 

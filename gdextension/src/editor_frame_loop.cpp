@@ -25,11 +25,22 @@ void XREEditorFrameLoop::_on_session_created(uint64_t) {
 	api = get_openxr_api();
 	// Makes the engine call _set_frame_wait_info_and_get_next_pointer() before every xrWaitFrame.
 	api->register_frame_info_extension(this);
+	// The session can be destroyed and created again while the editor runs
+	// (XRESession.release_session): the old session's last frame was waited
+	// but never begun, and must not count against the new one.
+	session_state = 0;
+	low_processor_reported = false;
+	waited_frames = 0;
+	closed_frames = 0;
+	last_wait_usec = 0;
+	begun_frames = 0;
+	UtilityFunctions::print(timestamp(), "XR Editor: OpenXR session created.");
 }
 
 void XREEditorFrameLoop::_on_session_destroyed() {
 	api->unregister_frame_info_extension(this);
 	api.unref();
+	UtilityFunctions::print(timestamp(), "XR Editor: OpenXR session destroyed.");
 }
 
 uint64_t XREEditorFrameLoop::_set_frame_wait_info_and_get_next_pointer(void *p_next_pointer) {

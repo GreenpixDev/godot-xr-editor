@@ -29,6 +29,13 @@ var _viewport: SubViewport
 var _status_timer: Timer
 var _vr_loop_active := false
 var _saved_max_fps := 0
+var _released := false
+## What reacquire_session() restores, saved by release_session().
+var _released_play_area_mode := XRInterface.XR_PLAY_AREA_UNKNOWN
+var _released_size := Vector2.ZERO
+## Render target size multiplier before any reacquire_session() changed it.
+var _base_size_multiplier := 1.0
+var _size_nudged := false
 
 
 func _enter_tree() -> void:
@@ -77,6 +84,8 @@ func _exit_tree() -> void:
 		return
 	# The session keeps running without the plugin, so low-processor mode stays off.
 	_exit_vr_frame_loop(false)
+	if _released and not EditorInterface.is_playing_scene():
+		reacquire_session()
 	_xr.session_begun.disconnect(_on_session_begun)
 	_xr.session_synchronized.disconnect(_on_session_state)
 	_xr.session_visible.disconnect(_on_session_state)
@@ -102,6 +111,76 @@ func get_xr_interface() -> OpenXRInterface:
 ## The headset's viewport while the VR view is on, otherwise null.
 func get_xr_viewport() -> SubViewport:
 	return _viewport
+
+
+## Whether [method release_session] gave the headset up and
+## [method reacquire_session] hasn't taken it back yet.
+func is_session_released() -> bool:
+	return _released
+
+
+## Destroys the editor's OpenXR session so that a game process can take the
+## headset on a runtime that allows one XR application at a time: SteamVR asks
+## the previous one to quit and kills it 5 s later. The OpenXR instance stays,
+## and [method reacquire_session] creates a new session on it.
+## [br][br]
+## Godot 4.7.2 has no API for this. [method XRInterface.initialize] on an
+## uninitialized interface whose session still exists fails in
+## [code]OpenXRAPI::create_session[/code], and [code]initialize_session[/code]
+## destroys that session on the way out: the same path a quitting game takes.
+## The engine prints two errors for it: [code]Condition "session != nullptr" is true[/code]
+## and, from its spatial entity extension, an attempt to disconnect a nonexistent connection.
+## [br][br]
+## SteamVR files the game under the editor's application (they share the
+## executable) and clears that application's process when the game quits.
+## [method reacquire_session] then succeeds only if it comes before SteamVR's
+## "no more scene app" transition, which starts about 25 ms after the game's
+## process is gone (observed 2026-10-05, SteamVR 2.17.10).
+func release_session() -> bool:
+	if _xr == null or _released:
+		return false
+	_released_play_area_mode = _xr.xr_play_area_mode
+	_released_size = _xr.get_render_target_size()
+	if not _size_nudged:
+		_base_size_multiplier = _xr.render_target_size_multiplier
+	_exit_vr_frame_loop(true)
+	_xr.uninitialize()
+	var created := _xr.initialize() # Fails on purpose and destroys the session.
+	var session_left := OpenXRAPIExtension.new().get_session()
+	if created or session_left != 0:
+		_log("could not release the OpenXR session (initialize %s, session %d)." % [created, session_left])
+		return false
+	_released = true
+	_log("OpenXR session released.")
+	return true
+
+
+## Creates a new OpenXR session after [method release_session]. The runtime
+## starts it from IDLE; the VR view comes back with [signal OpenXRInterface.session_begun].
+## [br][br]
+## Godot 4.7.2 doesn't reset everything a new session needs, so two settings are
+## written again before [method XRInterface.initialize]:
+## [br]- the play area mode: the engine creates the play space only when the
+## requested reference space changes;
+## [br]- the render target size multiplier: the engine creates the headset's
+## swapchains only when their size changes, and still holds the old size. It
+## alternates between the original and a 1-pixel larger size, so every other
+## session renders 1 pixel wider.
+func reacquire_session() -> bool:
+	if not _released:
+		return false
+	var nudge := not _size_nudged
+	_xr.render_target_size_multiplier = _base_size_multiplier * (1.0 + 1.5 / _released_size.x) \
+			if nudge else _base_size_multiplier
+	_xr.xr_play_area_mode = _released_play_area_mode
+	if not _xr.initialize():
+		# Still released: a later call may succeed.
+		_log("could not create a new OpenXR session.")
+		return false
+	_size_nudged = nudge
+	_released = false
+	_log("OpenXR session created again, render target %s per eye." % _xr.get_render_target_size())
+	return true
 
 
 func _on_session_begun() -> void:
@@ -191,6 +270,11 @@ func _log_system_info() -> void:
 
 
 func _log_status() -> void:
+	if _released:
+		# Display refresh rate and session state would come from the destroyed session.
+		_log("%d fps, OpenXR session released, low-processor mode %s." % [
+			roundi(Engine.get_frames_per_second()), OS.low_processor_usage_mode])
+		return
 	var state := _xr.get_session_state()
 	var controllers := XRServer.get_trackers(XRServer.TRACKER_CONTROLLER)
 	_log("%d fps, session %s, display %.1f Hz, controller trackers %s, low-processor mode %s." % [

@@ -4,6 +4,7 @@ extends EditorPlugin
 
 const _BENCHMARK_MENU := "XR Editor: Measure Frame Time"
 const _HANDOFF_MENU := "XR Editor: Measure Play Handoff"
+const _HANDOFF_RELEASE_MENU := "XR Editor: Measure Play Handoff (Release Session)"
 
 var document: XREDocument
 var _session: XRESession
@@ -26,11 +27,13 @@ func _enter_tree() -> void:
 	add_child(_handoff)
 	add_tool_menu_item(_BENCHMARK_MENU, _benchmark.run)
 	add_tool_menu_item(_HANDOFF_MENU, _handoff.run)
+	add_tool_menu_item(_HANDOFF_RELEASE_MENU, _handoff.run.bind(false, true))
 
 
 func _exit_tree() -> void:
 	remove_tool_menu_item(_BENCHMARK_MENU)
 	remove_tool_menu_item(_HANDOFF_MENU)
+	remove_tool_menu_item(_HANDOFF_RELEASE_MENU)
 	# All three have already left the tree with this node: the session restored
 	# the editor's settings, the benchmarks stopped and put the editor back.
 	_handoff.queue_free()

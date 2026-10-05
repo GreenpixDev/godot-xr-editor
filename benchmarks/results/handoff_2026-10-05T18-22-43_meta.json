@@ -1,0 +1,13 @@
+{
+	"display_refresh_rate_hz": 90.0,
+	"embed_on_play": true,
+	"game_embed_mode": 0,
+	"game_scene": "res://benchmarks/xr_handoff_game.tscn",
+	"godot": "4.7.2-stable (official)",
+	"iterations": 5,
+	"make_floating_on_play": true,
+	"mode": "release_copy",
+	"openxr_runtime": "SteamVR/OpenXR 2.17.10",
+	"openxr_system": "SteamVR/OpenXR : oculus",
+	"timeout_sec": 30.0
+}
