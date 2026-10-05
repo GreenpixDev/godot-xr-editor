@@ -1,0 +1,108 @@
+[gd_scene format=3]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_material"]
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_material")
+
+[sub_resource type="Environment" id="environment"]
+background_mode = 2
+sky = SubResource("sky")
+tonemap_mode = 2
+
+[sub_resource type="PlaneMesh" id="floor_mesh"]
+size = Vector2(10, 10)
+
+[sub_resource type="StandardMaterial3D" id="grey"]
+albedo_color = Color(0.45, 0.45, 0.45, 1)
+
+[sub_resource type="StandardMaterial3D" id="wood"]
+albedo_color = Color(0.55, 0.38, 0.22, 1)
+
+[sub_resource type="BoxMesh" id="cube_mesh"]
+size = Vector3(0.1, 0.1, 0.1)
+
+[sub_resource type="BoxMesh" id="big_cube_mesh"]
+size = Vector3(0.5, 0.5, 0.5)
+
+[sub_resource type="BoxMesh" id="pillar_mesh"]
+size = Vector3(0.1, 1.7, 0.1)
+
+[sub_resource type="SphereMesh" id="ball_mesh"]
+radius = 0.06
+height = 0.12
+
+[sub_resource type="StandardMaterial3D" id="red"]
+albedo_color = Color(0.9, 0.15, 0.15, 1)
+
+[sub_resource type="StandardMaterial3D" id="green"]
+albedo_color = Color(0.15, 0.8, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="blue"]
+albedo_color = Color(0.15, 0.3, 0.95, 1)
+
+[sub_resource type="StandardMaterial3D" id="white"]
+albedo_color = Color(0.95, 0.95, 0.95, 1)
+
+[node name="ManipulationCheck" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 3, 0)
+shadow_enabled = true
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("floor_mesh")
+surface_material_override/0 = SubResource("grey")
+
+[node name="Table" type="CSGBox3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.725, -0.6)
+size = Vector3(1.2, 0.05, 0.6)
+material = SubResource("wood")
+
+[node name="RedCube" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.35, 0.8, -0.55)
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("red")
+
+[node name="BlueCubeTurned" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, 0.866025, -0.15, 0.8, -0.55)
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("blue")
+
+[node name="Cylinder" type="CSGCylinder3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.05, 0.85, -0.55)
+radius = 0.05
+height = 0.2
+material = SubResource("green")
+
+[node name="Group" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.8, -0.55)
+metadata/_edit_group_ = true
+
+[node name="Base" type="MeshInstance3D" parent="Group"]
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("white")
+
+[node name="Ball" type="MeshInstance3D" parent="Group"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.11, 0)
+mesh = SubResource("ball_mesh")
+surface_material_override/0 = SubResource("red")
+
+[node name="LockedCube" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, 0.8, -0.75)
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("grey")
+metadata/_edit_lock_ = true
+
+[node name="FarCube" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.25, -4)
+mesh = SubResource("big_cube_mesh")
+surface_material_override/0 = SubResource("blue")
+
+[node name="FarPillar" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0.85, -4)
+mesh = SubResource("pillar_mesh")
+surface_material_override/0 = SubResource("white")

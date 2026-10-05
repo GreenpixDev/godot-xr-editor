@@ -8,6 +8,7 @@ const _HANDOFF_RELEASE_MENU := "XR Editor: Measure Play Handoff (Release Session
 
 var document: XREDocument
 var _session: XRESession
+var _manipulator: XREManipulator
 var _benchmark: XREFrameBenchmark
 var _handoff: XREHandoffBenchmark
 
@@ -17,6 +18,12 @@ func _enter_tree() -> void:
 	_session = XRESession.new()
 	_session.name = "XRESession"
 	add_child(_session)
+	# Tools draw in the headset, so they live under the rig; no rig, no VR view.
+	var rig := _session.get_rig()
+	if rig != null:
+		_manipulator = XREManipulator.new(document, rig)
+		_manipulator.name = "XREManipulator"
+		rig.add_child(_manipulator)
 	_benchmark = XREFrameBenchmark.new()
 	_benchmark.name = "XREFrameBenchmark"
 	_benchmark.session = _session
@@ -34,8 +41,10 @@ func _exit_tree() -> void:
 	remove_tool_menu_item(_BENCHMARK_MENU)
 	remove_tool_menu_item(_HANDOFF_MENU)
 	remove_tool_menu_item(_HANDOFF_RELEASE_MENU)
-	# All three have already left the tree with this node: the session restored
-	# the editor's settings, the benchmarks stopped and put the editor back.
+	# All of them have already left the tree with this node: the manipulator
+	# put back what it held, the session restored the editor's settings, the
+	# benchmarks stopped and put the editor back. The manipulator goes with the rig.
+	_manipulator = null
 	_handoff.queue_free()
 	_handoff = null
 	_benchmark.queue_free()

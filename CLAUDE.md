@@ -9,7 +9,7 @@ VR-редактор сцен для Godot 4.7 в виде EditorPlugin — ди�
 
 Спайк «XR в процессе редактора» закрыт 2026-10-05 решением **D-004: остаёмся в EditorPlugin**. На Quest 2 по Link при 90 Гц на пустой сцене 100 % кадров ≤ 11,1 мс и с открытым 2D-UI (p99 4,2 мс), и со скрытым (p99 2,0 мс); передача шлема игре — медиана 2,3 с, обратно — 0,05 с. Условия: обходы движка в `gdextension/` (D-005) и включённая группировка дубликатов в панели Output (см. «Подводные камни»).
 
-Дальше — по плану (раздел «Следующие шаги» и дорожная карта): UI и инструменты VR-слоя теперь можно писать. Открыто из спайка: замер передачи шлема на SteamVR (план требует оба рантайма), PR в upstream по двум дефектам движка (D-004), сборка движка с отладочными символами — не понадобилась.
+Идёт этап UI и инструментов VR-слоя. Первый инструмент — манипуляция объектами (D-007 — D-009): выбор лучом и касанием, захват рукой и лучом (HOMER), двуручный масштаб и поворот, снап к сетке и углу. Покрыт headless-тестами, в шлеме ещё не проверен. Дальше по [карте функций](docs/vr_feature_map.md#порядок-работ): снап к поверхностям, гизмо осей, отмена из шлема, хаптика. Открыто из спайка: замер передачи шлема на SteamVR (план требует оба рантайма), PR в upstream по двум дефектам движка (D-004), сборка движка с отладочными символами — не понадобилась.
 
 *Обновлять этот раздел при переходе к следующему этапу.*
 
@@ -38,27 +38,35 @@ VR-редактор сцен для Godot 4.7 в виде EditorPlugin — ди�
 addons/xr_editor/          плагин (всё, что поставляется)
   plugin.cfg, plugin.gd    точка входа EditorPlugin; владеет XREDocument
   core/                    XREDocument и его реализации
-  xr/                      XR-сессия в процессе редактора (XRESession) и риг (XRERig)
+  xr/                      XR-сессия в процессе редактора (XRESession), риг (XRERig), контроллер: луч и кнопки (XREHand),
+                           модель контроллера по профилю OpenXR с движущимися кнопками (XREControllerModel)
+  xr/controller_models/    glTF контроллеров из WebXR Input Profiles, папка на контроллер (D-010)
+  tools/                   инструменты VR-слоя: манипуляция (XREManipulator), снап (XRESnap), рамка выбора (XREBoundsBox)
   telemetry/               замеры спайка: время кадра (XREFrameBenchmark), передача шлема игре (XREHandoffBenchmark)
   xr_editor.gdextension    подключение нативной библиотеки
   bin/                     собранная библиотека (не в git, собирает scripts/build_gdextension.sh)
 gdextension/               C++ (GDExtension): src/, godot-cpp/ (сабмодуль), thirdparty/openxr/
-benchmarks/                эталонные сцены (empty, xr_view_check, xr_game_check — контрольная XR-игра, xr_handoff_game — игра для замера передачи),
+benchmarks/                эталонные сцены (empty, xr_view_check, xr_game_check — контрольная XR-игра, xr_handoff_game — игра для замера передачи,
+                           manipulation_check — ручная проверка манипуляции в шлеме),
                            frametime_report.py (отчёт по замеру), results/ (сырые CSV и отчёты замеров, в git)
 project.godot              хост-проект для разработки (OpenXR и XR-шейдеры включены)
 openxr_action_map.tres     action map по умолчанию, создан Godot (в редакторе не используется)
 scripts/check.sh           проверка без шлема
 scripts/parse_all.gd       загрузчик всех скриптов для check.sh
+scripts/test_tools.gd      headless-тесты пикера, снапа и манипуляции с фейковыми трекерами (для check.sh)
+scripts/test_controller_model.gd  headless-тест выбора модели контроллера (для check.sh)
+scripts/xr_extensions.py   расширения OpenXR-рантайма без шлема и без Godot
 scripts/build_gdextension.sh  сборка нативной части (MSVC + CMake + Ninja из Visual Studio)
 docs/                      план и дневник решений (на русском)
 ```
 
-Модули по мере надобности — не заводить пустыми папками: в аддоне `tools/` (выбор, манипуляция, снап), `ui/` (палитра, радиальное меню, панели-текстуры), `logic_graph/`, `playmode/` (передача OpenXR-сессии), `telemetry/`; в корне `study/` (протокол, анкеты, анализ).
+Модули по мере надобности — не заводить пустыми папками: в аддоне `ui/` (палитра, радиальное меню, панели-текстуры), `logic_graph/`, `playmode/` (передача OpenXR-сессии), `telemetry/`; в корне `study/` (протокол, анкеты, анализ).
 
 ## Команды
 
 ```bash
-scripts/check.sh                              # все скрипты парсятся и типизированы, нативная библиотека и плагин грузятся в headless-редакторе
+scripts/check.sh                              # все скрипты парсятся и типизированы, headless-тесты инструментов и моделей контроллеров проходят, нативная библиотека и плагин грузятся в headless-редакторе
+py scripts/xr_extensions.py ["<манифест рантайма.json>"] [фильтр]  # расширения рантайма; по умолчанию XR_RUNTIME_JSON или активный рантайм
 scripts/build_gdextension.sh                  # собрать gdextension/ в addons/xr_editor/bin/ (редактор перед этим закрыть)
 godot --path . --editor                       # обычный редактор
 godot --path . --editor --xr-mode on          # редактор с принудительным OpenXR (спайк)
@@ -93,6 +101,7 @@ godot --path . --editor --xr-mode on --log-file logs/xr_handoff.log -- --xre-han
 - Headless-запуск проекта без `--xr-mode off` пытается поднять OpenXR (он включён в настройках) и сыплет ошибками.
 - Рядом со скриптами лежат `*.gd.uid` — коммитить. Переименовывать и перемещать скрипты вместе с `.uid` (или из редактора).
 - `--log-file` не создаёт папку: без существующей `logs/` лог молча не пишется.
+- В headless рендер — заглушка: AABB мешей пустые, `RenderingServer.instances_cull_ray` их не находит, и пикер ничего не видит. Тестовые сцены задают `custom_aabb` (`scripts/test_tools.gd`). `TriangleMesh` и CSG в headless работают.
 - Свёрнутое окно редактора усыпляет главный цикл (`OS::add_frame_delay` при `window_can_draw() == false`) — в VR окно не сворачивать, фокус терять можно.
 - **OpenXR в редакторе** (по исходникам 4.7.2, `modules/openxr`, и логам запусков на Quest 2 по Link 2026-10-05; контроль — обычная XR-игра на том же 4.7.2 — работает):
   - Godot рассчитывает на один `xrWaitFrame` (`XRServer::_process`) на одну отрисовку (`xrBeginFrame`/`xrEndFrame` внутри `RenderingServer::draw()`) в каждой итерации главного цикла. Редактор это нарушает дважды: low-processor mode пропускает отрисовку, а окна прогресса (`ProgressDialog::_update_ui`, при старте — «Project initialization») и ещё несколько мест вызывают `Main::iteration()` изнутри итерации. Вложенный `xrWaitFrame` приходит до начала внешнего кадра; рантайм Meta ждёт ~30 с, отвечает `XR_ERROR_RUNTIME_FAILURE` и теряет сессию. Нативный `XREEditorFrameLoop` выключает low-processor mode после каждого ожидания и перед каждым ожиданием дорисовывает неначатый кадр через `RenderingServer.force_draw()`; после этого движок печатает безвредные `CALL_ORDER_INVALID` внешней отрисовки. GDScript возвращает low-processor mode только после конца сессии;
@@ -105,11 +114,13 @@ godot --path . --editor --xr-mode on --log-file logs/xr_handoff.log -- --xre-han
   - редактор грузит GDExtension при старте, только если она уже есть в `.godot/extension_list.cfg`; найденная на ходу загрузится слишком поздно для OpenXR. `build_gdextension.sh` обновляет список headless-импортом;
   - настройки проекта `xr/openxr/*` (reference space, form factor, blend mode) игнорируются, пространство по умолчанию — STAGE;
   - `XROrigin3D` не передаёт свой transform в `XRServer.world_origin` — это делает `XRERig`;
+  - модели контроллеров от рантайма (`OpenXRRenderModelManager`) в редакторе не появятся, даже если рантайм их даёт: расширение движка обновляется в `on_sync_actions`, а его вызывает только успешный `sync_action_sets`. Рантайм Meta по Link таких расширений и не даёт, поэтому модели статические (D-010);
   - сессия создаётся при старте, на уровне инициализации SCENE: до загрузки плагинов и до GDExtension уровня SCENE.
 - Windows блокирует загруженную DLL: пока редактор открыт, библиотеку не пересобрать (`reloadable = false` — горячая перезагрузка оставила бы движку висячий указатель на обёртку).
 - В `build/`, `gdextension/` и `benchmarks/results/` лежит `.gdignore`: иначе Godot сканирует тысячи C++-файлов как ресурсы, а каждый `.csv` импортирует как файл переводов (по `.translation` на столбец).
 - Запись файла посреди замера кадра (CSV между сегментами) давала заминку главного цикла, после которой рантайм Meta уходил на 45 Гц и при видимом UI не возвращался (наблюдение 2026-10-05). `XREFrameTimer` копит весь прогон в памяти и пишет один CSV в конце.
 - Удалённая через `remove_child` нода теряет `owner` у себя и потомков, если владелец больше не предок. Undo удаления должен восстанавливать owner — см. `XREPluginDocument.remove_node`.
+- Импорт glTF по умолчанию вынимает встроенные текстуры в файлы рядом с `.glb` с флагом `detect_3d`: при первом показе в 3D редактор сам переимпортирует их со сжатием и перепишет `.import`. У моделей контроллеров сжатие задано явно (`compress/mode=2`, `detect_3d/compress_to=0`). Встроенные в сцену текстуры (`gltf/embedded_image_handling=3`) обходятся без лишних файлов, но остаются без mipmaps.
 
 ## Дневник решений
 

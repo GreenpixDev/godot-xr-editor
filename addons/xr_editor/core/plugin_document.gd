@@ -29,34 +29,40 @@ func get_selection() -> Array[Node]:
 	return EditorInterface.get_selection().get_selected_nodes()
 
 
-func select(nodes: Array[Node]) -> void:
+func select(nodes: Array[Node], source: Source) -> void:
 	var selection := EditorInterface.get_selection()
 	selection.clear()
 	for node in nodes:
 		selection.add_node(node)
+	_record(&"select", source, nodes)
 
 
 func preview_transform(node: Node3D, xform: Transform3D) -> void:
 	node.transform = xform
 
 
-func commit_transform(node: Node3D, before: Transform3D) -> void:
+func commit_transform(node: Node3D, before: Transform3D, source: Source) -> void:
 	var undo_redo := _plugin.get_undo_redo()
 	undo_redo.create_action("XR: Transform %s" % node.name)
 	undo_redo.add_do_property(node, &"transform", node.transform)
 	undo_redo.add_undo_property(node, &"transform", before)
 	undo_redo.commit_action()
+	_record(&"transform", source, [node])
 
 
-func set_property(object: Object, property: StringName, value: Variant) -> void:
+func set_property(object: Object, property: StringName, value: Variant, source: Source) -> void:
 	var undo_redo := _plugin.get_undo_redo()
 	undo_redo.create_action("XR: Set %s" % property)
 	undo_redo.add_do_property(object, property, value)
 	undo_redo.add_undo_property(object, property, object.get(property))
 	undo_redo.commit_action()
+	var nodes: Array[Node] = []
+	if object is Node:
+		nodes.append(object as Node)
+	_record(&"set_property", source, nodes)
 
 
-func add_node(node: Node, parent: Node) -> void:
+func add_node(node: Node, parent: Node, source: Source) -> void:
 	var root := get_scene_root()
 	var undo_redo := _plugin.get_undo_redo()
 	undo_redo.create_action("XR: Add %s" % node.name)
@@ -67,9 +73,10 @@ func add_node(node: Node, parent: Node) -> void:
 	undo_redo.add_do_reference(node)
 	undo_redo.add_undo_method(parent, &"remove_child", node)
 	undo_redo.commit_action()
+	_record(&"add_node", source, [node])
 
 
-func remove_node(node: Node) -> void:
+func remove_node(node: Node, source: Source) -> void:
 	var root := get_scene_root()
 	if node == root:
 		push_error("XR Editor: cannot remove the scene root.")
@@ -84,10 +91,21 @@ func remove_node(node: Node) -> void:
 		undo_redo.add_undo_method(owned, &"set_owner", root)
 	undo_redo.add_undo_reference(node)
 	undo_redo.commit_action()
+	_record(&"remove_node", source, [node])
 
 
-func save() -> Error:
-	return EditorInterface.save_scene()
+func save(source: Source) -> Error:
+	var error := EditorInterface.save_scene()
+	if error == OK:
+		_record(&"save", source, [get_scene_root()])
+	return error
+
+
+## The desktop editor's snap settings (Transform → Configure Snap), so both
+## views snap to the same steps.
+func get_snap() -> XRESnap:
+	return XRESnap.new(EditorInterface.is_node_3d_snap_enabled(), EditorInterface.get_node_3d_translate_snap(),
+			EditorInterface.get_node_3d_rotate_snap(), EditorInterface.get_node_3d_scale_snap())
 
 
 func _on_scene_changed(_scene_root: Node) -> void:

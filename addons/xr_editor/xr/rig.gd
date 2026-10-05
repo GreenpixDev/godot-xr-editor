@@ -13,12 +13,10 @@ extends XROrigin3D
 const VR_LAYER := 1 << 20
 ## Bits 0–19: render layers 1–20 that scene content can be on.
 const SCENE_LAYERS := (1 << 20) - 1
-## Length of the pointing ray drawn from each controller, in meters.
-const RAY_LENGTH := 2.0
 
 var camera: XRCamera3D
-var left_hand: XRController3D
-var right_hand: XRController3D
+var left_hand: XREHand
+var right_hand: XREHand
 
 
 func _init() -> void:
@@ -29,8 +27,12 @@ func _init() -> void:
 	camera.cull_mask = SCENE_LAYERS | VR_LAYER
 	camera.current = true
 	add_child(camera)
-	left_hand = _create_hand("LeftHand", &"left_hand", Color(0.3, 0.6, 1.0))
-	right_hand = _create_hand("RightHand", &"right_hand", Color(1.0, 0.6, 0.2))
+	left_hand = XREHand.new("LeftHand", &"left_hand", Color(0.3, 0.6, 1.0))
+	add_child(left_hand)
+	right_hand = XREHand.new("RightHand", &"right_hand", Color(1.0, 0.6, 0.2))
+	add_child(right_hand)
+	add_child(XREControllerModel.new("LeftController", &"left_hand", XRPositionalTracker.TRACKER_HAND_LEFT))
+	add_child(XREControllerModel.new("RightController", &"right_hand", XRPositionalTracker.TRACKER_HAND_RIGHT))
 
 
 func _notification(what: int) -> void:
@@ -41,43 +43,14 @@ func _notification(what: int) -> void:
 		XRServer.world_origin = global_transform
 
 
-## Builds a controller that follows [param tracker_name]'s aim pose and stays
-## hidden until the tracker reports a pose.
-func _create_hand(node_name: String, tracker_name: StringName, color: Color) -> XRController3D:
-	var hand := XRController3D.new()
-	hand.name = node_name
-	hand.tracker = tracker_name
-	hand.pose = &"aim"
-	hand.show_when_tracked = true
-
-	var material := StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.albedo_color = color
-
-	# The aim pose looks down -Z from the controller tip: the body extends back
-	# along +Z, the ray forward along -Z.
-	hand.add_child(_create_box(Vector3(0.04, 0.04, 0.12), Vector3(0.0, 0.0, 0.06), material))
-	hand.add_child(_create_box(Vector3(0.004, 0.004, RAY_LENGTH), Vector3(0.0, 0.0, -RAY_LENGTH / 2.0), material))
-	# Spike diagnostics: proves that button input, not just tracking, reaches the editor.
-	hand.button_pressed.connect(_on_button_pressed.bind(node_name))
-	add_child(hand)
-	return hand
-
-
-func _on_button_pressed(button: String, hand_name: String) -> void:
-	print("XR Editor: %s pressed %s." % [hand_name, button])
-
-
-func _create_box(size: Vector3, offset: Vector3, material: Material) -> MeshInstance3D:
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	var box := MeshInstance3D.new()
-	box.mesh = mesh
-	box.material_override = material
-	box.position = offset
-	box.layers = VR_LAYER
-	# Shadows are culled by the light, not the camera: a VR-layer shadow would
-	# show up in the desktop viewport.
-	box.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	box.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
-	return box
+## A mesh only the headset shows: on [constant VR_LAYER], casting no shadow
+## (shadows are culled by the light, not the camera, so a VR-layer shadow would
+## show up in the desktop viewport) and left out of global illumination.
+static func create_vr_mesh(mesh: Mesh, material: Material) -> MeshInstance3D:
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	instance.material_override = material
+	instance.layers = VR_LAYER
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	instance.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	return instance

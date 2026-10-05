@@ -26,6 +26,7 @@ const _STATE_NAMES: Array[String] = [
 
 var _xr: OpenXRInterface
 var _viewport: SubViewport
+var _rig: XRERig
 var _status_timer: Timer
 var _vr_loop_active := false
 var _saved_max_fps := 0
@@ -65,7 +66,8 @@ func _enter_tree() -> void:
 	_viewport.use_xr = true
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_viewport.world_3d = editor_viewport.find_world_3d()
-	_viewport.add_child(XRERig.new())
+	_rig = XRERig.new()
+	_viewport.add_child(_rig)
 	add_child(_viewport)
 
 	_status_timer = Timer.new()
@@ -98,6 +100,7 @@ func _exit_tree() -> void:
 	_viewport.queue_free()
 	_status_timer.queue_free()
 	_viewport = null
+	_rig = null
 	_status_timer = null
 	_xr = null
 	_log("VR view closed.")
@@ -111,6 +114,12 @@ func get_xr_interface() -> OpenXRInterface:
 ## The headset's viewport while the VR view is on, otherwise null.
 func get_xr_viewport() -> SubViewport:
 	return _viewport
+
+
+## The user's head and controllers while the VR view is on, otherwise null.
+## Tools that draw in the headset go under it.
+func get_rig() -> XRERig:
+	return _rig
 
 
 ## Whether [method release_session] gave the headset up and

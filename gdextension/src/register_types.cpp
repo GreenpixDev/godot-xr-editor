@@ -1,6 +1,7 @@
 #include "editor_controllers.h"
 #include "editor_frame_loop.h"
 #include "frame_timer.h"
+#include "picker.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/classes/engine.hpp>
@@ -32,6 +33,10 @@ bool is_editor_startup() {
 }
 
 void initialize_xre_native(ModuleInitializationLevel p_level) {
+	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		GDREGISTER_CLASS(xre::XREPicker);
+		return;
+	}
 	// OpenXR creates its instance at the servers level and refuses wrappers
 	// registered after that, so this has to happen at the core level.
 	if (p_level != MODULE_INITIALIZATION_LEVEL_CORE) {
