@@ -8,14 +8,16 @@ extends Node
 ## [br]- Point: the ray stops at the node the trigger would select, and that
 ## node is outlined. A node the controller tip is inside is outlined instead:
 ## touching wins over pointing. Nodes the head is inside, like a room, are
-## only pointed at.
+## only pointed at. Icons of lights ([XREIcons]) are drawn on top, so they are
+## touched and pointed at before geometry.
 ## [br]- Trigger: select the outlined node, or clear the selection over empty space.
 ## [br]- Grip: grab the outlined node, which also selects it. A touched node
 ## follows the hand rigidly. A node grabbed with the ray follows the hand
 ## with the hand's motion scaled by how much farther from the body the node
 ## is than the hand (HOMER, Bowman and Hodges 1997): bringing the hand halfway
 ## to the body brings the node halfway too, and turning the hand turns the
-## node about the point the ray hit.
+## node about the point the ray hit. Hand motion counts in the rig's space:
+## a node held while the user flies ([XRELocomotion]) travels along rigidly.
 ## [br]- Grip of the other hand while holding: both hands hold the node,
 ## each at the point it took (gripping away from the node takes the first
 ## hand's point). Spreading the hands scales the node and turning the line
@@ -23,6 +25,13 @@ extends Node
 ## hand lets go, the other holds on at its own point, so a node can be passed
 ## from hand to hand.
 ## [br]- Trigger of a holding hand: inverts snapping, like Ctrl on the desktop.
+## [br]- A on the right controller: delete the selection, as Delete on the
+## desktop, without asking. A node being held is put back first, so that
+## undo brings it back where the grab found it.
+## [br][br]
+## A hand another tool has claimed ([method XREHand.claim]), like the right
+## hand touching the [XREPalette], is left alone. The manipulator claims the
+## hands that hold a node.
 ## [br][br]
 ## Picking happens in [XREPicker] (native). A grab changes the scene only
 ## through [XREDocument]: a preview every frame, then one undo step when the
@@ -60,13 +69,15 @@ class HandState:
 	var hover_touched := false
 	## Where the ray hit [member hover], or the controller tip if touched.
 	var hover_point: Vector3
+	## From the controller tip to [member hover] along the ray.
+	var hover_distance := 0.0
 	var holding := false
 	## Where the hand holds the grabbed node, in the node's own space: the
 	## point stays on the node however the hands move, turn or scale it.
 	var grab_point: Vector3
 	## HOMER's gain for this hand, fixed when it took hold.
 	var gain := 1.0
-	## The hand's global transform when the current hold began.
+	## The hand's transform in the rig's space when the current hold began.
 	var hold_start: Transform3D
 
 	func _init(controller: XREHand) -> void:
@@ -77,6 +88,7 @@ class HandState:
 
 var _document: XREDocument
 var _rig: XRERig
+var _icons: XREIcons
 var _hands: Array[HandState] = []
 var _root: Node
 
@@ -102,15 +114,18 @@ var _scale := 1.0
 ## [member _free_global] and [member _scale] when the current hold began, and
 ## the hold's pivot: the holding hand's grab point, or the middle between
 ## both. A hold begins with the grab and again whenever a hand joins or lets
-## go, so that the node doesn't jump.
-var _hold_start_global: Transform3D
+## go, so that the node doesn't jump. The transform and the pivot are in the
+## rig's space, as hand motion is: a node held while the rig flies travels
+## with it, and HOMER's gain scales only what the hands do.
+var _hold_start_free: Transform3D
 var _hold_start_pivot: Vector3
 var _hold_start_scale := 1.0
 
 
-func _init(document: XREDocument, rig: XRERig) -> void:
+func _init(document: XREDocument, rig: XRERig, icons: XREIcons) -> void:
 	_document = document
 	_rig = rig
+	_icons = icons
 	for hand: XREHand in [rig.left_hand, rig.right_hand]:
 		var state := HandState.new(hand)
 		add_child(state.box)
@@ -134,8 +149,6 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
-	for state: HandState in _hands:
-		state.hand.update_input()
 	var root: Node = _root if is_instance_valid(_root) else null
 
 	for state: HandState in _hands:
@@ -146,6 +159,10 @@ func _process(_delta: float) -> void:
 		if state.holding:
 			state.hand.hide_ray()
 			continue
+		if not state.hand.is_free_for(self):
+			state.hover = null
+			state.hand.show_ray(XREHand.RAY_LENGTH, false)
+			continue
 		_update_hover(state, root)
 		if state.hand.grip_pressed:
 			if _holders.is_empty():
@@ -154,6 +171,10 @@ func _process(_delta: float) -> void:
 				_join(state)
 		elif state.hand.trigger_pressed and _holders.is_empty():
 			_select(state.hover)
+
+	var right := _rig.right_hand
+	if right.ax_pressed and right.is_free_for(self):
+		_delete_selection()
 
 	if not _holders.is_empty():
 		_drag()
@@ -214,20 +235,31 @@ func _update_hover(state: HandState, root: Node) -> void:
 	var node: Node3D = null
 	if root != null and hand.get_has_tracking_data():
 		var aim := hand.global_transform
-		if state.picker.find_at_point(root, aim.origin, TOUCH_RADIUS, _rig.camera.global_position):
+		var end := aim.origin - aim.basis.z.normalized() * PICK_DISTANCE
+		if _icons.find_at_point(aim.origin, TOUCH_RADIUS):
+			node = _icons.get_hit_node()
+			state.hover_touched = true
+			state.hover_point = aim.origin
+		elif state.picker.find_at_point(root, aim.origin, TOUCH_RADIUS, _rig.camera.global_position):
 			node = state.picker.get_hit_node()
 			state.hover_touched = true
 			state.hover_point = aim.origin
-		elif state.picker.cast_segment(root, aim.origin, aim.origin - aim.basis.z.normalized() * PICK_DISTANCE):
+		elif _icons.cast_segment(aim.origin, end):
+			node = _icons.get_hit_node()
+			state.hover_touched = false
+			state.hover_point = _icons.get_hit_position()
+			state.hover_distance = _icons.get_hit_distance()
+		elif state.picker.cast_segment(root, aim.origin, end):
 			node = state.picker.get_hit_node()
 			state.hover_touched = false
 			state.hover_point = state.picker.get_hit_position()
+			state.hover_distance = state.picker.get_hit_distance()
 	if node != state.hover:
 		state.hover = node
 		if node != null:
 			state.hover_bounds = XREPicker.get_local_bounds(node)
 	if node != null and not state.hover_touched:
-		hand.show_ray(state.picker.get_hit_distance(), true)
+		hand.show_ray(state.hover_distance, true)
 	else:
 		hand.show_ray(XREHand.RAY_LENGTH, false)
 
@@ -269,6 +301,7 @@ func _join(state: HandState) -> void:
 		state.grab_point = _holders[0].grab_point
 		state.gain = _holders[0].gain
 	state.holding = true
+	state.hand.claim(self)
 	state.hand.hide_ray()
 	_holders.append(state)
 	_start_hold()
@@ -276,6 +309,7 @@ func _join(state: HandState) -> void:
 
 func _let_go(state: HandState) -> void:
 	state.holding = false
+	state.hand.unclaim(self)
 	_holders.erase(state)
 	if _holders.is_empty():
 		_end_grab()
@@ -287,11 +321,12 @@ func _start_hold() -> void:
 	var pivot := _holders[0].grab_point
 	if _holders.size() == 2:
 		pivot = (pivot + _holders[1].grab_point) * 0.5
-	_hold_start_global = _free_global
-	_hold_start_pivot = _free_global * pivot
+	# The hands are children of the rig: their own transforms are in its space.
+	_hold_start_free = _rig.global_transform.affine_inverse() * _free_global
+	_hold_start_pivot = _hold_start_free * pivot
 	_hold_start_scale = _scale
 	for state: HandState in _holders:
-		state.hold_start = state.hand.global_transform
+		state.hold_start = state.hand.transform
 
 
 func _drag() -> void:
@@ -303,21 +338,22 @@ func _drag() -> void:
 		if state.hand.trigger_held:
 			snapping = not _snap.enabled
 
+	var moved: Transform3D
 	if _holders.size() == 1:
 		var state := _holders[0]
-		_free_global = one_hand_transform(_hold_start_global, _hold_start_pivot, state.hold_start,
-				state.hand.global_transform, state.gain)
+		moved = one_hand_transform(_hold_start_free, _hold_start_pivot, state.hold_start, state.hand.transform, state.gain)
 	else:
 		var a_start := _holders[0].hold_start.origin
 		var b_start := _holders[1].hold_start.origin
-		var a_now := _holders[0].hand.global_position
-		var b_now := _holders[1].hand.global_position
+		var a_now := _holders[0].hand.position
+		var b_now := _holders[1].hand.position
 		var factor := maxf(two_hand_scale(a_start, b_start, a_now, b_now), MIN_SCALE_FACTOR)
 		if snapping:
 			factor = _snap.snap_scale_factor(_hold_start_scale * factor) / _hold_start_scale
 		_scale = _hold_start_scale * factor
-		_free_global = two_hand_transform(_hold_start_global, _hold_start_pivot, a_start, b_start, a_now, b_now,
+		moved = two_hand_transform(_hold_start_free, _hold_start_pivot, a_start, b_start, a_now, b_now,
 				(_holders[0].gain + _holders[1].gain) * 0.5, factor)
+	_free_global = _rig.global_transform * moved
 
 	var local := _to_parent * _free_global
 	if snapping:
@@ -338,11 +374,19 @@ func _end_grab() -> void:
 func _cancel_grab() -> void:
 	for state: HandState in _holders:
 		state.holding = false
+		state.hand.unclaim(self)
 	_holders.clear()
 	if is_instance_valid(_grabbed) and _grabbed.is_inside_tree():
 		_document.preview_transform(_grabbed, _before)
 	_grabbed = null
 	_snap = null
+
+
+func _delete_selection() -> void:
+	_cancel_grab()
+	var nodes := _document.get_selection()
+	if not nodes.is_empty():
+		_document.remove_nodes(nodes, XREDocument.Source.TOOL)
 
 
 func _update_outlines() -> void:
@@ -353,7 +397,9 @@ func _update_outlines() -> void:
 		else:
 			box.visible = false
 	for state: HandState in _hands:
-		if not state.holding and is_instance_valid(state.hover) and not _selected.has(state.hover):
+		# A hovered node deleted this frame has left the tree.
+		if not state.holding and is_instance_valid(state.hover) and state.hover.is_inside_tree() \
+				and not _selected.has(state.hover):
 			state.box.show_bounds(state.hover.global_transform, state.hover_bounds)
 		else:
 			state.box.visible = false

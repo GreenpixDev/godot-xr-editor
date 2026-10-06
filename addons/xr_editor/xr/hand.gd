@@ -1,13 +1,17 @@
 @tool
 class_name XREHand
 extends XRController3D
-## One controller in the VR view: its pointing ray and the state of its trigger
-## and grip. The controller itself is drawn by [XREControllerModel].
+## One controller in the VR view: its pointing ray and the state of its trigger,
+## grip and A or X button. The controller itself is drawn by [XREControllerModel].
 ##
 ## Follows the tracker's aim pose: the ray starts at the node's origin and
 ## points down -Z. Trigger and grip are analog. Each counts as held above
 ## [constant PRESS_THRESHOLD] and as let go below [constant RELEASE_THRESHOLD],
 ## so a finger resting halfway doesn't flicker between the two.
+## [br][br]
+## Several tools read the same hand. A tool that hovers over or holds something
+## with the hand claims it ([method claim]); the others leave a claimed hand
+## alone, so that one press does one thing.
 
 ## Length of the ray when it points at nothing, in meters.
 const RAY_LENGTH := 2.0
@@ -29,7 +33,17 @@ var grip_held := false
 var grip_pressed := false
 ## Grip went up since the previous [method update_input].
 var grip_released := false
+## A (right controller) or X (left) is held down.
+var ax_held := false
+## A or X went down since the previous [method update_input].
+var ax_pressed := false
+## The thumbstick is pressed in.
+var stick_click_held := false
+## The thumbstick went in since the previous [method update_input].
+var stick_click_pressed := false
 
+## The tool that claimed the hand, or null.
+var _claimed_by: Object
 var _ray: MeshInstance3D
 var _dot: MeshInstance3D
 var _ray_material: StandardMaterial3D
@@ -62,8 +76,9 @@ func _init(node_name: String, tracker_name: StringName, color: Color) -> void:
 	show_ray(RAY_LENGTH, false)
 
 
-## Reads trigger and grip. Call once per frame, before reading the fields above.
-## Without tracking or focus the runtime reports both as released.
+## Reads trigger, grip, A or X and the thumbstick's click. [XRERig] calls it
+## once per frame, before the tools under it read the fields above. Without
+## tracking or focus the runtime reports every button as released.
 func update_input() -> void:
 	var was_held := trigger_held
 	trigger_held = get_float(&"trigger") > (RELEASE_THRESHOLD if was_held else PRESS_THRESHOLD)
@@ -74,6 +89,31 @@ func update_input() -> void:
 	grip_held = get_float(&"grip") > (RELEASE_THRESHOLD if was_held else PRESS_THRESHOLD)
 	grip_pressed = grip_held and not was_held
 	grip_released = was_held and not grip_held
+
+	was_held = ax_held
+	ax_held = is_button_pressed(&"ax_button")
+	ax_pressed = ax_held and not was_held
+
+	was_held = stick_click_held
+	stick_click_held = is_button_pressed(&"primary_click")
+	stick_click_pressed = stick_click_held and not was_held
+
+
+## Whether [param tool] may act on this hand: no other tool has claimed it.
+func is_free_for(tool: Object) -> bool:
+	return _claimed_by == null or _claimed_by == tool
+
+
+## Claims the hand for [param tool] until it calls [method unclaim]. Tools run
+## in tree order, so the one that claims on hover must run before the others.
+func claim(tool: Object) -> void:
+	_claimed_by = tool
+
+
+## Lets go of the hand, if [param tool] has claimed it.
+func unclaim(tool: Object) -> void:
+	if _claimed_by == tool:
+		_claimed_by = null
 
 
 ## Shows the ray [param length] meters long. With [param hit], the ray is

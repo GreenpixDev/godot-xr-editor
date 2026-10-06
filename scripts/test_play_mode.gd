@@ -42,7 +42,7 @@ class FakeDocument extends XREDocument:
 	func add_node(_node: Node, _parent: Node, _source: Source) -> void:
 		pass
 
-	func remove_node(_node: Node, _source: Source) -> void:
+	func remove_nodes(_nodes: Array[Node], _source: Source) -> void:
 		pass
 
 	func save(_source: Source) -> Error:

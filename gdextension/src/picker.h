@@ -71,6 +71,12 @@ public:
 	/// From the start of the segment, or from the point, to the hit.
 	double get_hit_distance() const;
 
+	/// The node to select for p_node, by the same rules as for a hit on its
+	/// geometry: its instance root, outermost group or owned ancestor. Null if
+	/// that node is locked or p_node is not in p_scene_root's scene. For icons
+	/// and handles of nodes without geometry, like lights.
+	godot::Node3D *get_selectable_node(godot::Node *p_node, godot::Node *p_scene_root) const;
+
 	/// Bounding box of the pickable geometry under p_node (p_node included), in
 	/// p_node's own space. A node without any is given a 10 cm box around its origin.
 	static godot::AABB get_local_bounds(godot::Node3D *p_node);

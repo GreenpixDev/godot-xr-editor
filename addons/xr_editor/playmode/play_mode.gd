@@ -81,14 +81,8 @@ func _init(document: XREDocument, session: XRESession, rig: XRERig) -> void:
 	_document = document
 	_session = session
 	_rig = rig
-	_message = Label3D.new()
-	_message.layers = XRERig.VR_LAYER
-	_message.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_message.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
-	_message.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_message = XRERig.create_vr_label(40, 0.0005)
 	_message.no_depth_test = true
-	_message.font_size = 40
-	_message.pixel_size = 0.0005
 	_message.outline_size = 10
 	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_message.width = 1200.0

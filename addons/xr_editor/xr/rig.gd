@@ -35,6 +35,12 @@ func _init() -> void:
 	add_child(XREControllerModel.new("RightController", &"right_hand", XRPositionalTracker.TRACKER_HAND_RIGHT))
 
 
+func _process(_delta: float) -> void:
+	# Before the tools under the rig: a node processes before its children.
+	left_hand.update_input()
+	right_hand.update_input()
+
+
 func _notification(what: int) -> void:
 	# XROrigin3D publishes its transform to XRServer only outside the editor
 	# (scene/3d/xr/xr_nodes.cpp checks is_editor_hint()). Both eyes are rendered
@@ -54,3 +60,17 @@ static func create_vr_mesh(mesh: Mesh, material: Material) -> MeshInstance3D:
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	instance.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 	return instance
+
+
+## Text only the headset shows, as [method create_vr_mesh] does for meshes,
+## turned to face the viewer. [param pixel_size] is in meters per pixel of
+## [param font_size].
+static func create_vr_label(font_size: int, pixel_size: float) -> Label3D:
+	var label := Label3D.new()
+	label.layers = VR_LAYER
+	label.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	label.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.font_size = font_size
+	label.pixel_size = pixel_size
+	return label

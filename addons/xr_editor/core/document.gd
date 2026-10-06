@@ -20,7 +20,7 @@ signal scene_changed
 ## Emitted once for every operation made through this document, after it took
 ## effect. [param operation] names it ([code]&"select"[/code],
 ## [code]&"transform"[/code], [code]&"set_property"[/code], [code]&"add_node"[/code],
-## [code]&"remove_node"[/code], [code]&"save"[/code], [code]&"play"[/code],
+## [code]&"remove_nodes"[/code], [code]&"save"[/code], [code]&"play"[/code],
 ## [code]&"stop"[/code]); [param time_usec] is
 ## [method Time.get_ticks_usec] at that moment. Previews are not operations.
 signal operation_recorded(operation: StringName, source: Source, nodes: Array[Node], time_usec: int)
@@ -58,11 +58,14 @@ enum Source {
 @abstract func set_property(object: Object, property: StringName, value: Variant, source: Source) -> void
 
 
-## Adds [param node] under [param parent] and makes it part of the saved scene.
+## Adds [param node], which has no parent yet, under [param parent] with its
+## current transform, and makes it part of the saved scene. One undo step.
 @abstract func add_node(node: Node, parent: Node, source: Source) -> void
 
 
-@abstract func remove_node(node: Node, source: Source) -> void
+## Removes [param nodes] as one undo step, as Delete does on the desktop. Only
+## [method nodes_to_remove] of them go; if none does, nothing is recorded.
+@abstract func remove_nodes(nodes: Array[Node], source: Source) -> void
 
 
 @abstract func save(source: Source) -> Error
@@ -90,6 +93,28 @@ enum Source {
 ## Snap steps and whether snapping is on, as the user set them for the 3D view.
 ## Read when a drag starts.
 @abstract func get_snap() -> XRESnap
+
+
+## Those of [param nodes] that [method remove_nodes] removes, in tree order:
+## nodes of the scene under [param root], but not the root itself, nodes
+## inside instanced scenes (their owner is the instance), or nodes under
+## another of [param nodes], which go with it.
+static func nodes_to_remove(nodes: Array[Node], root: Node) -> Array[Node]:
+	var result: Array[Node] = []
+	if root == null:
+		return result
+	for node: Node in nodes:
+		if node.owner != root or not root.is_ancestor_of(node) or result.has(node):
+			continue
+		var nested := false
+		for other: Node in nodes:
+			if other != node and other != root and other.is_ancestor_of(node):
+				nested = true
+				break
+		if not nested:
+			result.append(node)
+	result.sort_custom(func(a: Node, b: Node) -> bool: return b.is_greater_than(a))
+	return result
 
 
 ## Reports an operation; every implementation calls it once per operation.

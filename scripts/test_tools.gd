@@ -1,8 +1,8 @@
 extends SceneTree
-## Headless tests of the VR tools: the native XREPicker, XRESnap and
-## XREManipulator driven by fake controller trackers. Used by scripts/check.sh,
-## not shipped with the plugin. Prints "test_tools: FAILED ..." for every
-## failed check and a summary line at the end.
+## Headless tests of the VR tools: the native XREPicker, XRESnap, XREIcons, and
+## XREManipulator, XREPalette and XRELocomotion driven by fake controller trackers. Used by
+## scripts/check.sh, not shipped with the plugin. Prints "test_tools: FAILED ..."
+## for every failed check and a summary line at the end.
 ##
 ## Headless Godot renders nothing and its mesh storage reports empty bounds,
 ## so every test mesh sets custom_aabb: that is what the renderer's BVH,
@@ -18,6 +18,10 @@ class FakeDocument extends XREDocument:
 	var previews := 0
 	## The "before" transform of every commit_transform.
 	var commits: Array[Transform3D] = []
+	## Nodes add_node put in.
+	var added: Array[Node] = []
+	## Nodes remove_nodes took out; the test frees them at the end.
+	var removed: Array[Node] = []
 
 	func get_scene_root() -> Node:
 		return root
@@ -41,11 +45,27 @@ class FakeDocument extends XREDocument:
 	func set_property(_object: Object, _property: StringName, _value: Variant, _source: Source) -> void:
 		pass
 
-	func add_node(_node: Node, _parent: Node, _source: Source) -> void:
-		pass
+	func add_node(node: Node, parent: Node, source: Source) -> void:
+		parent.add_child(node, true)
+		node.owner = root
+		added.append(node)
+		_record(&"add_node", source, [node])
 
-	func remove_node(_node: Node, _source: Source) -> void:
-		pass
+	func remove_nodes(nodes: Array[Node], source: Source) -> void:
+		var gone := nodes_to_remove(nodes, root)
+		if gone.is_empty():
+			return
+		for node: Node in gone:
+			node.get_parent().remove_child(node)
+		removed.append_array(gone)
+		# The editor's selection drops nodes that leave the tree.
+		var kept: Array[Node] = []
+		for node: Node in selection:
+			if node.is_inside_tree():
+				kept.append(node)
+		selection = kept
+		_record(&"remove_nodes", source, gone)
+		selection_changed.emit()
 
 	func save(_source: Source) -> Error:
 		return OK
@@ -76,9 +96,21 @@ var _trackers: Array[XRControllerTracker] = []
 var _right: XRControllerTracker
 var _left: XRControllerTracker
 var _rig: XRERig
+var _locomotion: XRELocomotion
+var _icons: XREIcons
+var _palette: XREPalette
+var _manipulator: XREManipulator
 ## The box the manipulator tests grab, in the scene's first lane.
 var _target: MeshInstance3D
 var _gain := 1.0
+## Where the left hand holds the tray for the palette tests.
+var _tray_hand: Vector3
+## The node the palette is holding or has put in the scene.
+var _taken: Node3D
+var _operation_count := 0
+var _commit_count := 0
+var _rig_before: Vector3
+var _target_before: Vector3
 
 
 func _initialize() -> void:
@@ -87,7 +119,9 @@ func _initialize() -> void:
 		_test_picker,
 		_test_snap,
 		_test_manipulation_math,
+		_test_nodes_to_remove,
 		_start_manipulator,
+		_test_icons,
 		_point_at_target,
 		_press_trigger,
 		_grab_with_ray,
@@ -102,6 +136,25 @@ func _initialize() -> void:
 		_join_left_by_touch,
 		_let_go_right,
 		_turn_left_hand,
+		_check_hand_over,
+		_palette_shown,
+		_touch_miniature,
+		_take_box,
+		_carry_box,
+		_box_placed,
+		_light_taken,
+		_light_thrown_away,
+		_delete_placed,
+		_placed_deleted,
+		_grab_far,
+		_held_deleted,
+		_point_at_spot_icon,
+		_spot_selected,
+		_grab_for_flight,
+		_fly,
+		_flown,
+		_turned,
+		_speed_clicked,
 		_finish,
 	]
 
@@ -175,6 +228,22 @@ func _build() -> void:
 	# Lane 10: touching picks the smallest box around the point.
 	_add_box(_scene, "Big", Vector3(10.0, 0.0, -1.0), 2.0)
 	_add_box(_scene, "Small", Vector3(10.0, 0.0, -1.0), 0.2)
+	# Lanes 12–15: lights, picked by their icons. A light behind a box, an
+	# instanced lamp that stands for its light, a hidden light.
+	_add_node(_scene, OmniLight3D.new(), "Lamp", Vector3(12.0, 0.0, -1.0))
+	_add_box(_scene, "Shade", Vector3(13.0, 0.0, -1.0), 0.2)
+	_add_node(_scene, SpotLight3D.new(), "Spot", Vector3(13.0, 0.0, -2.0))
+	var lamp := Node3D.new()
+	var bulb := OmniLight3D.new()
+	bulb.name = "Bulb"
+	lamp.add_child(bulb)
+	bulb.owner = lamp
+	var lamp_scene := PackedScene.new()
+	lamp_scene.pack(lamp)
+	lamp.free()
+	_add_node(_scene, lamp_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE) as Node3D, "LampProp",
+			Vector3(14.0, 0.0, -1.0))
+	_add_node(_scene, OmniLight3D.new(), "HiddenLamp", Vector3(15.0, 0.0, -1.0)).visible = false
 	# Lanes 20 and 21.5: a 6 m CSG room around (20, 0, 0) with a box inside.
 	var room := CSGBox3D.new()
 	room.size = Vector3(6.0, 6.0, 6.0)
@@ -301,9 +370,25 @@ func _test_manipulation_math() -> void:
 	_check_vector(scaled.origin, Vector3(0.0, 1.0, -2.0), "two hands scale about the pivot")
 	_check_vector(scaled.basis.get_scale(), Vector3(2.0, 2.0, 2.0), "two hands scale uniformly")
 
+	var rig := Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 0.0))
+	var head := Vector3(1.0, 1.6, 0.5)
+	var right_turn := XRELocomotion.turned(rig, head, -PI / 2.0)
+	_check_vector(right_turn * (rig.affine_inverse() * head), head, "turning keeps the head in place")
+	_check_vector(-right_turn.basis.z, Vector3(1.0, 0.0, 0.0), "a negative angle turns to the right")
 
-# Manipulator driven by fake trackers, one step per frame: each step checks
-# what the manipulator did in the previous frame, then sets the next input.
+
+func _test_nodes_to_remove() -> void:
+	var group := _scene.get_node(^"Group")
+	var nodes: Array[Node] = [_scene, _scene.get_node(^"Far"), group.get_node(^"Grouped"), group,
+			_scene.get_node(^"Instance/PropMesh"), _target, _scene.get_node(^"Far")]
+	var names := XREDocument.nodes_to_remove(nodes, _scene).map(func(node: Node) -> String: return String(node.name))
+	_check(names == ["Near", "Far", "Group"],
+			"removing skips the root, nodes inside instances, nested and repeated nodes, in tree order: %s" % [names])
+	_check(XREDocument.nodes_to_remove(nodes, null).is_empty(), "without a scene nothing is removed")
+
+
+# Manipulator and palette driven by fake trackers, one step per frame: each
+# step checks what they did in the previous frame, then sets the next input.
 
 func _start_manipulator() -> void:
 	_right = _add_tracker(&"right_hand")
@@ -315,9 +400,43 @@ func _start_manipulator() -> void:
 				_operations.append("%s %s %s" % [operation, XREDocument.Source.keys()[source], nodes.map(
 						func(node: Node) -> String: return String(node.name))]))
 	_rig = XRERig.new()
-	_rig.add_child(XREManipulator.new(_document, _rig))
+	# In the plugin's order: locomotion moves the rig first, and the palette
+	# claims the right hand before the manipulator runs.
+	_locomotion = XRELocomotion.new(_rig)
+	_rig.add_child(_locomotion)
+	_icons = XREIcons.new(_document, _rig)
+	_rig.add_child(_icons)
+	_palette = XREPalette.new(_document, _rig)
+	_rig.add_child(_palette)
+	_manipulator = XREManipulator.new(_document, _rig, _icons)
+	_rig.add_child(_manipulator)
 	root.add_child(_rig)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+## Icons are cast at directly; the head is at the origin, as the head tracker is absent.
+func _test_icons() -> void:
+	var lamp := _scene.get_node(^"Lamp") as Node3D
+	var radius := XREIcons.radius_at(lamp.global_position, Vector3.ZERO)
+	_check(_icons.cast_segment(Vector3(12.0, 0.0, 1.0), Vector3(12.0, 0.0, -10.0)) and _icons.get_hit_node() == lamp,
+			"the ray picks a light by its icon")
+	_check(absf(_icons.get_hit_distance() - (2.0 - radius)) < EPSILON, "distance to the icon: %f" % _icons.get_hit_distance())
+	_check_vector(_icons.get_hit_position(), lamp.global_position, "a pointed icon is held at its light")
+	_check(_icons.cast_segment(Vector3(13.0, 0.0, 1.0), Vector3(13.0, 0.0, -10.0))
+			and _icons.get_hit_node().name == &"Spot", "an icon behind geometry is still picked")
+	_check(_icons.cast_segment(Vector3(14.0, 0.0, 1.0), Vector3(14.0, 0.0, -10.0))
+			and _icons.get_hit_node().name == &"LampProp", "a light in an instance stands for the instance root")
+	_check(not _icons.cast_segment(Vector3(15.0, 0.0, 1.0), Vector3(15.0, 0.0, -10.0)), "a hidden light has no icon to pick")
+	_check(not _icons.cast_segment(Vector3(12.0, 0.0, 1.0), Vector3(12.0, 0.0, 0.0)), "the segment ends before the icon")
+	_check(_icons.find_at_point(lamp.global_position + Vector3(0.0, radius + 0.02, 0.0), 0.03)
+			and _icons.get_hit_node() == lamp, "touch reaches 2 cm past the icon")
+	_check(not _icons.find_at_point(lamp.global_position + Vector3(0.0, radius + 0.05, 0.0), 0.03), "touch stops at the radius")
+
+	var added := _add_node(_scene, OmniLight3D.new(), "Added", Vector3(16.0, 0.0, -1.0))
+	_check(_icons.cast_segment(Vector3(16.0, 0.0, 1.0), Vector3(16.0, 0.0, -10.0)), "a light added to the scene gets an icon")
+	_scene.remove_child(added)
+	_check(not _icons.cast_segment(Vector3(16.0, 0.0, 1.0), Vector3(16.0, 0.0, -10.0)), "a removed light loses its icon")
+	added.free()
 
 
 func _add_tracker(tracker_name: StringName) -> XRControllerTracker:
@@ -427,12 +546,188 @@ func _turn_left_hand() -> void:
 	_set_hand(_left, Vector3(-0.05, 0.0, -1.0), 0.0, 1.0, Basis(Vector3.UP, PI / 2.0))
 
 
-func _finish() -> void:
+func _check_hand_over() -> void:
 	var left_start := Transform3D(Basis.IDENTITY, Vector3(-0.05, 0.0, -1.0))
 	var left_now := Transform3D(Basis(Vector3.UP, PI / 2.0), left_start.origin)
 	var rigid := left_now * left_start.affine_inverse() * Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, -1.0))
 	_check(_target.transform.is_equal_approx(rigid),
 			"the hand that took the node over turns it about itself: %s, expected %s" % [_target.transform, rigid])
+	_check(not _palette.is_shown(), "the tray starts hidden")
+	# The left hand lets go and shows the tray with X.
+	_tray_hand = Vector3(0.0, 0.5, 0.5)
+	_set_hand(_left, _tray_hand, 0.0, 0.0)
+	_left.set_input(&"ax_button", true)
+
+
+# Palette: the right hand takes things out of the tray in the left hand. The
+# tray is moved so that the box's miniature is at (0, 0, 0.5): the right
+# hand touching it also points at the Near box, which the manipulator would grab.
+
+func _palette_shown() -> void:
+	_check(_palette.is_shown(), "X shows the tray")
+	_left.set_input(&"ax_button", false)
+	_tray_hand += Vector3(0.0, 0.0, 0.5) - _palette.get_item_transform(&"CSGBox3D").origin
+	_set_hand(_left, _tray_hand, 0.0, 0.0)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.5), 0.0, 0.0)
+
+
+func _touch_miniature() -> void:
+	_check(_palette.get_hovered() == &"CSGBox3D", "the right hand touches the box's miniature: %s" % _palette.get_hovered())
+	_check(not _rig.right_hand.is_free_for(_manipulator), "the palette claims the hand that touches it")
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(0.0, 0.0, 0.5), 0.0, 1.0)
+
+
+func _take_box() -> void:
+	_taken = _palette.get_held()
+	_check(_taken is CSGBox3D, "grip takes a box out of the tray: %s" % _taken)
+	_check(_operations.size() == _operation_count, "the manipulator doesn't grab what the ray points at: %s" % [_operations])
+	if _taken == null:
+		return
+	_check(not _scene.is_ancestor_of(_taken) and _document.added.is_empty(), "the box isn't in the scene while held")
+	var miniature := Transform3D(Basis.IDENTITY * XREPalette.MINIATURE_SCALE, Vector3(0.0, 0.0, 0.5))
+	_check(_taken.global_transform.is_equal_approx(miniature)
+			and _palette.get_item_transform(&"CSGBox3D").is_equal_approx(miniature),
+			"the box comes out where its miniature is, as big as it: %s" % _taken.global_transform)
+	_set_hand(_right, Vector3(0.2, 0.1, 0.5), 0.0, 1.0)
+
+
+func _carry_box() -> void:
+	if _taken == null:
+		return
+	_check_vector(_taken.global_position, Vector3(0.2, 0.1, 0.5), "the box follows the hand")
+	_set_hand(_right, Vector3(0.2, 0.1, 0.5), 0.0, 0.0)
+
+
+func _box_placed() -> void:
+	if _taken == null:
+		return
+	_check(_palette.get_held() == null, "letting go puts the box down")
+	_check(_document.added == [_taken] and _taken.get_parent() == _scene and _taken.owner == _scene,
+			"the box goes into the scene, under its root: %s" % [_document.added])
+	_check_vector(_taken.position, Vector3(0.2, 0.1, 0.5), "the box stays where it was let go")
+	_check_vector(_taken.scale, Vector3.ONE * XREPalette.MINIATURE_SCALE, "the box stays as big as its miniature")
+	_check(_operations.slice(_operation_count) == ["add_node TOOL [\"CSGBox3D\"]", "select TOOL [\"CSGBox3D\"]"],
+			"adding is one operation, and the box is selected: %s" % [_operations.slice(_operation_count)])
+	# A light, with snapping on, taken by touching and gripping in one frame.
+	_document.snap = XRESnap.new(true, 0.5, 15.0, 10.0)
+	_operation_count = _operations.size()
+	_set_hand(_right, _palette.get_item_transform(&"OmniLight3D").origin, 0.0, 1.0)
+
+
+func _light_taken() -> void:
+	_taken = _palette.get_held()
+	_check(_taken is OmniLight3D, "grip takes a light out of the tray: %s" % _taken)
+	if _taken == null:
+		return
+	var unsnapped := _palette.get_item_transform(&"OmniLight3D").origin
+	_check_vector(_taken.global_position,
+			Vector3(snappedf(unsnapped.x, 0.5), snappedf(unsnapped.y, 0.5), snappedf(unsnapped.z, 0.5)),
+			"a node taken out snaps to the grid")
+	_check_vector(_taken.scale, Vector3.ONE, "a light comes out at its natural scale")
+	_right.set_input(&"ax_button", true)
+
+
+func _light_thrown_away() -> void:
+	_check(_palette.get_held() == null and _document.added.size() == 1, "A throws the held light away")
+	_check(not is_instance_valid(_taken), "the thrown light is freed")
+	_check(_operations.size() == _operation_count, "throwing away records nothing: %s" % [_operations])
+	_check(_document.removed.is_empty(), "the A that throws a light away doesn't delete the selection")
+	_right.set_input(&"ax_button", false)
+	_set_hand(_right, Vector3(1.0, 1.5, 0.0), 0.0, 0.0)
+
+
+func _delete_placed() -> void:
+	_right.set_input(&"ax_button", true)
+
+
+func _placed_deleted() -> void:
+	_check(_document.removed.size() == 1 and _document.removed[0] is CSGBox3D, "A deletes the selection: %s" % [_document.removed])
+	_check(_operations.back() == "remove_nodes TOOL [\"CSGBox3D\"]", "deleting is recorded: %s" % [_operations])
+	_check(_document.get_selection().is_empty(), "nothing is selected after deleting")
+	_right.set_input(&"ax_button", false)
+	_commit_count = _document.commits.size()
+	_set_hand(_right, Vector3(0.0, 0.0, -2.0), 0.0, 1.0)
+
+
+func _grab_far() -> void:
+	var far := _scene.get_node(^"Far")
+	_check(_document.get_selection() == [far], "touch grab of the far box selects it: %s" % [_document.get_selection()])
+	_set_hand(_right, Vector3(0.1, 0.0, -2.0), 0.0, 1.0)
+	_right.set_input(&"ax_button", true)
+
+
+func _held_deleted() -> void:
+	var far := _document.removed.back() as Node3D
+	_check(far != null and far.name == &"Far", "A deletes the node being held: %s" % [_document.removed])
+	if far != null:
+		_check_vector(far.position, Vector3(0.0, 0.0, -2.0), "a node deleted while held goes back where the grab found it")
+	_check(_document.commits.size() == _commit_count, "a node deleted while held records no move")
+	_set_hand(_right, Vector3(1.0, 1.5, 0.0), 0.0, 0.0)
+	_right.set_input(&"ax_button", false)
+	_left.set_input(&"ax_button", true)
+
+
+func _point_at_spot_icon() -> void:
+	_check(not _palette.is_shown(), "X hides the tray")
+	_left.set_input(&"ax_button", false)
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(13.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _spot_selected() -> void:
+	_check(_operations.slice(_operation_count) == ["select TOOL [\"Spot\"]"],
+			"the trigger selects a light behind a box by its icon: %s" % [_operations.slice(_operation_count)])
+	_set_hand(_right, Vector3(13.0, 0.0, 1.0), 0.0, 0.0)
+
+
+# Locomotion: flying with a node grabbed by the ray, which HOMER would
+# otherwise move by the gain times the distance flown.
+
+func _grab_for_flight() -> void:
+	_check(_locomotion.get_vignette_strength() == 0.0, "no vignette while standing still")
+	# Off: a grid would round the small distance flown in a frame away.
+	_document.snap = XRESnap.new(false, 0.5, 15.0, 10.0)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 1.0)
+
+
+func _fly() -> void:
+	_check(_document.get_selection() == [_target], "the ray grabs the near box: %s" % [_document.get_selection()])
+	_rig_before = _rig.global_position
+	_target_before = _target.global_position
+	# The left hand holds still, aiming down -Z.
+	_left.set_input(&"primary", Vector2(0.0, 1.0))
+
+
+func _flown() -> void:
+	var flown := _rig.global_position - _rig_before
+	_check(flown.z < 0.0 and is_zero_approx(flown.x) and is_zero_approx(flown.y),
+			"the left stick flies where the left hand points: %s" % flown)
+	_check_vector(_target.global_position - _target_before, flown, "a held node travels with the rig, by what it flew")
+	_check(_locomotion.get_vignette_strength() > 0.0, "flying darkens the edges of the view")
+	_left.set_input(&"primary", Vector2.ZERO)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+	_right.set_input(&"primary", Vector2(1.0, 0.0))
+
+
+func _turned() -> void:
+	var forward := -_rig.global_basis.z
+	_check(forward.x > 0.0 and is_zero_approx(forward.y), "the right stick turns to the right: %s" % forward)
+	_right.set_input(&"primary", Vector2.ZERO)
+	_check(_locomotion.get_speed() == 1.5 and _locomotion.get_speed_label().is_empty(),
+			"flying starts at walking pace, with no label")
+	_left.set_input(&"primary_click", true)
+
+
+func _speed_clicked() -> void:
+	_check(_locomotion.get_speed() == 4.0, "the left stick's click picks the next speed: %f" % _locomotion.get_speed())
+	_check(_locomotion.get_speed_label() == "Flying speed 4.0 m/s", "the new speed shows: %s" % _locomotion.get_speed_label())
+	_left.set_input(&"primary_click", false)
+
+
+func _finish() -> void:
+	for node: Node in _document.removed:
+		node.free()
 	for tracker in _trackers:
 		XRServer.remove_tracker(tracker)
 	print("test_tools: %d of %d checks failed" % [_failures, _checks])

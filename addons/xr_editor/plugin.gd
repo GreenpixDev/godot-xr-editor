@@ -8,6 +8,9 @@ const _HANDOFF_RELEASE_MENU := "XR Editor: Measure Play Handoff (Release Session
 
 var document: XREDocument
 var _session: XRESession
+var _locomotion: XRELocomotion
+var _icons: XREIcons
+var _palette: XREPalette
 var _manipulator: XREManipulator
 var _play_mode: XREPlayMode
 var _benchmark: XREFrameBenchmark
@@ -30,7 +33,20 @@ func _enter_tree() -> void:
 	# Tools draw in the headset, so they live under the rig; no rig, no VR view.
 	var rig := _session.get_rig()
 	if rig != null:
-		_manipulator = XREManipulator.new(document, rig)
+		# First: the tools after it see where the rig is this frame, and what
+		# follows a hand doesn't lag a frame behind while the user flies.
+		_locomotion = XRELocomotion.new(rig)
+		_locomotion.name = "XRELocomotion"
+		rig.add_child(_locomotion)
+		_icons = XREIcons.new(document, rig)
+		_icons.name = "XREIcons"
+		rig.add_child(_icons)
+		# Before the manipulator: tools run in tree order, and the palette
+		# claims the right hand when it touches the tray.
+		_palette = XREPalette.new(document, rig)
+		_palette.name = "XREPalette"
+		rig.add_child(_palette)
+		_manipulator = XREManipulator.new(document, rig, _icons)
 		_manipulator.name = "XREManipulator"
 		rig.add_child(_manipulator)
 		_play_mode = XREPlayMode.new(document, _session, rig)
@@ -53,9 +69,13 @@ func _exit_tree() -> void:
 	remove_tool_menu_item(_BENCHMARK_MENU)
 	remove_tool_menu_item(_HANDOFF_MENU)
 	remove_tool_menu_item(_HANDOFF_RELEASE_MENU)
-	# All of them have already left the tree with this node: the manipulator
-	# put back what it held, the session restored the editor's settings, the
-	# benchmarks stopped and put the editor back. The VR tools go with the rig.
+	# All of them have already left the tree with this node: the palette threw
+	# away what it held, the manipulator put back what it held, the session
+	# restored the editor's settings, the benchmarks stopped and put the editor
+	# back. The VR tools go with the rig.
+	_locomotion = null
+	_icons = null
+	_palette = null
 	_manipulator = null
 	_play_mode = null
 	_handoff.queue_free()

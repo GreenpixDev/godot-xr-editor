@@ -175,6 +175,15 @@ double XREPicker::get_hit_distance() const {
 	return hit_distance;
 }
 
+Node3D *XREPicker::get_selectable_node(Node *p_node, Node *p_scene_root) const {
+	ERR_FAIL_NULL_V(p_node, nullptr);
+	ERR_FAIL_NULL_V(p_scene_root, nullptr);
+	if (p_node != p_scene_root && !p_scene_root->is_ancestor_of(p_node)) {
+		return nullptr;
+	}
+	return resolve(p_node, p_scene_root);
+}
+
 AABB XREPicker::get_local_bounds(Node3D *p_node) {
 	const AABB empty_node_bounds(Vector3(-EMPTY_NODE_HALF_SIZE, -EMPTY_NODE_HALF_SIZE, -EMPTY_NODE_HALF_SIZE),
 			Vector3(EMPTY_NODE_HALF_SIZE, EMPTY_NODE_HALF_SIZE, EMPTY_NODE_HALF_SIZE) * real_t(2));
@@ -317,6 +326,7 @@ void XREPicker::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_hit_position"), &XREPicker::get_hit_position);
 	ClassDB::bind_method(D_METHOD("get_hit_normal"), &XREPicker::get_hit_normal);
 	ClassDB::bind_method(D_METHOD("get_hit_distance"), &XREPicker::get_hit_distance);
+	ClassDB::bind_method(D_METHOD("get_selectable_node", "node", "scene_root"), &XREPicker::get_selectable_node);
 	ClassDB::bind_static_method("XREPicker", D_METHOD("get_local_bounds", "node"), &XREPicker::get_local_bounds);
 }
 

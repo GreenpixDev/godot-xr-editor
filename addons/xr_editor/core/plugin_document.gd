@@ -81,22 +81,26 @@ func add_node(node: Node, parent: Node, source: Source) -> void:
 	_record(&"add_node", source, [node])
 
 
-func remove_node(node: Node, source: Source) -> void:
+func remove_nodes(nodes: Array[Node], source: Source) -> void:
 	var root := get_scene_root()
-	if node == root:
-		push_error("XR Editor: cannot remove the scene root.")
+	var removed := nodes_to_remove(nodes, root)
+	if removed.is_empty():
 		return
-	var parent := node.get_parent()
 	var undo_redo := _plugin.get_undo_redo()
-	undo_redo.create_action("XR: Remove %s" % node.name)
-	undo_redo.add_do_method(parent, &"remove_child", node)
-	undo_redo.add_undo_method(parent, &"add_child", node, true)
-	undo_redo.add_undo_method(parent, &"move_child", node, node.get_index())
-	for owned in _nodes_owned_by(node, root, false):
-		undo_redo.add_undo_method(owned, &"set_owner", root)
-	undo_redo.add_undo_reference(node)
+	undo_redo.create_action("XR: Remove %s" % removed[0].name if removed.size() == 1
+			else "XR: Remove %d Nodes" % removed.size())
+	# Undo runs its calls in the order they were added: in tree order, each
+	# node goes back at its old index, as Delete does on the desktop.
+	for node: Node in removed:
+		var parent := node.get_parent()
+		undo_redo.add_do_method(parent, &"remove_child", node)
+		undo_redo.add_undo_method(parent, &"add_child", node, true)
+		undo_redo.add_undo_method(parent, &"move_child", node, node.get_index())
+		for owned: Node in _nodes_owned_by(node, root, false):
+			undo_redo.add_undo_method(owned, &"set_owner", root)
+		undo_redo.add_undo_reference(node)
 	undo_redo.commit_action()
-	_record(&"remove_node", source, [node])
+	_record(&"remove_nodes", source, removed)
 
 
 func save(source: Source) -> Error:
