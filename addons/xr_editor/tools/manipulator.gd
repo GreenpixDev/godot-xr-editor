@@ -65,6 +65,8 @@ class HandState:
 	var hover: Node3D
 	## [member hover]'s bounds in its own space.
 	var hover_bounds: AABB
+	## [member hover] is shown by an icon, which the outline follows instead of the bounds.
+	var hover_icon := false
 	## The hand touches [member hover] rather than points at it.
 	var hover_touched := false
 	## Where the ray hit [member hover], or the controller tip if touched.
@@ -95,6 +97,9 @@ var _root: Node
 var _selected: Array[Node3D] = []
 ## Bounds of each of [member _selected] in its own space.
 var _selected_bounds: Array[AABB] = []
+## Whether each of [member _selected] is shown by an icon ([XREIcons]): its
+## outline follows the icon, which grows with distance, instead of its bounds.
+var _selected_icons: Array[bool] = []
 var _selection_boxes: Array[XREBoundsBox] = []
 
 ## Hands holding [member _grabbed]; empty when nothing is grabbed.
@@ -258,6 +263,7 @@ func _update_hover(state: HandState, root: Node) -> void:
 		state.hover = node
 		if node != null:
 			state.hover_bounds = XREPicker.get_local_bounds(node)
+			state.hover_icon = _icons.has_icon(node)
 	if node != null and not state.hover_touched:
 		hand.show_ray(state.hover_distance, true)
 	else:
@@ -390,30 +396,40 @@ func _delete_selection() -> void:
 
 
 func _update_outlines() -> void:
+	var head := _rig.camera.global_position
 	for i: int in _selected.size():
 		var box := _selection_boxes[i]
 		if is_instance_valid(_selected[i]) and _selected[i].is_inside_tree():
-			box.show_bounds(_selected[i].global_transform, _selected_bounds[i])
+			_outline(box, _selected[i], _selected_bounds[i], _selected_icons[i], head)
 		else:
 			box.visible = false
 	for state: HandState in _hands:
 		# A hovered node deleted this frame has left the tree.
 		if not state.holding and is_instance_valid(state.hover) and state.hover.is_inside_tree() \
 				and not _selected.has(state.hover):
-			state.box.show_bounds(state.hover.global_transform, state.hover_bounds)
+			_outline(state.box, state.hover, state.hover_bounds, state.hover_icon, head)
 		else:
 			state.box.visible = false
+
+
+func _outline(box: XREBoundsBox, node: Node3D, bounds: AABB, icon: bool, head: Vector3) -> void:
+	if icon:
+		box.show_bounds(XREIcons.icon_transform(node.global_transform, head), XREIcons.MESH_BOUNDS)
+	else:
+		box.show_bounds(node.global_transform, bounds)
 
 
 func _on_selection_changed() -> void:
 	_selected.clear()
 	_selected_bounds.clear()
+	_selected_icons.clear()
 	for node: Node in _document.get_selection():
 		var node_3d := node as Node3D
 		if node_3d == null or _selected.size() == MAX_OUTLINED:
 			continue
 		_selected.append(node_3d)
 		_selected_bounds.append(XREPicker.get_local_bounds(node_3d))
+		_selected_icons.append(_icons.has_icon(node_3d))
 	while _selection_boxes.size() < _selected.size():
 		var box := XREBoundsBox.new(SELECTION_COLOR)
 		add_child(box)

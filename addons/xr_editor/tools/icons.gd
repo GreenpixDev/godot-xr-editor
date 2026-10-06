@@ -20,6 +20,8 @@ extends Node
 const RADIUS_PER_METER := 0.0175
 ## Smallest icon radius, in meters, so that a light near the head stays touchable.
 const MIN_RADIUS := 0.015
+## Bounds of every icon mesh in its own space: one meter in radius.
+const MESH_BOUNDS := AABB(Vector3(-1.0, -1.0, -1.0), Vector3(2.0, 2.0, 2.0))
 
 ## Unit-radius icon meshes, shared by all icons and the palette's miniatures.
 static var _bulb: SphereMesh
@@ -72,8 +74,7 @@ func _process(_delta: float) -> void:
 		icon.mesh.visible = shown
 		if not shown:
 			continue
-		var xform := light.global_transform
-		icon.mesh.global_transform = Transform3D(xform.basis.orthonormalized() * radius_at(xform.origin, head), xform.origin)
+		icon.mesh.global_transform = icon_transform(light.global_transform, head)
 		if icon.material.albedo_color != light.light_color:
 			icon.material.albedo_color = light.light_color
 
@@ -81,6 +82,21 @@ func _process(_delta: float) -> void:
 ## Radius of an icon at [param center] seen from [param head].
 static func radius_at(center: Vector3, head: Vector3) -> float:
 	return maxf(center.distance_to(head) * RADIUS_PER_METER, MIN_RADIUS)
+
+
+## Global transform of the icon of a light whose global transform is
+## [param light], seen from [param head]: the light's place and turn, scaled
+## to the icon's radius. The icon mesh then fills [constant MESH_BOUNDS].
+static func icon_transform(light: Transform3D, head: Vector3) -> Transform3D:
+	return Transform3D(light.basis.orthonormalized() * radius_at(light.origin, head), light.origin)
+
+
+## Whether [param node] is shown by an icon. Not for per-frame use: it looks through all icons.
+func has_icon(node: Node) -> bool:
+	for icon: Icon in _icons:
+		if icon.light == node:
+			return true
+	return false
 
 
 ## The icon mesh for a light of class [param type], one meter in radius: a

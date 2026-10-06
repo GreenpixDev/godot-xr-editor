@@ -678,6 +678,19 @@ func _point_at_spot_icon() -> void:
 func _spot_selected() -> void:
 	_check(_operations.slice(_operation_count) == ["select TOOL [\"Spot\"]"],
 			"the trigger selects a light behind a box by its icon: %s" % [_operations.slice(_operation_count)])
+	# The outline is the icon's box, as big as the icon is from here, not a fixed one.
+	var spot := _scene.get_node(^"Spot") as Node3D
+	var expected := XREIcons.MESH_BOUNDS.grow(XREBoundsBox.PADDING).size.x \
+			* XREIcons.radius_at(spot.global_position, _rig.camera.global_position)
+	var outlined := false
+	for child: Node in _manipulator.get_children():
+		var box := child as XREBoundsBox
+		if box != null and box.visible and (box.material_override as StandardMaterial3D).albedo_color == XREManipulator.SELECTION_COLOR:
+			outlined = true
+			_check(absf(box.global_basis.x.length() - expected) < EPSILON,
+					"a light's outline grows with its icon: %f, expected %f" % [box.global_basis.x.length(), expected])
+			_check_vector(box.global_basis.get_scale(), Vector3.ONE * expected, "a light's outline is a cube")
+	_check(outlined, "the selected light is outlined")
 	_set_hand(_right, Vector3(13.0, 0.0, 1.0), 0.0, 0.0)
 
 
