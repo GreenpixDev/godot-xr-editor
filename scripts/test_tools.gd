@@ -50,6 +50,15 @@ class FakeDocument extends XREDocument:
 	func save(_source: Source) -> Error:
 		return OK
 
+	func play(_source: Source, _separate_app: bool) -> Error:
+		return OK
+
+	func stop_playing(_source: Source) -> void:
+		pass
+
+	func is_playing() -> bool:
+		return false
+
 	func get_snap() -> XRESnap:
 		return snap
 

@@ -14,7 +14,7 @@ extends Node
 ## executable, SteamVR takes both for one application and drops the game's
 ## connection when it loads its input bindings;
 ## [br]- release_copy (experiment): as release, but the plugin runs the game from
-## a copy of the Godot executable ([constant GAME_EXECUTABLE]) instead of Play,
+## a copy of the Godot executable ([method XREPluginDocument.separate_executable]) instead of Play,
 ## without the editor's debugger and game view, so SteamVR sees another application.
 ## [br][method run] waits until the headset is on, then [constant ITERATIONS]
 ## times plays [constant GAME_SCENE], which quits by itself a few seconds after it
@@ -34,9 +34,6 @@ const CLI_FLAG := "--xre-handoff"
 const CLI_FLAG_RELEASE := "--xre-handoff-release"
 ## The same in release_copy mode.
 const CLI_FLAG_COPY := "--xre-handoff-copy"
-## Copy of the editor's executable that runs the game in release_copy mode, made
-## on first use (~180 MB; build/ is neither in git nor scanned by the editor).
-const GAME_EXECUTABLE := "res://build/xre_play/Godot_v4.7.2-stable_win64_xre_play.exe"
 const GAME_SCENE := "res://benchmarks/xr_handoff_game.tscn"
 ## Written by the game (benchmarks/xr_handoff_game.gd), read by the editor. In .godot/,
 ## which the editor doesn't scan; user:// would depend on application/config/name.
@@ -59,8 +56,10 @@ var session: XRESession
 var _running := false
 var _release := false
 var _copy := false
-## Process ID of the game run from [constant GAME_EXECUTABLE].
+## Process ID of the game run from [member _game_executable].
 var _game_pid := 0
+## Copy of the editor's executable the game runs from in release_copy mode.
+var _game_executable := ""
 var _xr: OpenXRInterface
 ## Editor session state changes during the current iteration: [time, name] pairs.
 var _editor_states: Array[Array] = []
@@ -91,7 +90,7 @@ func _exit_tree() -> void:
 
 ## Runs the whole measurement. With [param quit_when_done] the editor quits at the end;
 ## with [param release] the editor gives up its OpenXR session for every game run,
-## and with [param copy] also runs the game from [constant GAME_EXECUTABLE] instead of Play.
+## and with [param copy] also runs the game from a copy of the editor's executable instead of Play.
 func run(quit_when_done: bool = false, release: bool = false, copy: bool = false) -> void:
 	if _running:
 		_log("handoff benchmark is already running.")
@@ -103,9 +102,11 @@ func run(quit_when_done: bool = false, release: bool = false, copy: bool = false
 	_running = true
 	_release = release or copy
 	_copy = copy
-	if _copy and not _make_game_executable():
-		_running = false
-		return
+	if _copy:
+		_game_executable = XREPluginDocument.separate_executable()
+		if _game_executable.is_empty():
+			_running = false
+			return
 
 	_log("handoff benchmark (%s mode): waiting for the headset to be put on." % _mode_name())
 	while _running and _xr.get_session_state() != OpenXRInterface.SESSION_STATE_FOCUSED:
@@ -163,7 +164,7 @@ func _measure_once(iteration: int) -> Dictionary:
 		t_released = Time.get_unix_time_from_system()
 		_editor_states.append([t_released, "RELEASED"])
 	if _copy:
-		_game_pid = OS.create_process(ProjectSettings.globalize_path(GAME_EXECUTABLE),
+		_game_pid = OS.create_process(_game_executable,
 				["--path", ProjectSettings.globalize_path("res://"), GAME_SCENE])
 	else:
 		EditorInterface.play_custom_scene(GAME_SCENE)
@@ -261,20 +262,6 @@ func _mode_name() -> String:
 	if _copy:
 		return "release_copy"
 	return "release" if _release else "yield"
-
-
-## Copies the editor's executable to [constant GAME_EXECUTABLE] unless it's there.
-func _make_game_executable() -> bool:
-	var target := ProjectSettings.globalize_path(GAME_EXECUTABLE)
-	if FileAccess.file_exists(target):
-		return true
-	DirAccess.make_dir_recursive_absolute(target.get_base_dir())
-	var err := DirAccess.copy_absolute(OS.get_executable_path(), target)
-	if err != OK:
-		_log("handoff benchmark: could not copy the Godot executable to %s (%s)." % [target, error_string(err)])
-		return false
-	_log("handoff benchmark: copied the Godot executable to %s." % target)
-	return true
 
 
 ## Whether the game of the current iteration still runs, as far as the handoff

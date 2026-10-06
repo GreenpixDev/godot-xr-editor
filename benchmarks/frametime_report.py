@@ -145,6 +145,14 @@ def ru(value: float, digits: int = 2) -> str:
     return f"{value:.{digits}f}".replace(".", ",")
 
 
+def segments_line(meta: dict) -> str:
+    """How the run was split: fixed segments, or (mode "sessions") one per stretch the editor had the headset."""
+    if meta.get("mode") == "sessions":
+        return "- Сегменты: каждый отрезок, пока шлем у редактора (до игры и после каждого возврата), по метаданным длительность не задана"
+    return (f"- Сегменты: {', '.join(meta.get('segments', []))}, по {ru(float(meta.get('record_sec', math.nan)), 0)} с "
+            f"после прогрева {ru(float(meta.get('warmup_sec', math.nan)), 0)} с")
+
+
 def report(variants: list[Frames], segments: list[Frames], meta: dict, period_ms: float) -> str:
     lines = [f"# Время кадра редактора в VR — {meta.get('stamp', '')}", ""]
     lines += [
@@ -157,8 +165,7 @@ def report(variants: list[Frames], segments: list[Frames], meta: dict, period_ms
         f"3D-вьюпорт редактора виден: {meta.get('editor_3d_viewport_visible', '?')}",
         f"- Панель Output: группировка дубликатов {meta.get('editor_log_collapse', 'не записано')}, "
         f"лимит строк {meta.get('editor_log_max_lines', 'не записан')}",
-        f"- Сегменты: {', '.join(meta.get('segments', []))}, по {ru(float(meta.get('record_sec', math.nan)), 0)} с "
-        f"после прогрева {ru(float(meta.get('warmup_sec', math.nan)), 0)} с",
+        segments_line(meta),
         "",
         f"Время кадра = max(CPU, GPU); бюджет {ru(BUDGET_MS)} мс ({ru(TARGET_HZ, 0)} Гц); "
         f"порог плана — не меньше {ru(THRESHOLD * 100, 0)} % валидных кадров в бюджете.",

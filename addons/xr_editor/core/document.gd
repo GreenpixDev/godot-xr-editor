@@ -20,7 +20,8 @@ signal scene_changed
 ## Emitted once for every operation made through this document, after it took
 ## effect. [param operation] names it ([code]&"select"[/code],
 ## [code]&"transform"[/code], [code]&"set_property"[/code], [code]&"add_node"[/code],
-## [code]&"remove_node"[/code], [code]&"save"[/code]); [param time_usec] is
+## [code]&"remove_node"[/code], [code]&"save"[/code], [code]&"play"[/code],
+## [code]&"stop"[/code]); [param time_usec] is
 ## [method Time.get_ticks_usec] at that moment. Previews are not operations.
 signal operation_recorded(operation: StringName, source: Source, nodes: Array[Node], time_usec: int)
 
@@ -65,6 +66,25 @@ enum Source {
 
 
 @abstract func save(source: Source) -> Error
+
+
+## Plays the edited scene as a game in its own process, as Run Current Scene
+## (F6) on the desktop: the open scenes are saved first, and a game already
+## running is stopped. Returns [constant ERR_UNCONFIGURED] if the scene has no
+## file yet, because the editor would ask for one on the desktop.
+## [br][br]
+## With [param separate_app], the game runs so that the OpenXR runtime takes
+## it for another application than the editor, which SteamVR needs
+## (docs/decisions.md, D-012). It then runs without the editor's debugger.
+@abstract func play(source: Source, separate_app: bool) -> Error
+
+
+## Stops the running game, if there is one.
+@abstract func stop_playing(source: Source) -> void
+
+
+## Whether a game run from this editor is running, started from VR or from the desktop.
+@abstract func is_playing() -> bool
 
 
 ## Snap steps and whether snapping is on, as the user set them for the 3D view.

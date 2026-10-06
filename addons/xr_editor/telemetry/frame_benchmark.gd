@@ -16,9 +16,22 @@ extends Node
 ## disturb the frame pacing): [code]godot --path . --editor --xr-mode on
 ## res://benchmarks/empty.tscn -- --xre-benchmark[/code]; the editor quits when done.
 ## Analysis: [code]py benchmarks/frametime_report.py benchmarks/results/frametime_<stamp>.csv[/code].
+## [br][br]
+## [method record_sessions] instead records every stretch the editor has the
+## headset, from start to the editor's exit, one segment each: before the first
+## play from VR, after the first return, and so on. It compares the editor's
+## frames before and after a game had the headset (docs/decisions.md, D-012).
+## Start: [code]godot --path . --editor --xr-mode on -- --xre-session-frames[/code].
 
 ## User argument (after [code]--[/code]) that runs the benchmark at startup and quits after it.
 const CLI_FLAG := "--xre-benchmark"
+## User argument that runs [method record_sessions] at startup.
+const CLI_FLAG_SESSIONS := "--xre-session-frames"
+## How long [method record_sessions] can record in total, in seconds.
+const SESSIONS_MAX_SEC := 900.0
+## How often [method record_sessions] checks who has the headset. The report
+## leaves out the frames the editor drew without it at a segment's end.
+const POLL_SEC := 0.1
 ## Time from putting on the headset to the first segment.
 const WARMUP_SEC := 10.0
 ## Pause after switching variants, before recording.
@@ -34,19 +47,80 @@ const _LOG_PREFIX := "XR Editor: "
 ## Session whose headset viewport is measured; set before [method run].
 var session: XRESession
 var _running := false
+## Where [method record_sessions] saves, or empty when it isn't running.
+var _sessions_csv := ""
 
 
 func _ready() -> void:
-	if OS.get_cmdline_user_args().has(CLI_FLAG):
+	var args := OS.get_cmdline_user_args()
+	if args.has(CLI_FLAG):
 		run.call_deferred(true)
+	elif args.has(CLI_FLAG_SESSIONS):
+		record_sessions.call_deferred()
 
 
 func _exit_tree() -> void:
-	if _running:
-		_running = false
+	if not _running:
+		return
+	_running = false
+	if not _sessions_csv.is_empty():
+		XREFrameTimer.end_segment()
+		_save_sessions()
 		XREFrameTimer.stop()
-		_set_ui_hidden(false)
-		_log("frame time benchmark aborted.")
+		return
+	XREFrameTimer.stop()
+	_set_ui_hidden(false)
+	_log("frame time benchmark aborted.")
+
+
+## Records the editor's frames whenever it has the headset, one segment per
+## stretch, until the editor quits. Segments are named [code]before_play[/code]
+## and [code]after_play_<n>[/code], counting the times the editor released its
+## session for a game (SteamVR, D-012); on Meta Link the editor only loses
+## focus, and a segment named after a return there follows a system menu or a
+## headset taken off as well. The CSV is saved whenever the headset goes away,
+## when a file write can't disturb its frames, and at the end.
+func record_sessions() -> void:
+	var xr := session.get_xr_interface()
+	var xr_viewport := session.get_xr_viewport()
+	if _running:
+		_log("frame time recording is already running.")
+		return
+	if xr == null or xr_viewport == null:
+		_log("frame time recording needs a running VR session: start the editor with --xr-mode on.")
+		return
+	_running = true
+	var stamp := Time.get_datetime_string_from_system().replace(":", "-")
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RESULTS_DIR))
+	_save_metadata(RESULTS_DIR.path_join("frametime_%s_meta.json" % stamp), xr,
+			{"mode": "sessions", "segments": [], "record_sec": null, "warmup_sec": null, "settle_sec": null})
+	_sessions_csv = RESULTS_DIR.path_join("frametime_%s.csv" % stamp)
+	XREFrameTimer.start(roundi(SESSIONS_MAX_SEC * MAX_FPS))
+	_log("recording the editor's frames whenever it has the headset, until it quits, to %s." % _sessions_csv)
+	var segment := 0
+	var plays := 0
+	while _running:
+		while _running and not session.has_headset_focus():
+			await _wait(POLL_SEC)
+		if not _running:
+			return
+		segment += 1
+		var variant := "before_play" if plays == 0 else "after_play_%d" % plays
+		XREFrameTimer.begin_segment(segment, variant, xr_viewport.get_viewport_rid(), _desktop_viewports(false))
+		_log("frame recording: segment %d (%s) started, render target %s per eye." % [segment, variant, xr.get_render_target_size()])
+		while _running and session.has_headset_focus():
+			await _wait(POLL_SEC)
+		if not _running:
+			return
+		XREFrameTimer.end_segment()
+		if session.is_session_released():
+			plays += 1
+		_save_sessions()
+
+
+func _save_sessions() -> void:
+	var error := XREFrameTimer.save_csv(_sessions_csv)
+	_log("frame recording saved to %s (%s)." % [_sessions_csv, error_string(error)])
 
 
 ## Runs the whole measurement (about four minutes once the headset is on).
@@ -123,7 +197,8 @@ func _wait(seconds: float) -> void:
 	await get_tree().create_timer(seconds).timeout
 
 
-func _save_metadata(path: String, xr: OpenXRInterface) -> void:
+## [param overrides] replace or add fields of the metadata.
+func _save_metadata(path: String, xr: OpenXRInterface, overrides: Dictionary = {}) -> void:
 	var system := xr.get_system_info()
 	var settings := EditorInterface.get_editor_settings()
 	var scene_root := EditorInterface.get_edited_scene_root()
@@ -155,6 +230,7 @@ func _save_metadata(path: String, xr: OpenXRInterface) -> void:
 		"record_sec": RECORD_SEC,
 		"segments": SEGMENTS,
 	}
+	meta.merge(overrides, true)
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		_log("cannot write %s (%s)." % [path, error_string(FileAccess.get_open_error())])

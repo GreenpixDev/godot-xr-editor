@@ -37,6 +37,7 @@
 
 - `XRESession`, `XRERig` (голова, два контроллера, луч), общий `World3D`, слой `VR_LAYER`, нативные `XREEditorFrameLoop` и `XREEditorControllers`, замер `XREFrameBenchmark`.
 - `XREDocument`: сцена, выбор, `preview_transform` / `commit_transform`, `set_property`, `add_node`, `remove_node`, `save`. У каждой операции есть источник, о каждой сообщает сигнал `operation_recorded` (D-009).
+- Play-mode (2026-10-05): Y на левом контроллере запускает редактируемую сцену, удержание Y в игре возвращает в редактор (автозагрузка `XREReturnToEditor`), Y при идущей игре её останавливает (D-011); на SteamVR редактор отдаёт сессию, а игра идёт из копии godot.exe (D-012). На Meta Link в шлеме проверен с кнопкой Menu, на Y — ещё нет.
 - Манипуляция (2026-10-05, в шлеме не проверена): пикинг по видимой геометрии `XREPicker` (D-007); `XREManipulator` — выбор лучом и касанием, захват рукой и лучом (HOMER), двуручный масштаб и поворот, снап к сетке и углу с шагами стола (D-008).
 - Без кода работают: правка из шлема сразу видна на столе, отменяется с клавиатуры, а выбор общий для обоих видов.
 
@@ -163,7 +164,7 @@
 
 | Функция на столе | Где в 4.7.2 | API | Способ в VR | Приоритет |
 | --- | --- | --- | --- | --- |
-| Запустить и остановить игру | `EditorInterface.play_*`, `stop_playing_scene` | П | 3D: кнопка; `_run_scene` добавляет `--xr-mode on` и позу, возврат по `EditorDebuggerSession.stopped` | MVP (T3) |
+| Запустить и остановить игру | `EditorInterface.play_*`, `stop_playing_scene` | П | 3D: Y — играть, удержание Y в игре — вернуться; `_run_scene` добавляет `--xr-mode on` (D-011). Перенос позы — нет | MVP (T3) |
 | Отладочная отрисовка коллизий и навигации (`--debug-collisions` и др.) | `editor/run/editor_run.cpp:51` | П (через `_run_scene`) | Флаг запуска | Ж |
 | Вывод и ошибки | `editor/editor_log.cpp` | В | Панель на запястье | Ж |
 | Удалённое дерево и инспектор, live edit | `editor/debugger/editor_debugger_tree.cpp` | В | Панель внутри игры («заморозить и поправить» из плана) | Ж |
@@ -345,4 +346,4 @@
 - **Не вызывать внутренние классы редактора** (`SceneTreeDock`, `Node3DEditor`) через `call()` и `id_pressed`, даже там, где это технически возможно.
 - **Механизм отмены из шлема** — после спайка.
 - **Инспектор в шлеме через прокси-объект** с `_dont_undo_redo`: правки идут в `XREDocument` и попадают в лог.
-- **Play-mode через `_run_scene` и `EditorDebuggerPlugin`.** Встроенный Game View не используется.
+- ~~**Play-mode через `_run_scene` и `EditorDebuggerPlugin`.**~~ Принято: D-011, без `EditorDebuggerPlugin` — возврат виден по фокусу сессии редактора, а выход из игры — по `is_playing_scene`. Встроенный Game View не используется.

@@ -16,6 +16,12 @@ extends Node
 const TARGET_REFRESH_RATE := 90.0
 ## Seconds between status lines in the log.
 const STATUS_INTERVAL := 5.0
+## A main loop step longer than this many display frames counts as late in the status line.
+const LATE_FRAME_RATIO := 1.5
+## Main loop sleep in low-processor mode while the session is released, in
+## microseconds. Unfocused, the editor sleeps 100 ms per step, and the user
+## would wait that much longer for the headset to come back after the game.
+const RELEASED_SLEEP_USEC := 2000
 
 const _LOG_PREFIX := "XR Editor: "
 ## Names of [enum OpenXRInterface.SessionState] values, indexed by value.
@@ -31,12 +37,21 @@ var _status_timer: Timer
 var _vr_loop_active := false
 var _saved_max_fps := 0
 var _released := false
+## A session made by reacquire_session() that hasn't changed state yet: until
+## it does, the interface still reports the destroyed session's state.
+var _fresh_session := false
+## The main loop's low-processor sleep when release_session() was called.
+var _released_sleep_before := 0
 ## What reacquire_session() restores, saved by release_session().
 var _released_play_area_mode := XRInterface.XR_PLAY_AREA_UNKNOWN
 var _released_size := Vector2.ZERO
 ## Render target size multiplier before any reacquire_session() changed it.
 var _base_size_multiplier := 1.0
 var _size_nudged := false
+## Main loop steps since the last status line that took longer than
+## [constant LATE_FRAME_RATIO] display frames, and the longest step, in seconds.
+var _late_frames := 0
+var _slowest_frame := 0.0
 
 
 func _enter_tree() -> void:
@@ -106,6 +121,22 @@ func _exit_tree() -> void:
 	_log("VR view closed.")
 
 
+func _process(delta: float) -> void:
+	if _xr == null:
+		return
+	if _released:
+		# The editor restores its own sleep whenever its window gains or loses
+		# the focus, and the game's window takes it.
+		OS.low_processor_usage_mode_sleep_usec = RELEASED_SLEEP_USEC
+		return
+	# While the session runs, xrWaitFrame paces the main loop: a step longer
+	# than a display frame is a frame the headset didn't get in time.
+	if delta > _slowest_frame:
+		_slowest_frame = delta
+	if delta * _xr.display_refresh_rate > LATE_FRAME_RATIO:
+		_late_frames += 1
+
+
 ## The OpenXR interface while the VR view is on, otherwise null.
 func get_xr_interface() -> OpenXRInterface:
 	return _xr
@@ -126,6 +157,27 @@ func get_rig() -> XRERig:
 ## [method reacquire_session] hasn't taken it back yet.
 func is_session_released() -> bool:
 	return _released
+
+
+## Whether the headset shows the editor and sends it the controllers' input:
+## not while a game, the system menu or another application has the headset,
+## nor while the session is released.
+func has_headset_focus() -> bool:
+	return _xr != null and not _released and not _fresh_session \
+			and _xr.get_session_state() == OpenXRInterface.SESSION_STATE_FOCUSED
+
+
+## Whether a game may take the headset while the editor keeps its session in
+## the background (yield, docs/decisions.md, D-004). Not on SteamVR: it runs
+## one XR application at a time, asks the editor to quit when a game takes the
+## headset and kills it 5 s later ([XREHandoffBenchmark]); there the editor
+## releases its session for the game instead (D-012). Only Meta Link and
+## SteamVR were tried; other runtimes are assumed to behave like Meta Link.
+func can_yield_headset() -> bool:
+	if _xr == null:
+		return false
+	var runtime: String = _xr.get_system_info().get("XRRuntimeName", "")
+	return not runtime.begins_with("SteamVR")
 
 
 ## Destroys the editor's OpenXR session so that a game process can take the
@@ -160,6 +212,7 @@ func release_session() -> bool:
 		_log("could not release the OpenXR session (initialize %s, session %d)." % [created, session_left])
 		return false
 	_released = true
+	_released_sleep_before = OS.low_processor_usage_mode_sleep_usec
 	_log("OpenXR session released.")
 	return true
 
@@ -188,11 +241,18 @@ func reacquire_session() -> bool:
 		return false
 	_size_nudged = nudge
 	_released = false
+	_fresh_session = true
+	OS.low_processor_usage_mode_sleep_usec = _released_sleep_before
 	_log("OpenXR session created again, render target %s per eye." % _xr.get_render_target_size())
+	# A game run as another application (D-012) had the desktop focus; on Meta
+	# Link the game runs inside the editor's window and the focus stays there.
+	if not DisplayServer.window_is_focused():
+		DisplayServer.window_move_to_foreground()
 	return true
 
 
 func _on_session_begun() -> void:
+	_fresh_session = false
 	_log("session begun.")
 	_request_refresh_rate()
 	_enter_vr_frame_loop()
@@ -212,6 +272,7 @@ func _check_output_collapse() -> void:
 
 
 func _on_session_state(state_name: String) -> void:
+	_fresh_session = false
 	_log("session %s." % state_name)
 
 
@@ -283,12 +344,16 @@ func _log_status() -> void:
 		# Display refresh rate and session state would come from the destroyed session.
 		_log("%d fps, OpenXR session released, low-processor mode %s." % [
 			roundi(Engine.get_frames_per_second()), OS.low_processor_usage_mode])
+		_late_frames = 0
+		_slowest_frame = 0.0
 		return
 	var state := _xr.get_session_state()
 	var controllers := XRServer.get_trackers(XRServer.TRACKER_CONTROLLER)
-	_log("%d fps, session %s, display %.1f Hz, controller trackers %s, low-processor mode %s." % [
-		roundi(Engine.get_frames_per_second()), _STATE_NAMES[state], _xr.display_refresh_rate,
-		controllers.keys(), OS.low_processor_usage_mode])
+	_log("%d fps, %d frame(s) late, slowest %.1f ms, session %s, display %.1f Hz, editor window focused %s, controller trackers %s, low-processor mode %s." % [
+		roundi(Engine.get_frames_per_second()), _late_frames, _slowest_frame * 1000.0, _STATE_NAMES[state],
+		_xr.display_refresh_rate, DisplayServer.window_is_focused(), controllers.keys(), OS.low_processor_usage_mode])
+	_late_frames = 0
+	_slowest_frame = 0.0
 
 
 func _log(message: String) -> void:

@@ -6,7 +6,12 @@ extends XREDocument
 ## Every change goes into the editor's own undo history, so anything done in
 ## the headset shows up on the desktop immediately and can be undone with Ctrl+Z.
 
+## Where [method separate_executable] keeps its copy: build/ is neither in git nor scanned by the editor.
+const SEPARATE_EXECUTABLE_DIR := "res://build/xre_play"
+
 var _plugin: EditorPlugin
+## Process of a game run by [method _play_separately], or 0.
+var _game_pid := 0
 
 
 func _init(plugin: EditorPlugin) -> void:
@@ -99,6 +104,95 @@ func save(source: Source) -> Error:
 	if error == OK:
 		_record(&"save", source, [get_scene_root()])
 	return error
+
+
+func play(source: Source, separate_app: bool) -> Error:
+	var root := get_scene_root()
+	# Without a file, the editor opens a save dialog on the desktop instead of playing.
+	if root == null or root.scene_file_path.is_empty():
+		return ERR_UNCONFIGURED
+	if separate_app:
+		var error := _play_separately(root.scene_file_path)
+		if error != OK:
+			return error
+	else:
+		EditorInterface.play_current_scene()
+		# The editor starts the game process before it returns, or doesn't start it at all.
+		if not EditorInterface.is_playing_scene():
+			return FAILED
+	_record(&"play", source, [root])
+	return OK
+
+
+func stop_playing(source: Source) -> void:
+	if _separate_game_running():
+		OS.kill(_game_pid)
+		_game_pid = 0
+	elif EditorInterface.is_playing_scene():
+		EditorInterface.stop_playing_scene()
+	else:
+		return
+	_record(&"stop", source, [])
+
+
+func is_playing() -> bool:
+	return _separate_game_running() or EditorInterface.is_playing_scene()
+
+
+## A copy of the editor's executable to run games from as another application:
+## SteamVR takes processes of one executable for one application
+## ([XREHandoffBenchmark]). Made on first use (~180 MB) and again whenever the
+## editor's executable is newer. Returns its path, or an empty string if it
+## can't be made.
+static func separate_executable() -> String:
+	var source := OS.get_executable_path()
+	var extension := source.get_extension()
+	var target := ProjectSettings.globalize_path(SEPARATE_EXECUTABLE_DIR).path_join(
+			source.get_file().get_basename() + "_xre_play" + ("." + extension if not extension.is_empty() else ""))
+	if FileAccess.file_exists(target) and FileAccess.get_modified_time(target) >= FileAccess.get_modified_time(source):
+		return target
+	print("XR Editor: copying the Godot executable to %s to run games as a separate application." % target)
+	DirAccess.make_dir_recursive_absolute(target.get_base_dir())
+	var error := DirAccess.copy_absolute(source, target)
+	if error != OK:
+		push_error("XR Editor: could not copy the Godot executable to %s (%s)." % [target, error_string(error)])
+		return ""
+	return target
+
+
+## Runs the scene as Play would, but from [method separate_executable]: the
+## editor's Play always runs its own executable. The game gets no debugger, and
+## its output goes to its own log, [code]user://logs/godot.log[/code].
+func _play_separately(scene_path: String) -> Error:
+	_stop_separate_game()
+	if EditorInterface.is_playing_scene():
+		EditorInterface.stop_playing_scene()
+	if EditorInterface.get_editor_settings().get_setting("run/auto_save/save_before_running"):
+		EditorInterface.save_all_scenes()
+	var executable := separate_executable()
+	if executable.is_empty():
+		return ERR_CANT_CREATE
+	# The arguments the plugin gives the editor's Play while the VR view is on.
+	var args := XREPlayMode.game_args(PackedStringArray([
+			"--path", ProjectSettings.globalize_path("res://"), "--scene", scene_path]))
+	var pid := OS.create_process(executable, args)
+	if pid <= 0:
+		return ERR_CANT_FORK
+	_game_pid = pid
+	return OK
+
+
+## Stops a game run by [method _play_separately] without recording an operation.
+func _stop_separate_game() -> void:
+	if _separate_game_running():
+		OS.kill(_game_pid)
+	_game_pid = 0
+
+
+func _separate_game_running() -> bool:
+	if _game_pid != 0 and not OS.is_process_running(_game_pid):
+		_game_pid = 0
+	return _game_pid != 0
 
 
 ## The desktop editor's snap settings (Transform → Configure Snap), so both

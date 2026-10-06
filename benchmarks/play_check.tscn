@@ -1,0 +1,68 @@
+[gd_scene format=3 uid="uid://cfn7op4b87vjo"]
+
+[ext_resource type="Script" uid="uid://u2perwrhiqlm" path="res://benchmarks/play_check.gd" id="1_script"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_material"]
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_material")
+
+[sub_resource type="Environment" id="environment"]
+background_mode = 2
+sky = SubResource("sky")
+tonemap_mode = 2
+
+[sub_resource type="PlaneMesh" id="floor_mesh"]
+size = Vector2(10, 10)
+
+[sub_resource type="StandardMaterial3D" id="grey"]
+albedo_color = Color(0.45, 0.45, 0.45, 1)
+
+[sub_resource type="StandardMaterial3D" id="wood"]
+albedo_color = Color(0.55, 0.38, 0.22, 1)
+
+[sub_resource type="BoxMesh" id="cube_mesh"]
+size = Vector3(0.1, 0.1, 0.1)
+
+[sub_resource type="StandardMaterial3D" id="red"]
+albedo_color = Color(0.9, 0.15, 0.15, 1)
+
+[sub_resource type="StandardMaterial3D" id="green"]
+albedo_color = Color(0.15, 0.8, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="blue"]
+albedo_color = Color(0.15, 0.3, 0.95, 1)
+
+[node name="PlayCheck" type="Node3D" unique_id=552506642]
+script = ExtResource("1_script")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=689905709]
+environment = SubResource("environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=2146713709]
+transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 3, 0)
+shadow_enabled = true
+
+[node name="Floor" type="MeshInstance3D" parent="." unique_id=1171004458]
+mesh = SubResource("floor_mesh")
+surface_material_override/0 = SubResource("grey")
+
+[node name="Table" type="CSGBox3D" parent="." unique_id=2081407142]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.725, -0.6)
+size = Vector3(1.2, 0.05, 0.6)
+material = SubResource("wood")
+
+[node name="RedCube" type="MeshInstance3D" parent="." unique_id=1317528540]
+transform = Transform3D(0.9233415, -0.07409765, 0.37676245, 0.045419533, 0.9953917, 0.08445262, -0.38128397, -0.060866322, 0.9224524, -0.033768803, 0.82263565, -0.45550734)
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("red")
+
+[node name="GreenCube" type="MeshInstance3D" parent="." unique_id=867898308]
+transform = Transform3D(0.9994264, 0.014317249, 0.030676655, -0.015355073, 0.9993072, 0.03386228, -0.03017065, -0.0343138, 0.9989546, 0.26011112, 0.9083628, -0.50202113)
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("green")
+
+[node name="BlueCube" type="MeshInstance3D" parent="." unique_id=747555017]
+transform = Transform3D(0.9998164, -0.01704937, -0.008745119, 0.017588805, 0.9976745, 0.0658479, 0.0076021105, -0.0659896, 0.9977913, 0.2838829, 0.80116606, -0.5008966)
+mesh = SubResource("cube_mesh")
+surface_material_override/0 = SubResource("blue")
