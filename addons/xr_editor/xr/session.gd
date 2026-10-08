@@ -14,6 +14,13 @@ extends Node
 
 ## Display refresh rate the spike is measured against: 11.1 ms per frame (docs/plan.md).
 const TARGET_REFRESH_RATE := 90.0
+## Display refresh rate on a standalone headset: the Horizon OS default, the
+## one its spike measured (docs/decisions.md, D-017, D-018).
+const STANDALONE_REFRESH_RATE := 72.0
+## Fixed foveated rendering on a standalone headset, from 0 (off) to 3 (high),
+## dynamic: the runtime lowers it while the GPU keeps up. A light costs the
+## mobile renderer 3.5–4 ms of GPU time per frame there (D-018).
+const STANDALONE_FOVEATION_LEVEL := 3
 ## Seconds between status lines in the log.
 const STATUS_INTERVAL := 5.0
 ## A main loop step longer than this many display frames counts as late in the status line.
@@ -28,6 +35,12 @@ const _LOG_PREFIX := "XR Editor: "
 const _STATE_NAMES: Array[String] = [
 	"UNKNOWN", "IDLE", "READY", "SYNCHRONIZED", "VISIBLE",
 	"FOCUSED", "STOPPING", "LOSS_PENDING", "EXITING",
+]
+## Totals the status line reports the growth of, in this order.
+const _PIPELINE_MONITORS: Array[Performance.Monitor] = [
+	Performance.PIPELINE_COMPILATIONS_DRAW, Performance.PIPELINE_COMPILATIONS_SPECIALIZATION,
+	Performance.PIPELINE_COMPILATIONS_SURFACE, Performance.PIPELINE_COMPILATIONS_MESH,
+	Performance.PIPELINE_COMPILATIONS_CANVAS,
 ]
 
 var _xr: OpenXRInterface
@@ -52,6 +65,8 @@ var _size_nudged := false
 ## [constant LATE_FRAME_RATIO] display frames, and the longest step, in seconds.
 var _late_frames := 0
 var _slowest_frame := 0.0
+## [constant _PIPELINE_MONITORS] at the last status line.
+var _pipeline_totals := PackedInt64Array([0, 0, 0, 0, 0])
 
 
 func _enter_tree() -> void:
@@ -81,6 +96,9 @@ func _enter_tree() -> void:
 	_viewport.use_xr = true
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_viewport.world_3d = editor_viewport.find_world_3d()
+	if XREStandalone.is_standalone():
+		# Vulkan applies the runtime's foveation only to a viewport that asks for it.
+		_viewport.vrs_mode = Viewport.VRS_XR
 	_rig = XRERig.new()
 	_viewport.add_child(_rig)
 	add_child(_viewport)
@@ -101,6 +119,7 @@ func _exit_tree() -> void:
 		return
 	# The session keeps running without the plugin, so low-processor mode stays off.
 	_exit_vr_frame_loop(false)
+	_hide_desktop_ui(false)
 	if _released and not EditorInterface.is_playing_scene():
 		reacquire_session()
 	_xr.session_begun.disconnect(_on_session_begun)
@@ -180,6 +199,14 @@ func can_yield_headset() -> bool:
 	return not runtime.begins_with("SteamVR")
 
 
+## Whether a game run from the headset replaces this editor's process, and the
+## editor opens again after the game: on a standalone headset the editor runs
+## in the one activity XR games run in (docs/decisions.md, D-018). Checked
+## before [method can_yield_headset].
+func game_replaces_editor() -> bool:
+	return XREStandalone.is_standalone()
+
+
 ## Destroys the editor's OpenXR session so that a game process can take the
 ## headset on a runtime that allows one XR application at a time: SteamVR asks
 ## the previous one to quit and kills it 5 s later. The OpenXR instance stays,
@@ -257,18 +284,66 @@ func _on_session_begun() -> void:
 	_request_refresh_rate()
 	_enter_vr_frame_loop()
 	_check_output_collapse()
+	_hide_desktop_ui(true)
+	_enable_foveation()
 
 
 ## Godot 4.7.2 prints an OpenXR error every frame in the editor. Without
 ## collapsing, each one adds a line to the Output panel, and past its line limit
 ## every message costs milliseconds: the editor drops below 90 Hz after about two
 ## minutes (docs/decisions.md, D-004).
+## On a standalone headset nobody sees that panel, so the session presses its
+## button itself: the editor reads the setting only at startup.
 func _check_output_collapse() -> void:
 	var settings := EditorInterface.get_editor_settings()
 	if settings.has_setting("_editor_log_collapse") and settings.get_setting("_editor_log_collapse"):
 		return
+	if XREStandalone.is_standalone() and _press_output_collapse():
+		_log("collapsed duplicate messages in the Output panel.")
+		return
 	push_warning("XR Editor: turn on \"Collapse duplicate messages\" in the Output panel, "
 			+ "otherwise the editor drops below 90 Hz after about two minutes in VR (docs/decisions.md, D-004).")
+
+
+## On a standalone headset nobody sees the editor's 2D window, yet every frame
+## it would draw its UI and render the scene once more in the 3D editor
+## viewports. There the editor spends about 13 ms more GPU time per frame than
+## the game on the same scene (benchmarks/results/quest_fps_*, D-018), and this
+## is the part nobody needs. Hidden while the session runs; the
+## 3D editor viewports update only while visible, so they stop as well, and the
+## headset's view, outside the UI, stays. Not on a PC, where the window is the
+## way back to the desktop.
+func _hide_desktop_ui(hidden: bool) -> void:
+	if not XREStandalone.is_standalone():
+		return
+	EditorInterface.get_base_control().visible = not hidden
+	_log("editor's 2D window %s." % ("hidden while the session runs" if hidden else "shown"))
+
+
+## On a standalone headset, where the GPU is the limit, shades the edges of
+## the view coarser ([constant STANDALONE_FOVEATION_LEVEL]). Not on a PC: the
+## study's frame budget is measured there without it.
+func _enable_foveation() -> void:
+	if not XREStandalone.is_standalone():
+		return
+	if not _xr.is_foveation_supported():
+		_log("the runtime offers no foveated rendering.")
+		return
+	_xr.foveation_level = STANDALONE_FOVEATION_LEVEL
+	_xr.foveation_dynamic = true
+	_log("foveated rendering on: level %d, dynamic." % _xr.foveation_level)
+
+
+## Presses the Output panel's toggle that collapses duplicate messages, found
+## by its icon (its tooltip is translated). Returns whether it was found.
+func _press_output_collapse() -> bool:
+	var icon := EditorInterface.get_editor_theme().get_icon(&"CombineLines", &"EditorIcons")
+	for node: Node in EditorInterface.get_base_control().find_children("*", "Button", true, false):
+		var button := node as Button
+		if button.toggle_mode and button.icon == icon:
+			button.button_pressed = true
+			return true
+	return false
 
 
 func _on_session_state(state_name: String) -> void:
@@ -281,6 +356,7 @@ func _on_session_ended(reason: String) -> void:
 	# Emitted while OpenXR handles the state change, before the next xrWaitFrame
 	# would run, so restoring low-processor mode here can't break a frame.
 	_exit_vr_frame_loop(true)
+	_hide_desktop_ui(false)
 
 
 func _on_refresh_rate_changed(refresh_rate: float) -> void:
@@ -325,8 +401,9 @@ func _exit_vr_frame_loop(session_ended: bool) -> void:
 func _request_refresh_rate() -> void:
 	var available := _xr.get_available_display_refresh_rates()
 	_log("display refresh rate %.1f Hz, available %s." % [_xr.display_refresh_rate, available])
+	var target := STANDALONE_REFRESH_RATE if XREStandalone.is_standalone() else TARGET_REFRESH_RATE
 	for rate: float in available:
-		if is_equal_approx(rate, TARGET_REFRESH_RATE) and not is_equal_approx(_xr.display_refresh_rate, rate):
+		if is_equal_approx(rate, target) and not is_equal_approx(_xr.display_refresh_rate, rate):
 			_log("requesting %.1f Hz." % rate)
 			_xr.display_refresh_rate = rate
 
@@ -354,6 +431,24 @@ func _log_status() -> void:
 		_xr.display_refresh_rate, DisplayServer.window_is_focused(), controllers.keys(), OS.low_processor_usage_mode])
 	_late_frames = 0
 	_slowest_frame = 0.0
+	_log_pipeline_compilations()
+
+
+## Pipeline compilations since the last status line, if there were any. A new
+## kind of thing on screen (a light, a material) needs new pipelines; until
+## they compile in the background the renderer draws with slower general shaders
+## (the SPECIALIZATION counter), and drawing may wait for one (DRAW).
+func _log_pipeline_compilations() -> void:
+	var counts := PackedInt64Array()
+	var changed := false
+	for index: int in _PIPELINE_MONITORS.size():
+		var total := int(Performance.get_monitor(_PIPELINE_MONITORS[index]))
+		counts.append(total - _pipeline_totals[index])
+		changed = changed or total != _pipeline_totals[index]
+		_pipeline_totals[index] = total
+	if changed:
+		_log("pipelines compiled: %d for drawing, %d specialized in the background, %d for surfaces, %d for meshes, %d for 2D." % [
+			counts[0], counts[1], counts[2], counts[3], counts[4]])
 
 
 func _log(message: String) -> void:

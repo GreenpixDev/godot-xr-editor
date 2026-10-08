@@ -1,0 +1,37 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Horizon Probe"
+config/description="Spike, not part of the XR Editor plugin: can the Godot editor on Horizon OS run in its immersive activity?"
+config/features=PackedStringArray("4.7", "Mobile")
+
+[debug]
+
+gdscript/warnings/directory_rules={
+"res://addons/horizon_probe": 1
+}
+gdscript/warnings/untyped_declaration=2
+gdscript/warnings/unsafe_property_access=2
+gdscript/warnings/unsafe_method_access=2
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/horizon_probe/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="mobile"
+
+[xr]
+
+openxr/enabled=true
+shaders/enabled=true

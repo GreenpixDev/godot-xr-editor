@@ -19,6 +19,18 @@ extends Node
 ## [br]- Y in the editor while a game runs: stop the game. This is the way
 ## back from a game that runs without taking the headset.
 ## [br][br]
+## On a standalone headset the game replaces the editor's process (D-018).
+## Before it starts, the editor leaves the edited scene and the rig's transform
+## in [member return_state_path]; holding Y in the game opens the editor again,
+## and the editor puts the user back there ([method restore_after_game]). It
+## takes about as long to open as from the panel; its undo history and
+## selection don't survive the game.
+## [br][br]
+## Y fades the view out to a loading screen ([member transition]) before the
+## game starts, and the view fades back in once the editor has the headset
+## again with nothing left to wait for (D-019). On a standalone headset the
+## editor opened after the game starts covered and fades in once the scene is back.
+## [br][br]
 ## A press counts only after the button was seen up while the editor had the
 ## headset, so a user who comes back still holding Y doesn't start the game
 ## again. Short messages show in the headset in front of the user; lives under
@@ -40,18 +52,32 @@ const MESSAGE_SEC := 3.0
 const MESSAGE_DISTANCE := 0.8
 ## How far below the eyes messages show, in meters.
 const MESSAGE_DROP := 0.15
+## Back from a game on a standalone headset, how long to wait for the editor
+## to open the scenes it had open before opening the game's scene itself, in seconds.
+const SCENE_RESTORE_TIMEOUT_SEC := 15.0
 
 const _ReturnToEditor := preload("return_to_editor.gd")
 const _LOG_PREFIX := "XR Editor: play: "
+## On the loading screen: while the game starts, and on a standalone headset
+## while the editor opened after the game puts the scene back.
+const _STARTING_TEXT := "Starting the game…\nHold Y in it to come back."
+const _RESTORING_TEXT := "Opening the scene…"
 
 enum _State {
 	## The editor has the headset; no game is starting.
 	IDLE,
+	## Y was pressed; the view fades out before the game starts.
+	COVERING,
 	## Play was pressed; the game hasn't taken the headset yet.
 	STARTING,
 	## The game took the headset.
 	IN_GAME,
 }
+
+## Where the editor on a standalone headset leaves its state for after the game.
+var return_state_path := XREStandalone.RETURN_STATE_FILE
+## The loading screen that covers the view while the headset goes to a game and back.
+var transition: XRETransitionScreen
 
 var _document: XREDocument
 var _session: XRESession
@@ -75,6 +101,10 @@ var _warned_second_session := false
 ## When the game's process was seen gone, and when to ask for the headset next.
 var _game_gone_usec := 0
 var _next_reacquire_usec := 0
+## Back from a game on a standalone headset: the scene to edit, until the
+## editor has one open or [constant SCENE_RESTORE_TIMEOUT_SEC] passes.
+var _scene_after_game := ""
+var _scene_wait_until_usec := 0
 
 
 func _init(document: XREDocument, session: XRESession, rig: XRERig) -> void:
@@ -88,6 +118,14 @@ func _init(document: XREDocument, session: XRESession, rig: XRERig) -> void:
 	_message.width = 1200.0
 	_message.visible = false
 	add_child(_message)
+	transition = XRETransitionScreen.new(XRERig.VR_LAYER)
+	# Follows the head, and goes with the rig.
+	rig.camera.add_child(transition)
+
+
+func _ready() -> void:
+	if _session.game_replaces_editor():
+		restore_after_game(XREStandalone.take_return_state(return_state_path))
 
 
 func _process(_delta: float) -> void:
@@ -97,6 +135,8 @@ func _process(_delta: float) -> void:
 	if _in_play_call:
 		return
 	var now := Time.get_ticks_usec()
+	if not _scene_after_game.is_empty():
+		_open_scene_after_game(now)
 	var focused := _session.has_headset_focus()
 	if focused != _focused:
 		_focused = focused
@@ -115,6 +155,12 @@ func _process(_delta: float) -> void:
 	elif _armed:
 		_armed = false
 		_on_button_pressed(now)
+
+	if _state == _State.COVERING and transition.is_covered():
+		_start_game(now)
+	# Back from a game, or one that quit or never took the headset, or the scene put back after it.
+	if transition.is_covering() and _state == _State.IDLE and focused and _scene_after_game.is_empty():
+		transition.reveal()
 
 
 ## The command line of a game run while the VR view is on: [param args] and
@@ -138,12 +184,27 @@ static func game_args(args: PackedStringArray) -> PackedStringArray:
 	return result
 
 
+## Back from a game on a standalone headset: puts the rig where it was at once,
+## and opens the scene that was edited once the editor has opened its own. The
+## view stays covered until then.
+func restore_after_game(state: XREStandalone.ReturnState) -> void:
+	if state.has_rig:
+		_rig.transform = state.rig_transform
+	if not state.scene_path.is_empty():
+		_scene_after_game = state.scene_path
+		_scene_wait_until_usec = Time.get_ticks_usec() + int(SCENE_RESTORE_TIMEOUT_SEC * 1000000.0)
+	if state.has_rig or not state.scene_path.is_empty():
+		transition.cover(_RESTORING_TEXT, true)
+		_log("back from the game: %s." % (state.scene_path if not state.scene_path.is_empty() else "no scene"))
+
+
 ## Whether a game started from the headset is starting or has the headset.
 func is_playing_from_vr() -> bool:
 	return _state != _State.IDLE
 
 
-## The message shown in the headset, or an empty string if none is.
+## The short message in front of the user, or an empty string if none is
+## shown. The loading screen has its own text: [member transition].
 func get_message() -> String:
 	return _message.text if _message.visible else ""
 
@@ -154,14 +215,33 @@ func _on_button_pressed(now: int) -> void:
 		_state = _State.IDLE
 		_show("Game stopped.")
 		return
+	if _state == _State.COVERING:
+		return
 	var refusal := _refusal()
 	if not refusal.is_empty():
 		_show(refusal)
+		return
+	# The game starts in _process() once the headset has been sent the covered view.
+	_state = _State.COVERING
+	_message.visible = false
+	transition.cover(_STARTING_TEXT)
+
+
+func _start_game(now: int) -> void:
+	# A grip pressed while the view faded out.
+	var refusal := _refusal()
+	if not refusal.is_empty():
+		_state = _State.IDLE
+		_show(refusal)
+		return
+	if _session.game_replaces_editor():
+		_play_replacing_editor(now)
 		return
 	var separate := not _session.can_yield_headset()
 	_separate_play = separate
 	# Before the game starts: SteamVR would ask the editor to quit once the game has a session.
 	if separate and not _session.release_session():
+		_state = _State.IDLE
 		_show("Could not give the headset to the game.")
 		return
 	_state = _State.STARTING
@@ -178,7 +258,28 @@ func _on_button_pressed(now: int) -> void:
 		_state = _State.IDLE
 		_show("Could not start the game (%s)." % error_string(error))
 		return
-	_show("Starting the game…")
+	_log("starting the game.")
+
+
+## Standalone headset (D-018): leaves the scene and the rig's transform for the
+## editor that opens after the game, then plays without the editor's Play,
+## whose debugger would end with this process and keep the game waiting for
+## it. The game replaces this process, so nothing here runs after a successful call.
+func _play_replacing_editor(now: int) -> void:
+	var save_error := XREStandalone.save_return_state(_document.get_scene_root().scene_file_path,
+			_rig.transform, return_state_path)
+	if save_error != OK:
+		_log("could not keep the scene and place for after the game (%s)." % error_string(save_error))
+	_state = _State.STARTING
+	_play_usec = now
+	_in_play_call = true
+	var error := _document.play(XREDocument.Source.TOOL, true)
+	_in_play_call = false
+	if error != OK:
+		_state = _State.IDLE
+		_show("Could not start the game (%s)." % error_string(error))
+		return
+	_log("starting the game; holding Y in it opens the editor again.")
 
 
 ## Why the game can't start now, or an empty string if it can.
@@ -238,6 +339,21 @@ func _check_start(now: int) -> void:
 	elif now - _play_usec > START_TIMEOUT_SEC * 1000000.0:
 		_state = _State.IDLE
 		_show("The game runs without the headset. Y stops it.")
+
+
+## Opens [member _scene_after_game] once the editor has opened a scene of its
+## own and it isn't that one, or once the wait is over and it has none.
+func _open_scene_after_game(now: int) -> void:
+	var root := _document.get_scene_root()
+	if root == null and now < _scene_wait_until_usec:
+		return
+	var path := _scene_after_game
+	_scene_after_game = ""
+	if root != null and root.scene_file_path == path:
+		return
+	var error := _document.open_scene(path, XREDocument.Source.TOOL)
+	if error != OK:
+		_log("could not open %s after the game (%s)." % [path, error_string(error)])
 
 
 func _button_held() -> bool:

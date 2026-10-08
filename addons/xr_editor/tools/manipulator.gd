@@ -6,10 +6,11 @@ extends Node
 ##
 ## Controls (docs/decisions.md, D-008):
 ## [br]- Point: the ray stops at the node the trigger would select, and that
-## node is outlined. A node the controller tip is inside is outlined instead:
-## touching wins over pointing. Nodes the head is inside, like a room, are
-## only pointed at. Icons of lights ([XREIcons]) are drawn on top, so they are
-## touched and pointed at before geometry.
+## node is outlined: its own faces are tinted ([XREOutline]). A node the
+## controller tip is inside is outlined instead: touching wins over pointing.
+## Nodes the head is inside, like a room, are only pointed at. Icons of lights
+## ([XREIcons]) are drawn on top, so they are touched and pointed at before
+## geometry, and outlined by a box.
 ## [br]- Trigger: select the outlined node, or clear the selection over empty space.
 ## [br]- Grip: grab the outlined node, which also selects it. A touched node
 ## follows the hand rigidly. A node grabbed with the ray follows the hand
@@ -30,8 +31,8 @@ extends Node
 ## undo brings it back where the grab found it.
 ## [br][br]
 ## A hand another tool has claimed ([method XREHand.claim]), like the right
-## hand touching the [XREPalette], is left alone. The manipulator claims the
-## hands that hold a node.
+## hand touching the [XREPalette] or pointing at a panel ([XREPanels]), is left
+## alone, its ray included. The manipulator claims the hands that hold a node.
 ## [br][br]
 ## Picking happens in [XREPicker] (native). A grab changes the scene only
 ## through [XREDocument]: a preview every frame, then one undo step when the
@@ -60,7 +61,8 @@ const SELECTION_COLOR := Color(1.0, 0.5, 0.0)
 class HandState:
 	var hand: XREHand
 	var picker: XREPicker
-	var box: XREBoundsBox
+	## Marks [member hover].
+	var outline: XREOutline
 	## The node the hand touches or points at, or null.
 	var hover: Node3D
 	## [member hover]'s bounds in its own space.
@@ -85,7 +87,7 @@ class HandState:
 	func _init(controller: XREHand) -> void:
 		hand = controller
 		picker = XREPicker.new()
-		box = XREBoundsBox.new(XREManipulator.HOVER_COLOR)
+		outline = XREOutline.new(XREManipulator.HOVER_COLOR)
 
 
 var _document: XREDocument
@@ -98,9 +100,10 @@ var _selected: Array[Node3D] = []
 ## Bounds of each of [member _selected] in its own space.
 var _selected_bounds: Array[AABB] = []
 ## Whether each of [member _selected] is shown by an icon ([XREIcons]): its
-## outline follows the icon, which grows with distance, instead of its bounds.
+## outline follows the icon, which grows with distance, instead of its faces.
 var _selected_icons: Array[bool] = []
-var _selection_boxes: Array[XREBoundsBox] = []
+## The outline of each of [member _selected], and spare ones after them.
+var _selection_outlines: Array[XREOutline] = []
 
 ## Hands holding [member _grabbed]; empty when nothing is grabbed.
 var _holders: Array[HandState] = []
@@ -133,7 +136,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons) -> void:
 	_icons = icons
 	for hand: XREHand in [rig.left_hand, rig.right_hand]:
 		var state := HandState.new(hand)
-		add_child(state.box)
+		add_child(state.outline)
 		_hands.append(state)
 
 
@@ -165,8 +168,8 @@ func _process(_delta: float) -> void:
 			state.hand.hide_ray()
 			continue
 		if not state.hand.is_free_for(self):
+			# The tool that claimed the hand draws its ray.
 			state.hover = null
-			state.hand.show_ray(XREHand.RAY_LENGTH, false)
 			continue
 		_update_hover(state, root)
 		if state.hand.grip_pressed:
@@ -398,25 +401,25 @@ func _delete_selection() -> void:
 func _update_outlines() -> void:
 	var head := _rig.camera.global_position
 	for i: int in _selected.size():
-		var box := _selection_boxes[i]
+		var outline := _selection_outlines[i]
 		if is_instance_valid(_selected[i]) and _selected[i].is_inside_tree():
-			_outline(box, _selected[i], _selected_bounds[i], _selected_icons[i], head)
+			_outline(outline, _selected[i], _selected_bounds[i], _selected_icons[i], head)
 		else:
-			box.visible = false
+			outline.clear()
 	for state: HandState in _hands:
 		# A hovered node deleted this frame has left the tree.
 		if not state.holding and is_instance_valid(state.hover) and state.hover.is_inside_tree() \
 				and not _selected.has(state.hover):
-			_outline(state.box, state.hover, state.hover_bounds, state.hover_icon, head)
+			_outline(state.outline, state.hover, state.hover_bounds, state.hover_icon, head)
 		else:
-			state.box.visible = false
+			state.outline.clear()
 
 
-func _outline(box: XREBoundsBox, node: Node3D, bounds: AABB, icon: bool, head: Vector3) -> void:
+func _outline(outline: XREOutline, node: Node3D, bounds: AABB, icon: bool, head: Vector3) -> void:
 	if icon:
-		box.show_bounds(XREIcons.icon_transform(node.global_transform, head), XREIcons.MESH_BOUNDS)
+		outline.show_box(XREIcons.icon_transform(node.global_transform, head), XREIcons.MESH_BOUNDS)
 	else:
-		box.show_bounds(node.global_transform, bounds)
+		outline.show_node(node, bounds)
 
 
 func _on_selection_changed() -> void:
@@ -430,12 +433,13 @@ func _on_selection_changed() -> void:
 		_selected.append(node_3d)
 		_selected_bounds.append(XREPicker.get_local_bounds(node_3d))
 		_selected_icons.append(_icons.has_icon(node_3d))
-	while _selection_boxes.size() < _selected.size():
-		var box := XREBoundsBox.new(SELECTION_COLOR)
-		add_child(box)
-		_selection_boxes.append(box)
-	for i: int in range(_selected.size(), _selection_boxes.size()):
-		_selection_boxes[i].visible = false
+	while _selection_outlines.size() < _selected.size():
+		var outline := XREOutline.new(SELECTION_COLOR)
+		add_child(outline)
+		_selection_outlines.append(outline)
+	# The nodes may be the same, but what is drawn of them may not: look at them afresh.
+	for outline: XREOutline in _selection_outlines:
+		outline.clear()
 
 
 func _on_scene_changed() -> void:

@@ -1,0 +1,29 @@
+HorizonProbe [17.5 s]: Godot 4.7.2-stable (official) on Android 34.52242990035800150, model Quest 2, xr_editor feature true.
+HorizonProbe [17.6 s]: command line ["--editor"], user args ["--horizon-probe-immersive"].
+HorizonProbe [17.6 s]: editor hint true, renderer mobile on Adreno (TM) 650, window (3664, 1920), low-processor mode true, Update Continuously false, Output collapse false.
+HorizonProbe [17.6 s]: started by the probe: true, OpenXR interface found: true, initialized: true.
+HorizonProbe [17.6 s]: OpenXR runtime Oculus 207.299.0, system Oculus Quest2, render target (1440.0, 1584.0) per eye, session VISIBLE.
+HorizonProbe [17.6 s]: Output panel collapse button pressed.
+HorizonProbe [17.6 s]: XR view created on the 3D editor viewport's World3D.
+HorizonProbe [17.6 s]: session begun.
+HorizonProbe [17.6 s]: display 72.0 Hz, available [60.0, 72.0, 80.0, 90.0, 120.0], V-Sync off, low-processor mode true.
+HorizonProbe [17.6 s]: display refresh rate changed to 72.0 Hz.
+HorizonProbe [17.6 s]: session focused.
+HorizonProbe [40.1 s]: opened res://probe_scene.tscn.
+HorizonProbe [58.9 s]: 1 fps, 38 frame(s) late, slowest 150.0 ms, session FOCUSED, display 72.0 Hz, low-processor resets 1.
+HorizonProbe [96.0 s]: 1 fps, 37 frame(s) late, slowest 138.0 ms, session FOCUSED, display 72.0 Hz, low-processor resets 1.
+HorizonProbe [134.2 s]: 1 fps, 38 frame(s) late, slowest 140.7 ms, session FOCUSED, display 72.0 Hz, low-processor resets 1.
+HorizonProbe [171.4 s]: 1 fps, 37 frame(s) late, slowest 137.9 ms, session FOCUSED, display 72.0 Hz, low-processor resets 1.
+HorizonProbe [209.5 s]: 1 fps, 38 frame(s) late, slowest 137.9 ms, session FOCUSED, display 72.0 Hz, low-processor resets 1.
+HorizonProbe [246.7 s]: 1 fps, 37 frame(s) late, slowest 137.9 ms, session FOCUSED, display 72.0 Hz, low-processor resets 1.
+HorizonProbe [268.8 s]: session visible.
+HorizonProbe [270.8 s]: session focused.
+HorizonProbe [271.8 s]: session visible.
+HorizonProbe [274.9 s]: session focused.
+HorizonProbe [284.9 s]: 1 fps, 38 frame(s) late, slowest 144.4 ms, session FOCUSED, display 72.0 Hz, low-processor resets 1.
+HorizonProbe [322.1 s]: 1 fps, 37 frame(s) late, slowest 140.0 ms, session FOCUSED, display 72.0 Hz, low-processor resets 1.
+HorizonProbe [322.1 s]: RESULT after 300 s: editor in the immersive activity, session reached FOCUSED: yes at 17.6 s, session ended 0 time(s), now FOCUSED, late frames 300, low-processor resets 1.
+HorizonProbe [351.3 s]: session visible.
+HorizonProbe [351.3 s]: session synchronized.
+HorizonProbe [351.3 s]: session stopping.
+HorizonProbe [352.0 s]: probe stopped.

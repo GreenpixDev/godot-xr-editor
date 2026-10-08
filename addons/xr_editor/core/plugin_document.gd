@@ -17,12 +17,14 @@ var _game_pid := 0
 func _init(plugin: EditorPlugin) -> void:
 	_plugin = plugin
 	EditorInterface.get_selection().selection_changed.connect(selection_changed.emit)
+	EditorInterface.get_resource_filesystem().filesystem_changed.connect(files_changed.emit)
 	plugin.scene_changed.connect(_on_scene_changed)
 
 
 ## Disconnects from editor signals. Call from [method EditorPlugin._exit_tree].
 func dispose() -> void:
 	EditorInterface.get_selection().selection_changed.disconnect(selection_changed.emit)
+	EditorInterface.get_resource_filesystem().filesystem_changed.disconnect(files_changed.emit)
 	_plugin.scene_changed.disconnect(_on_scene_changed)
 
 
@@ -60,6 +62,22 @@ func set_property(object: Object, property: StringName, value: Variant, source: 
 	undo_redo.create_action("XR: Set %s" % property)
 	undo_redo.add_do_property(object, property, value)
 	undo_redo.add_undo_property(object, property, object.get(property))
+	undo_redo.commit_action()
+	var nodes: Array[Node] = []
+	if object is Node:
+		nodes.append(object as Node)
+	_record(&"set_property", source, nodes)
+
+
+func preview_property(object: Object, property: StringName, value: Variant) -> void:
+	object.set(property, value)
+
+
+func commit_property(object: Object, property: StringName, before: Variant, source: Source) -> void:
+	var undo_redo := _plugin.get_undo_redo()
+	undo_redo.create_action("XR: Set %s" % property)
+	undo_redo.add_do_property(object, property, object.get(property))
+	undo_redo.add_undo_property(object, property, before)
 	undo_redo.commit_action()
 	var nodes: Array[Node] = []
 	if object is Node:
@@ -108,6 +126,43 @@ func save(source: Source) -> Error:
 	if error == OK:
 		_record(&"save", source, [get_scene_root()])
 	return error
+
+
+func open_scene(path: String, source: Source) -> Error:
+	if not is_scene_file(path):
+		return ERR_FILE_UNRECOGNIZED
+	if not ResourceLoader.exists(path):
+		return ERR_FILE_NOT_FOUND
+	EditorInterface.open_scene_from_path(path)
+	var root := get_scene_root()
+	if root == null or root.scene_file_path != path:
+		return FAILED
+	_record(&"open_scene", source, [root])
+	return OK
+
+
+## Lists what the editor's file system knows: the same folders and files the
+## FileSystem dock shows, without a scan of the disk.
+func list_folder(path: String) -> PackedStringArray:
+	var folder := EditorInterface.get_resource_filesystem().get_filesystem_path(path)
+	var result := PackedStringArray()
+	if folder == null:
+		return result
+	var names: Array[String] = []
+	for i: int in folder.get_subdir_count():
+		names.append(folder.get_subdir(i).get_name() + "/")
+	names.sort_custom(_natural_order)
+	result.append_array(names)
+	names.clear()
+	for i: int in folder.get_file_count():
+		names.append(folder.get_file(i))
+	names.sort_custom(_natural_order)
+	result.append_array(names)
+	return result
+
+
+func get_file_type(path: String) -> StringName:
+	return StringName(EditorInterface.get_resource_filesystem().get_file_type(path))
 
 
 func play(source: Source, separate_app: bool) -> Error:
@@ -164,21 +219,25 @@ static func separate_executable() -> String:
 	return target
 
 
-## Runs the scene as Play would, but from [method separate_executable]: the
-## editor's Play always runs its own executable. The game gets no debugger, and
-## its output goes to its own log, [code]user://logs/godot.log[/code].
+## Runs the scene as Play would, but without it: from [method separate_executable],
+## because the editor's Play always runs its own executable, or on a standalone
+## headset in this very process (D-018). The game gets no debugger, and its
+## output goes to its own log, [code]user://logs/godot.log[/code].
 func _play_separately(scene_path: String) -> Error:
 	_stop_separate_game()
 	if EditorInterface.is_playing_scene():
 		EditorInterface.stop_playing_scene()
 	if EditorInterface.get_editor_settings().get_setting("run/auto_save/save_before_running"):
 		EditorInterface.save_all_scenes()
-	var executable := separate_executable()
-	if executable.is_empty():
-		return ERR_CANT_CREATE
 	# The arguments the plugin gives the editor's Play while the VR view is on.
 	var args := XREPlayMode.game_args(PackedStringArray([
 			"--path", ProjectSettings.globalize_path("res://"), "--scene", scene_path]))
+	if XREStandalone.is_standalone():
+		# From the XR activity, the new instance replaces this process.
+		return OK if OS.create_instance(args) >= 0 else ERR_CANT_FORK
+	var executable := separate_executable()
+	if executable.is_empty():
+		return ERR_CANT_CREATE
 	var pid := OS.create_process(executable, args)
 	if pid <= 0:
 		return ERR_CANT_FORK
@@ -208,6 +267,11 @@ func get_snap() -> XRESnap:
 
 func _on_scene_changed(_scene_root: Node) -> void:
 	scene_changed.emit()
+
+
+## Names in the order the FileSystem dock sorts them: case aside, numbers by value.
+static func _natural_order(a: String, b: String) -> bool:
+	return a.naturalnocasecmp_to(b) < 0
 
 
 ## [param node] and its descendants whose owner is [param root]; with

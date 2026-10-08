@@ -1,0 +1,6 @@
+HorizonProbe [19.1 s]: Godot 4.7.2-stable (official) on Android 34.52242990035800150, model Quest 2, xr_editor feature true.
+HorizonProbe [19.1 s]: command line ["--editor"], user args [].
+HorizonProbe [19.1 s]: editor hint true, renderer mobile on Adreno (TM) 650, window (1280, 900), low-processor mode false, Update Continuously true, Output collapse true.
+HorizonProbe [19.1 s]: started by the probe: false, OpenXR interface found: true, initialized: false, native frame loop (XREEditorFrameLoop) loaded.
+HorizonProbe [19.1 s]: panel editor: use Project → Tools → "Horizon Probe: Open Editor in Immersive Mode".
+HorizonProbe [37.9 s]: OS.create_instance(["--xr-mode", "on", "/storage/emulated/0/Documents/Godot/horizon_probe/project.godot", "--", "--horizon-probe-immersive"]) returned 1667.

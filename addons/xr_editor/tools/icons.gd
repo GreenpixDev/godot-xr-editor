@@ -131,8 +131,12 @@ func cast_segment(from: Vector3, to: Vector3) -> bool:
 		var off_squared := from.distance_squared_to(center) - along * along
 		if off_squared > radius * radius:
 			continue
+		var half_chord := sqrt(radius * radius - off_squared)
+		# The whole icon is behind where the segment starts.
+		if along + half_chord < 0.0:
+			continue
 		# From inside the icon, the hit is where the segment starts.
-		var distance := maxf(along - sqrt(radius * radius - off_squared), 0.0)
+		var distance := maxf(along - half_chord, 0.0)
 		if distance > length or (_hit_node != null and distance >= _hit_distance):
 			continue
 		var node := _picker.get_selectable_node(icon.light, _root)

@@ -1,7 +1,9 @@
 extends Node3D
 ## Game side of play mode (docs/decisions.md, D-011): holding Y on the left
 ## controller for [constant HOLD_SEC] quits the game, and the editor, whose OpenXR session
-## waited in the background, gets the headset back.
+## waited in the background, gets the headset back. On a standalone headset the
+## game took the editor's process, so the hold opens the editor again in its
+## place, and the editor finds the scene and the place it left (D-018).
 ##
 ## The plugin registers this script as an autoload ([constant XREPlayMode.RETURN_AUTOLOAD]),
 ## so it runs in every game of the project. It stays only in a game the
@@ -11,9 +13,13 @@ extends Node3D
 ## [br][br]
 ## The game itself still gets the button, so a short press can open its own
 ## menu. A hold longer than [constant SHOW_AFTER_SEC] shows a bar in front of
-## the user that fills up until the game quits. The button is read from the
+## the user that fills up until the game leaves. The button is read from the
 ## game's own action map; Godot's default one names it [constant BUTTON] and
 ## binds it to Y on the left Touch and Pico 4 controllers.
+## [br][br]
+## A loading screen ([XRETransitionScreen], D-019) covers the game's first
+## frames and fades them in once the game has the headset; after the hold it
+## fades the game out, and the game leaves once the headset shows it covered.
 
 ## Command-line argument the editor adds to the games it runs while its VR view is on.
 const GAME_FLAG := "--xre-play"
@@ -31,6 +37,7 @@ const _OFFSET := Transform3D(Basis.IDENTITY, Vector3(0.0, -0.1, -0.6))
 const _BAR_SIZE := Vector3(0.2, 0.012, 0.002)
 ## Render layers 1–20, so that the game's camera shows the bar whatever its cull mask.
 const _ALL_LAYERS := (1 << 20) - 1
+const _LEAVING_TEXT := "Back to the editor…"
 const _LOG_PREFIX := "XR Editor: "
 
 var _xr: OpenXRInterface
@@ -38,7 +45,13 @@ var _xr: OpenXRInterface
 var _armed := false
 ## [method Time.get_ticks_usec] when the current hold began, or -1.
 var _hold_start_usec := -1
+## The bar, its fill and its label.
+var _hold_bar: Node3D
 var _fill: MeshInstance3D
+## Follows the game's camera; not under it, which the game may free.
+var _screen: XRETransitionScreen
+## The hold is done: the game leaves once the view is covered.
+var _leaving := false
 ## In a game the VR editor ran; see the class description.
 var _active := false
 
@@ -54,7 +67,9 @@ func _ready() -> void:
 	_xr.instance_exiting.connect(get_tree().quit)
 	# The hold must work in a paused game too; it is timed by the clock, not by delta.
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	visible = false
+	_hold_bar = Node3D.new()
+	_hold_bar.visible = false
+	add_child(_hold_bar)
 	_add_bar(Color(0.0, 0.0, 0.0, 0.6), 0)
 	_fill = _add_bar(Color(1.0, 0.6, 0.2), 1)
 	var label := Label3D.new()
@@ -68,19 +83,36 @@ func _ready() -> void:
 	label.outline_render_priority = 1
 	label.layers = _ALL_LAYERS
 	label.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(label)
+	_hold_bar.add_child(label)
+	_screen = XRETransitionScreen.new(_ALL_LAYERS)
+	_screen.top_level = true
+	add_child(_screen)
+	_screen.cover("", true)
 
 
 func _process(_delta: float) -> void:
 	var now := Time.get_ticks_usec()
+	var camera := get_viewport().get_camera_3d()
+	if camera != null:
+		_screen.global_transform = camera.global_transform
 	var focused := _xr.get_session_state() == OpenXRInterface.SESSION_STATE_FOCUSED
+	if _leaving:
+		# With no camera there is nothing to cover.
+		if _screen.is_covered() or camera == null:
+			_leave()
+		return
+	if focused and _screen.is_covering():
+		_screen.reveal()
 	var progress := advance(focused, _button_held(), now)
 	if progress >= 1.0:
-		_quit("returning to the editor.")
-	elif progress * HOLD_SEC >= SHOW_AFTER_SEC:
-		_show_progress(progress)
+		print(_LOG_PREFIX, "returning to the editor.")
+		_leaving = true
+		_hold_bar.visible = false
+		_screen.cover(_LEAVING_TEXT)
+	elif camera != null and progress * HOLD_SEC >= SHOW_AFTER_SEC:
+		_show_progress(camera, progress)
 	else:
-		visible = false
+		_hold_bar.visible = false
 
 
 ## Advances the hold by one frame and returns how far it got, from 0 to 1, or
@@ -99,9 +131,12 @@ func advance(focused: bool, held: bool, now_usec: int) -> float:
 	return minf((now_usec - _hold_start_usec) / (HOLD_SEC * 1000000.0), 1.0)
 
 
-func _quit(reason: String) -> void:
-	print(_LOG_PREFIX, reason)
+func _leave() -> void:
 	set_process(false)
+	if XREStandalone.is_standalone():
+		# Replaces this process; quitting instead would leave the user in the system's home.
+		if XREStandalone.open_editor_in_vr(PackedStringArray()) == OK:
+			return
 	get_tree().quit()
 
 
@@ -113,16 +148,12 @@ func _button_held() -> bool:
 	return value is bool and value
 
 
-## Puts the bar in front of the head, filled to [param progress].
-func _show_progress(progress: float) -> void:
-	var camera := get_viewport().get_camera_3d()
-	if camera == null:
-		visible = false
-		return
-	global_transform = camera.global_transform * _OFFSET
+## Puts the bar in front of [param camera], filled to [param progress].
+func _show_progress(camera: Camera3D, progress: float) -> void:
+	_hold_bar.global_transform = camera.global_transform * _OFFSET
 	_fill.scale.x = maxf(progress, 0.001)
 	_fill.position.x = -_BAR_SIZE.x * (1.0 - progress) / 2.0
-	visible = true
+	_hold_bar.visible = true
 
 
 ## A bar drawn over the game's geometry, [param priority] deciding which of two bars is on top.
@@ -140,5 +171,5 @@ func _add_bar(color: Color, priority: int) -> MeshInstance3D:
 	bar.material_override = material
 	bar.layers = _ALL_LAYERS
 	bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(bar)
+	_hold_bar.add_child(bar)
 	return bar

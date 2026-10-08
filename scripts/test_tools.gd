@@ -45,6 +45,12 @@ class FakeDocument extends XREDocument:
 	func set_property(_object: Object, _property: StringName, _value: Variant, _source: Source) -> void:
 		pass
 
+	func preview_property(_object: Object, _property: StringName, _value: Variant) -> void:
+		pass
+
+	func commit_property(_object: Object, _property: StringName, _before: Variant, _source: Source) -> void:
+		pass
+
 	func add_node(node: Node, parent: Node, source: Source) -> void:
 		parent.add_child(node, true)
 		node.owner = root
@@ -69,6 +75,15 @@ class FakeDocument extends XREDocument:
 
 	func save(_source: Source) -> Error:
 		return OK
+
+	func open_scene(_path: String, _source: Source) -> Error:
+		return ERR_UNAVAILABLE
+
+	func list_folder(_path: String) -> PackedStringArray:
+		return PackedStringArray()
+
+	func get_file_type(_path: String) -> StringName:
+		return &""
 
 	func play(_source: Source, _separate_app: bool) -> Error:
 		return OK
@@ -122,6 +137,7 @@ func _initialize() -> void:
 		_test_nodes_to_remove,
 		_start_manipulator,
 		_test_icons,
+		_test_outline,
 		_point_at_target,
 		_press_trigger,
 		_grab_with_ray,
@@ -155,6 +171,8 @@ func _initialize() -> void:
 		_flown,
 		_turned,
 		_speed_clicked,
+		_tilted_up,
+		_levelled,
 		_finish,
 	]
 
@@ -376,6 +394,23 @@ func _test_manipulation_math() -> void:
 	_check_vector(right_turn * (rig.affine_inverse() * head), head, "turning keeps the head in place")
 	_check_vector(-right_turn.basis.z, Vector3(1.0, 0.0, 0.0), "a negative angle turns to the right")
 
+	var up := deg_to_rad(30.0)
+	var tilted_up := XRELocomotion.pitched(right_turn, head, up)
+	_check_vector(tilted_up * (right_turn.affine_inverse() * head), head, "tilting keeps the head in place")
+	_check_vector(-tilted_up.basis.z, Vector3(cos(up), sin(up), 0.0), "a positive angle tilts the view up")
+	_check(is_zero_approx(tilted_up.basis.x.y), "tilting doesn't roll the rig: %s" % tilted_up.basis.x)
+	_check(is_equal_approx(XRELocomotion.pitch_of(tilted_up), up), "the tilt reads back: %f" % XRELocomotion.pitch_of(tilted_up))
+	var turned_tilted := XRELocomotion.turned(tilted_up, head, PI / 2.0)
+	_check(is_equal_approx(XRELocomotion.pitch_of(turned_tilted), up) and is_zero_approx(turned_tilted.basis.x.y),
+			"turning a tilted rig keeps its tilt, and doesn't roll it")
+	_check(XRELocomotion.pitched(tilted_up, head, -up).basis.is_equal_approx(right_turn.basis), "tilting back levels the rig")
+	var step := deg_to_rad(5.0)
+	_check(is_equal_approx(XRELocomotion.limited_pitch_step(0.0, step), step), "a step within the limits is whole")
+	_check(is_equal_approx(XRELocomotion.limited_pitch_step(deg_to_rad(79.0), step), deg_to_rad(1.0)),
+			"a step past the limit up stops at it")
+	_check(is_equal_approx(XRELocomotion.limited_pitch_step(deg_to_rad(-79.0), -step), deg_to_rad(-1.0)),
+			"a step past the limit down stops at it")
+
 
 func _test_nodes_to_remove() -> void:
 	var group := _scene.get_node(^"Group")
@@ -428,6 +463,8 @@ func _test_icons() -> void:
 			and _icons.get_hit_node().name == &"LampProp", "a light in an instance stands for the instance root")
 	_check(not _icons.cast_segment(Vector3(15.0, 0.0, 1.0), Vector3(15.0, 0.0, -10.0)), "a hidden light has no icon to pick")
 	_check(not _icons.cast_segment(Vector3(12.0, 0.0, 1.0), Vector3(12.0, 0.0, 0.0)), "the segment ends before the icon")
+	_check(not _icons.cast_segment(Vector3(12.0, 0.0, -2.0), Vector3(12.0, 0.0, -10.0)),
+			"an icon behind where the segment starts is not hit")
 	_check(_icons.find_at_point(lamp.global_position + Vector3(0.0, radius + 0.02, 0.0), 0.03)
 			and _icons.get_hit_node() == lamp, "touch reaches 2 cm past the icon")
 	_check(not _icons.find_at_point(lamp.global_position + Vector3(0.0, radius + 0.05, 0.0), 0.03), "touch stops at the radius")
@@ -437,6 +474,105 @@ func _test_icons() -> void:
 	_scene.remove_child(added)
 	_check(not _icons.cast_segment(Vector3(16.0, 0.0, 1.0), Vector3(16.0, 0.0, -10.0)), "a removed light loses its icon")
 	added.free()
+
+
+## The manipulator's outlines of [param color] that mark something now.
+func _active_outlines(color: Color) -> Array[XREOutline]:
+	var found: Array[XREOutline] = []
+	for child: Node in _manipulator.get_children():
+		var outline := child as XREOutline
+		if outline != null and outline.is_active() and outline.color == color:
+			found.append(outline)
+	return found
+
+
+## The edges XREEdgeMesh finds, then what an outline draws of a node and where it falls back to a box.
+func _test_outline() -> void:
+	var box_edges := XREEdgeMesh.find(BoxMesh.new())
+	_check(box_edges != null and box_edges.get_edge_count() == 12, "a box has twelve edges, and its sides' diagonals aren't among them: %s"
+			% (box_edges.get_edge_count() if box_edges != null else -1))
+	if box_edges != null:
+		var square := true
+		for i: int in box_edges.points.size():
+			square = square and absf(box_edges.first_normals[i].dot(box_edges.second_normals[i])) < 0.001
+		_check(square, "the two faces on a box's edge are at right angles")
+	var plane_edges := XREEdgeMesh.find(PlaneMesh.new())
+	_check(plane_edges != null and plane_edges.get_edge_count() == 4, "a plane has the four edges of its border: %s"
+			% (plane_edges.get_edge_count() if plane_edges != null else -1))
+	if plane_edges != null:
+		_check_vector(plane_edges.second_normals[0], -plane_edges.first_normals[0], "an edge with one face is an outline from every side")
+	var ball := SphereMesh.new()
+	ball.radial_segments = 12
+	ball.rings = 6
+	var ball_edges := XREEdgeMesh.find(ball)
+	_check(ball_edges != null and ball_edges.get_edge_count() > 12, "a ball's edges are kept, to be drawn where they are its outline")
+	var huge := SphereMesh.new()
+	huge.radial_segments = 200
+	huge.rings = 100
+	_check(XREEdgeMesh.find(huge) == null, "a mesh of too many faces has no edges found")
+	_check(XREEdgeMesh.find(ArrayMesh.new()) == null, "a mesh with no surfaces has none")
+
+	var outline := XREOutline.new(Color.WHITE)
+	root.add_child(outline)
+	var bounds := AABB(Vector3(-0.1, -0.1, -0.1), Vector3(0.2, 0.2, 0.2))
+	_check(not outline.is_active() and outline.get_part_count() == 0, "an outline starts out marking nothing")
+
+	outline.show_node(_target, bounds)
+	_check(outline.get_part_count() == 1 and not outline.is_boxed(), "a mesh has its own edges drawn: %d" % outline.get_part_count())
+	outline.show_node(_scene.get_node(^"Group") as Node3D, bounds)
+	_check(outline.get_part_count() == 1 and not outline.is_boxed(), "a group has the edges of its children drawn: %d" % outline.get_part_count())
+	outline.show_node(_scene.get_node(^"Holder") as Node3D, bounds)
+	_check(outline.get_part_count() == 1, "children the scene doesn't own have their edges drawn too: %d" % outline.get_part_count())
+	# A CSG shape's mesh can't be read back in headless (the renderer is a stub): it is covered by drawing it in a window.
+	outline.show_node(_scene.get_node(^"Csg") as Node3D, bounds)
+
+	var hidden := _scene.get_node(^"Hidden") as Node3D
+	outline.show_node(hidden, bounds)
+	_check(outline.get_part_count() == 0 and outline.is_boxed(), "a hidden node has no edges to draw")
+	hidden.visible = true
+	outline.show_node(hidden, bounds)
+	_check(outline.get_part_count() == 1 and not outline.is_boxed(), "...and has them when it shows")
+	hidden.visible = false
+
+	var empty := _add_node(_scene, Node3D.new(), "Empty", Vector3(30.0, 0.0, 0.0))
+	outline.show_node(empty, bounds)
+	_check(outline.get_part_count() == 0 and outline.is_boxed(), "a node with no geometry is boxed")
+	_check_vector(outline.get_box().global_position, Vector3(30.0, 0.0, 0.0) + bounds.grow(XREBoundsBox.PADDING).position,
+			"the box stands where the node's bounds are")
+
+	var nested := CSGBox3D.new()
+	nested.name = "Nested"
+	_scene.get_node(^"Csg").add_child(nested)
+	outline.show_node(nested, bounds)
+	_check(outline.get_part_count() == 0 and outline.is_boxed(), "a CSG shape inside another has no mesh of its own, and is boxed")
+	nested.free()
+
+	var crowd := _add_node(_scene, Node3D.new(), "Crowd", Vector3(31.0, 0.0, 0.0))
+	for i: int in XREOutline.MAX_PARTS:
+		crowd.add_child(_box("Crowded%d" % i, 0.1))
+	outline.show_node(crowd, bounds)
+	_check(outline.get_part_count() == XREOutline.MAX_PARTS and not outline.is_boxed(), "a group at the limit has its edges drawn")
+	crowd.add_child(_box("OneMore", 0.1))
+	outline.clear()
+	outline.show_node(crowd, bounds)
+	_check(outline.get_part_count() == 0 and outline.is_boxed(), "a group past the limit is boxed")
+	outline.clear()
+
+	outline.show_node(_target, bounds)
+	_target.hide()
+	outline.show_node(_target, bounds)
+	_check(outline.get_part_count() == 0, "a node that hides takes its lines with it")
+	_target.show()
+	outline.show_node(_target, bounds)
+	_check(outline.get_part_count() == 1, "...and gets them back when it shows again")
+
+	outline.show_box(Transform3D.IDENTITY, bounds)
+	_check(outline.is_boxed() and outline.get_part_count() == 0, "a box can be asked for")
+	outline.clear()
+	_check(not outline.is_active() and not outline.is_boxed(), "clearing marks nothing")
+	outline.free()
+	empty.free()
+	crowd.free()
 
 
 func _add_tracker(tracker_name: StringName) -> XRControllerTracker:
@@ -459,11 +595,18 @@ func _set_hand(tracker: XRControllerTracker, position: Vector3, trigger: float, 
 func _point_at_target() -> void:
 	_check(_operations.is_empty(), "pointing alone records nothing: %s" % [_operations])
 	_check(_rig.right_hand.global_position.is_equal_approx(Vector3(0.0, 0.0, 0.3)), "fake tracker moves the hand")
+	var hovered := _active_outlines(XREManipulator.HOVER_COLOR)
+	_check(hovered.size() == 1 and hovered[0].get_part_count() == 1 and not hovered[0].is_boxed(),
+			"the node the ray points at has its edges drawn: %d outlines" % hovered.size())
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 1.0, 0.0)
 
 
 func _press_trigger() -> void:
 	_check(_operations == ["select TOOL [\"Near\"]"], "trigger selects the node under the ray: %s" % [_operations])
+	var selected := _active_outlines(XREManipulator.SELECTION_COLOR)
+	_check(selected.size() == 1 and selected[0].get_part_count() == 1 and not selected[0].is_boxed(),
+			"the selected node has its edges drawn: %d outlines" % selected.size())
+	_check(_active_outlines(XREManipulator.HOVER_COLOR).is_empty(), "a selected node is not outlined twice")
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 1.0)
 
 
@@ -683,9 +826,9 @@ func _spot_selected() -> void:
 	var expected := XREIcons.MESH_BOUNDS.grow(XREBoundsBox.PADDING).size.x \
 			* XREIcons.radius_at(spot.global_position, _rig.camera.global_position)
 	var outlined := false
-	for child: Node in _manipulator.get_children():
-		var box := child as XREBoundsBox
-		if box != null and box.visible and (box.material_override as StandardMaterial3D).albedo_color == XREManipulator.SELECTION_COLOR:
+	for outline: XREOutline in _active_outlines(XREManipulator.SELECTION_COLOR):
+		if outline.is_boxed():
+			var box := outline.get_box()
 			outlined = true
 			_check(absf(box.global_basis.x.length() - expected) < EPSILON,
 					"a light's outline grows with its icon: %f, expected %f" % [box.global_basis.x.length(), expected])
@@ -736,6 +879,23 @@ func _speed_clicked() -> void:
 	_check(_locomotion.get_speed() == 4.0, "the left stick's click picks the next speed: %f" % _locomotion.get_speed())
 	_check(_locomotion.get_speed_label() == "Flying speed 4.0 m/s", "the new speed shows: %s" % _locomotion.get_speed_label())
 	_left.set_input(&"primary_click", false)
+	_right.set_input(&"primary", Vector2(0.0, 1.0))
+
+
+func _tilted_up() -> void:
+	var forward := -_rig.global_basis.z
+	_check(forward.y > 0.0, "the right stick pushed up looks up: %s" % forward)
+	_check(is_zero_approx(_rig.global_basis.x.y), "tilting doesn't roll the rig: %s" % _rig.global_basis.x)
+	_check(_locomotion.get_vignette_strength() > 0.0, "tilting darkens the edges of the view")
+	_right.set_input(&"primary", Vector2.ZERO)
+	_right.set_input(&"primary_click", true)
+
+
+func _levelled() -> void:
+	var pitch := XRELocomotion.pitch_of(_rig.global_transform)
+	_check(absf(pitch) < 0.0001, "the right stick's click levels the view: %f" % pitch)
+	_check(is_zero_approx(_rig.global_basis.x.y), "levelling doesn't roll the rig: %s" % _rig.global_basis.x)
+	_right.set_input(&"primary_click", false)
 
 
 func _finish() -> void:

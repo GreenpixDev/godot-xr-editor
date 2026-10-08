@@ -1,0 +1,69 @@
+HorizonProbe [13.3 s]: Godot 4.7.2-stable (official) on Android 34.52242990035800150, model Quest 2, xr_editor feature true.
+HorizonProbe [13.3 s]: command line ["--editor"], user args ["--horizon-probe-immersive"].
+HorizonProbe [13.3 s]: editor hint true, renderer mobile on Adreno (TM) 650, window (3664, 1920), low-processor mode false, Update Continuously true, Output collapse true.
+HorizonProbe [13.3 s]: started by the probe: true, OpenXR interface found: true, initialized: true, native frame loop (XREEditorFrameLoop) loaded.
+HorizonProbe [13.3 s]: OpenXR runtime Oculus 207.299.0, system Oculus Quest2, render target (1440.0, 1584.0) per eye, session FOCUSED.
+HorizonProbe [13.3 s]: Output panel collapse button pressed.
+HorizonProbe [13.4 s]: XR view created on the 3D editor viewport's World3D.
+HorizonProbe [13.4 s]: session begun.
+HorizonProbe [13.4 s]: display 72.0 Hz, available [60.0, 72.0, 80.0, 90.0, 120.0], V-Sync off, low-processor mode false.
+HorizonProbe [18.4 s]: 4.0 fps, longest frame 3675.7 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [18.4 s]: segment 1 of 4: editor UI shown, 30 focused seconds.
+HorizonProbe [20.1 s]: edited scene: res://probe_scene.tscn.
+HorizonProbe [23.4 s]: 71.2 fps, longest frame 20.8 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [28.4 s]: 71.8 fps, longest frame 15.1 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [33.4 s]: 71.8 fps, longest frame 15.2 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [38.4 s]: 71.8 fps, longest frame 15.1 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [43.4 s]: 71.4 fps, longest frame 21.8 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [48.4 s]: segment 1 done, editor UI shown: 71.7 fps at 72 Hz, 100% of frames on time, mean 14.0 ms, max 21.8 ms; render ms (CPU/GPU): XR 0.26/6.45, editor window 0.72/4.68, 3D editor viewport GPU 4.49; process 150.20 ms.
+HorizonProbe [48.4 s]: segment 2 of 4: editor UI hidden, 30 focused seconds.
+HorizonProbe [48.4 s]: 71.8 fps, longest frame 14.9 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [53.4 s]: 71.8 fps, longest frame 15.8 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [58.5 s]: 71.8 fps, longest frame 14.4 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [63.5 s]: 71.2 fps, longest frame 23.8 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [68.5 s]: 71.6 fps, longest frame 21.6 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [73.5 s]: 71.8 fps, longest frame 14.6 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [78.4 s]: segment 2 done, editor UI hidden: 71.7 fps at 72 Hz, 100% of frames on time, mean 14.0 ms, max 23.8 ms; render ms (CPU/GPU): XR 0.20/7.71, editor window 0.04/1.43, 3D editor viewport GPU 0.00; process 4.90 ms.
+HorizonProbe [78.4 s]: segment 3 of 4: editor UI hidden, 30 focused seconds.
+HorizonProbe [78.5 s]: 71.8 fps, longest frame 22.6 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [83.5 s]: 71.5 fps, longest frame 23.2 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [88.5 s]: 71.8 fps, longest frame 14.7 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [93.5 s]: 71.6 fps, longest frame 20.9 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [98.5 s]: 71.7 fps, longest frame 24.0 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [103.6 s]: 71.6 fps, longest frame 22.4 ms, session FOCUSED, display 72.0 Hz, editor UI hidden.
+HorizonProbe [108.4 s]: segment 3 done, editor UI hidden: 71.7 fps at 72 Hz, 100% of frames on time, mean 14.0 ms, max 24.0 ms; render ms (CPU/GPU): XR 0.21/7.72, editor window 0.04/1.43, 3D editor viewport GPU 0.00; process 4.90 ms.
+HorizonProbe [108.4 s]: segment 4 of 4: editor UI shown, 30 focused seconds.
+HorizonProbe [108.6 s]: 71.4 fps, longest frame 55.8 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [113.6 s]: 71.7 fps, longest frame 20.1 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [118.6 s]: 71.6 fps, longest frame 22.2 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [123.6 s]: 71.0 fps, longest frame 21.7 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [128.6 s]: 71.8 fps, longest frame 14.8 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [133.6 s]: 71.8 fps, longest frame 14.7 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [138.4 s]: segment 4 done, editor UI shown: 71.6 fps at 72 Hz, 100% of frames on time, mean 14.0 ms, max 55.8 ms; render ms (CPU/GPU): XR 0.31/6.46, editor window 0.96/4.74, 3D editor viewport GPU 4.49; process 8.11 ms.
+HorizonProbe [138.4 s]: RESULT: editor in the immersive activity, focused at -1.0 s, session ended 0 time(s); 71.6 fps with the editor UI shown, 71.7 fps hidden, display 72 Hz. Editor UI shown again.
+HorizonProbe [138.6 s]: 71.8 fps, longest frame 14.8 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [143.6 s]: 71.8 fps, longest frame 14.7 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [148.7 s]: 71.6 fps, longest frame 22.0 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [153.7 s]: 71.8 fps, longest frame 14.7 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [158.7 s]: 71.8 fps, longest frame 14.6 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [163.7 s]: 71.8 fps, longest frame 14.6 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [168.7 s]: 71.8 fps, longest frame 14.7 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [173.7 s]: 71.4 fps, longest frame 20.9 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [178.7 s]: 71.8 fps, longest frame 14.7 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [183.7 s]: 71.8 fps, longest frame 14.9 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [188.8 s]: 71.8 fps, longest frame 14.5 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [193.8 s]: 71.8 fps, longest frame 14.4 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [198.8 s]: 71.4 fps, longest frame 21.3 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [203.8 s]: 71.8 fps, longest frame 14.6 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [208.8 s]: 71.8 fps, longest frame 14.6 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [213.8 s]: 71.6 fps, longest frame 21.5 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [218.8 s]: 71.8 fps, longest frame 16.4 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [223.8 s]: 71.6 fps, longest frame 19.8 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [228.8 s]: 71.4 fps, longest frame 21.2 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [233.9 s]: 71.8 fps, longest frame 14.6 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [238.9 s]: 71.7 fps, longest frame 21.0 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [243.9 s]: 71.8 fps, longest frame 14.5 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [248.9 s]: 71.8 fps, longest frame 14.8 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [253.9 s]: 72.0 fps, longest frame 15.2 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [258.9 s]: 71.3 fps, longest frame 21.1 ms, session FOCUSED, display 72.0 Hz, editor UI shown.
+HorizonProbe [263.9 s]: 71.8 fps, longest frame 14.7 ms, session FOCUSED, display 72.0 Hz, editor UI shown.

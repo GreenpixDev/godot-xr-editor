@@ -5,14 +5,21 @@ extends EditorPlugin
 const _BENCHMARK_MENU := "XR Editor: Measure Frame Time"
 const _HANDOFF_MENU := "XR Editor: Measure Play Handoff"
 const _HANDOFF_RELEASE_MENU := "XR Editor: Measure Play Handoff (Release Session)"
+## User argument (after [code]--[/code]) that runs [constant _TEST_INSPECTOR]
+## in this editor: the inspector in the headset needs a running editor to be
+## tested (scripts/check.sh). Not shipped with the plugin; without it the flag does nothing.
+const _TEST_INSPECTOR_FLAG := "--xre-test-inspector"
+const _TEST_INSPECTOR := "res://scripts/test_inspector.gd"
 
 var document: XREDocument
 var _session: XRESession
 var _locomotion: XRELocomotion
 var _icons: XREIcons
 var _palette: XREPalette
+var _panels: XREPanels
 var _manipulator: XREManipulator
 var _play_mode: XREPlayMode
+var _launcher: XREStandaloneLauncher
 var _benchmark: XREFrameBenchmark
 var _handoff: XREHandoffBenchmark
 
@@ -46,12 +53,23 @@ func _enter_tree() -> void:
 		_palette = XREPalette.new(document, rig)
 		_palette.name = "XREPalette"
 		rig.add_child(_palette)
+		# After the palette, which claims the right hand on its tray, and before
+		# the manipulator, which leaves alone a hand on a panel.
+		_panels = XREPanels.new(document, rig, _palette, EditorInterface.get_editor_theme(),
+				EditorInterface.get_editor_scale())
+		_panels.name = "XREPanels"
+		rig.add_child(_panels)
 		_manipulator = XREManipulator.new(document, rig, _icons)
 		_manipulator.name = "XREManipulator"
 		rig.add_child(_manipulator)
 		_play_mode = XREPlayMode.new(document, _session, rig)
 		_play_mode.name = "XREPlayMode"
 		rig.add_child(_play_mode)
+	elif XREStandalone.is_standalone():
+		# The editor's 2D panel on a standalone headset: VR is another editor process (D-018).
+		_launcher = XREStandaloneLauncher.new(self)
+		_launcher.name = "XREStandaloneLauncher"
+		add_child(_launcher)
 	_benchmark = XREFrameBenchmark.new()
 	_benchmark.name = "XREFrameBenchmark"
 	_benchmark.session = _session
@@ -63,6 +81,8 @@ func _enter_tree() -> void:
 	add_tool_menu_item(_BENCHMARK_MENU, _benchmark.run)
 	add_tool_menu_item(_HANDOFF_MENU, _handoff.run)
 	add_tool_menu_item(_HANDOFF_RELEASE_MENU, _handoff.run.bind(false, true))
+	if _TEST_INSPECTOR_FLAG in OS.get_cmdline_user_args() and ResourceLoader.exists(_TEST_INSPECTOR):
+		add_child((load(_TEST_INSPECTOR) as GDScript).new(document) as Node)
 
 
 func _exit_tree() -> void:
@@ -70,14 +90,19 @@ func _exit_tree() -> void:
 	remove_tool_menu_item(_HANDOFF_MENU)
 	remove_tool_menu_item(_HANDOFF_RELEASE_MENU)
 	# All of them have already left the tree with this node: the palette threw
-	# away what it held, the manipulator put back what it held, the session
-	# restored the editor's settings, the benchmarks stopped and put the editor
-	# back. The VR tools go with the rig.
+	# away what it held, the panels committed what their inspectors edited, the
+	# manipulator put back what it held, the session restored the editor's
+	# settings, the benchmarks stopped and put the editor back. The VR tools go
+	# with the rig.
 	_locomotion = null
 	_icons = null
 	_palette = null
+	_panels = null
 	_manipulator = null
 	_play_mode = null
+	if _launcher != null:
+		_launcher.queue_free()
+		_launcher = null
 	_handoff.queue_free()
 	_handoff = null
 	_benchmark.queue_free()

@@ -8,6 +8,10 @@ extends SceneTree
 const ReturnToEditor := preload("res://addons/xr_editor/playmode/return_to_editor.gd")
 ## The edited scene's file. Never written: only whether there is one matters.
 const SCENE_PATH := "res://play_mode_test.tscn"
+## Where the editor on a standalone headset leaves its state in this test, not in the project.
+const RETURN_STATE_PATH := "user://test_play_mode_return.cfg"
+## Where the user stands, by the rig, when they play on a standalone headset.
+const PLACE_BEFORE_GAME := Transform3D(Basis(Vector3.UP, 1.0), Vector3(2.0, 0.0, -3.0))
 const USEC := 1000000
 
 
@@ -39,6 +43,12 @@ class FakeDocument extends XREDocument:
 	func set_property(_object: Object, _property: StringName, _value: Variant, _source: Source) -> void:
 		pass
 
+	func preview_property(_object: Object, _property: StringName, _value: Variant) -> void:
+		pass
+
+	func commit_property(_object: Object, _property: StringName, _before: Variant, _source: Source) -> void:
+		pass
+
 	func add_node(_node: Node, _parent: Node, _source: Source) -> void:
 		pass
 
@@ -47,6 +57,20 @@ class FakeDocument extends XREDocument:
 
 	func save(_source: Source) -> Error:
 		return OK
+
+	## Scenes opened, in order. The edited scene stays the same.
+	var opened: Array[String] = []
+
+	func open_scene(path: String, source: Source) -> Error:
+		opened.append(path)
+		_record(&"open_scene", source, [])
+		return OK
+
+	func list_folder(_path: String) -> PackedStringArray:
+		return PackedStringArray()
+
+	func get_file_type(_path: String) -> StringName:
+		return &""
 
 	func play(source: Source, separate_app: bool) -> Error:
 		if root == null or root.scene_file_path.is_empty():
@@ -73,6 +97,8 @@ class FakeDocument extends XREDocument:
 class FakeSession extends XRESession:
 	var focus := true
 	var yields := true
+	## A standalone headset, where the game replaces the editor's process.
+	var replaces := false
 	var released := false
 	var releases := 0
 	var reacquires := 0
@@ -82,6 +108,9 @@ class FakeSession extends XRESession:
 
 	func can_yield_headset() -> bool:
 		return yields
+
+	func game_replaces_editor() -> bool:
+		return replaces
 
 	func is_session_released() -> bool:
 		return released
@@ -107,6 +136,7 @@ var _left: XRControllerTracker
 var _right: XRControllerTracker
 var _document: FakeDocument
 var _session: FakeSession
+var _rig: XRERig
 var _play_mode: XREPlayMode
 var _operations: Array[String] = []
 
@@ -132,6 +162,14 @@ func _initialize() -> void:
 		_press_to_play_again,
 		_release_game_without_headset,
 		_press_to_stop,
+		_stopped,
+		_press_on_standalone,
+		_standalone_game_starts,
+		_standalone_editor_back,
+		_press_with_frames_to_cover,
+		_covering_before_game,
+		_still_covering,
+		_game_starts_once_covered,
 		_finish,
 	]
 
@@ -165,10 +203,14 @@ func _start() -> void:
 			func(operation: StringName, source: XREDocument.Source, _nodes: Array[Node], _time_usec: int) -> void:
 				_operations.append("%s %s" % [operation, XREDocument.Source.keys()[source]]))
 	_session = FakeSession.new()
-	var rig := XRERig.new()
-	_play_mode = XREPlayMode.new(_document, _session, rig)
-	rig.add_child(_play_mode)
-	root.add_child(rig)
+	_rig = XRERig.new()
+	_play_mode = XREPlayMode.new(_document, _session, _rig)
+	_play_mode.return_state_path = RETURN_STATE_PATH
+	# The view is covered at once, so that the game starts in the frame of the press.
+	_play_mode.transition.fade_sec = 0.0
+	_play_mode.transition.frames_to_cover = 0
+	_rig.add_child(_play_mode)
+	root.add_child(_rig)
 	_document.while_saving = _play_mode._process.bind(0.0)
 
 
@@ -190,7 +232,8 @@ func _press_to_play() -> void:
 
 func _release_before_game() -> void:
 	_check(_operations == ["play TOOL"], "Y plays the scene: %s" % [_operations])
-	_check(_play_mode.get_message().begins_with("Starting"), "the headset says the game is starting: %s" % _play_mode.get_message())
+	_check(_play_mode.transition.is_covering() and _play_mode.transition.get_text().begins_with("Starting"),
+			"a loading screen says the game is starting: %s" % _play_mode.transition.get_text())
 	_check(_play_mode.is_playing_from_vr(), "saving before Play doesn't take the game for quit")
 	_y(false)
 
@@ -202,8 +245,9 @@ func _game_takes_headset() -> void:
 
 
 func _game_quits_while_held() -> void:
-	_check(_play_mode.get_message().is_empty(), "the message goes when the game takes the headset")
+	_check(_play_mode.get_message().is_empty(), "no message when the game takes the headset")
 	_check(_play_mode.is_playing_from_vr(), "the game has the headset")
+	_check(_play_mode.transition.is_covering(), "the editor's view stays covered behind the game")
 	# The game quit, and the user still holds Y.
 	_document.playing = false
 	_session.focus = true
@@ -212,6 +256,7 @@ func _game_quits_while_held() -> void:
 func _release_after_return() -> void:
 	_check(_operations.size() == 1, "Y held while coming back doesn't play again: %s" % [_operations])
 	_check(not _play_mode.is_playing_from_vr(), "back in the editor")
+	_check(not _play_mode.transition.is_covering(), "the editor's view shows again")
 	_y(false)
 
 
@@ -223,6 +268,7 @@ func _press_while_gripping() -> void:
 func _release_grip() -> void:
 	_check(_operations.size() == 1, "no play while a grip is held: %s" % [_operations])
 	_check(_play_mode.get_message().contains("grip"), "the headset asks to let go: %s" % _play_mode.get_message())
+	_check(not _play_mode.transition.is_covering(), "a refused play leaves the view alone")
 	_set_grip(_right, 0.0)
 	_y(false)
 	_document.root.scene_file_path = ""
@@ -273,6 +319,7 @@ func _steamvr_editor_back() -> void:
 
 func _press_to_play_again() -> void:
 	_check(_play_mode.get_message().begins_with("SteamVR"), "back from a separate game, the headset warns about SteamVR: %s" % _play_mode.get_message())
+	_check(not _play_mode.transition.is_covering(), "and shows the editor's view again")
 	_y(true)
 
 
@@ -287,11 +334,75 @@ func _press_to_stop() -> void:
 	_y(true)
 
 
-func _finish() -> void:
+func _stopped() -> void:
 	_check(_operations.size() == 4 and _operations[3] == "stop TOOL" and not _document.playing,
 			"Y stops a game that runs without the headset: %s" % [_operations])
 	_check(_play_mode.get_message() == "Game stopped.", "the headset says so: %s" % _play_mode.get_message())
+	_check(not _play_mode.transition.is_covering(), "and shows the editor's view again")
+	_session.replaces = true
+	_rig.transform = PLACE_BEFORE_GAME
+	_y(false)
+
+
+# Standalone headset: the editor's Play replaces the editor's process with the
+# game, and the editor opened after it puts the user back (D-018).
+
+func _press_on_standalone() -> void:
+	_y(true)
+
+
+func _standalone_game_starts() -> void:
+	_check(_operations.size() == 5 and _operations[4] == "play TOOL" and _document.separate,
+			"Y plays without the editor's Play and its debugger on a standalone headset: %s" % [_operations])
+	_check(_session.releases == 1, "the session isn't released for a game that replaces the editor")
+	_check(_play_mode.transition.get_text().contains("Hold Y"),
+			"the loading screen says how to come back: %s" % _play_mode.transition.get_text())
+	# The game ends; the editor it opens finds what this one left, and opens another scene first.
+	_document.playing = false
+	_y(false)
+	_document.root.scene_file_path = "res://another_scene.tscn"
+	_rig.transform = Transform3D.IDENTITY
+	_play_mode.restore_after_game(XREStandalone.take_return_state(RETURN_STATE_PATH))
+	_check(_play_mode.transition.is_covering() and _play_mode.transition.get_text().begins_with("Opening"),
+			"the editor opened after the game starts covered: %s" % _play_mode.transition.get_text())
+
+
+func _standalone_editor_back() -> void:
+	var rig := _rig.transform
+	_check(rig.is_equal_approx(PLACE_BEFORE_GAME), "the user is back where they stood: %s" % rig)
+	_check(not FileAccess.file_exists(RETURN_STATE_PATH), "what the editor left is read once")
+	_check(_document.opened == [SCENE_PATH] and _operations[-1] == "open_scene TOOL",
+			"the scene that was edited opens again: %s, %s" % [_document.opened, _operations])
+	_check(not _play_mode.transition.is_covering(), "and the view shows once it is open")
+	_session.replaces = false
+	_play_mode.transition.frames_to_cover = 2
+
+
+# The game starts only once the headset has been sent the covered view.
+
+func _press_with_frames_to_cover() -> void:
+	_y(true)
+
+
+func _covering_before_game() -> void:
+	_check(_operations.size() == 6 and _play_mode.transition.is_covering() and _play_mode.is_playing_from_vr(),
+			"Y covers the view first: %s" % [_operations])
+	_y(false)
+
+
+func _still_covering() -> void:
+	_check(_operations.size() == 6, "the game waits for covered frames: %s" % [_operations])
+
+
+func _game_starts_once_covered() -> void:
+	_check(_operations.size() == 7 and _operations[6] == "play TOOL",
+			"and starts after %d of them: %s" % [_play_mode.transition.frames_to_cover, _operations])
+
+
+func _finish() -> void:
 	_test_game_args()
+	_test_standalone()
+	_test_transition_screen()
 	_test_return_hold()
 	for tracker in _trackers:
 		XRServer.remove_tracker(tracker)
@@ -309,6 +420,42 @@ func _test_game_args() -> void:
 	_check(XREPlayMode.game_args(args) == args, "the arguments are added once: %s" % XREPlayMode.game_args(args))
 	var regular := XREPlayMode.game_args(PackedStringArray(["--xr-mode", "off"]))
 	_check(regular.count("--xr-mode") == 1 and regular[1] == "off", "Run in Regular Mode stays regular: %s" % regular)
+
+
+func _test_standalone() -> void:
+	var editor := XREStandalone.editor_args(PackedStringArray(["--xre-benchmark"]))
+	_check(editor.slice(0, 2) == PackedStringArray(["--xr-mode", "on"]) and editor[2].ends_with("project.godot")
+			and not editor.has("--editor") and editor.slice(3) == PackedStringArray(["--", "--xre-benchmark"]),
+			"the editor opens in VR by its project.godot, never --editor: %s" % editor)
+	_check(XREStandalone.editor_args(PackedStringArray()).size() == 3, "no user arguments, no --")
+	var on_scene := XREStandalone.editor_args(PackedStringArray(["--xre-benchmark"]), SCENE_PATH)
+	_check(on_scene[3] == SCENE_PATH and on_scene[4] == "--", "the scene to open comes before the plugin's arguments: %s" % on_scene)
+	var measured := XREStandalone.editor_args(PackedStringArray(), "", PackedStringArray(["--benchmark"]))
+	_check(measured.slice(0, 3) == PackedStringArray(["--xr-mode", "on", "--benchmark"]) and measured[3].ends_with("project.godot")
+			and measured.size() == 4, "the engine's arguments come before the project: %s" % measured)
+	var none := XREStandalone.take_return_state(RETURN_STATE_PATH)
+	_check(not none.has_rig and none.scene_path.is_empty(), "nothing left, nothing restored")
+
+
+## The loading screen with its own fade, frame by frame with a made-up delta.
+func _test_transition_screen() -> void:
+	var screen := XRETransitionScreen.new(XRERig.VR_LAYER)
+	_check(not screen.visible and not screen.is_covering(), "the loading screen starts hidden")
+	screen.cover("Starting")
+	_check(screen.visible and screen.is_covering() and not screen.is_covered(), "covering starts a fade")
+	screen._process(screen.fade_sec / 2.0)
+	screen._process(screen.fade_sec / 2.0)
+	for frame: int in screen.frames_to_cover:
+		_check(not screen.is_covered(), "covered only after %d frames drawn so, not %d" % [screen.frames_to_cover, frame])
+		screen._process(0.01)
+	_check(screen.is_covered(), "covered after the fade and %d frames" % screen.frames_to_cover)
+	screen.cover("Other text")
+	_check(screen.is_covered() and screen.get_text() == "Other text", "covering again only changes the text")
+	screen.reveal()
+	_check(screen.visible and not screen.is_covering(), "revealing fades back in")
+	screen._process(screen.fade_sec)
+	_check(not screen.visible, "and hides the screen at the end")
+	screen.free()
 
 
 ## The game side, frame by frame with a made-up clock.

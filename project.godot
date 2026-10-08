@@ -32,7 +32,13 @@ gdscript/warnings/unsafe_method_access=2
 
 enabled=PackedStringArray("res://addons/xr_editor/plugin.cfg")
 
+[rendering]
+
+vrs/mode=2
+
 [xr]
 
 openxr/enabled=true
+openxr/foveation_level=3
+openxr/foveation_dynamic=true
 shaders/enabled=true

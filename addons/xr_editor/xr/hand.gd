@@ -11,7 +11,9 @@ extends XRController3D
 ## [br][br]
 ## Several tools read the same hand. A tool that hovers over or holds something
 ## with the hand claims it ([method claim]); the others leave a claimed hand
-## alone, so that one press does one thing.
+## alone, so that one press does one thing. The thumbstick is claimed apart
+## ([method claim_stick]): a tool may hold an object with the hand while the
+## user still flies and turns with its stick.
 
 ## Length of the ray when it points at nothing, in meters.
 const RAY_LENGTH := 2.0
@@ -44,6 +46,8 @@ var stick_click_pressed := false
 
 ## The tool that claimed the hand, or null.
 var _claimed_by: Object
+## The tool that claimed the thumbstick, or null.
+var _stick_claimed_by: Object
 var _ray: MeshInstance3D
 var _dot: MeshInstance3D
 var _ray_material: StandardMaterial3D
@@ -114,6 +118,23 @@ func claim(tool: Object) -> void:
 func unclaim(tool: Object) -> void:
 	if _claimed_by == tool:
 		_claimed_by = null
+
+
+## Whether [param tool] may read the thumbstick: no other tool has claimed it.
+func is_stick_free_for(tool: Object) -> bool:
+	return _stick_claimed_by == null or _stick_claimed_by == tool
+
+
+## Claims the thumbstick for [param tool] until it calls [method unclaim_stick].
+## Tools that read sticks every frame see a claim made in the previous frame.
+func claim_stick(tool: Object) -> void:
+	_stick_claimed_by = tool
+
+
+## Lets go of the thumbstick, if [param tool] has claimed it.
+func unclaim_stick(tool: Object) -> void:
+	if _stick_claimed_by == tool:
+		_stick_claimed_by = null
 
 
 ## Shows the ray [param length] meters long. With [param hit], the ray is

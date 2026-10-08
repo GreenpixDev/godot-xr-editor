@@ -17,11 +17,13 @@ extends RefCounted
 signal selection_changed
 ## Emitted when the edited scene root is replaced (scene opened, closed or switched).
 signal scene_changed
+## Emitted when files of the project were added, removed or reimported.
+signal files_changed
 ## Emitted once for every operation made through this document, after it took
 ## effect. [param operation] names it ([code]&"select"[/code],
 ## [code]&"transform"[/code], [code]&"set_property"[/code], [code]&"add_node"[/code],
-## [code]&"remove_nodes"[/code], [code]&"save"[/code], [code]&"play"[/code],
-## [code]&"stop"[/code]); [param time_usec] is
+## [code]&"remove_nodes"[/code], [code]&"save"[/code], [code]&"open_scene"[/code],
+## [code]&"play"[/code], [code]&"stop"[/code]); [param time_usec] is
 ## [method Time.get_ticks_usec] at that moment. Previews are not operations.
 signal operation_recorded(operation: StringName, source: Source, nodes: Array[Node], time_usec: int)
 
@@ -58,6 +60,17 @@ enum Source {
 @abstract func set_property(object: Object, property: StringName, value: Variant, source: Source) -> void
 
 
+## Changes a property live while the user drags its value, like
+## [method preview_transform]. Not recorded in undo history and not an
+## operation; finish every drag with [method commit_property].
+@abstract func preview_property(object: Object, property: StringName, value: Variant) -> void
+
+
+## Records one undo step from [param before] to the property's current value,
+## and one [code]&"set_property"[/code] operation.
+@abstract func commit_property(object: Object, property: StringName, before: Variant, source: Source) -> void
+
+
 ## Adds [param node], which has no parent yet, under [param parent] with its
 ## current transform, and makes it part of the saved scene. One undo step.
 @abstract func add_node(node: Node, parent: Node, source: Source) -> void
@@ -71,14 +84,35 @@ enum Source {
 @abstract func save(source: Source) -> Error
 
 
+## Opens the scene saved at [param path] for editing, or switches to it if it
+## is open already, as a double click in the desktop's FileSystem dock does.
+## The edited scene changes ([signal scene_changed]); the scene that was
+## edited stays open. Returns [constant ERR_FILE_UNRECOGNIZED] for a file that
+## is not a scene ([method is_scene_file]).
+@abstract func open_scene(path: String, source: Source) -> Error
+
+
+## The entries of the project folder [param path] (a [code]res://[/code] path),
+## as the desktop's FileSystem dock lists them: subfolders first, each name
+## ending with [code]/[/code], then files, both sorted. Folders Godot ignores
+## and files that are not resources are left out.
+@abstract func list_folder(path: String) -> PackedStringArray
+
+
+## Resource type of the project file at [param path], like
+## [code]&"PackedScene"[/code] or [code]&"Texture2D"[/code]; empty if unknown.
+@abstract func get_file_type(path: String) -> StringName
+
+
 ## Plays the edited scene as a game in its own process, as Run Current Scene
 ## (F6) on the desktop: the open scenes are saved first, and a game already
 ## running is stopped. Returns [constant ERR_UNCONFIGURED] if the scene has no
 ## file yet, because the editor would ask for one on the desktop.
 ## [br][br]
-## With [param separate_app], the game runs so that the OpenXR runtime takes
-## it for another application than the editor, which SteamVR needs
-## (docs/decisions.md, D-012). It then runs without the editor's debugger.
+## With [param separate_app], the plugin starts the game itself, not the
+## editor's Play, and the game runs without the editor's debugger: as another
+## application than the editor, which SteamVR needs (docs/decisions.md, D-012),
+## and on a standalone headset in the editor's own process, which it replaces (D-018).
 @abstract func play(source: Source, separate_app: bool) -> Error
 
 
@@ -115,6 +149,13 @@ static func nodes_to_remove(nodes: Array[Node], root: Node) -> Array[Node]:
 			result.append(node)
 	result.sort_custom(func(a: Node, b: Node) -> bool: return b.is_greater_than(a))
 	return result
+
+
+## Whether [param path] is a scene file the editor opens for editing: a
+## [code].tscn[/code] or [code].scn[/code]. Imported scenes like glTF are not:
+## the desktop opens their import settings instead.
+static func is_scene_file(path: String) -> bool:
+	return path.get_extension().to_lower() in ["tscn", "scn"]
 
 
 ## Reports an operation; every implementation calls it once per operation.

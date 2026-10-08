@@ -11,7 +11,8 @@ extends Node
 ## the scene ([XREIcons]).
 ## [br][br]
 ## Controls:
-## [br]- X on the left controller: show or hide the tray.
+## [br]- X on the left controller: show or hide the tray, and with it the
+## panel on the left forearm ([XREPanels] follows [method is_shown]).
 ## [br]- Grip of the right hand touching a miniature: take that thing out. The
 ## new node is where its miniature was and as big as it, and follows the hand
 ## rigidly; a light is created at its natural scale, as a light has no size.
@@ -155,6 +156,7 @@ func _process(_delta: float) -> void:
 
 	if was_holding or _held != null or _hovered != null:
 		right.claim(self)
+		right.show_ray(XREHand.RAY_LENGTH, false)
 	else:
 		right.unclaim(self)
 	if _hovered != null:

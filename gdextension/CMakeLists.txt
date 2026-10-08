@@ -24,7 +24,13 @@ add_library(xre_native SHARED
 # No loader is linked: every entry point comes from Godot's instance.
 target_include_directories(xre_native PRIVATE thirdparty/openxr/include)
 target_compile_definitions(xre_native PRIVATE XR_NO_PROTOTYPES)
-target_compile_options(xre_native PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->)
+target_compile_options(xre_native PRIVATE
+	$<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->
+	# Android (clang from the NDK): the same bar as /W4. OpenXR structs are
+	# initialized the SDK's way, `XrFoo foo = { XR_TYPE_FOO };`, which zeroes the
+	# other fields; -Wextra would flag every one of them.
+	$<$<CXX_COMPILER_ID:Clang>:-Wall -Wextra -Wno-missing-field-initializers>
+)
 target_link_libraries(xre_native PRIVATE godot-cpp)
 
 get_target_property(GODOTCPP_SUFFIX godot-cpp GODOTCPP_SUFFIX)

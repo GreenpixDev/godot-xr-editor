@@ -1,0 +1,4 @@
+# Probe runs, pulled from the headset with adb
+/probe_logs/
+# Built by build_android.sh
+/addons/xre_native/bin/

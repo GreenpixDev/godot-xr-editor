@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "xre_native_init"
+compatibility_minimum = "4.7"
+; OpenXR keeps raw pointers to the registered wrappers: unloading the library would leave them dangling.
+reloadable = false
+
+[libraries]
+
+; The XR Editor's native library built for the headset by ../../build_android.sh.
+android.debug.arm64 = "res://addons/xre_native/bin/xre_native.android.template_debug.arm64.so"
