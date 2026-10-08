@@ -220,7 +220,7 @@ func _save_metadata(path: String, xr: OpenXRInterface, overrides: Dictionary = {
 		"scene": scene_root.scene_file_path if scene_root != null else "",
 		"scene_nodes": _count_nodes(scene_root) if scene_root != null else 0,
 		# Output panel: without collapsing, the engine's per-frame OpenXR error fills it
-		# up to max_lines, after which every message costs several ms (see CLAUDE.md).
+		# up to max_lines, after which every message costs several ms (see AGENTS.md).
 		"editor_log_collapse": settings.get_setting("_editor_log_collapse") if settings.has_setting("_editor_log_collapse") else null,
 		"editor_log_max_lines": settings.get_setting("run/output/max_lines"),
 		"low_processor_mode": OS.low_processor_usage_mode,
