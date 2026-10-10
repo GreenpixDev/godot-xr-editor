@@ -40,6 +40,8 @@ scripts/check.sh
 
 - [docs/plan.md](docs/plan.md) — план: исследовательские вопросы, объём MVP, архитектура, оценка, риски.
 - [docs/decisions.md](docs/decisions.md) — дневник решений.
+- [docs/power_room_desktop.md](docs/power_room_desktop.md) — полный цикл разработки учебной 3D-игры «Энергоблок» в обычном Godot.
+- [docs/power_room_vr.md](docs/power_room_vr.md) — та же игра в VR: UX каждого этапа разработки в шлеме и границы MVP.
 
 ## Лицензия
 
