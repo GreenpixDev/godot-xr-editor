@@ -17,6 +17,8 @@ const SCENE_LAYERS := (1 << 20) - 1
 var camera: XRCamera3D
 var left_hand: XREHand
 var right_hand: XREHand
+var left_controller: XREControllerModel
+var right_controller: XREControllerModel
 
 
 func _init() -> void:
@@ -31,14 +33,28 @@ func _init() -> void:
 	add_child(left_hand)
 	right_hand = XREHand.new("RightHand", &"right_hand", Color(1.0, 0.6, 0.2))
 	add_child(right_hand)
-	add_child(XREControllerModel.new("LeftController", &"left_hand", XRPositionalTracker.TRACKER_HAND_LEFT))
-	add_child(XREControllerModel.new("RightController", &"right_hand", XRPositionalTracker.TRACKER_HAND_RIGHT))
+	left_controller = XREControllerModel.new("LeftController", &"left_hand", XRPositionalTracker.TRACKER_HAND_LEFT)
+	right_controller = XREControllerModel.new("RightController", &"right_hand", XRPositionalTracker.TRACKER_HAND_RIGHT)
+	add_child(left_controller)
+	add_child(right_controller)
 
 
 func _process(_delta: float) -> void:
 	# Before the tools under the rig: a node processes before its children.
 	left_hand.update_input()
 	right_hand.update_input()
+
+
+## Whether a controller currently provides its physical grip pose.
+func has_grip_pose(hand: XREHand) -> bool:
+	var model := right_controller if hand == right_hand else left_controller
+	return model.get_has_tracking_data()
+
+
+## Physical grip pose for touch/grab; aim is the fallback for trackers without grip.
+func hand_pose(hand: XREHand, physical: bool = false) -> Transform3D:
+	var model := right_controller if hand == right_hand else left_controller
+	return model.global_transform if physical and model.get_has_tracking_data() else hand.global_transform
 
 
 func _notification(what: int) -> void:

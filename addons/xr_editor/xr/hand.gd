@@ -138,11 +138,13 @@ func unclaim_stick(tool: Object) -> void:
 
 
 ## Shows the ray [param length] meters long. With [param hit], the ray is
-## highlighted and ends in a dot.
-func show_ray(length: float, hit: bool) -> void:
+## highlighted and ends in a dot. [param dot_offset] lifts the dot towards the
+## controller for surface UI, without changing the ray's hit distance or depth test.
+func show_ray(length: float, hit: bool, dot_offset: float = 0.0) -> void:
 	# A ray that starts inside a box hits it at 0 m; keep the scale invertible.
 	length = maxf(length, _DOT_RADIUS)
 	_ray.visible = true
+	_ray.basis = Basis.IDENTITY
 	_ray.scale = Vector3(1.0, 1.0, length)
 	_ray.position = Vector3(0.0, 0.0, -length / 2.0)
 	if hit != _ray_hits:
@@ -150,7 +152,15 @@ func show_ray(length: float, hit: bool) -> void:
 		_ray.material_override = _hit_material if hit else _ray_material
 		_dot.visible = hit
 	if hit:
-		_dot.position = Vector3(0.0, 0.0, -length)
+		_dot.position = Vector3(0.0, 0.0, -maxf(length - dot_offset, _DOT_RADIUS))
+
+
+## Keeps pointer visuals above the scene-only logic dimmer.
+func set_overlay(enabled: bool) -> void:
+	for material: StandardMaterial3D in [_ray_material, _hit_material]:
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if enabled else BaseMaterial3D.TRANSPARENCY_DISABLED
+		material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS if enabled else BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
+		material.render_priority = Material.RENDER_PRIORITY_MAX if enabled else 0
 
 
 func hide_ray() -> void:

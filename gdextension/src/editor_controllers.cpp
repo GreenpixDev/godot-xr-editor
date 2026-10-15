@@ -8,6 +8,8 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <cstdio>
+#include <algorithm>
+#include <cmath>
 
 using namespace godot;
 
@@ -16,6 +18,7 @@ namespace xre {
 namespace {
 
 constexpr const char *LOG_PREFIX = "XR Editor: ";
+XREEditorControllers *active_controller = nullptr;
 
 struct ActionInfo {
 	const char *name;
@@ -34,6 +37,7 @@ constexpr ActionInfo ACTION_INFO[] = {
 	{ "ax_button", "A or X button", XR_ACTION_TYPE_BOOLEAN_INPUT },
 	{ "by_button", "B or Y button", XR_ACTION_TYPE_BOOLEAN_INPUT },
 	{ "menu_button", "Menu button", XR_ACTION_TYPE_BOOLEAN_INPUT },
+	{ "haptic", "Haptic feedback", XR_ACTION_TYPE_VIBRATION_OUTPUT },
 };
 
 constexpr const char *HAND_PATHS[] = { "/user/hand/left", "/user/hand/right" };
@@ -45,6 +49,8 @@ struct Binding {
 
 // Meta Quest via Link (and via SteamVR) reports this profile.
 constexpr Binding TOUCH_BINDINGS[] = {
+	{ XREEditorControllers::ACTION_HAPTIC, "/user/hand/left/output/haptic" },
+	{ XREEditorControllers::ACTION_HAPTIC, "/user/hand/right/output/haptic" },
 	{ XREEditorControllers::ACTION_AIM_POSE, "/user/hand/left/input/aim/pose" },
 	{ XREEditorControllers::ACTION_AIM_POSE, "/user/hand/right/input/aim/pose" },
 	{ XREEditorControllers::ACTION_GRIP_POSE, "/user/hand/left/input/grip/pose" },
@@ -66,6 +72,8 @@ constexpr Binding TOUCH_BINDINGS[] = {
 
 // Every conformant runtime supports this profile: poses, select and menu only.
 constexpr Binding SIMPLE_BINDINGS[] = {
+	{ XREEditorControllers::ACTION_HAPTIC, "/user/hand/left/output/haptic" },
+	{ XREEditorControllers::ACTION_HAPTIC, "/user/hand/right/output/haptic" },
 	{ XREEditorControllers::ACTION_AIM_POSE, "/user/hand/left/input/aim/pose" },
 	{ XREEditorControllers::ACTION_AIM_POSE, "/user/hand/right/input/aim/pose" },
 	{ XREEditorControllers::ACTION_GRIP_POSE, "/user/hand/left/input/grip/pose" },
@@ -121,6 +129,7 @@ void XREEditorControllers::_on_session_created(uint64_t p_session) {
 	// before the engine registers its server singletons, so XRServer can't be
 	// reached from an extension yet.
 	active = true;
+	active_controller = this;
 	sync_error_reported = false;
 	UtilityFunctions::print(LOG_PREFIX, "controller action set attached to the editor's OpenXR session.");
 }
@@ -174,6 +183,31 @@ void XREEditorControllers::_on_session_destroyed() {
 	destroy();
 }
 
+bool XREEditorControllers::pulse(Hand p_hand, double p_amplitude, double p_duration) {
+	if (!active || p_hand < HAND_LEFT || p_hand >= HAND_MAX || !std::isfinite(p_amplitude) || !std::isfinite(p_duration) || p_duration <= 0.0) {
+		return false;
+	}
+	XrHapticActionInfo info = { XR_TYPE_HAPTIC_ACTION_INFO };
+	info.action = actions[ACTION_HAPTIC];
+	info.subactionPath = hand_paths[p_hand];
+	XrHapticVibration vibration = { XR_TYPE_HAPTIC_VIBRATION };
+	vibration.amplitude = static_cast<float>(std::clamp(p_amplitude, 0.0, 1.0));
+	vibration.duration = static_cast<XrDuration>(std::clamp(p_duration, 0.001, 1.0) * 1000000000.0);
+	vibration.frequency = XR_FREQUENCY_UNSPECIFIED;
+	return xrApplyHapticFeedback(session, &info, reinterpret_cast<const XrHapticBaseHeader *>(&vibration)) == XR_SUCCESS;
+}
+
+void XREEditorHaptics::_bind_methods() {
+	ClassDB::bind_static_method("XREEditorHaptics", D_METHOD("pulse", "hand", "amplitude", "duration"), &XREEditorHaptics::pulse);
+}
+
+bool XREEditorHaptics::pulse(int64_t p_hand, double p_amplitude, double p_duration) {
+	if (active_controller == nullptr || p_hand < 0 || p_hand >= XREEditorControllers::HAND_MAX) {
+		return false;
+	}
+	return active_controller->pulse(static_cast<XREEditorControllers::Hand>(p_hand), p_amplitude, p_duration);
+}
+
 bool XREEditorControllers::_on_event_polled(const void *p_event) {
 	const XrEventDataBuffer *event = static_cast<const XrEventDataBuffer *>(p_event);
 	if (active && event->type == XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED) {
@@ -205,6 +239,7 @@ bool XREEditorControllers::load_functions() {
 	XRE_LOAD(xrGetActionStateVector2f);
 	XRE_LOAD(xrLocateSpace);
 	XRE_LOAD(xrGetCurrentInteractionProfile);
+	XRE_LOAD(xrApplyHapticFeedback);
 	return true;
 }
 
@@ -302,6 +337,9 @@ void XREEditorControllers::create_trackers() {
 }
 
 void XREEditorControllers::destroy() {
+	if (active_controller == this) {
+		active_controller = nullptr;
+	}
 	active = false;
 	// Not registered yet if the session dies during startup.
 	XRServer *xr_server = Engine::get_singleton()->has_singleton("XRServer") ? XRServer::get_singleton() : nullptr;

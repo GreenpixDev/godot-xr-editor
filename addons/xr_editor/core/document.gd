@@ -19,6 +19,8 @@ signal selection_changed
 signal scene_changed
 ## Emitted when files of the project were added, removed or reimported.
 signal files_changed
+## Assignments/scene history changed; graph widgets refresh outside the frame loop.
+signal blueprint_bindings_changed
 ## Emitted once for every operation made through this document, after it took
 ## effect. [param operation] names it ([code]&"select"[/code],
 ## [code]&"transform"[/code], [code]&"set_property"[/code], [code]&"add_node"[/code],
@@ -35,6 +37,20 @@ enum Source {
 	## A flat panel shown in the headset.
 	PANEL,
 }
+
+## Optional synchronous validation before launching a game from the headset.
+var prepare_play: Callable
+
+
+## Associates graph source and generated script in one scene-history operation.
+## Runtime/fake documents may override this; unrelated scripts must be protected.
+func assign_blueprint(_host: Node, _path: String, _script: Script, _source: Source) -> bool:
+	return false
+
+
+## Routes graph operations to the same research telemetry as scene tools.
+func record_graph_operation(operation: StringName, source: Source) -> void:
+	_record(operation, source, [])
 
 
 ## Root of the scene being edited, or null if no scene is open.

@@ -1,0 +1,273 @@
+@tool
+class_name XREBlueprintGraph
+extends Resource
+## Serializable visual program. The UI and compiler share this format, not UI nodes.
+
+const FORMAT_VERSION := 2
+const MAX_NODES := 256
+const EXEC := 0
+const VALUE := 1
+const BOOLEAN := 2
+const INTEGER := 3
+const NUMBER := 4
+const TEXT := 5
+const VECTOR2 := 6
+const VECTOR3 := 7
+const OBJECT := 8
+const COLOR := 9
+## Port entries are [label, type]. Execution flows and values cannot be mixed.
+const BLOCKS := {
+	"ready": {"title": "On Ready", "in": [], "out": [["Then", EXEC]], "params": {"policy": "parallel"}},
+	"signal": {"title": "On Signal", "in": [], "out": [["Then", EXEC]], "params": {"target": ".", "signal": "pressed", "policy": "parallel"}},
+	"print": {"title": "Print", "in": [["In", EXEC], ["Value", VALUE]], "out": [["Then", EXEC]], "params": {"value": "Hello from Blueprints"}},
+	"set_property": {"title": "Set Property", "in": [["In", EXEC], ["Value", VALUE], ["Target", OBJECT]], "out": [["Then", EXEC]], "params": {"target": ".", "property": "visible", "value": true}},
+	"tween": {"title": "Tween Property", "in": [["In", EXEC], ["Value", VALUE], ["Target", OBJECT]], "out": [["Finished", EXEC]], "params": {"target": ".", "property": "position", "value": Vector2(400, 240), "seconds": 1.0}},
+	"branch": {"title": "Branch", "in": [["In", EXEC], ["Condition", BOOLEAN]], "out": [["True", EXEC], ["False", EXEC]], "params": {"condition": true}},
+	"delay": {"title": "Delay", "in": [["In", EXEC]], "out": [["Finished", EXEC]], "params": {"seconds": 1.0}},
+	"play_sound": {"title": "Play Sound", "in": [["In", EXEC], ["Target", OBJECT]], "out": [["Then", EXEC]], "params": {"target": "AudioStreamPlayer"}},
+	"play_animation": {"title": "Play Animation", "in": [["In", EXEC], ["Target", OBJECT]], "out": [["Then", EXEC]], "params": {"target": "AnimationPlayer", "animation": "open", "wait": false, "timeout": 30.0}},
+	"value": {"title": "Value", "in": [], "out": [["Value", VALUE]], "params": {"value": 1.0}},
+	"boolean": {"title": "Boolean", "in": [], "out": [["Value", BOOLEAN]], "params": {"value": true}},
+	"get_property": {"title": "Get Property", "in": [["Target", OBJECT]], "out": [["Value", VALUE]], "params": {"target": ".", "property": "visible"}},
+	"equals": {"title": "Equal", "in": [["A", VALUE], ["B", VALUE]], "out": [["Result", BOOLEAN]], "params": {"a": 1.0, "b": 1.0}},
+	"get_variable": {"title": "Get Variable", "in": [], "out": [["Value", VALUE]], "params": {"variable": ""}},
+	"set_variable": {"title": "Set Variable", "in": [["In", EXEC], ["Value", VALUE]], "out": [["Then", EXEC]], "params": {"variable": "", "value": false}},
+}
+
+@export var format_version: int = FORMAT_VERSION
+@export var nodes: Array[Dictionary] = []
+@export var edges: Array[Dictionary] = []
+@export var variables: Array[Dictionary] = []
+## Script host relative to the edited scene root; editor context, not a runtime target.
+@export var host_path: NodePath = NodePath(".")
+## Owning scene for editor reflection. Generated runtime targets remain relative.
+@export var scene_path: String = ""
+## Editor-only fixed workspace pose and XY origin, retained across VR reopenings.
+@export var vr_placed := false
+@export var vr_workspace := Transform3D.IDENTITY
+@export var vr_center := Vector2.ZERO
+
+
+## Independent snapshot for undo and dirty-state comparison.
+func snapshot() -> Dictionary:
+	return {"nodes": nodes.duplicate(true), "edges": edges.duplicate(true), "variables": variables.duplicate(true), "host_path": host_path, "scene_path": scene_path, "format_version": format_version, "vr_placed": vr_placed, "vr_workspace": vr_workspace, "vr_center": vr_center}
+
+
+## Applies one complete edit and notifies every view of this resource.
+func restore(state: Dictionary) -> void:
+	nodes.assign((state["nodes"] as Array).duplicate(true))
+	edges.assign((state["edges"] as Array).duplicate(true))
+	variables.assign((state.get("variables", []) as Array).duplicate(true))
+	host_path = state.get("host_path", NodePath("."))
+	scene_path = state.get("scene_path", "")
+	format_version = state.get("format_version", FORMAT_VERSION)
+	vr_placed = state.get("vr_placed", false)
+	vr_workspace = state.get("vr_workspace", Transform3D.IDENTITY)
+	vr_center = state.get("vr_center", Vector2.ZERO)
+	emit_changed()
+
+
+## Finds a block by its stable integer ID, independent of its screen position.
+func find_node(id: int) -> Dictionary:
+	for block: Dictionary in nodes:
+		if block.get("id", -1) == id:
+			return block
+	return {}
+
+
+## Finds a graph variable. Its default determines its fixed type.
+func find_variable(name: String) -> Dictionary:
+	for variable: Dictionary in variables:
+		if variable.get("name", "") == name:
+			return variable
+	return {}
+
+
+## Migrates first-version files in memory. Saving is explicit and preserves old wires.
+func upgrade() -> void:
+	if format_version > FORMAT_VERSION:
+		return
+	for block: Dictionary in nodes:
+		if BLOCKS.has(block.get("kind")) and block.get("params") is Dictionary:
+			(block["params"] as Dictionary).merge(BLOCKS[block["kind"]]["params"], false)
+	format_version = FORMAT_VERSION
+
+
+## Port arrays include reflected properties, variables and signal arguments.
+func ports(block: Dictionary, input: bool) -> Array:
+	var result: Array = (BLOCKS[block["kind"]]["in" if input else "out"] as Array).duplicate(true)
+	var kind: String = block["kind"]
+	var params: Dictionary = block["params"]
+	if not input and kind == "signal":
+		for argument: Dictionary in block.get("arguments", []):
+			result.append([argument["name"], port_type(argument["type"])])
+	if not input and kind == "value":
+		result[0][1] = port_type(typeof(params["value"]))
+	if kind in ["get_property", "set_property", "tween"]:
+		if (input and kind != "get_property") or (not input and kind == "get_property"):
+			result[1 if input else 0][1] = port_type(block.get("property_type", TYPE_NIL))
+	if kind in ["get_variable", "set_variable"]:
+		var variable := find_variable(params["variable"])
+		if not variable.is_empty() and ((input and kind == "set_variable") or (not input and kind == "get_variable")):
+			result[1 if input else 0][1] = port_type(typeof(variable["value"]))
+	return result
+
+
+## Maps Godot's Variant type to a graph port category.
+static func port_type(type: int) -> int:
+	return {TYPE_BOOL: BOOLEAN, TYPE_INT: INTEGER, TYPE_FLOAT: NUMBER, TYPE_STRING: TEXT, TYPE_STRING_NAME: TEXT, TYPE_VECTOR2: VECTOR2, TYPE_VECTOR3: VECTOR3, TYPE_OBJECT: OBJECT, TYPE_COLOR: COLOR}.get(type, VALUE)
+
+
+## Allowed data conversions; execution can only connect to execution.
+static func ports_compatible(from: int, to: int) -> bool:
+	return from == to or (to == VALUE and from != EXEC) or (from == INTEGER and to == NUMBER)
+
+
+## Index of the optional runtime Target input; object-valued data inputs are separate.
+static func target_port(block: Dictionary) -> int:
+	return {"get_property": 0, "set_property": 2, "tween": 2, "play_sound": 1, "play_animation": 1}.get(block["kind"], -1)
+
+
+## Creates a block with isolated default parameters.
+static func make_node(id: int, kind: String, position: Vector2) -> Dictionary:
+	return {"id": id, "kind": kind, "position": position, "params": (BLOCKS[kind]["params"] as Dictionary).duplicate(true)}
+
+
+## Whether a literal can be represented by this version of the editor/compiler.
+static func is_literal(value: Variant) -> bool:
+	match typeof(value):
+		TYPE_BOOL, TYPE_INT, TYPE_STRING:
+			return true
+		TYPE_FLOAT:
+			return is_finite(value)
+		TYPE_VECTOR2:
+			return (value as Vector2).is_finite()
+		TYPE_VECTOR3:
+			return (value as Vector3).is_finite()
+		TYPE_COLOR:
+			var color := value as Color
+			return is_finite(color.r) and is_finite(color.g) and is_finite(color.b) and is_finite(color.a)
+	return false
+
+
+## Execution may loop; data dependencies must remain acyclic.
+func validate() -> PackedStringArray:
+	var errors := PackedStringArray()
+	if not vr_center.is_finite() or not vr_workspace.origin.is_finite() or not vr_workspace.basis.x.is_finite() or not vr_workspace.basis.y.is_finite() or not vr_workspace.basis.z.is_finite() or absf(vr_workspace.basis.determinant()) < 0.0001:
+		errors.append("Invalid VR workspace placement.")
+	if format_version != FORMAT_VERSION:
+		errors.append("Unsupported graph format: %d." % format_version)
+	if nodes.size() > MAX_NODES:
+		errors.append("A graph can contain at most %d blocks." % MAX_NODES)
+	var ids: Dictionary = {}
+	var names: Dictionary = {}
+	for variable: Dictionary in variables:
+		var name: String = str(variable.get("name", ""))
+		if not variable.get("name") is String or not name.is_valid_identifier() or names.has(name) or not is_literal(variable.get("value")):
+			errors.append("Variables need unique identifiers and supported default values.")
+		names[name] = true
+	for block: Dictionary in nodes:
+		var id: Variant = block.get("id")
+		var kind: Variant = block.get("kind")
+		if not id is int or id < 1 or ids.has(id):
+			errors.append("Block IDs must be unique positive integers.")
+			continue
+		ids[id] = true
+		if not kind is String or not BLOCKS.has(kind):
+			errors.append("Block #%s has an unknown kind." % id)
+			continue
+		if not block.get("position") is Vector2 or not block.get("params") is Dictionary:
+			errors.append("Block #%s has invalid position or parameters." % id)
+			continue
+		if block.has("vr_depth") and (not typeof(block["vr_depth"]) in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(block["vr_depth"]))):
+			errors.append("Block #%s has invalid VR depth." % id)
+		if block.has("vr_rotation") and (not block["vr_rotation"] is Vector3 or not (block["vr_rotation"] as Vector3).is_finite()):
+			errors.append("Block #%s has invalid VR rotation." % id)
+		var params: Dictionary = block["params"]
+		var defaults: Dictionary = BLOCKS[kind]["params"]
+		for key: String in defaults:
+			if not params.has(key) or not is_literal(params[key]):
+				errors.append("Block #%s: invalid %s." % [id, key])
+				continue
+			if key in ["target", "property", "signal", "animation"]:
+				if not params[key] is String or (key != "target" and str(params[key]).strip_edges().is_empty()):
+					errors.append("Block #%s: %s must be nonempty text." % [id, key])
+			if key == "seconds" and (not typeof(params[key]) in [TYPE_INT, TYPE_FLOAT] or float(params[key]) <= 0.0):
+				errors.append("Block #%s: duration must be positive." % id)
+			if (key == "condition" or kind == "boolean") and not params[key] is bool:
+				errors.append("Block #%s: expected a boolean." % id)
+			if key == "policy" and not params[key] in ["parallel", "ignore", "restart"]:
+				errors.append("Block #%s: unknown event policy." % id)
+			if key == "wait" and not params[key] is bool:
+				errors.append("Block #%s: wait must be boolean." % id)
+			if key == "variable" and not params[key] is String:
+				errors.append("Block #%s: variable must be an identifier." % id)
+			if key == "timeout" and (not typeof(params[key]) in [TYPE_INT, TYPE_FLOAT] or float(params[key]) <= 0):
+				errors.append("Block #%s: timeout must be positive." % id)
+		if block.has("property_type") and (not block["property_type"] is int or block["property_type"] < TYPE_NIL or block["property_type"] >= TYPE_MAX):
+			errors.append("Block #%s: invalid property type." % id)
+		if not block.get("arguments", []) is Array:
+			errors.append("Block #%s: invalid signal arguments." % id)
+		else:
+			for argument: Variant in block.get("arguments", []):
+				if not argument is Dictionary or not (argument as Dictionary).get("name") is String or not (argument as Dictionary).get("type") is int:
+					errors.append("Block #%s: invalid signal argument." % id)
+				elif int(argument["type"]) < TYPE_NIL or int(argument["type"]) >= TYPE_MAX:
+					errors.append("Block #%s: invalid signal argument type." % id)
+	if not errors.is_empty():
+		return errors
+	var occupied: Dictionary = {}
+	var degrees: Dictionary = {}
+	var outgoing: Dictionary = {}
+	for id: int in ids:
+		degrees[id] = 0
+		outgoing[id] = []
+	for edge: Dictionary in edges:
+		if not _valid_edge_shape(edge):
+			errors.append("A connection has invalid endpoints or ports.")
+			continue
+		var from_block := find_node(edge["from"])
+		var to_block := find_node(edge["to"])
+		var outputs := ports(from_block, false)
+		var inputs := ports(to_block, true)
+		var from_type: int = outputs[edge["from_port"]][1]
+		var to_type: int = inputs[edge["to_port"]][1]
+		if not ports_compatible(from_type, to_type):
+			errors.append("Incompatible ports on #%d and #%d." % [edge["from"], edge["to"]])
+		# Execution may merge; values may fan out. The other directions are single.
+		var key := ("out:%d:%d" % [edge["from"], edge["from_port"]] if from_type == EXEC
+				else "in:%d:%d" % [edge["to"], edge["to_port"]])
+		if occupied.has(key):
+			errors.append("Port already connected: %s." % key)
+		occupied[key] = true
+		if from_type != EXEC:
+			degrees[edge["to"]] += 1
+			(outgoing[edge["from"]] as Array).append(edge["to"])
+	var pending: Array[int] = []
+	for id: int in degrees:
+		if degrees[id] == 0:
+			pending.append(id)
+	var visited := 0
+	while not pending.is_empty():
+		var id: int = pending.pop_back()
+		visited += 1
+		for next: int in outgoing[id]:
+			degrees[next] -= 1
+			if degrees[next] == 0:
+				pending.append(next)
+	if visited != ids.size():
+		errors.append("Data dependency cycles are not supported. Store changing state in a variable.")
+	return errors
+
+
+func _valid_edge_shape(edge: Dictionary) -> bool:
+	for key: String in ["from", "from_port", "to", "to_port"]:
+		if not edge.get(key) is int:
+			return false
+	var from_block := find_node(edge["from"])
+	var to_block := find_node(edge["to"])
+	if from_block.is_empty() or to_block.is_empty():
+		return false
+	var outputs := ports(from_block, false)
+	var inputs := ports(to_block, true)
+	return edge["from_port"] >= 0 and edge["from_port"] < outputs.size() and edge["to_port"] >= 0 and edge["to_port"] < inputs.size()

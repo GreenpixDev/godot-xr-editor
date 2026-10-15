@@ -22,6 +22,7 @@ XREReturnToEditor="*res://addons/xr_editor/playmode/return_to_editor.gd"
 [debug]
 
 gdscript/warnings/directory_rules={
+"res://addons/blueprints": 1,
 "res://addons/xr_editor": 1
 }
 gdscript/warnings/untyped_declaration=2
@@ -30,7 +31,7 @@ gdscript/warnings/unsafe_method_access=2
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/xr_editor/plugin.cfg")
+enabled=PackedStringArray("res://addons/xr_editor/plugin.cfg", "res://addons/blueprints/plugin.cfg")
 
 [rendering]
 

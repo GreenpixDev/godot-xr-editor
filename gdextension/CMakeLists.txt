@@ -19,6 +19,8 @@ add_library(xre_native SHARED
 	src/frame_timer.h
 	src/picker.cpp
 	src/picker.h
+	src/graph_wire.cpp
+	src/graph_wire.h
 )
 # Same OpenXR headers as Godot 4.7.2 (thirdparty/openxr, OpenXR SDK 1.1.54).
 # No loader is linked: every entry point comes from Godot's instance.

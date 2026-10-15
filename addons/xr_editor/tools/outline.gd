@@ -2,7 +2,7 @@
 class_name XREOutline
 extends Node
 ## Marks a node of the edited scene in the headset by drawing its own edges
-## (docs/decisions.md, D-020), only in the headset and on top of everything.
+## (docs/decisions.md, D-020), only in the headset, respecting occlusion (D-026).
 ##
 ## A box around the node's bounds made objects look bigger when selected, and
 ## wrong for anything but a box. This draws lines along the edges of the
@@ -29,7 +29,7 @@ const _RENDER_PRIORITY := 64
 
 const _SHADER := """
 shader_type spatial;
-render_mode unshaded, depth_test_disabled, shadows_disabled;
+render_mode unshaded, depth_draw_never, shadows_disabled;
 
 uniform vec4 line_color : source_color = vec4(1.0);
 // Edges whose faces' normals are less alike than this are always drawn.
@@ -45,7 +45,11 @@ void vertex() {
 	bool outline = dot(first, to_edge) * dot(second, to_edge) < 0.0;
 	bool sharp = dot(first, second) < crease;
 	if (outline || sharp) {
-		POSITION = PROJECTION_MATRIX * (MODELVIEW_MATRIX * vec4(VERTEX, 1.0));
+		vec4 view = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
+		// Half a millimeter towards the eye avoids fighting the source surface.
+		// Bias in view space works with both projection/depth conventions.
+		view.xyz -= normalize(view.xyz) * 0.0005;
+		POSITION = PROJECTION_MATRIX * view;
 	} else {
 		// Outside the view: the line isn't drawn.
 		POSITION = vec4(2.0, 2.0, 2.0, 1.0);
@@ -54,6 +58,8 @@ void vertex() {
 
 void fragment() {
 	ALBEDO = line_color.rgb;
+	// Draw after opaque geometry, testing its depth without overwriting it.
+	ALPHA = 1.0;
 }
 """
 

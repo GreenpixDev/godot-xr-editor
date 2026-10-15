@@ -221,6 +221,7 @@ func _on_button_pressed(now: int) -> void:
 	if not refusal.is_empty():
 		_show(refusal)
 		return
+	if not _prepare_document(): return
 	# The game starts in _process() once the headset has been sent the covered view.
 	_state = _State.COVERING
 	_message.visible = false
@@ -234,6 +235,8 @@ func _start_game(now: int) -> void:
 		_state = _State.IDLE
 		_show(refusal)
 		return
+	# Recheck changes made while fading, before SteamVR's session is released.
+	if not _prepare_document(): return
 	if _session.game_replaces_editor():
 		_play_replacing_editor(now)
 		return
@@ -259,6 +262,14 @@ func _start_game(now: int) -> void:
 		_show("Could not start the game (%s)." % error_string(error))
 		return
 	_log("starting the game.")
+
+
+func _prepare_document() -> bool:
+	if _document.prepare_play.is_valid() and not bool(_document.prepare_play.call()):
+		_state = _State.IDLE
+		_show("Blueprint validation failed. Correct the graph before Play.")
+		return false
+	return true
 
 
 ## Standalone headset (D-018): leaves the scene and the rig's transform for the

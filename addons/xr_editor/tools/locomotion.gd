@@ -11,18 +11,14 @@ extends Node
 ## [br]- Left thumbstick click: next flying speed of [constant SPEEDS], round
 ## and round. The speed shows in front of the user for a moment.
 ## [br]- Right thumbstick, left and right: turn about the head, up to
-## [constant MAX_TURN_SPEED]. Up and down: tilt the view up and down about the
-## head, up to [constant MAX_PITCH_SPEED], no further than [constant MAX_PITCH]
-## from level. Pushing up looks up. Not while the right hand points at a panel:
+## [constant MAX_TURN_SPEED]. Up and down leave the horizon unchanged.
+## Not while the right hand points at a panel:
 ## the stick scrolls it then ([method XREHand.claim_stick]).
-## [br]- Right thumbstick click: level the view again.
+## [br]- Right thumbstick click: no navigation action.
 ## [br][br]
-## The turn is about the vertical, the tilt about the rig's own side-to-side
-## axis, so the rig never rolls: looking straight ahead, the horizon stays
-## level. Looking to the side while tilted, it doesn't: the whole play space is
-## tilted, and the head stays upright in it.
+## Turning is about the world vertical and leaves the play space level.
 ## [br][br]
-## While the user moves, turns or tilts, a vignette darkens the edges of the
+## While the user moves or turns, a vignette darkens the edges of the
 ## view against motion sickness, the more the faster. Moves the [XRERig], and
 ## nothing else: the scene is not changed, so nothing is recorded. Lives under
 ## the rig, before the other tools, so that they see where the rig is this frame.
@@ -38,12 +34,6 @@ const SPEED_LABEL_SEC := 1.0
 const SPEED_LABEL_OFFSET := Vector3(0.0, -0.15, -0.8)
 ## Turning speed with the stick all the way, in degrees per second.
 const MAX_TURN_SPEED := 90.0
-## Tilting speed with the stick all the way, in degrees per second: slower than
-## turning, as tilting the whole view up and down is harder on the stomach.
-const MAX_PITCH_SPEED := 45.0
-## How far the view tilts up or down from level, in degrees: short of straight
-## up, where the turn and the tilt would be about the same axis.
-const MAX_PITCH := 80.0
 ## Stick tilt that counts as none: resting sticks drift a little.
 const DEAD_ZONE := 0.15
 ## Angle from the view's center where the vignette begins to darken, and where
@@ -129,7 +119,7 @@ func _process(delta: float) -> void:
 	var right := _rig.right_hand
 	if right.is_stick_free_for(self):
 		var stick := right.get_vector2(&"primary")
-		turn = Vector2(_axis_tilt(stick.x), _axis_tilt(stick.y))
+		turn.x = _axis_tilt(stick.x)
 
 	if not move.is_zero_approx():
 		var aim := _rig.left_hand.global_basis
@@ -140,41 +130,13 @@ func _process(delta: float) -> void:
 	var pivot := _rig.camera.global_position
 	if not is_zero_approx(turn.x):
 		_rig.global_transform = turned(_rig.global_transform, pivot, -deg_to_rad(turn.x * MAX_TURN_SPEED * delta))
-	if right.stick_click_pressed and right.is_stick_free_for(self):
-		_rig.global_transform = pitched(_rig.global_transform, pivot, -pitch_of(_rig.global_transform))
-	elif not is_zero_approx(turn.y):
-		var step := deg_to_rad(turn.y * MAX_PITCH_SPEED * delta)
-		_rig.global_transform = pitched(_rig.global_transform, pivot, limited_pitch_step(pitch_of(_rig.global_transform), step))
-
-	_update_vignette(maxf(move.length(), maxf(absf(turn.x), absf(turn.y))), delta)
+	_update_vignette(maxf(move.length(), absf(turn.x)), delta)
 
 
 ## [param rig] turned by [param angle] radians about the vertical line through
 ## [param pivot]; positive turns to the left, seen from above.
 static func turned(rig: Transform3D, pivot: Vector3, angle: float) -> Transform3D:
 	return Transform3D(Basis(Vector3.UP, angle), pivot) * Transform3D(Basis.IDENTITY, -pivot) * rig
-
-
-## [param rig] tilted by [param angle] radians about its own side-to-side axis
-## through [param pivot]; positive tilts the view up.
-static func pitched(rig: Transform3D, pivot: Vector3, angle: float) -> Transform3D:
-	var tilted := Transform3D(Basis(rig.basis.x.normalized(), angle), pivot) * Transform3D(Basis.IDENTITY, -pivot) * rig
-	# Tilting a little every frame for minutes would let the basis drift off square.
-	tilted.basis = tilted.basis.orthonormalized()
-	return tilted
-
-
-## How far [param rig] looks up from level, in radians; negative for down. A
-## rig the tools only turn and tilt has no other tilt.
-static func pitch_of(rig: Transform3D) -> float:
-	return asin(clampf(-rig.basis.z.normalized().y, -1.0, 1.0))
-
-
-## [param step], a change of [param pitch] in radians, cut short where it
-## would leave the [constant MAX_PITCH] from level.
-static func limited_pitch_step(pitch: float, step: float) -> float:
-	var limit := deg_to_rad(MAX_PITCH)
-	return clampf(pitch + step, -limit, limit) - pitch
 
 
 ## How far a stick at [param stick] is tilted past the dead zone, 0 to 1 along each axis' direction.

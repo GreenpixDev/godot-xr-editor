@@ -161,6 +161,8 @@ func _initialize() -> void:
 		_room_selected,
 		_test_proxy,
 		_test_inspector_tab,
+		_test_fps,
+		_fps_closed,
 		_finish,
 	]
 
@@ -307,8 +309,11 @@ func _texts(tree: Tree) -> Array[String]:
 
 func _show_panel() -> void:
 	_check(_palette.is_shown() and _hand_panel.is_shown(), "X shows the tray and the forearm panel")
-	_check(_hand_panel.global_transform.is_equal_approx(_left_aim * XREPanels.HAND_OFFSET),
-			"the panel lies on the forearm: %s" % _hand_panel.global_transform)
+	_check(_hand_panel.global_transform.is_equal_approx(_left_aim * XREPanels.HAND_OFFSET), "hand panel keeps its original forearm tilt")
+	var fps := _panels.get("_fps") as XREFPSWidget
+	_check(fps.is_shown(), "X shows the original FPS chart at the right hand")
+	_check(fps.size_m.is_equal_approx(_hand_panel.size_m), "FPS has the same physical width and height as the left panel")
+	_check(fps.global_transform.is_equal_approx(_rig.right_hand.global_transform * XREPanels.FPS_OFFSET), "FPS follows the tilted right wrist")
 	_left.set_input(&"ax_button", false)
 
 
@@ -386,7 +391,7 @@ func _window_opened() -> void:
 	# The head tracker is absent: the head is at the rig's origin, looking down -Z.
 	_check_vector(window.global_position, Vector3(0.0, -XREPanels.WINDOW_DROP, -XREPanels.WINDOW_DISTANCE),
 			"the window opens in front of the user")
-	_check(window.global_basis.z.dot(-window.global_position.normalized()) > 0.999, "and faces the head")
+	_check(window.global_basis.z.is_equal_approx(Vector3.BACK) and window.global_basis.y.is_equal_approx(Vector3.UP), "window faces the head horizontally without tilting")
 	_check(window.tab is XRESignalsTab and window.tab != _hand_panel.get_current_tab(), "with its own tab")
 
 
@@ -435,8 +440,11 @@ func _files_carried() -> void:
 	if window == null:
 		return
 	_check_vector(window.global_position, _window_before + Vector3(0.2, 0.0, 0.0), "the window follows the hand")
-	var to_head := (_rig.camera.global_position - window.global_position).normalized()
+	var to_head := _rig.camera.global_position - window.global_position
+	to_head.y = 0
+	to_head = to_head.normalized()
 	_check(window.global_basis.z.dot(to_head) > 0.999, "and turns to face the head")
+	_check(window.global_basis.y.is_equal_approx(Vector3.UP), "carried window stays vertical")
 	_window_before = window.global_position
 	_pose(_right, _rig.right_hand.global_transform, 0.0, 0.0)
 
@@ -632,6 +640,35 @@ func _test_inspector_tab() -> void:
 	_hand_panel.select_tab(1)
 	_check(tab.get_title() == XREPanelTab.editor_text("Inspector") and tab.get_inspector() == null,
 			"without the editor the inspector tab has no inspector")
+
+
+func _test_fps() -> void:
+	var history := XREFPSHistory.new()
+	for frame: int in 25: history.record_interval(0.01, (frame + 1) * 0.01, true)
+	_check(is_equal_approx(history.latest_fps, 100), "FPS history derives from monotonic intervals")
+	history.record_interval(0.6, 0.85, true)
+	_check(is_equal_approx(history.latest_worst_ms, 600), "chart preserves a long single frame interval")
+	history.record_interval(0, 0.9, false)
+	_check(not history.focused and is_nan(history.fps[history.index_at(history.count - 1)]), "focus loss creates a gap in the history")
+	for sample: int in 600: history.record_interval(0.25, 1 + sample * 0.25, true)
+	_check(history.count == XREFPSHistory.CAPACITY and history.fps.size() == XREFPSHistory.CAPACITY, "FPS history uses a bounded ring")
+	_check(history.timestamps[history.index_at(0)] < history.timestamps[history.index_at(history.count - 1)], "FPS ring keeps chronological order")
+	var widget := _panels.get("_fps") as XREFPSWidget
+	widget.set_shown(true)
+	_check((widget.get("_number") as Label).text.contains("no live XR session"), "missing session does not fabricate a measurement")
+	var session := XRESession.new()
+	widget.setup(session)
+	session.fps_history.record_interval(0.4, 1, true)
+	_check((widget.get("_chart") as XREFPSChart).history == session.fps_history, "restored widget keeps the original chart/history source")
+	_check((widget.get("_number") as Label).text.contains("Main loop"), "restored widget labels its actual source")
+	_check((widget.get("_viewport") as SubViewport).render_target_update_mode == SubViewport.UPDATE_ONCE, "history refresh schedules one render")
+	widget.setup(null)
+	session.free()
+	widget.close_requested.emit()
+
+
+func _fps_closed() -> void:
+	_check(not (_panels.get("_fps") as XREFPSWidget).is_shown(), "Close FPS hides the wrist widget until menus are reopened")
 
 
 func _finish() -> void:

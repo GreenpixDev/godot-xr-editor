@@ -155,6 +155,8 @@ func _initialize() -> void:
 		_release_grip,
 		_press_unsaved,
 		_release_unsaved,
+		_press_invalid_blueprint,
+		_invalid_blueprint_keeps_headset,
 		_press_on_steamvr,
 		_steamvr_game_runs,
 		_steamvr_game_quits_while_held,
@@ -166,6 +168,10 @@ func _initialize() -> void:
 		_press_on_standalone,
 		_standalone_game_starts,
 		_standalone_editor_back,
+		_press_before_invalid_fade,
+		_invalidate_during_fade,
+		_wait_invalid_fade,
+		_invalid_fade_keeps_headset,
 		_press_with_frames_to_cover,
 		_covering_before_game,
 		_still_covering,
@@ -290,6 +296,20 @@ func _release_unsaved() -> void:
 # SteamVR: the editor gives its session up for the game and asks for a new one
 # once the game's process is gone (D-012).
 
+
+func _press_invalid_blueprint() -> void:
+	_document.prepare_play = func() -> bool: return false
+	_y(true)
+
+
+func _invalid_blueprint_keeps_headset() -> void:
+	_check(_operations.size() == 1, "invalid graph does not start a game")
+	_check(_session.releases == 0, "invalid graph keeps SteamVR's first session")
+	_check(not _play_mode.transition.is_covering(), "invalid graph leaves the editor visible")
+	_check(_play_mode.get_message().begins_with("Blueprint"), "headset explains graph validation refusal")
+	_document.prepare_play = Callable()
+	_y(false)
+
 func _press_on_steamvr() -> void:
 	_y(true)
 
@@ -379,6 +399,30 @@ func _standalone_editor_back() -> void:
 
 
 # The game starts only once the headset has been sent the covered view.
+
+
+func _press_before_invalid_fade() -> void:
+	_session.yields = false
+	_document.prepare_play = func() -> bool: return true
+	_y(true)
+
+
+func _invalidate_during_fade() -> void:
+	_document.prepare_play = func() -> bool: return false
+	_y(false)
+
+
+func _wait_invalid_fade() -> void:
+	pass
+
+
+func _invalid_fade_keeps_headset() -> void:
+	_check(_operations.size() == 6, "graph changed during fade does not start a game")
+	_check(_session.releases == 1, "graph changed during fade does not release SteamVR again")
+	_check(not _play_mode.transition.is_covering(), "refused fade returns to editor view")
+	_document.prepare_play = Callable()
+	_session.yields = true
+	_y(false)
 
 func _press_with_frames_to_cover() -> void:
 	_y(true)

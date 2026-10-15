@@ -51,6 +51,9 @@ var _press_position := Vector2.ZERO
 var _last_press_usec := -DOUBLE_CLICK_USEC
 var _last_press_position := Vector2.ZERO
 var _hit_pixel := Vector2.ZERO
+var _overlay := false
+var _scene_material: StandardMaterial3D
+var _overlay_material: ShaderMaterial
 
 
 ## A panel [param logical_size] interface pixels large, each [param pixel_size]
@@ -87,6 +90,23 @@ func _init(logical_size: Vector2, pixel_size: float, render_scale: float, theme:
 	material.albedo_texture_force_srgb = true
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
 	material.disable_fog = true
+	_scene_material = material
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, depth_draw_always, fog_disabled;
+uniform sampler2D panel_texture : source_color, filter_linear;
+void fragment() {
+	vec4 color = texture(panel_texture, UV);
+	if (color.a < 0.01) discard;
+	ALBEDO = color.rgb;
+	ALPHA = color.a;
+}
+"""
+	_overlay_material = ShaderMaterial.new()
+	_overlay_material.shader = shader
+	_overlay_material.render_priority = Material.RENDER_PRIORITY_MAX
+	_overlay_material.set_shader_parameter(&"panel_texture", _viewport.get_texture())
 	_quad = XRERig.create_vr_mesh(mesh, material)
 	_quad.name = "Quad"
 	add_child(_quad)
@@ -160,6 +180,13 @@ func intersect_ray(origin: Vector3, direction: Vector3, max_distance: float, bou
 ## The interface pixel the last hit of [method intersect_ray] fell on.
 func get_hit_pixel() -> Vector2:
 	return _hit_pixel
+
+
+## Logic overlays draw after the scene veil and honor depth between panels and cards.
+func set_overlay(enabled: bool) -> void:
+	if enabled == _overlay: return
+	_overlay = enabled
+	_quad.material_override = _overlay_material if enabled else _scene_material
 
 
 ## Global position of the interface pixel [param pixel] on the quad.

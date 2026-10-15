@@ -1,0 +1,82 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://dx8tln4ydakjt"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_b1cs4"]
+
+[resource]
+script = ExtResource("1_b1cs4")
+nodes = Array[Dictionary]([{
+"id": 1,
+"kind": "ready",
+"params": {
+"policy": "parallel"
+},
+"position": Vector2(-1529.32, -41.912224),
+"vr_depth": 0.48008674
+}, {
+"id": 2,
+"kind": "set_property",
+"params": {
+"property": "visible",
+"target": ".",
+"value": false
+},
+"position": Vector2(-312.21454, -30.556187),
+"property_type": 1,
+"vr_depth": 0.7521082
+}, {
+"id": 3,
+"kind": "delay",
+"params": {
+"seconds": 1.0
+},
+"position": Vector2(-984.50305, -79.52614),
+"vr_depth": 0.13734597,
+"vr_rotation": Vector3(0.13315834, 0.27043974, 0.012951943)
+}, {
+"id": 4,
+"kind": "delay",
+"params": {
+"seconds": 1.0
+},
+"position": Vector2(190.35706, 46.688225),
+"vr_depth": -0.01033932
+}, {
+"id": 5,
+"kind": "set_property",
+"params": {
+"property": "visible",
+"target": ".",
+"value": true
+},
+"position": Vector2(-346.19315, -461.03436),
+"property_type": 1,
+"vr_depth": 0.1562145
+}])
+edges = Array[Dictionary]([{
+"from": 3,
+"from_port": 0,
+"to": 2,
+"to_port": 0
+}, {
+"from": 1,
+"from_port": 0,
+"to": 3,
+"to_port": 0
+}, {
+"from": 2,
+"from_port": 0,
+"to": 4,
+"to_port": 0
+}, {
+"from": 4,
+"from_port": 0,
+"to": 5,
+"to_port": 0
+}, {
+"from": 5,
+"from_port": 0,
+"to": 3,
+"to_port": 0
+}])
+host_path = NodePath("RedCube")
+scene_path = "res://benchmarks/play_check.tscn"

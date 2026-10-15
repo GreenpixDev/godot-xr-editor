@@ -5,14 +5,13 @@ extends Node
 ## the controllers.
 ##
 ## Controls (docs/decisions.md, D-008):
-## [br]- Point: the ray stops at the node the trigger would select, and that
-## node is outlined: its own faces are tinted ([XREOutline]). A node the
-## controller tip is inside is outlined instead: touching wins over pointing.
+## [br]- Point: the ray stops at the node the trigger would select.
+## Touching wins over pointing, without a hover outline.
 ## Nodes the head is inside, like a room, are only pointed at. Icons of lights
 ## ([XREIcons]) are drawn on top, so they are touched and pointed at before
-## geometry, and outlined by a box.
-## [br]- Trigger: select the outlined node, or clear the selection over empty space.
-## [br]- Grip: grab the outlined node, which also selects it. A touched node
+## geometry. Selection draws white edges ([XREOutline]).
+## [br]- Trigger: select the pointed node, or clear the selection over empty space.
+## [br]- Grip: grab the pointed node, which also selects it. A touched node
 ## follows the hand rigidly. A node grabbed with the ray follows the hand
 ## with the hand's motion scaled by how much farther from the body the node
 ## is than the hand (HOMER, Bowman and Hodges 1997): bringing the hand halfway
@@ -54,7 +53,7 @@ const MIN_SCALE_FACTOR := 0.01
 ## Selected nodes beyond this many are not outlined, to bound the work per frame.
 const MAX_OUTLINED := 64
 const HOVER_COLOR := Color(1.0, 1.0, 1.0)
-const SELECTION_COLOR := Color(1.0, 0.5, 0.0)
+const SELECTION_COLOR := Color.WHITE
 
 
 ## What the manipulator keeps for each controller.
@@ -407,12 +406,7 @@ func _update_outlines() -> void:
 		else:
 			outline.clear()
 	for state: HandState in _hands:
-		# A hovered node deleted this frame has left the tree.
-		if not state.holding and is_instance_valid(state.hover) and state.hover.is_inside_tree() \
-				and not _selected.has(state.hover):
-			_outline(state.outline, state.hover, state.hover_bounds, state.hover_icon, head)
-		else:
-			state.outline.clear()
+		state.outline.clear()
 
 
 func _outline(outline: XREOutline, node: Node3D, bounds: AABB, icon: bool, head: Vector3) -> void:

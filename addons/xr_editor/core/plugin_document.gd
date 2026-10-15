@@ -19,6 +19,8 @@ func _init(plugin: EditorPlugin) -> void:
 	EditorInterface.get_selection().selection_changed.connect(selection_changed.emit)
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(files_changed.emit)
 	plugin.scene_changed.connect(_on_scene_changed)
+	plugin.get_undo_redo().version_changed.connect(blueprint_bindings_changed.emit)
+	plugin.get_undo_redo().history_changed.connect(blueprint_bindings_changed.emit)
 
 
 ## Disconnects from editor signals. Call from [method EditorPlugin._exit_tree].
@@ -26,6 +28,8 @@ func dispose() -> void:
 	EditorInterface.get_selection().selection_changed.disconnect(selection_changed.emit)
 	EditorInterface.get_resource_filesystem().filesystem_changed.disconnect(files_changed.emit)
 	_plugin.scene_changed.disconnect(_on_scene_changed)
+	_plugin.get_undo_redo().version_changed.disconnect(blueprint_bindings_changed.emit)
+	_plugin.get_undo_redo().history_changed.disconnect(blueprint_bindings_changed.emit)
 
 
 func get_scene_root() -> Node:
@@ -34,6 +38,30 @@ func get_scene_root() -> Node:
 
 func get_selection() -> Array[Node]:
 	return EditorInterface.get_selection().get_selected_nodes()
+
+
+func assign_blueprint(host: Node, path: String, script: Script, source: Source) -> bool:
+	var root := get_scene_root()
+	if host == null or root == null or not (host == root or root.is_ancestor_of(host)):
+		return false
+	var previous := host.get_script() as Script
+	if previous != null and previous != script:
+		if not previous.resource_path.ends_with(".generated.gd") or not previous.source_code.begins_with(XREBlueprintCompiler.HEADER):
+			return false
+	var had_source := host.has_meta(&"_xre_blueprint")
+	var previous_path: Variant = host.get_meta(&"_xre_blueprint", "")
+	if previous == script and str(previous_path) == path and (not path.is_empty() or not had_source): return true
+	var undo_redo := _plugin.get_undo_redo()
+	undo_redo.create_action("XR: Detach Blueprint" if path.is_empty() else "XR: Assign Blueprint", UndoRedo.MERGE_DISABLE, host)
+	undo_redo.add_do_method(host, &"set_script", script)
+	if path.is_empty(): undo_redo.add_do_method(host, &"remove_meta", &"_xre_blueprint")
+	else: undo_redo.add_do_method(host, &"set_meta", &"_xre_blueprint", path)
+	undo_redo.add_undo_method(host, &"set_script", previous)
+	if had_source: undo_redo.add_undo_method(host, &"set_meta", &"_xre_blueprint", previous_path)
+	else: undo_redo.add_undo_method(host, &"remove_meta", &"_xre_blueprint")
+	undo_redo.commit_action()
+	_record(&"detach_blueprint" if path.is_empty() else &"assign_blueprint", source, [host])
+	return true
 
 
 func select(nodes: Array[Node], source: Source) -> void:
@@ -166,6 +194,8 @@ func get_file_type(path: String) -> StringName:
 
 
 func play(source: Source, separate_app: bool) -> Error:
+	if prepare_play.is_valid() and not bool(prepare_play.call()):
+		return ERR_INVALID_DATA
 	var root := get_scene_root()
 	# Without a file, the editor opens a save dialog on the desktop instead of playing.
 	if root == null or root.scene_file_path.is_empty():

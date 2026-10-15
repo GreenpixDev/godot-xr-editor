@@ -149,7 +149,11 @@ func _open_other_scene() -> void:
 	_check(root != null and root.scene_file_path == OTHER_SCENE, "the opened scene is edited")
 	_check(_operations == ["open_scene PANEL [\"PlayCheck\"]"], "opening is an operation from a panel: %s" % [_operations])
 	_check(_window.is_inside_tree(), "the window stays")
-	_check(_tab.get_proxy() == null, "with nothing selected in the opened scene the inspector edits nothing")
+	# A real project can restore a persisted selection in the newly opened tab.
+	var selection := _document.get_selection()
+	var shown: Object = _tab.get_proxy().get_target() if _tab.get_proxy() != null else null
+	_check(shown == (selection[0] if selection.size() == 1 else null),
+			"the inspector follows the opened scene's restored selection")
 	_check(_document.open_scene(SCENE, XREDocument.Source.PANEL) == OK, "an open scene is switched to")
 	_check(_document.open_scene("res://benchmarks/play_check.gd", XREDocument.Source.PANEL) == ERR_FILE_UNRECOGNIZED,
 			"a script is not opened as a scene")

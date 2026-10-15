@@ -17,6 +17,7 @@ var _locomotion: XRELocomotion
 var _icons: XREIcons
 var _palette: XREPalette
 var _panels: XREPanels
+var _blueprints: XREBlueprints
 var _manipulator: XREManipulator
 var _play_mode: XREPlayMode
 var _launcher: XREStandaloneLauncher
@@ -56,9 +57,13 @@ func _enter_tree() -> void:
 		# After the palette, which claims the right hand on its tray, and before
 		# the manipulator, which leaves alone a hand on a panel.
 		_panels = XREPanels.new(document, rig, _palette, EditorInterface.get_editor_theme(),
-				EditorInterface.get_editor_scale())
+				EditorInterface.get_editor_scale(), _session)
 		_panels.name = "XREPanels"
 		rig.add_child(_panels)
+		_blueprints = XREBlueprints.new(document, rig, _icons, EditorInterface.get_editor_theme())
+		_blueprints.name = "XREBlueprints"
+		rig.add_child(_blueprints)
+		_panels.set_blueprints(_blueprints)
 		_manipulator = XREManipulator.new(document, rig, _icons)
 		_manipulator.name = "XREManipulator"
 		rig.add_child(_manipulator)
@@ -83,6 +88,8 @@ func _enter_tree() -> void:
 	add_tool_menu_item(_HANDOFF_RELEASE_MENU, _handoff.run.bind(false, true))
 	if _TEST_INSPECTOR_FLAG in OS.get_cmdline_user_args() and ResourceLoader.exists(_TEST_INSPECTOR):
 		add_child((load(_TEST_INSPECTOR) as GDScript).new(document) as Node)
+	if "--xre-test-blueprint-vr" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://scripts/test_blueprint_vr.gd"):
+		add_child((load("res://scripts/test_blueprint_vr.gd") as GDScript).new(document) as Node)
 
 
 func _exit_tree() -> void:
@@ -98,6 +105,7 @@ func _exit_tree() -> void:
 	_icons = null
 	_palette = null
 	_panels = null
+	_blueprints = null
 	_manipulator = null
 	_play_mode = null
 	if _launcher != null:
@@ -119,3 +127,7 @@ func _run_scene(_scene: String, args: PackedStringArray) -> PackedStringArray:
 	if _session == null or _session.get_xr_interface() == null:
 		return args
 	return XREPlayMode.game_args(args)
+
+
+func _build() -> bool:
+	return _blueprints == null or _blueprints.prepare_play()

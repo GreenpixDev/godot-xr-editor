@@ -67,6 +67,9 @@ var _late_frames := 0
 var _slowest_frame := 0.0
 ## [constant _PIPELINE_MONITORS] at the last status line.
 var _pipeline_totals := PackedInt64Array([0, 0, 0, 0, 0])
+## Fixed 60-second history of focused editor main-loop intervals.
+var fps_history := XREFPSHistory.new()
+var _fps_previous_usec := 0
 
 
 func _enter_tree() -> void:
@@ -141,6 +144,10 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
+	var now := Time.get_ticks_usec()
+	var focused := has_headset_focus()
+	fps_history.record_interval((now - _fps_previous_usec) / 1000000.0 if _fps_previous_usec > 0 else 0.0, now / 1000000.0, focused)
+	_fps_previous_usec = now if focused else 0
 	if _xr == null:
 		return
 	if _released:
@@ -184,6 +191,13 @@ func is_session_released() -> bool:
 func has_headset_focus() -> bool:
 	return _xr != null and not _released and not _fresh_session \
 			and _xr.get_session_state() == OpenXRInterface.SESSION_STATE_FOCUSED
+
+
+## Status for UI sampled at low frequency, matching the log's state vocabulary.
+func session_state_text() -> String:
+	if _xr == null: return "OFF"
+	if _released: return "RELEASED"
+	return _STATE_NAMES[_xr.get_session_state()]
 
 
 ## Whether a game may take the headset while the editor keeps its session in

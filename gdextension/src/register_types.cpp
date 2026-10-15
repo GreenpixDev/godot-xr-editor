@@ -2,6 +2,7 @@
 #include "editor_frame_loop.h"
 #include "frame_timer.h"
 #include "picker.h"
+#include "graph_wire.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/classes/engine.hpp>
@@ -35,6 +36,8 @@ bool is_editor_startup() {
 void initialize_xre_native(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(xre::XREPicker);
+		GDREGISTER_CLASS(xre::XREWireRouter);
+		GDREGISTER_CLASS(xre::XREGraphWire);
 		return;
 	}
 	// OpenXR creates its instance at the servers level and refuses wrappers
@@ -45,6 +48,7 @@ void initialize_xre_native(ModuleInitializationLevel p_level) {
 	GDREGISTER_INTERNAL_CLASS(xre::XREEditorControllers);
 	GDREGISTER_INTERNAL_CLASS(xre::XREEditorFrameLoop);
 	GDREGISTER_ABSTRACT_CLASS(xre::XREFrameTimer);
+	GDREGISTER_ABSTRACT_CLASS(xre::XREEditorHaptics);
 	if (is_editor_startup()) {
 		// From here the OpenXR module owns the wrappers and deletes them on
 		// shutdown (OpenXRAPI::cleanup_extension_wrappers), so they are never freed here.

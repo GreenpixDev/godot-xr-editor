@@ -1,8 +1,8 @@
 @tool
 class_name XREBoundsBox
 extends MeshInstance3D
-## A wireframe box around a node's bounds, drawn only in the headset and on
-## top of everything, so it stays visible behind other objects.
+## A wireframe box around a node's bounds, drawn only in the headset,
+## respecting scene and interface occlusion, like the edge outline (D-026).
 
 ## Gap between the bounds and the box, in the node's units: keeps the lines
 ## off the surfaces of box-shaped objects.
@@ -21,7 +21,6 @@ func _init(color: Color) -> void:
 	gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.no_depth_test = true
 	material.albedo_color = color
 	material_override = material
 

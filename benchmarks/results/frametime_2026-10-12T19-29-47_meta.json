@@ -1,0 +1,35 @@
+{
+	"cpu": "AMD Ryzen 7 5700X 8-Core Processor",
+	"cpu_threads": 16,
+	"display_refresh_rate_hz": 90.0,
+	"editor_3d_viewport_visible": true,
+	"editor_log_collapse": true,
+	"editor_log_max_lines": 10000,
+	"git_head": "90c6f2245d59afcc6cc935f462dba85804184d7e",
+	"godot": "4.7.2-stable (official)",
+	"gpu": "NVIDIA GeForce RTX 4060",
+	"gpu_driver": [
+		"NVIDIA",
+		"32.0.16.1714"
+	],
+	"low_processor_mode": false,
+	"mode": "sessions",
+	"openxr_runtime": "Oculus 1.208.0",
+	"openxr_system": "Oculus Quest2",
+	"record_sec": null,
+	"render_target_size": [
+		1872.0,
+		1920.0
+	],
+	"render_target_size_multiplier": 1.0,
+	"scene": "",
+	"scene_nodes": 0,
+	"segments": [],
+	"settle_sec": null,
+	"vsync_mode": 0,
+	"warmup_sec": null,
+	"window_size": [
+		2560,
+		1369
+	]
+}

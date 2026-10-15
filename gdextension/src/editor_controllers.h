@@ -41,6 +41,7 @@ public:
 		ACTION_AX_BUTTON,
 		ACTION_BY_BUTTON,
 		ACTION_MENU_BUTTON,
+		ACTION_HAPTIC,
 		ACTION_MAX,
 	};
 
@@ -48,6 +49,8 @@ public:
 	void _on_process() override;
 	void _on_session_destroyed() override;
 	bool _on_event_polled(const void *p_event) override;
+	/// Sends a short pulse through the editor's own action set; no session means no pulse.
+	bool pulse(Hand p_hand, double p_amplitude, double p_duration);
 
 protected:
 	static void _bind_methods() {}
@@ -69,6 +72,7 @@ private:
 	PFN_xrGetActionStateVector2f xrGetActionStateVector2f = nullptr;
 	PFN_xrLocateSpace xrLocateSpace = nullptr;
 	PFN_xrGetCurrentInteractionProfile xrGetCurrentInteractionProfile = nullptr;
+	PFN_xrApplyHapticFeedback xrApplyHapticFeedback = nullptr;
 
 	godot::Ref<godot::OpenXRAPIExtension> api;
 	XrInstance instance = XR_NULL_HANDLE;
@@ -108,6 +112,17 @@ private:
 	float get_float(Action p_action, Hand p_hand) const;
 	godot::Vector2 get_vector2(Action p_action, Hand p_hand) const;
 	void log_interaction_profiles();
+};
+
+/// GDScript access to the active editor wrapper, without owning its lifetime.
+class XREEditorHaptics : public godot::Object {
+	GDCLASS(XREEditorHaptics, godot::Object);
+
+public:
+	static bool pulse(int64_t p_hand, double p_amplitude, double p_duration);
+
+protected:
+	static void _bind_methods();
 };
 
 } // namespace xre

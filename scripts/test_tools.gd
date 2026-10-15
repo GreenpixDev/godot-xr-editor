@@ -394,22 +394,6 @@ func _test_manipulation_math() -> void:
 	_check_vector(right_turn * (rig.affine_inverse() * head), head, "turning keeps the head in place")
 	_check_vector(-right_turn.basis.z, Vector3(1.0, 0.0, 0.0), "a negative angle turns to the right")
 
-	var up := deg_to_rad(30.0)
-	var tilted_up := XRELocomotion.pitched(right_turn, head, up)
-	_check_vector(tilted_up * (right_turn.affine_inverse() * head), head, "tilting keeps the head in place")
-	_check_vector(-tilted_up.basis.z, Vector3(cos(up), sin(up), 0.0), "a positive angle tilts the view up")
-	_check(is_zero_approx(tilted_up.basis.x.y), "tilting doesn't roll the rig: %s" % tilted_up.basis.x)
-	_check(is_equal_approx(XRELocomotion.pitch_of(tilted_up), up), "the tilt reads back: %f" % XRELocomotion.pitch_of(tilted_up))
-	var turned_tilted := XRELocomotion.turned(tilted_up, head, PI / 2.0)
-	_check(is_equal_approx(XRELocomotion.pitch_of(turned_tilted), up) and is_zero_approx(turned_tilted.basis.x.y),
-			"turning a tilted rig keeps its tilt, and doesn't roll it")
-	_check(XRELocomotion.pitched(tilted_up, head, -up).basis.is_equal_approx(right_turn.basis), "tilting back levels the rig")
-	var step := deg_to_rad(5.0)
-	_check(is_equal_approx(XRELocomotion.limited_pitch_step(0.0, step), step), "a step within the limits is whole")
-	_check(is_equal_approx(XRELocomotion.limited_pitch_step(deg_to_rad(79.0), step), deg_to_rad(1.0)),
-			"a step past the limit up stops at it")
-	_check(is_equal_approx(XRELocomotion.limited_pitch_step(deg_to_rad(-79.0), -step), deg_to_rad(-1.0)),
-			"a step past the limit down stops at it")
 
 
 func _test_nodes_to_remove() -> void:
@@ -596,8 +580,7 @@ func _point_at_target() -> void:
 	_check(_operations.is_empty(), "pointing alone records nothing: %s" % [_operations])
 	_check(_rig.right_hand.global_position.is_equal_approx(Vector3(0.0, 0.0, 0.3)), "fake tracker moves the hand")
 	var hovered := _active_outlines(XREManipulator.HOVER_COLOR)
-	_check(hovered.size() == 1 and hovered[0].get_part_count() == 1 and not hovered[0].is_boxed(),
-			"the node the ray points at has its edges drawn: %d outlines" % hovered.size())
+	_check(hovered.is_empty(), "pointing does not outline the scene object")
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 1.0, 0.0)
 
 
@@ -606,7 +589,7 @@ func _press_trigger() -> void:
 	var selected := _active_outlines(XREManipulator.SELECTION_COLOR)
 	_check(selected.size() == 1 and selected[0].get_part_count() == 1 and not selected[0].is_boxed(),
 			"the selected node has its edges drawn: %d outlines" % selected.size())
-	_check(_active_outlines(XREManipulator.HOVER_COLOR).is_empty(), "a selected node is not outlined twice")
+	_check(_active_outlines(Color.WHITE).size() == 1, "selection has one white outline")
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 1.0)
 
 
@@ -884,16 +867,14 @@ func _speed_clicked() -> void:
 
 func _tilted_up() -> void:
 	var forward := -_rig.global_basis.z
-	_check(forward.y > 0.0, "the right stick pushed up looks up: %s" % forward)
-	_check(is_zero_approx(_rig.global_basis.x.y), "tilting doesn't roll the rig: %s" % _rig.global_basis.x)
-	_check(_locomotion.get_vignette_strength() > 0.0, "tilting darkens the edges of the view")
+	_check(is_zero_approx(forward.y), "vertical right stick input keeps the horizon level: %s" % forward)
+	_check(is_zero_approx(_rig.global_basis.x.y), "vertical input does not roll the rig")
 	_right.set_input(&"primary", Vector2.ZERO)
 	_right.set_input(&"primary_click", true)
 
 
 func _levelled() -> void:
-	var pitch := XRELocomotion.pitch_of(_rig.global_transform)
-	_check(absf(pitch) < 0.0001, "the right stick's click levels the view: %f" % pitch)
+	_check(_rig.global_basis.y.is_equal_approx(Vector3.UP), "right stick click leaves the rig upright")
 	_check(is_zero_approx(_rig.global_basis.x.y), "levelling doesn't roll the rig: %s" % _rig.global_basis.x)
 	_right.set_input(&"primary_click", false)
 

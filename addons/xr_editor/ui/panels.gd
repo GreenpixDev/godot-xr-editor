@@ -34,10 +34,9 @@ extends Node3D
 ## Lives under the [XRERig], with an identity transform, after the palette
 ## (it claims the right hand on its tray first) and before the manipulator.
 
-## Where the forearm panel lies in the left controller's aim space: on the
-## back of the wrist and forearm, behind the controller, its text upright when
-## the controller points ahead, tilted 30° from flat toward the user.
+## Tilted wrist panels follow the controller orientation, as before D-028.
 const HAND_OFFSET := Transform3D(Basis(Vector3.RIGHT, -PI / 3.0), Vector3(0.0, 0.02, 0.17))
+const FPS_OFFSET := HAND_OFFSET
 ## Size of the forearm panel in interface pixels at editor scale 1, and the
 ## size of such a pixel in meters: 25 × 17 cm. Wide enough for the titles of
 ## the four tabs in the Russian editor.
@@ -97,11 +96,15 @@ var _scale := 1.0
 var _hand_panel: XREHandPanel
 var _windows: Array[XREPanelWindow] = []
 var _pointers: Array[Pointer] = []
+var _blueprints: XREBlueprints
+var _fps: XREFPSWidget
+var _fps_closed := false
+var _menus_shown := false
 
 
 ## [param theme] and [param editor_scale] are the editor's; without them
 ## (null, 1) the panels use Godot's default theme.
-func _init(document: XREDocument, rig: XRERig, palette: XREPalette, theme: Theme, editor_scale: float) -> void:
+func _init(document: XREDocument, rig: XRERig, palette: XREPalette, theme: Theme, editor_scale: float, session: XRESession = null) -> void:
 	_document = document
 	_rig = rig
 	_palette = palette
@@ -115,11 +118,17 @@ func _init(document: XREDocument, rig: XRERig, palette: XREPalette, theme: Theme
 	_hand_panel.set_shown(false)
 	_hand_panel.pop_out_requested.connect(_on_pop_out_requested)
 	add_child(_hand_panel)
+	_fps = XREFPSWidget.new(theme, HAND_PANEL_SIZE * _scale, HAND_PIXEL_SIZE / _scale, _render_scale())
+	_fps.name = "HandFPS"
+	_fps.setup(session)
+	_fps.close_requested.connect(func() -> void: _fps_closed = true)
+	add_child(_fps)
 	_pointers.append(Pointer.new(rig.right_hand, true))
 	_pointers.append(Pointer.new(rig.left_hand, false))
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_blueprints) and _blueprints.changed.is_connected(_update_overlay): _blueprints.changed.disconnect(_update_overlay)
 	# The panels have left the tree before this node: only the hands are let go.
 	for pointer: Pointer in _pointers:
 		pointer.surface = null
@@ -131,15 +140,37 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
 	var shown := _palette.is_shown()
+	if shown != _menus_shown:
+		_fps_closed = false
+		_menus_shown = shown
 	_hand_panel.set_shown(shown)
+	_fps.set_shown(shown and not _fps_closed and _rig.right_hand.get_has_tracking_data())
 	if shown:
 		_hand_panel.global_transform = _rig.left_hand.global_transform * HAND_OFFSET
+		_fps.global_transform = _rig.right_hand.global_transform * FPS_OFFSET
 	for pointer: Pointer in _pointers:
 		_update_pointer(pointer, delta)
 
 
 func get_hand_panel() -> XREHandPanel:
 	return _hand_panel
+
+
+## Connects the optional graph tab to the spatial editing service.
+func set_blueprints(service: XREBlueprints) -> void:
+	if is_instance_valid(_blueprints) and _blueprints.changed.is_connected(_update_overlay): _blueprints.changed.disconnect(_update_overlay)
+	_blueprints = service
+	if service != null: service.changed.connect(_update_overlay)
+	for tab: XREPanelTab in _hand_panel.get_tabs():
+		if tab is XREBlueprintTab: (tab as XREBlueprintTab).setup(service)
+	_update_overlay()
+
+
+func _update_overlay() -> void:
+	var enabled := _blueprints != null and _blueprints.is_open()
+	_hand_panel.set_overlay(enabled)
+	_fps.set_overlay(enabled)
+	for window: XREPanelWindow in _windows: window.set_overlay(enabled)
 
 
 ## The open windows, in the order they were opened.
@@ -180,13 +211,15 @@ func open_window(type: Script) -> XREPanelWindow:
 
 ## The tabs' classes, in the forearm panel's order.
 static func tab_types() -> Array[GDScript]:
-	return [XRESceneTab, XREInspectorTab, XRESignalsTab, XREFileSystemTab]
+	return [XRESceneTab, XREInspectorTab, XRESignalsTab, XREFileSystemTab, XREBlueprintTab]
 
 
 ## The basis of a window at [param position] that faces [param head], upright
 ## along [param up]: its front (+Z) toward the head.
 static func facing(position: Vector3, head: Vector3, up: Vector3) -> Basis:
 	var away := position - head
+	up = up.normalized()
+	away -= up * away.dot(up)
 	if away.is_zero_approx():
 		away = Vector3.FORWARD
 	if away.normalized().cross(up.normalized()).length() < 0.01:
@@ -200,7 +233,9 @@ func _render_scale() -> float:
 
 
 func _create_tab(type: GDScript) -> XREPanelTab:
-	return type.new(_document) as XREPanelTab
+	var tab := type.new(_document) as XREPanelTab
+	if tab is XREBlueprintTab: (tab as XREBlueprintTab).setup(_blueprints)
+	return tab
 
 
 ## The window of the tab of class [param type], opened where it last was, or
@@ -216,6 +251,7 @@ func _window_for(type: Script) -> XREPanelWindow:
 	window.close_requested.connect(_close_window.bind(window), CONNECT_DEFERRED)
 	add_child(window)
 	_windows.append(window)
+	window.set_overlay(_blueprints != null and _blueprints.is_open())
 	return window
 
 
@@ -259,11 +295,19 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			if hit >= 0.0:
 				surface = _hand_panel
 				distance = hit
+		else:
+			var hit := _fps.intersect_ray(origin, direction, distance)
+			if hit >= 0.0:
+				surface = _fps
+				distance = hit
 		for window: XREPanelWindow in _windows:
 			var hit := window.intersect_ray(origin, direction, distance)
 			if hit >= 0.0:
 				surface = window
 				distance = hit
+		if _blueprints != null and _blueprints.takes_pointer(hand, origin, direction, distance):
+			_leave(pointer)
+			return
 	if surface == null:
 		_leave(pointer)
 		return
@@ -285,7 +329,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		surface.pointer_button(true)
 	elif hand.trigger_released:
 		surface.pointer_button(false)
-	if hand.grip_pressed and not surface.is_pressed() and distance >= 0.0:
+	if hand.grip_pressed and surface != _fps and not surface.is_pressed() and distance >= 0.0:
 		_take(pointer, surface, origin + direction * distance)
 	elif pointer.uses_stick:
 		var tilt := _tilt(hand.get_vector2(&"primary").y)
