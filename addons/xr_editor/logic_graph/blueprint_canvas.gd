@@ -60,7 +60,6 @@ var _port_mesh: CylinderMesh
 var _trash_mesh: ArrayMesh
 var _trash_material: Material
 var _preview: XREGraphWire
-var _router: XREWireRouter
 var _offset := Vector2.ZERO
 var _selected := -1
 var _hit_id := -1
@@ -77,6 +76,7 @@ var _body_materials: Array[ShaderMaterial] = []
 var _faces_user := false
 var _head_position := Vector3.ZERO
 var _view_transform := Transform3D.IDENTITY
+static var _wire_shader: Shader
 
 
 func _init() -> void:
@@ -102,7 +102,6 @@ void fragment() { ALBEDO = face_tint.rgb; ALPHA = 1.0; }
 	_port_mesh.radial_segments = 24
 	_trash_mesh = _make_trash_mesh()
 	_trash_material = material(Color("ffabb4"), true)
-	_router = XREWireRouter.new()
 	_preview = create_scene_wire(Color("ffda82"))
 	_preview.visible = false
 
@@ -138,7 +137,6 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		wire.mesh.queue_free()
 	_cards.clear()
 	_wires.clear()
-	_router.clear()
 	_hover_right = -1
 	_hover_left = -1
 	_delete_right = -1
@@ -158,7 +156,6 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		panel.size = Vector2(CARD_WIDTH, card.height)
 		var body_size := Vector3(CARD_WIDTH, card.height, CARD_THICKNESS)
 		card.bounds = AABB(-body_size * 0.5, body_size)
-		_router.set_obstacle(card.id, card.bounds, card.node.transform)
 		card.normal = _body_materials[CARD_GROUPS.get(block["kind"], 3)]
 		card.mesh = XRERig.create_vr_mesh(panel, card.normal)
 		card.node.add_child(card.mesh)
@@ -227,7 +224,6 @@ func preview_move(id: int, point: Vector3) -> void:
 	if card == null: return
 	card.node.position = point
 	if _faces_user: card.node.global_basis = XREPanels.facing(card.node.global_position, _head_position, Vector3.UP)
-	_router.set_obstacle(card.id, card.bounds, card.node.transform)
 	update_wires()
 
 
@@ -237,7 +233,6 @@ func preview_transform(id: int, pose: Transform3D) -> void:
 	if card == null: return
 	card.node.transform = pose
 	if _faces_user: card.node.global_basis = XREPanels.facing(card.node.global_position, _head_position, Vector3.UP)
-	_router.set_obstacle(card.id, card.bounds, card.node.transform)
 	update_wires()
 
 
@@ -249,8 +244,6 @@ func face_user(head: Vector3) -> void:
 	_view_transform = global_transform
 	for card: Card in _cards:
 		card.node.global_basis = XREPanels.facing(card.node.global_position, head, Vector3.UP)
-		_router.set_obstacle(card.id, card.bounds, card.node.transform)
-	_router.set_view(to_local(head), (global_basis.inverse() * Vector3.UP).normalized())
 	update_wires()
 
 
@@ -267,7 +260,6 @@ func preview_grab(id: int, contact: Vector3, local_contact: Vector3, head: Vecto
 	var card := _find_card(id)
 	if card == null: return
 	card.node.global_transform = pose
-	_router.set_obstacle(card.id, card.bounds, card.node.transform)
 	update_wires()
 
 
@@ -493,9 +485,19 @@ static func _port_position(card: Card, port: int, input: bool) -> Vector3:
 	return card.node.transform * ((card.inputs[port] if input else card.outputs[port]) + Vector3.BACK * PORT_DEPTH * visual.scale.z)
 
 
-## Wires leave the circular contact through the panel's visible front face.
-func port_normal(id: int, _input: bool) -> Vector3:
+## Wires leave outputs rightwards and enter inputs from the left, as in GraphEdit. The graph's
+## horizontal, not the card's: a card turned towards the head would tip its wires behind others.
+func port_direction(id: int, input: bool) -> Vector3:
 	var card := _find_card(id)
+	return _port_direction(card, input) if card != null else Vector3.ZERO
+
+
+static func _port_direction(_card: Card, input: bool) -> Vector3:
+	return Vector3.LEFT if input else Vector3.RIGHT
+
+
+## The side of the card its ports face; back edges loop out this way.
+static func _front(card: Card) -> Vector3:
 	return card.node.basis.z.normalized() if card != null else Vector3.ZERO
 
 
@@ -514,15 +516,13 @@ func has_port(id: int, port: int, input: bool) -> bool:
 
 ## A connection preview uses the same pooled geometry as permanent wires.
 func show_connection(id: int, port: int, input: bool, end: Vector3, end_id: int = -1, end_port: int = -1, end_input: bool = false) -> void:
-	var normal := Vector3.ZERO
-	if end_id >= 0:
-		if end_port >= 0:
-			end = port_position(end_id, end_port, end_input)
-			normal = port_normal(end_id, end_input)
-		else:
-			var card := _find_card(end_id)
-			if card != null: normal = card.node.basis.z.normalized() * (1 if (card.node.transform.affine_inverse() * end).z >= 0 else -1)
-	_preview.update_route(_router, port_position(id, port, input), port_normal(id, input), end, normal, id, end_id)
+	# Over a port the preview snaps to it; elsewhere its end follows the ray freely.
+	var direction := Vector3.ZERO
+	if end_id >= 0 and end_port >= 0:
+		end = port_position(end_id, end_port, end_input)
+		direction = port_direction(end_id, end_input)
+	_preview.update_curve(port_position(id, port, input), port_direction(id, input), end, direction, _front(_find_card(id)))
+	_preview.visible = true
 
 
 ## Clears preview geometry and compatibility emphasis.
@@ -534,23 +534,23 @@ func hide_connection() -> void:
 ## Updates existing mesh transforms after a card preview; creates no geometry.
 func update_wires() -> void:
 	for wire: Wire in _wires:
-		wire.mesh.update_route(_router, _port_position(wire.from, wire.from_port, false), wire.from.node.basis.z.normalized(), _port_position(wire.to, wire.to_port, true), wire.to.node.basis.z.normalized(), wire.from.id, wire.to.id)
+		wire.mesh.update_curve(_port_position(wire.from, wire.from_port, false), _port_direction(wire.from, false), _port_position(wire.to, wire.to_port, true), _port_direction(wire.to, true), (_front(wire.from) + _front(wire.to)).normalized())
 
 
-## Creates one reusable native tube; permanent, preview and scene wires share routing.
+## Creates one reusable native tube; permanent, preview and scene wires share it.
 func create_scene_wire(color: Color) -> XREGraphWire:
 	var wire := XREGraphWire.new()
 	wire.layers = XRERig.VR_LAYER
 	wire.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	wire.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
-	wire.material_override = material(color, true)
+	wire.material_override = wire_material(color)
 	add_child(wire)
 	return wire
 
 
-## Routes a static Target wire in canvas coordinates, retaining its physical port exit.
+## A static Target wire: from its input port, leaving left, free towards the scene object.
 func update_scene_wire(wire: XREGraphWire, id: int, port: int, end: Vector3) -> void:
-	wire.update_route(_router, port_position(id, port, true), port_normal(id, true), end, Vector3.ZERO, id, -1)
+	wire.update_curve(port_position(id, port, true), port_direction(id, true), end, Vector3.ZERO, _front(_find_card(id)))
 
 
 func _add_port(card: Card, spec: Array, index: int, input: bool) -> void:
@@ -604,6 +604,28 @@ static func material(color: Color, overlay: bool = false) -> StandardMaterial3D:
 		result.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		result.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
 		result.render_priority = Material.RENDER_PRIORITY_MAX
+	return result
+
+
+## Unlit like the cards, but shaded by the view angle so the tube reads as round. ALPHA keeps
+## it in the transparent pass above the scene dimmer, with the overlays' render priority.
+static func wire_material(color: Color) -> ShaderMaterial:
+	if _wire_shader == null:
+		_wire_shader = Shader.new()
+		_wire_shader.code = """
+shader_type spatial;
+render_mode unshaded, depth_draw_always, shadows_disabled, fog_disabled;
+uniform vec4 tint : source_color = vec4(1.0);
+void fragment() {
+	float facing = clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
+	ALBEDO = tint.rgb * mix(0.45, 1.0, sqrt(facing));
+	ALPHA = 1.0;
+}
+"""
+	var result := ShaderMaterial.new()
+	result.shader = _wire_shader
+	result.render_priority = Material.RENDER_PRIORITY_MAX
+	result.set_shader_parameter(&"tint", color)
 	return result
 
 

@@ -182,7 +182,7 @@ func _run() -> void:
 	await _frames()
 	_check(_service.blueprint.graph.edges.size() == 3 and _service.blueprint.graph.validate().is_empty(), "spatial cycle shares the valid desktop document")
 	var loop_wire := (_service.canvas.get("_wires") as Array)[2] as XREBlueprintCanvas.Wire
-	_check(loop_wire.mesh.is_routed(), "back edge remains visibly attached to round ports")
+	_check(loop_wire.mesh.visible and loop_wire.mesh.get_point(0).is_equal_approx(_service.canvas.port_position(branch_id, 0, false)), "back edge remains visibly attached to round ports")
 	_service.blueprint.undo()
 	await _frames()
 	_check(_service.blueprint.graph.edges.size() == 2, "one undo removes only the spatial back edge")

@@ -235,46 +235,47 @@ func _run() -> void:
 	route_graph.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 0}]
 	canvas.rebuild(route_graph)
 	_camera.size = 1.3
-	var routed := await _capture("curved_wires")
+	var curved := await _capture("curved_wires")
 	var graph_wire := (canvas.get("_wires") as Array)[0] as XREBlueprintCanvas.Wire
-	_check(graph_wire.mesh.is_routed(), "GPU draws a routed connection around the intermediate node")
-	var visible_wire := false
-	for sample: int in graph_wire.mesh.get_point_count() - 1:
-		for step: int in 8:
-			var point := graph_wire.mesh.get_point(sample).lerp(graph_wire.mesh.get_point(sample + 1), step / 8.0)
-			if absf(point.x) < 0.10 and point.z > 0.04:
-				visible_wire = visible_wire or _white_at(routed, canvas.to_global(point))
-	_check(visible_wire, "smooth tube is visible over the detour without crossing the middle body")
+	var visible_wire := 0
+	for sample: int in range(2, graph_wire.mesh.get_point_count() - 2):
+		var point := graph_wire.mesh.get_point(sample)
+		if absf(point.x) > XREBlueprintCanvas.CARD_WIDTH * 0.5 + 0.02 and absf(point.x) < 0.54 - XREBlueprintCanvas.CARD_WIDTH * 0.5 - 0.02:
+			visible_wire += 1 if _white_at(curved, canvas.to_global(point)) else 0
+	_check(visible_wire >= 4, "GPU draws the Bezier tube between the cards")
+	# The server's vertex layout must match the native packing: positions on the rings,
+	# normals pointing radially out of the centerline.
+	var arrays := graph_wire.mesh.mesh.surface_get_arrays(0)
+	var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+	var normals := arrays[Mesh.ARRAY_NORMAL] as PackedVector3Array
+	var layout_ok := vertices.size() == XREGraphWire.SAMPLES * XREGraphWire.SIDES and normals.size() == vertices.size()
+	var radius := (vertices[0] - graph_wire.mesh.get_point(0)).length() if layout_ok else 0.0
+	layout_ok = layout_ok and radius > 0.001 and radius < 0.005
+	if layout_ok:
+		for ring: int in [0, XREGraphWire.SAMPLES / 2, XREGraphWire.SAMPLES - 1]:
+			for side: int in XREGraphWire.SIDES:
+				var index := ring * XREGraphWire.SIDES + side
+				var radial := vertices[index] - graph_wire.mesh.get_point(ring)
+				layout_ok = layout_ok and absf(radial.length() - radius) < 0.0003 and normals[index].dot(radial.normalized()) > 0.99
+	_check(layout_ok, "tube vertices and octahedral normals match the server's vertex layout")
 	var scene_wire := canvas.create_scene_wire(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
 	canvas.update_scene_wire(scene_wire, 2, 0, Vector3(0.54, -0.35, -0.5))
-	_check(scene_wire.is_routed(), "Target behind the source card retains a visible side exit")
 	_camera.position = Vector3(0.35, 0.18, 2)
 	_camera.look_at(Vector3.ZERO)
 	await _capture("target_behind")
 	_camera.projection = Camera3D.PROJECTION_PERSPECTIVE
 	_viewport.size = Vector2i(2048, 1536)
-	for angle: float in [0.0, 0.65, -0.65, PI]:
+	for angle: float in [0.0, 0.65, -0.65]:
 		var head := Vector3(sin(angle) * 2.3, 0.2, cos(angle) * 2.3)
 		_camera.position = head
 		_camera.look_at(Vector3.ZERO)
-		var orientation := _camera.basis
 		canvas.face_user(head)
 		canvas.update_scene_wire(scene_wire, 2, 0, Vector3(0.54, -0.35, -0.5))
-		for eye_offset: float in [-0.035, 0.035]:
-			_camera.position = head + orientation.x * eye_offset
-			_camera.basis = orientation
-			var eye_image := await _capture("wire_view_%.2f_%.3f" % [angle, eye_offset])
-			var middle := (canvas.get("_cards") as Array)[2] as XREBlueprintCanvas.Card
-			var middle_rect := Rect2(_camera.unproject_position(middle.node.to_global(middle.bounds.get_endpoint(0))), Vector2.ZERO)
-			for corner: int in range(1, 8): middle_rect = middle_rect.expand(_camera.unproject_position(middle.node.to_global(middle.bounds.get_endpoint(corner))))
-			var visible_curve := false
-			for segment: int in graph_wire.mesh.get_point_count() - 1:
-				for sample: int in 8:
-					var point := graph_wire.mesh.get_point(segment).lerp(graph_wire.mesh.get_point(segment + 1), sample / 8.0)
-					var screen := _camera.unproject_position(canvas.to_global(point))
-					if screen.x > middle_rect.position.x and screen.x < middle_rect.end.x and (screen.y < middle_rect.position.y - 2 or screen.y > middle_rect.end.y + 2):
-						visible_curve = visible_curve or _white_at(eye_image, canvas.to_global(point))
-			_check(graph_wire.mesh.is_routed() and visible_curve, "perspective eye view retains a visible wire around the middle panel at %.2f / %.3f" % [angle, eye_offset])
+		var eye_image := await _capture("wire_view_%.2f" % angle)
+		var ends := 0
+		for sample: int in [2, 3, graph_wire.mesh.get_point_count() - 4, graph_wire.mesh.get_point_count() - 3]:
+			ends += 1 if _white_at(eye_image, canvas.to_global(graph_wire.mesh.get_point(sample))) else 0
+		_check(ends >= 3, "perspective view shows the wire leaving and entering its ports at %.2f" % angle)
 	_viewport.queue_free()
 	for frame: int in 3: await process_frame
 	print("test_blueprint_render: %d of %d checks failed" % [_failures, _checks])

@@ -36,7 +36,6 @@ bool is_editor_startup() {
 void initialize_xre_native(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(xre::XREPicker);
-		GDREGISTER_CLASS(xre::XREWireRouter);
 		GDREGISTER_CLASS(xre::XREGraphWire);
 		return;
 	}
