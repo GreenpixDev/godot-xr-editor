@@ -21,6 +21,9 @@ const STANDALONE_REFRESH_RATE := 72.0
 ## dynamic: the runtime lowers it while the GPU keeps up. A light costs the
 ## mobile renderer 3.5–4 ms of GPU time per frame there (D-018).
 const STANDALONE_FOVEATION_LEVEL := 3
+## Multisampling of the VR view on a standalone headset. The tiled mobile GPU
+## resolves it on chip; without it every edge of cards, wires and ports crawls.
+const STANDALONE_MSAA := Viewport.MSAA_4X
 ## Seconds between status lines in the log.
 const STATUS_INTERVAL := 5.0
 ## A main loop step longer than this many display frames counts as late in the status line.
@@ -102,6 +105,8 @@ func _enter_tree() -> void:
 	if XREStandalone.is_standalone():
 		# Vulkan applies the runtime's foveation only to a viewport that asks for it.
 		_viewport.vrs_mode = Viewport.VRS_XR
+		_viewport.msaa_3d = STANDALONE_MSAA
+		_log("VR view MSAA %dx." % (1 << STANDALONE_MSAA))
 	_rig = XRERig.new()
 	_viewport.add_child(_rig)
 	add_child(_viewport)

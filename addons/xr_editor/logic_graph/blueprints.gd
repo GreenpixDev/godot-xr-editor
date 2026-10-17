@@ -6,6 +6,14 @@ extends Node3D
 
 signal changed
 
+## Neck pivot relative to the eye center, in head coordinates: behind and below
+## the eyes. Turning or tilting the head then leaves the measured hand motion alone.
+const NECK_FROM_EYES := Vector3(0.0, -0.075, 0.0805)
+## For the HOMER gain the body is a vertical segment from shoulders to hips,
+## below the neck pivot: a hand low at the lap is still near the body.
+const BODY_TOP := 0.175
+const BODY_BOTTOM := 0.65
+
 class Pointer:
 	var hand: XREHand
 	var surface: XREPanelSurface
@@ -17,8 +25,8 @@ class Pointer:
 	var touched := false
 	var grab_point := Vector3.ZERO
 	var distance := 0.0
-	var start_distance := 0.0
-	var start_reach := 0.0
+	var body_offset := Vector3.ZERO
+	var along := Vector3.FORWARD
 	var depth_uses_grip := false
 	var gain := 1.0
 
@@ -547,9 +555,17 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			if pointer.block >= 0:
 				var physical := _rig.hand_pose(hand, pointer.depth_uses_grip).origin
 				if not pointer.touched:
-					var torso := _rig.camera.global_position + XREManipulator.TORSO_OFFSET
-					var reach := physical.distance_to(torso)
-					pointer.distance = maxf(XREManipulator.TOUCH_RADIUS, pointer.start_distance + (reach - pointer.start_reach) * (pointer.gain - 1.0))
+					# Only the hand's motion along the rod, relative to the body, reels the
+					# card; moving across the rod (sideways, up, down) keeps its length.
+					# The rod direction is averaged over the frame, which makes a swing
+					# around the body with the rod pointing outwards exactly length-preserving.
+					var offset := _body_offset(physical)
+					var along := (_rig.global_basis.inverse() * -hand.global_basis.z).normalized()
+					var mean := along + pointer.along
+					if mean.is_zero_approx(): mean = along
+					pointer.distance = maxf(XREManipulator.TOUCH_RADIUS, pointer.distance + (offset - pointer.body_offset).dot(mean.normalized()) * (pointer.gain - 1.0))
+					pointer.body_offset = offset
+					pointer.along = along
 				var contact := physical if pointer.touched else hand.global_position - hand.global_basis.z.normalized() * pointer.distance
 				canvas.preview_grab(pointer.block, contact, pointer.grab_point, _rig.camera.global_position)
 				if pointer.touched: hand.hide_ray()
@@ -710,16 +726,34 @@ func _start_hold(pointer: Pointer, node: Node3D, block: int, point: Vector3 = Ve
 		target = canvas.global_transform * pointer.before
 		pointer.grab_point = target.affine_inverse() * point
 		pointer.distance = pointer.hand.to_local(point).length()
-		pointer.start_distance = pointer.distance
 		pointer.depth_uses_grip = _rig.has_grip_pose(pointer.hand)
 		var physical := _rig.hand_pose(pointer.hand, pointer.depth_uses_grip).origin
-		var torso := _rig.camera.global_position + XREManipulator.TORSO_OFFSET
-		pointer.start_reach = physical.distance_to(torso)
-		pointer.gain = 1.0 if touched else XREManipulator.homer_gain(torso, physical, point)
+		pointer.body_offset = _body_offset(physical)
+		pointer.along = (_rig.global_basis.inverse() * -pointer.hand.global_basis.z).normalized()
+		pointer.gain = 1.0 if touched else maxf(_body_reach(point) / maxf(_body_reach(physical), XREManipulator.MIN_REACH), 1.0)
 		if touched: pointer.hand.hide_ray()
 		else: pointer.hand.show_ray(pointer.distance, true)
 	else: pointer.hold = pointer.hand.global_transform.affine_inverse() * target
 	pointer.hand.claim(self)
+
+
+## Distance from [param point] to the body: a vertical shoulder-to-hip segment
+## below the neck pivot of [param head]. Sets the HOMER gain of a far grab.
+static func body_reach(head: Transform3D, up: Vector3, point: Vector3) -> float:
+	var neck := head * NECK_FROM_EYES
+	var axis := Geometry3D.get_closest_point_to_segment(point, neck - up * BODY_TOP, neck - up * BODY_BOTTOM)
+	return point.distance_to(axis)
+
+
+func _body_reach(point: Vector3) -> float:
+	return body_reach(_rig.camera.global_transform, _rig.global_basis.y.normalized(), point)
+
+
+## Where [param point] is relative to the neck pivot, in rig space: walking, turning
+## the head and flying the rig leave it unchanged.
+func _body_offset(point: Vector3) -> Vector3:
+	var to_rig := _rig.global_transform.affine_inverse()
+	return to_rig * point - to_rig * (_rig.camera.global_transform * NECK_FROM_EYES)
 
 
 func _finish_hold(pointer: Pointer, commit: bool) -> void:
@@ -851,7 +885,8 @@ func _rebuild() -> void:
 	if not is_inside_tree(): return
 	for pointer: Pointer in _pointers:
 		if pointer.held != null: _finish_hold(pointer, false)
-	canvas.rebuild(blueprint.graph)
+	# A move or its undo keeps every card: rebuilding them all hitches on the headset.
+	if not canvas.sync_placement(blueprint.graph): canvas.rebuild(blueprint.graph)
 	_rebuild_target_wires()
 	if _target_pick >= 0 and blueprint.graph.find_node(_target_pick).is_empty(): _target_pick = -1
 	if _pending_id >= 0:

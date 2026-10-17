@@ -53,6 +53,18 @@ func snapshot() -> Dictionary:
 	return {"nodes": nodes.duplicate(true), "edges": edges.duplicate(true), "variables": variables.duplicate(true), "host_path": host_path, "scene_path": scene_path, "format_version": format_version, "vr_placed": vr_placed, "vr_workspace": vr_workspace, "vr_center": vr_center}
 
 
+## Everything a view draws except block placement: equal keys mean an edit only moved blocks.
+func structure_key() -> Array:
+	var blocks: Array = []
+	for block: Dictionary in nodes:
+		var shape := block.duplicate(true)
+		shape.erase("position")
+		shape.erase("vr_depth")
+		shape.erase("vr_rotation")
+		blocks.append(shape)
+	return [blocks, edges.duplicate(true), variables.duplicate(true), host_path, scene_path, vr_placed, vr_workspace, vr_center]
+
+
 ## Applies one complete edit and notifies every view of this resource.
 func restore(state: Dictionary) -> void:
 	nodes.assign((state["nodes"] as Array).duplicate(true))

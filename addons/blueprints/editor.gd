@@ -31,6 +31,7 @@ var _pending_refresh := false
 var _rebuilding := false
 var _keep_details := false
 var _details_state: Dictionary = {}
+var _details_key: Array = []
 var _undo_button: Button
 var _redo_button: Button
 var _host_label: Label
@@ -162,7 +163,7 @@ func setup(value: XREBlueprintDocument, parameters_only: bool = false) -> void:
 ## Selects a spatial card in the compact parameter inspector.
 func select_block(id: int) -> void:
 	_selected_id = id
-	_refresh_details()
+	if not _parameters_only or _details_key != _current_details_key(): _refresh_details()
 
 
 ## Opens the existing typed variable editor inside the view's viewport.
@@ -286,7 +287,7 @@ func _refresh() -> void:
 		_scene_notice.visible = not document.scene_context_active()
 		_scene_message.text = document.scene_context_message()
 		_scene_button.disabled = document.graph.scene_path.is_empty()
-		_refresh_details()
+		if _details_key != _current_details_key(): _refresh_details()
 		return
 	_rebuilding = true
 	var selected: Array[int] = []
@@ -366,7 +367,14 @@ func _select_block(node: Node) -> void:
 	_refresh_details()
 
 
+## What the compact details show; a block move leaves it unchanged, so the form is kept.
+func _current_details_key() -> Array:
+	var target := document.target_node(_selected_id) if _selected_id >= 0 else null
+	return [document.graph.structure_key(), document.path, _selected_id, document.scene_context_active(), target.get_instance_id() if target != null else 0]
+
+
 func _refresh_details() -> void:
+	_details_key = _current_details_key()
 	var preserve_draft := is_instance_valid(_target_field) and _target_dirty and _target_id == _selected_id and _target_document_path == document.path
 	var draft := _target_field.text if preserve_draft else ""
 	_rebuilding = true

@@ -14,6 +14,8 @@ const VR_LAYER := 1 << 20
 ## Bits 0–19: render layers 1–20 that scene content can be on.
 const SCENE_LAYERS := (1 << 20) - 1
 
+static var _vr_font: FontFile
+
 var camera: XRCamera3D
 var left_hand: XREHand
 var right_hand: XREHand
@@ -87,6 +89,19 @@ static func create_vr_label(font_size: int, pixel_size: float) -> Label3D:
 	label.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	label.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.font = vr_font()
 	label.font_size = font_size
 	label.pixel_size = pixel_size
 	return label
+
+
+## The default font as a multichannel signed distance field: 3D text stays sharp
+## up close and far away instead of shimmering from a fixed-size glyph atlas.
+static func vr_font() -> Font:
+	if _vr_font == null:
+		var base := ThemeDB.fallback_font as FontFile
+		if base == null or base.data.is_empty(): return ThemeDB.fallback_font
+		_vr_font = FontFile.new()
+		_vr_font.data = base.data
+		_vr_font.multichannel_signed_distance_field = true
+	return _vr_font

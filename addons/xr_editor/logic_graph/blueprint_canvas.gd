@@ -61,6 +61,7 @@ var _trash_mesh: ArrayMesh
 var _trash_material: Material
 var _preview: XREGraphWire
 var _offset := Vector2.ZERO
+var _structure: Array = []
 var _selected := -1
 var _hit_id := -1
 var _hit_port := -1
@@ -129,6 +130,7 @@ func get_graph_center() -> Vector2:
 
 ## Rebuilds only after document changes; never called by the frame loop.
 func rebuild(graph: XREBlueprintGraph) -> void:
+	_structure = graph.structure_key()
 	for card: Card in _cards:
 		remove_child(card.node)
 		card.node.queue_free()
@@ -203,6 +205,20 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 func position_from_block(block: Dictionary) -> Vector3:
 	var point: Vector2 = block["position"] - _offset
 	return Vector3(point.x * PIXEL_SIZE, -point.y * PIXEL_SIZE, float(block.get("vr_depth", 0.0)))
+
+
+## Moves the existing cards to the graph's placement when only placement changed.
+## False means the blocks differ and [method rebuild] is needed.
+func sync_placement(graph: XREBlueprintGraph) -> bool:
+	if graph.nodes.size() != _cards.size() or graph.structure_key() != _structure: return false
+	for index: int in _cards.size():
+		var card := _cards[index]
+		var block: Dictionary = graph.nodes[index]
+		if card.id != block["id"]: return false
+		card.node.position = position_from_block(block)
+		if _faces_user: card.node.global_basis = XREPanels.facing(card.node.global_position, _head_position, Vector3.UP)
+	update_wires()
+	return true
 
 
 ## Commits one spatial move to the shared graph history after previewing its geometry.

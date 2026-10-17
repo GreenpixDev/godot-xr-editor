@@ -157,16 +157,22 @@ func _run() -> void:
 	await _frames()
 	var preview_depth := _service.canvas.get_block_position(print_id).z
 	_check(_service.blueprint.history.get_version() == history_version, "grip preview does not create history entries")
+	var card_node := _service.canvas.get_node_or_null("Block%d" % print_id)
+	var details := (_service.parameters.get("_details") as Node).get_child(0)
 	_right.set_input(&"grip", 0.0)
 	await _frames()
+	_check(card_node != null and _service.canvas.get_node_or_null("Block%d" % print_id) == card_node, "releasing a moved card keeps the canvas instead of rebuilding it")
+	_check(is_instance_valid(details) and details.get_parent() == _service.parameters.get("_details"), "releasing a moved card keeps the parameter form")
 	_check(_service.blueprint.history.get_version() == history_version + 1, "grip release commits exactly one graph edit")
 	_check(absf(float(_service.blueprint.graph.find_node(print_id).get("vr_depth", 0)) - preview_depth) < 0.001, "previewed ray-constrained depth is persisted")
 	_service.blueprint.undo()
 	await _frames()
 	_check(_service.canvas.get_block_position(print_id).is_equal_approx(before), "undo restores spatial card placement")
+	_check(_service.canvas.get_node_or_null("Block%d" % print_id) == card_node, "undoing a move only repositions the existing card")
 	await _test_card_rotation(print_id)
 	await _test_depth_pull(print_id)
 	await _test_depth_direction(print_id)
+	await _test_depth_lap(print_id)
 	await _test_keyboard()
 	_service.add_block("branch")
 	await _frames()
@@ -428,7 +434,7 @@ func _test_card_ray(id: int) -> void:
 func _test_depth_pull(id: int) -> void:
 	var original := _service.canvas.get_block_transform(id)
 	var history := _service.blueprint.history.get_version()
-	var torso := _rig.camera.global_position + XREManipulator.TORSO_OFFSET
+	var torso := _body_point()
 	var hand_start := torso + Vector3.FORWARD * 0.4
 	var near_motion := 0.0
 	for depth: float in [1.0, 3.0]:
@@ -447,8 +453,9 @@ func _test_depth_pull(id: int) -> void:
 		_right.set_pose(&"aim", Transform3D(Basis.IDENTITY, hand_pulled), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 		await _frames()
 		var endpoint := _service.canvas.to_global(_service.canvas.get_block_transform(id) * pointer.grab_point)
-		var expected := XREManipulator.moved_pivot(contact, hand_start, hand_pulled, XREManipulator.homer_gain(torso, hand_start, contact))
-		_check(endpoint.is_equal_approx(expected), "straight depth pull matches the scene-object HOMER displacement")
+		var gain := _body_reach(contact) / _body_reach(hand_start)
+		var expected := XREManipulator.moved_pivot(contact, hand_start, hand_pulled, gain)
+		_check(endpoint.is_equal_approx(expected), "straight depth pull scales hand travel by the body-reach HOMER gain")
 		_check(pointer.distance < initial_distance, "moving the hand toward the body shortens the ray grab")
 		var motion := contact.distance_to(endpoint)
 		if depth < 2.0: near_motion = motion
@@ -469,15 +476,54 @@ func _test_depth_pull(id: int) -> void:
 	await _frames()
 
 
+## A point on the assumed body axis at shoulder-to-hip height, as the grab measures it.
+func _body_point() -> Vector3:
+	return _rig.camera.global_transform * XREBlueprints.NECK_FROM_EYES - _rig.global_basis.y.normalized() * 0.225
+
+
+func _body_reach(point: Vector3) -> float:
+	return XREBlueprints.body_reach(_rig.camera.global_transform, _rig.global_basis.y.normalized(), point)
+
+
 func _set_grip_and_aim(grip: Transform3D) -> void:
 	_right.set_pose(&"grip", grip, Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 	_right.set_pose(&"aim", Transform3D(grip.basis, grip * Vector3(0, 0, -0.12)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 
 
+## A single torso point at neck height made a pull toward the lap read as a push.
+func _test_depth_lap(id: int) -> void:
+	var original := _service.canvas.get_block_transform(id)
+	var version := _service.blueprint.history.get_version()
+	var body := _body_point()
+	var start := body + Vector3(0.15, -0.2, -0.35)
+	var pulled := start + Vector3(0, -0.2, 0.15)
+	var torso_point := _rig.camera.global_position + XREManipulator.TORSO_OFFSET
+	_check(pulled.distance_to(torso_point) > start.distance_to(torso_point), "lap fixture moves away from a single torso point")
+	_service.canvas.preview_transform(id, Transform3D(Basis.IDENTITY, _service.canvas.to_local(start + Vector3(0, 0, -0.12) + Vector3.FORWARD * 2.0)))
+	_set_grip_and_aim(Transform3D(Basis.IDENTITY, start))
+	_right.set_input(&"grip", 0.0)
+	await _frames()
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
+	_check(pointer.block == id and not pointer.touched, "lap regression grabs a distant card by the ray")
+	var initial := pointer.distance
+	_set_grip_and_aim(Transform3D(Basis.IDENTITY, pulled))
+	await _frames()
+	_check(pointer.distance < initial, "pulling the hand back and down toward the lap shortens the rod")
+	_right.invalidate_pose(&"grip")
+	await _frames()
+	_check(pointer.held == null and _service.blueprint.history.get_version() == version, "cancelled lap hold adds no history")
+	_service.canvas.preview_transform(id, original)
+	_right.set_input(&"grip", 0.0)
+	_aim(Vector3(5, 4, -2))
+	await _frames()
+
+
 func _test_depth_direction(id: int) -> void:
 	var original := _service.canvas.get_block_transform(id)
 	var version := _service.blueprint.history.get_version()
-	var torso := _rig.camera.global_position + XREManipulator.TORSO_OFFSET
+	var torso := _body_point()
 	var grip_start := torso + Vector3(0.28, 0, -0.4)
 	var aim_start := grip_start + Vector3(0, 0, -0.12)
 	_service.canvas.preview_transform(id, Transform3D(Basis.IDENTITY, _service.canvas.to_local(aim_start + Vector3.FORWARD * 2.0)))
@@ -494,9 +540,13 @@ func _test_depth_direction(id: int) -> void:
 		await _frames()
 		_check(is_equal_approx(pointer.distance, initial), "wrist yaw with fixed physical grip never changes grab depth")
 	var offset := grip_start - torso
+	var outwards := Basis.looking_at(Vector3(offset.x, 0, offset.z))
+	_set_grip_and_aim(Transform3D(outwards, grip_start))
+	await _frames()
+	_check(is_equal_approx(pointer.distance, initial), "pointing the rod outwards from the body is a wrist turn only")
 	for side: float in [-0.8, 0.8, -0.4, 0.4, 0.0]:
 		var turn := Basis(Vector3.UP, side)
-		_set_grip_and_aim(Transform3D(turn, torso + turn * offset))
+		_set_grip_and_aim(Transform3D(turn * outwards, torso + turn * offset))
 		await _frames()
 		_check(is_equal_approx(pointer.distance, initial), "arm swing at constant body distance keeps the rod length")
 		var contact_on_arc := _service.canvas.to_global(_service.canvas.get_block_transform(id) * pointer.grab_point)
@@ -510,13 +560,29 @@ func _test_depth_direction(id: int) -> void:
 	_rig.camera.position = head_before
 	_set_grip_and_aim(Transform3D(Basis.IDENTITY, grip_start))
 	await _frames()
-	var contact := _service.canvas.to_global(_service.canvas.get_block_transform(id) * pointer.grab_point)
-	var pulling := torso + Basis(Vector3.UP, 0.6) * offset * 0.85
-	_set_grip_and_aim(Transform3D(Basis.IDENTITY, pulling))
+	var head_turn := _rig.camera.transform
+	var neck := head_turn * XREBlueprints.NECK_FROM_EYES
+	for look: Vector3 in [Vector3(-0.6, 0, 0), Vector3(0.3, 0.7, 0), Vector3(-0.3, -0.8, 0)]:
+		var turned := Basis.from_euler(look)
+		_rig.camera.transform = Transform3D(turned, neck - turned * XREBlueprints.NECK_FROM_EYES)
+		await _frames()
+		_check(is_equal_approx(pointer.distance, initial), "turning the head about the neck with a still hand keeps rod length")
+	_rig.camera.transform = head_turn
 	await _frames()
-	_check(pointer.distance < initial, "reducing arm reach during a sideways swing shortens the rod")
+	var contact := _service.canvas.to_global(_service.canvas.get_block_transform(id) * pointer.grab_point)
+	var sideways := grip_start + Vector3(0.3, 0.1, 0)
+	_check(_body_reach(sideways) > _body_reach(grip_start), "sideways fixture moves the hand away from the body axis")
+	_set_grip_and_aim(Transform3D(Basis.IDENTITY, sideways))
+	await _frames()
+	_check(is_equal_approx(pointer.distance, initial), "moving the hand across the rod keeps its length")
 	var endpoint := _service.canvas.to_global(_service.canvas.get_block_transform(id) * pointer.grab_point)
-	_check(endpoint.z > contact.z, "combined lateral/pull motion brings the card forward rather than sending it away")
+	_check(is_equal_approx(endpoint.z, contact.z), "a sideways move carries the card sideways, never away")
+	_set_grip_and_aim(Transform3D(Basis.IDENTITY, sideways + Vector3(0, 0, 0.08)))
+	await _frames()
+	_check(pointer.distance < initial, "pulling back along the rod after a sideways move shortens it")
+	_set_grip_and_aim(Transform3D(Basis.IDENTITY, grip_start))
+	await _frames()
+	_check(is_equal_approx(pointer.distance, initial), "returning the hand restores the rod length")
 	var pushed := grip_start + Vector3(0, 0, -0.4)
 	_set_grip_and_aim(Transform3D(Basis.IDENTITY, pushed))
 	await _frames()
