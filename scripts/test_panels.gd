@@ -159,6 +159,13 @@ func _initialize() -> void:
 		_signals_window_closed,
 		_point_past_panels,
 		_room_selected,
+		_test_feature_store,
+		_open_settings,
+		_hover_cuboid,
+		_press_cuboid,
+		_release_cuboid,
+		_cuboid_set,
+		_controls_page,
 		_test_proxy,
 		_test_inspector_tab,
 		_test_fps,
@@ -632,6 +639,78 @@ func _test_proxy() -> void:
 	proxy.set(&"no_such_property", 1)
 	_check(proxy.get(&"no_such_property") == null, "the proxy has the node's properties only")
 	node.free()
+
+
+# Feature settings (D-039).
+
+func _test_feature_store() -> void:
+	var path := "user://test_feature_settings.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var store := XREFeatureSettings.new(path)
+	var key := XREFeatureSettings.NODE_DISPLAY
+	_check(store.get_value(key) == XREFeatureSettings.BILLBOARD, "the first value of a setting is its default")
+	_check(not store.set_value(key, &"sphere") and not store.set_value(&"no_such_setting", XREFeatureSettings.CUBOID),
+			"unknown values and settings are refused")
+	_check(not store.set_value(key, XREFeatureSettings.BILLBOARD), "setting the current value changes nothing")
+	var keys: Array[StringName] = []
+	store.changed.connect(func(changed: StringName) -> void: keys.append(changed))
+	_check(store.set_value(key, XREFeatureSettings.CUBOID) and keys == [key], "a new value is set and announced")
+	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.CUBOID, "the value persists in the file")
+	var config := ConfigFile.new()
+	config.set_value("features", String(key), "sphere")
+	config.save(path)
+	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.BILLBOARD, "a saved value no longer known falls back to the default")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	_check(XREFeatureSettings.get_keys(XREFeatureSettings.Category.CONTROLS).is_empty(), "there are no control settings yet")
+
+
+func _settings_tab() -> XRESettingsTab:
+	return _hand_panel.get_tabs()[XREPanels.tab_types().find(XRESettingsTab)] as XRESettingsTab
+
+
+func _open_settings() -> void:
+	_check(_settings_tab() != null, "the forearm panel has a settings tab")
+	# The files window would take the ray in front of the forearm panel.
+	for window: XREPanelWindow in _panels.get_windows():
+		window.global_position += Vector3(0.0, 10.0, 0.0)
+	_hand_panel.select_tab(XREPanels.tab_types().find(XRESettingsTab))
+	_check(_settings_tab().get_title() == XREPanelTab.editor_text("Settings"), "the settings tab has the editor's title")
+
+
+func _hover_cuboid() -> void:
+	_aim(_hand_panel, _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
+
+
+func _press_cuboid() -> void:
+	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
+	_check(billboard != null and billboard.button_pressed, "the features page shows the node display at its current value")
+	_operation_count = _operations.size()
+	_aim(_hand_panel, _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 1.0)
+
+
+func _release_cuboid() -> void:
+	_aim(_hand_panel, _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
+
+
+func _cuboid_set() -> void:
+	_check(_document.features.get_value(XREFeatureSettings.NODE_DISPLAY) == XREFeatureSettings.CUBOID,
+			"a click on Cuboid switches the node display")
+	_check(_operations.slice(_operation_count) == ["set_feature PANEL []"],
+			"the switch is one operation from a panel: %s" % [_operations.slice(_operation_count)])
+	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
+	_check(not billboard.button_pressed and _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID).button_pressed,
+			"only the current value's button is down")
+	_document.set_feature(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD, XREDocument.Source.TOOL)
+	_settings_tab().select_page(XREFeatureSettings.Category.CONTROLS)
+
+
+func _controls_page() -> void:
+	_check(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD) == null,
+			"the controls page doesn't show feature settings")
+	var content := _settings_tab().find_child("Content", true, false) as VBoxContainer
+	_check(content.get_child_count() == 1 and content.get_child(0) is Label, "the empty controls page says so")
+	_settings_tab().select_page(XREFeatureSettings.Category.FEATURES)
+	_hand_panel.select_tab(0)
 
 
 func _test_inspector_tab() -> void:

@@ -2,8 +2,9 @@
 class_name XREPanels
 extends Node3D
 ## Flat panels in the headset (docs/decisions.md, D-016): one lying on the
-## left forearm, with tabs for the edited scene's tree, the inspector, signals
-## and the project's files ([XREHandPanel]), and windows the user opens from
+## left forearm, with tabs for the edited scene's tree, the inspector, signals,
+## the project's files, Blueprints and the feature settings ([XREHandPanel],
+## [XRESettingsTab], D-039), and windows the user opens from
 ## those tabs and places in the scene ([XREPanelWindow]).
 ##
 ## Controls:
@@ -211,7 +212,7 @@ func open_window(type: Script) -> XREPanelWindow:
 
 ## The tabs' classes, in the forearm panel's order.
 static func tab_types() -> Array[GDScript]:
-	return [XRESceneTab, XREInspectorTab, XRESignalsTab, XREFileSystemTab, XREBlueprintTab]
+	return [XRESceneTab, XREInspectorTab, XRESignalsTab, XREFileSystemTab, XREBlueprintTab, XRESettingsTab]
 
 
 ## The basis of a window at [param position] that faces [param head], upright

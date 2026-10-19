@@ -8,6 +8,8 @@ extends XREDocument
 
 ## Where [method separate_executable] keeps its copy: build/ is neither in git nor scanned by the editor.
 const SEPARATE_EXECUTABLE_DIR := "res://build/xre_play"
+## File of the feature settings ([member XREDocument.features]) in the project's .godot/editor/.
+const FEATURES_FILE := "xr_editor_features.cfg"
 
 var _plugin: EditorPlugin
 ## Process of a game run by [method _play_separately], or 0.
@@ -16,6 +18,9 @@ var _game_pid := 0
 
 func _init(plugin: EditorPlugin) -> void:
 	_plugin = plugin
+	# Per project and machine, outside git: the researcher sets the variant on the study's computer.
+	features = XREFeatureSettings.new(EditorInterface.get_editor_paths().get_project_settings_dir().path_join(FEATURES_FILE))
+	print("XR Editor: features ", features.describe())
 	EditorInterface.get_selection().selection_changed.connect(selection_changed.emit)
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(files_changed.emit)
 	plugin.scene_changed.connect(_on_scene_changed)

@@ -3,10 +3,15 @@ class_name XREBlueprintCanvas
 extends Node3D
 ## Spatial cards and typed ports over the same resource used by GraphEdit.
 ## Cached card/port arrays are picked analytically; wires reuse meshes during dragging.
+## Cards are drawn as the feature setting [constant XREFeatureSettings.NODE_DISPLAY]
+## says ([method set_display], D-039): flat billboards turned to the head, or
+## solid cuboids that keep the graph's orientation.
 
 const PIXEL_SIZE := 0.0009
 const CARD_WIDTH := 0.26
 const CARD_THICKNESS := 0.001
+## Depth of a card drawn as a cuboid: thick enough to read as a solid from the side.
+const CUBOID_DEPTH := 0.03
 const ROW_HEIGHT := 0.045
 const PORT_RADIUS := 0.010
 const PORT_DEPTH := 0.001
@@ -31,6 +36,8 @@ class Card:
 	var id: int
 	var node: Node3D
 	var height: float
+	## How far the front face is in front of a billboard's: ports, labels and icons sit on it.
+	var face := 0.0
 	var bounds: AABB
 	var mesh: MeshInstance3D
 	var normal: Material
@@ -75,6 +82,7 @@ var _delete_right := -1
 var _delete_left := -1
 var _body_materials: Array[ShaderMaterial] = []
 var _faces_user := false
+var _display := XREFeatureSettings.BILLBOARD
 var _head_position := Vector3.ZERO
 var _view_transform := Transform3D.IDENTITY
 static var _wire_shader: Shader
@@ -88,7 +96,10 @@ func _init() -> void:
 shader_type spatial;
 render_mode unshaded, depth_draw_always, shadows_disabled;
 uniform vec4 face_tint : source_color = vec4(0.09, 0.27, 0.47, 1.0);
-void fragment() { ALBEDO = face_tint.rgb; ALPHA = 1.0; }
+varying float front;
+// Only the front (+Z) face has the full tint: a cuboid's sides and back read as its depth.
+void vertex() { front = step(0.5, NORMAL.z); }
+void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 """
 	for tint: Color in CARD_PALETTE:
 		var body := ShaderMaterial.new()
@@ -105,6 +116,20 @@ void fragment() { ALBEDO = face_tint.rgb; ALPHA = 1.0; }
 	_trash_material = material(Color("ffabb4"), true)
 	_preview = create_scene_wire(Color("ffda82"))
 	_preview.visible = false
+
+
+## Switches how cards are drawn to [param display], a value of
+## [constant XREFeatureSettings.NODE_DISPLAY]. Takes effect on the next
+## [method rebuild]; false if it is unknown or already the current one.
+func set_display(display: StringName) -> bool:
+	if display == _display or not display in XREFeatureSettings.get_values(XREFeatureSettings.NODE_DISPLAY): return false
+	_display = display
+	return true
+
+
+## How cards are drawn: a value of [constant XREFeatureSettings.NODE_DISPLAY].
+func get_display() -> StringName:
+	return _display
 
 
 ## Initializes the view's center once on open, keeping it fixed during edits.
@@ -150,22 +175,31 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		card.node.name = "Block%d" % card.id
 		card.node.position = position_from_block(block)
 		add_child(card.node)
-		if _faces_user: card.node.global_basis = XREPanels.facing(card.node.global_position, _head_position, Vector3.UP)
+		_orient(card)
 		var inputs := graph.ports(block, true)
 		var outputs := graph.ports(block, false)
 		card.height = 0.08 + maxi(inputs.size(), outputs.size()) * ROW_HEIGHT
-		var panel := QuadMesh.new()
-		panel.size = Vector2(CARD_WIDTH, card.height)
-		var body_size := Vector3(CARD_WIDTH, card.height, CARD_THICKNESS)
+		var cuboid := _display == XREFeatureSettings.CUBOID
+		var body_size := Vector3(CARD_WIDTH, card.height, CUBOID_DEPTH if cuboid else CARD_THICKNESS)
+		card.face = (CUBOID_DEPTH - CARD_THICKNESS) * 0.5 if cuboid else 0.0
 		card.bounds = AABB(-body_size * 0.5, body_size)
 		card.normal = _body_materials[CARD_GROUPS.get(block["kind"], 3)]
-		card.mesh = XRERig.create_vr_mesh(panel, card.normal)
+		var body: PrimitiveMesh
+		if cuboid:
+			var box := BoxMesh.new()
+			box.size = body_size
+			body = box
+		else:
+			var panel := QuadMesh.new()
+			panel.size = Vector2(CARD_WIDTH, card.height)
+			body = panel
+		card.mesh = XRERig.create_vr_mesh(body, card.normal)
 		card.node.add_child(card.mesh)
-		_add_frame(card, body_size)
+		_add_frame(card, body_size, cuboid)
 		var title := label("%s · %d" % [XREBlueprintGraph.BLOCKS[block["kind"]]["title"], card.id], 21)
-		title.position = Vector3(0, card.height * 0.5 - 0.022, CARD_THICKNESS * 0.5 + 0.0005)
+		title.position = Vector3(0, card.height * 0.5 - 0.022, card.face + CARD_THICKNESS * 0.5 + 0.0005)
 		card.node.add_child(title)
-		card.plus_point = Vector3(CARD_WIDTH * 0.5 - 0.023, card.height * 0.5 - 0.022, CARD_THICKNESS * 0.5 + 0.002)
+		card.plus_point = Vector3(CARD_WIDTH * 0.5 - 0.023, card.height * 0.5 - 0.022, card.face + CARD_THICKNESS * 0.5 + 0.002)
 		card.plus = Node3D.new()
 		card.node.add_child(card.plus)
 		for point: Vector3 in [card.plus_point]:
@@ -216,7 +250,7 @@ func sync_placement(graph: XREBlueprintGraph) -> bool:
 		var block: Dictionary = graph.nodes[index]
 		if card.id != block["id"]: return false
 		card.node.position = position_from_block(block)
-		if _faces_user: card.node.global_basis = XREPanels.facing(card.node.global_position, _head_position, Vector3.UP)
+		_orient(card)
 	update_wires()
 	return true
 
@@ -239,7 +273,7 @@ func preview_move(id: int, point: Vector3) -> void:
 	var card := _find_card(id)
 	if card == null: return
 	card.node.position = point
-	if _faces_user: card.node.global_basis = XREPanels.facing(card.node.global_position, _head_position, Vector3.UP)
+	_orient(card)
 	update_wires()
 
 
@@ -248,23 +282,38 @@ func preview_transform(id: int, pose: Transform3D) -> void:
 	var card := _find_card(id)
 	if card == null: return
 	card.node.transform = pose
-	if _faces_user: card.node.global_basis = XREPanels.facing(card.node.global_position, _head_position, Vector3.UP)
+	_orient(card)
 	update_wires()
 
 
 ## Turns flat cards towards the head without moving their centers or editing the graph.
+## Cuboids stay as they are; the head is kept for a switch back to billboards.
 func face_user(head: Vector3) -> void:
 	if _faces_user and head.is_equal_approx(_head_position) and global_transform.is_equal_approx(_view_transform): return
 	_faces_user = true
 	_head_position = head
 	_view_transform = global_transform
+	if _display == XREFeatureSettings.CUBOID: return
 	for card: Card in _cards:
-		card.node.global_basis = XREPanels.facing(card.node.global_position, head, Vector3.UP)
+		_orient(card)
 	update_wires()
+
+
+## Billboards face the last head position around the vertical; cuboids keep the graph's orientation.
+func _orient(card: Card) -> void:
+	if _display == XREFeatureSettings.CUBOID: card.node.basis = Basis.IDENTITY
+	elif _faces_user: card.node.global_basis = XREPanels.facing(card.node.global_position, _head_position, Vector3.UP)
 
 
 ## Keeps a captured point on the rod while its upright panel faces the user.
 func preview_grab(id: int, contact: Vector3, local_contact: Vector3, head: Vector3) -> void:
+	if _display == XREFeatureSettings.CUBOID:
+		# A solid keeps the graph's orientation: only the captured point follows the rod.
+		var held := _find_card(id)
+		if held == null: return
+		held.node.global_transform = Transform3D(global_basis, contact - global_basis * local_contact)
+		update_wires()
+		return
 	var orientation := XREPanels.facing(contact, head, Vector3.UP)
 	var span := head - contact
 	span.y = 0.0
@@ -570,7 +619,7 @@ func update_scene_wire(wire: XREGraphWire, id: int, port: int, end: Vector3) -> 
 
 
 func _add_port(card: Card, spec: Array, index: int, input: bool) -> void:
-	var point := Vector3((-CARD_WIDTH * 0.5 + 0.014) if input else (CARD_WIDTH * 0.5 - 0.014), card.height * 0.5 - 0.064 - index * ROW_HEIGHT, 0.003)
+	var point := Vector3((-CARD_WIDTH * 0.5 + 0.014) if input else (CARD_WIDTH * 0.5 - 0.014), card.height * 0.5 - 0.064 - index * ROW_HEIGHT, card.face + 0.003)
 	var mesh := XRERig.create_vr_mesh(_port_mesh, material(COLORS[spec[1]], true))
 	mesh.position = point
 	mesh.rotation.x = PI * 0.5
@@ -588,10 +637,25 @@ func _add_port(card: Card, spec: Array, index: int, input: bool) -> void:
 	card.node.add_child(text)
 
 
-func _add_frame(card: Card, size: Vector3) -> void:
-	# Four coplanar border strips share one draw call, built only on document changes.
+func _add_frame(card: Card, size: Vector3, cuboid: bool) -> void:
+	# Four coplanar border strips, or a cuboid's twelve edges, share one draw call, built only on document changes.
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	if cuboid:
+		for axis: int in 3:
+			for first: float in [-1.0, 1.0]:
+				for second: float in [-1.0, 1.0]:
+					var edge := BoxMesh.new()
+					var dimensions := Vector3.ONE * 0.0015
+					dimensions[axis] = size[axis] + 0.0015
+					edge.size = dimensions
+					var corner := Vector3.ZERO
+					corner[(axis + 1) % 3] = size[(axis + 1) % 3] * first * 0.5
+					corner[(axis + 2) % 3] = size[(axis + 2) % 3] * second * 0.5
+					surface.append_from(edge, 0, Transform3D(Basis.IDENTITY, corner))
+		card.frame = XRERig.create_vr_mesh(surface.commit(), _frame_material)
+		card.node.add_child(card.frame)
+		return
 	for axis: int in 2:
 		for side: float in [-1.0, 1.0]:
 			var shape := BoxMesh.new()

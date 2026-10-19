@@ -102,6 +102,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_floating_ui.name = "FloatingUI"
 	add_child(_floating_ui)
 	canvas = XREBlueprintCanvas.new()
+	canvas.set_display(document.features.get_value(XREFeatureSettings.NODE_DISPLAY))
 	_workspace.add_child(canvas)
 	_toolbar = XREPanelSurface.new(Vector2(840, 150), 0.0009, 1.5, theme)
 	_toolbar.position = Vector3(0, 0.42, 0.03)
@@ -155,6 +156,7 @@ func _enter_tree() -> void:
 	_document.files_changed.connect(_schedule_refresh)
 	_document.blueprint_bindings_changed.connect(_schedule_refresh)
 	_document.operation_recorded.connect(_scene_operation)
+	_document.features.changed.connect(_feature_changed)
 	_document.prepare_play = prepare_play
 	_schedule_refresh()
 
@@ -172,6 +174,7 @@ func _exit_tree() -> void:
 	_document.files_changed.disconnect(_schedule_refresh)
 	_document.blueprint_bindings_changed.disconnect(_schedule_refresh)
 	_document.operation_recorded.disconnect(_scene_operation)
+	_document.features.changed.disconnect(_feature_changed)
 	if _document.prepare_play == prepare_play: _document.prepare_play = Callable()
 	for pointer: Pointer in _pointers:
 		pointer.hand.unclaim(self)
@@ -857,6 +860,15 @@ func _scene_changed() -> void:
 
 func _scene_operation(operation: StringName, _source: XREDocument.Source, _nodes: Array[Node], _time_usec: int) -> void:
 	if operation in [&"assign_blueprint", &"detach_blueprint", &"remove_nodes", &"add_node"]: _schedule_refresh()
+
+
+## A switch of the node display (D-039) redraws the open cards at once; a held card is put down first.
+func _feature_changed(key: StringName) -> void:
+	if key != XREFeatureSettings.NODE_DISPLAY or not canvas.set_display(_document.features.get_value(key)): return
+	_finish_holds()
+	cancel_connection()
+	canvas.rebuild(blueprint.graph)
+	_schedule_rebuild()
 
 
 func _graph_operation(operation: StringName, source: StringName, _time_usec: int) -> void:

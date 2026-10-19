@@ -23,6 +23,40 @@ func _hit(point: Vector3, direction: Vector3, distance: float = 0.5) -> float:
 	return _canvas.intersect_ray(world_point - world_direction * distance, world_direction, distance + 0.1)
 
 
+## The cuboid node display (D-039): a solid box in the graph's orientation, picked by its volume.
+func _test_cuboid(graph: XREBlueprintGraph) -> void:
+	_check(not _canvas.set_display(&"sphere"), "an unknown node display is refused")
+	_check(_canvas.set_display(XREFeatureSettings.CUBOID), "the canvas switches to cuboids")
+	_canvas.rebuild(graph)
+	var card := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var half := card.bounds.size * 0.5
+	_check(card.mesh.mesh is BoxMesh and is_equal_approx(card.bounds.size.z, XREBlueprintCanvas.CUBOID_DEPTH), "a cuboid card is a solid box")
+	_check(card.node.basis.is_equal_approx(Basis.IDENTITY), "a rebuilt cuboid keeps the graph's orientation although the head was seen")
+	_canvas.face_user(Vector3(1.5, 0.3, 0.5))
+	_check(card.node.basis.is_equal_approx(Basis.IDENTITY), "a cuboid doesn't turn to the head")
+	var port := _canvas.port_position(1, 0, false)
+	_check(port.z > half.z, "ports sit on the cuboid's front face")
+	_check(is_equal_approx(_hit(port, Vector3.FORWARD), 0.5) and _canvas.get_hit_port() == 0, "the port on the front face is pickable")
+	_check(_hit(card.plus_point, Vector3.FORWARD) >= 0 and _canvas.get_hit_plus(), "plus is pickable on the front face")
+	_check(_hit(card.trash_point, Vector3.FORWARD) >= 0 and _canvas.get_hit_delete(), "trash is pickable on the front face")
+	_check(is_equal_approx(_hit(Vector3(half.x, 0, 0), Vector3.LEFT), 0.5) and _canvas.get_hit_id() == 1, "the cuboid's side is pickable")
+	_check(is_equal_approx(_hit(Vector3(0, 0, -half.z), Vector3.BACK), 0.5), "the cuboid's back stops the ray")
+	_check(_canvas.intersect_touch(_canvas.to_global(Vector3(0, 0, -half.z - 0.02))) == 1, "grip behind the cuboid touches it")
+	var contact := Vector3(0.3, 0.1, -1)
+	var local_contact := Vector3(0.1, 0.03, half.z)
+	_canvas.preview_grab(1, contact, local_contact, Vector3(0.1, 0.8, 0))
+	_check(card.node.to_global(local_contact).is_equal_approx(contact) and card.node.basis.is_equal_approx(Basis.IDENTITY),
+			"a grabbed cuboid follows the rod without turning")
+	_canvas.preview_transform(1, Transform3D(Basis.from_euler(Vector3(0.3, 0.7, -0.2)), Vector3(0.1, -0.1, 0.2)))
+	_check(card.node.basis.is_equal_approx(Basis.IDENTITY), "a moved cuboid keeps the graph's orientation")
+	_check(_canvas.set_display(XREFeatureSettings.BILLBOARD), "the canvas switches back to billboards")
+	_canvas.rebuild(graph)
+	card = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_check(card.mesh.mesh is QuadMesh and card.face == 0.0, "billboards are flat again")
+	_canvas.face_user(Vector3(0, 0, -2))
+	_check(card.node.global_basis.z.dot(Vector3.FORWARD) > 0.99, "billboards turn to the head again")
+
+
 func _run() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [{"id": 1, "kind": "ready", "position": Vector2.ZERO, "params": {"policy": "parallel"}}]
@@ -92,6 +126,7 @@ func _run() -> void:
 	contact = Vector3(head.x + 0.03, 0.1, head.z)
 	_canvas.preview_grab(1, contact, local_contact, head)
 	_check(card.node.to_global(local_contact).is_equal_approx(contact), "minimum horizontal reach cannot detach an off-center grab from the rod")
+	_test_cuboid(graph)
 	_canvas.queue_free()
 	await process_frame
 	await process_frame

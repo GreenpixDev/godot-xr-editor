@@ -14,6 +14,8 @@ var _host: Node3D
 var _viewport: SubViewport
 var _hover_pulses := 0
 var _keyboard_clicks := 0
+## The editor's node display before the test, put back at the end.
+var _saved_display := XREFeatureSettings.BILLBOARD
 
 
 func _init(document: XREDocument) -> void:
@@ -58,6 +60,9 @@ func _run() -> void:
 	if scene == null:
 		get_tree().quit(1)
 		return
+	# The editor's saved variant is put back at the end; the checks expect the default billboards.
+	_saved_display = _document.features.get_value(XREFeatureSettings.NODE_DISPLAY)
+	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
 	DirAccess.make_dir_recursive_absolute("res://build/blueprint_vr_tests")
 	_right = XRControllerTracker.new()
 	_right.name = &"right_hand"
@@ -97,6 +102,7 @@ func _run() -> void:
 	_check(_service.related_host(_host) == _host, "scene open resolves the explicit host")
 	_check(_service.is_open(), "creation opens spatial workspace")
 	await _test_workspace()
+	await _test_node_display()
 	var toolbar := _service.get("_toolbar") as XREPanelSurface
 	var toolbar_point := toolbar.pixel_to_global(Vector2(12, 144))
 	_aim(toolbar_point)
@@ -312,12 +318,30 @@ func _run() -> void:
 	_rig.queue_free()
 	_viewport.queue_free()
 	await _frames()
+	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, _saved_display)
 	print("test_blueprint_vr: %d of %d checks failed" % [_failures, _checks])
 	get_tree().quit(1 if _failures > 0 else 0)
 
 
 func _record(operation: StringName, _source: XREDocument.Source, _nodes: Array[Node], _time_usec: int) -> void:
 	_operations.append(operation)
+
+
+## Switching the node display (D-039) redraws the open graph at once, and back.
+func _test_node_display() -> void:
+	var key := XREFeatureSettings.NODE_DISPLAY
+	var count := (_service.canvas.get("_cards") as Array).size()
+	_check(_document.set_feature(key, XREFeatureSettings.CUBOID, XREDocument.Source.PANEL), "the node display switches to cuboids")
+	_check(_operations.back() == &"set_feature", "the switch enters common telemetry")
+	await _frames()
+	var cards := _service.canvas.get("_cards") as Array
+	_check(_service.canvas.get_display() == XREFeatureSettings.CUBOID and cards.size() == count, "the open graph is redrawn with the same cards")
+	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is BoxMesh, "open cards become cuboids")
+	_check((cards[0] as XREBlueprintCanvas.Card).node.basis.is_equal_approx(Basis.IDENTITY), "cuboids keep the graph's orientation in the headset")
+	_check(_document.set_feature(key, XREFeatureSettings.BILLBOARD, XREDocument.Source.PANEL), "the node display switches back")
+	await _frames()
+	cards = _service.canvas.get("_cards") as Array
+	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is QuadMesh, "open cards are billboards again")
 
 
 func _test_workspace() -> void:

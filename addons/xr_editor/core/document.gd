@@ -40,6 +40,21 @@ enum Source {
 
 ## Optional synchronous validation before launching a game from the headset.
 var prepare_play: Callable
+## Variants of features under study (D-039), shared by every tool and panel.
+## Read them here; switch them with [method set_feature].
+var features := XREFeatureSettings.new()
+
+
+## Switches feature setting [param key] to [param value] ([XREFeatureSettings])
+## and records one [code]&"set_feature"[/code] operation; the editor's log gets
+## the new value, so that each participant's session shows the variant used.
+## False, and nothing recorded, if the value is unknown or already set.
+func set_feature(key: StringName, value: StringName, source: Source) -> bool:
+	if not features.set_value(key, value):
+		return false
+	print("XR Editor: feature %s = %s" % [key, value])
+	_record(&"set_feature", source, [])
+	return true
 
 
 ## Associates graph source and generated script in one scene-history operation.
