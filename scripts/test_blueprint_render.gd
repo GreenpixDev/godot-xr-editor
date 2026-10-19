@@ -2,6 +2,28 @@ extends SceneTree
 ## Optional GPU regression: graph/outline/contact occlusion in a normal renderer.
 ## Run without --headless or XR; check.sh only parses it (dummy rendering has no pixels).
 
+## An empty document, for tabs drawn only to be looked at.
+class EmptyDocument extends XREDocument:
+	func get_scene_root() -> Node: return null
+	func get_selection() -> Array[Node]: return []
+	func select(_nodes: Array[Node], _source: Source) -> void: pass
+	func preview_transform(_node: Node3D, _xform: Transform3D) -> void: pass
+	func commit_transform(_node: Node3D, _before: Transform3D, _source: Source) -> void: pass
+	func set_property(_object: Object, _property: StringName, _value: Variant, _source: Source) -> void: pass
+	func preview_property(_object: Object, _property: StringName, _value: Variant) -> void: pass
+	func commit_property(_object: Object, _property: StringName, _before: Variant, _source: Source) -> void: pass
+	func add_node(_node: Node, _parent: Node, _source: Source) -> void: pass
+	func remove_nodes(_nodes: Array[Node], _source: Source) -> void: pass
+	func save(_source: Source) -> Error: return OK
+	func open_scene(_path: String, _source: Source) -> Error: return OK
+	func list_folder(_path: String) -> PackedStringArray: return PackedStringArray()
+	func get_file_type(_path: String) -> StringName: return &""
+	func play(_source: Source, _separate_app: bool) -> Error: return OK
+	func stop_playing(_source: Source) -> void: pass
+	func is_playing() -> bool: return false
+	func get_snap() -> XRESnap: return XRESnap.new(false, 0.0, 0.0, 0.0)
+
+
 var _checks := 0
 var _failures := 0
 var _viewport: SubViewport
@@ -61,6 +83,43 @@ func _test_window_handles() -> void:
 			"the handles hide when no ray is on the window")
 	window.queue_free()
 	_camera.position = camera_before
+
+
+## The launcher and a window with its control bar as Meta Horizon OS draws them (D-042),
+## saved for a look: build/blueprint_render_launcher.png.
+func _test_launcher_look() -> void:
+	var camera_before := _camera.transform
+	var size_before := _camera.size
+	var document := EmptyDocument.new()
+	var types := XREPanels.tab_types()
+	var tabs: Array[XREPanelTab] = []
+	for type: GDScript in types:
+		tabs.append(type.new(document) as XREPanelTab)
+	var launcher := XRETabLauncher.new(types, tabs, XRETabLauncher.size_for(types.size()), XREPanels.LAUNCHER_PIXEL_SIZE, 2.0, null)
+	for tab: XREPanelTab in tabs:
+		tab.free()
+	launcher.set_overlay(true)
+	_viewport.add_child(launcher)
+	launcher.position = Vector3(20.0, 0.25, 0.0)
+	var window := XREPanelWindow.new(XRESceneTab.new(document), XREPanels.WINDOW_SIZE, XREPanels.WINDOW_PIXEL_SIZE, 2.0, null)
+	_viewport.add_child(window)
+	window.position = Vector3(20.0, -0.12, -0.5)
+	var dimmer := XREBlueprints.create_dimmer(XREPanels.LAUNCHER_DIM)
+	_camera.add_child(dimmer)
+	_camera.transform = Transform3D(Basis.IDENTITY, Vector3(20.0, 0.0, 1.0))
+	_camera.size = 1.0
+	var hover := func() -> void: window.hover_handles(-1)
+	process_frame.connect(hover)
+	var image := await _capture("launcher")
+	process_frame.disconnect(hover)
+	var dimmed := image.get_pixelv(Vector2i(_camera.unproject_position(window.to_global(Vector3(0.0, 0.1, 0.0)))))
+	_check(dimmed.v < XREPanelSurface.META_WINDOW_COLOR.v, "the launcher dims what is behind it")
+	_check(window.get_bar().is_shown(), "a hovered window shows its control bar")
+	dimmer.queue_free()
+	launcher.queue_free()
+	window.queue_free()
+	_camera.transform = camera_before
+	_camera.size = size_before
 
 
 func _run() -> void:
@@ -200,28 +259,30 @@ func _run() -> void:
 	_check(hovered.get_pixelv(left_pixel).b > hovered.get_pixelv(idle_pixel).b + 0.01, "left hand hover also visibly highlights its own key")
 	keyboard.close()
 	canvas.hide()
-	var fps := XREFPSWidget.new()
+	# The Debug tab (D-042) in a window pinned to a hand: compact.
+	var debug := XREDebugTab.new(null)
+	var fps := XREPanelWindow.new(debug, XREPanels.WINDOW_SIZE, XREPanels.WINDOW_PIXEL_SIZE, 1.5, null)
 	_viewport.add_child(fps)
+	fps.set_pin(XREPanelWindow.Pin.LEFT_HAND, XREPanels.COMPACT_SIZE, XREPanels.COMPACT_PIXEL_SIZE)
 	fps.rotation.x = -PI / 3.0
 	var session := XRESession.new()
-	fps.setup(session)
-	fps.set_shown(true)
+	debug.setup(session)
 	var timestamp := 0.0
 	for frame: int in 5400:
 		var interval := 0.055 if frame % 350 == 0 else 1.0 / 90.0
 		timestamp += interval
 		session.fps_history.record_interval(interval, timestamp, true)
-	(fps.get("_number") as Label).text = "Synthetic render fixture · FPS history"
 	await _capture("wrist_fps")
-	var fps_column := fps.root.get_child(0) as VBoxContainer
-	for child: Node in fps_column.get_children():
+	debug.get_number_label().text = "Synthetic render fixture · FPS history"
+	for child: Node in debug.get_children():
 		var control := child as Control
 		if control != null:
-			_check(Rect2(Vector2.ZERO, fps.size_px).encloses(control.get_global_rect()), "FPS text, plot and close button fit the compact wrist surface")
-	_check((fps.get("_chart") as XREFPSChart).history.count > 0, "restored FPS chart draws a populated bounded history")
-	fps.setup(null)
+			_check(Rect2(Vector2.ZERO, fps.size_px).encloses(control.get_global_rect()), "FPS text, plot and legend fit the compact window on a hand")
+	_check(debug.get_chart().history.count > 0, "the Debug tab charts a populated bounded history")
+	debug.setup(null)
 	session.free()
-	fps.hide()
+	fps.queue_free()
+	await _test_launcher_look()
 	canvas.show()
 	keyboard.set_overlay(true)
 	keyboard.open_text("Scene dimmed, overlay unchanged")

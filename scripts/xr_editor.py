@@ -12,11 +12,13 @@ already running: creating an instance on it would launch it.
 
 Godot gets XR_RUNTIME_JSON for the runtime picked, so a value left in the shell
 by an earlier run can't redirect it. The log goes to
-logs/editor_<runtime>_<time>.log. Before anything else the script checks that
-no other editor holds the plugin's native library: a second editor on this
-project starts without it, and without it VR doesn't work (docs/decisions.md, D-005).
+logs/editor_<runtime>_<time>.log. Before anything else the script closes an
+editor already open on this project and waits until it lets go of the
+plugin's native library: a second editor on this project starts without it,
+and without it VR doesn't work (docs/decisions.md, D-005). Unsaved changes in
+the editor closed are lost; --no-restart fails instead.
 
-Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off] [--check] [scene] [-- arguments for the plugin]
+Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off] [--check] [--no-restart] [scene] [-- arguments for the plugin]
   py scripts/xr_editor.py res://benchmarks/manipulation_check.tscn
   py scripts/xr_editor.py --runtime meta res://benchmarks/empty.tscn -- --xre-benchmark
 --runtime steamvr or meta skips the order above and fails if that runtime
@@ -230,6 +232,41 @@ def native_library_in_use() -> bool:
     return False
 
 
+def running_editors() -> list[int]:
+    """Process ids of the Godot editors open on this project: the console
+    wrapper and the editor it started, if both are there."""
+    script = ("Get-CimInstance Win32_Process -Filter \"Name like 'Godot%'\" | "
+              "Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress")
+    listing = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                             capture_output=True, text=True, errors="replace")
+    try:
+        found = json.loads(listing.stdout) if listing.stdout.strip() else []
+    except json.JSONDecodeError:
+        return []
+    if isinstance(found, dict):
+        found = [found]
+    repo = str(REPO).lower().rstrip("\\")
+    editors: list[int] = []
+    for process in found:
+        command = (process.get("CommandLine") or "").lower().replace("/", "\\")
+        if "--editor" in command and repo in command:
+            editors.append(int(process["ProcessId"]))
+    return editors
+
+
+def close_editors(editors: list[int], timeout: float = 20.0) -> bool:
+    """Closes the editors [editors] and waits until the native library is
+    free. Whether it is."""
+    for pid in editors:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not running_editors() and not native_library_in_use():
+            return True
+        time.sleep(0.5)
+    return False
+
+
 def godot_binary() -> str | None:
     """The console build of Godot 4.7: GODOT, or the one godot.cmd runs."""
     if os.environ.get("GODOT"):
@@ -273,6 +310,8 @@ def pick_runtime(requested: str) -> tuple[str, Path | None]:
 
 
 def main() -> int:
+    # Its lines come before Godot's in a log or a pipe, not after Godot exits.
+    sys.stdout.reconfigure(line_buffering=True)
     if len(sys.argv) == 3 and sys.argv[1] == "--probe":
         try:
             answer = probe(sys.argv[2])
@@ -289,10 +328,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Start the Godot editor on this project, in VR if a headset is available.")
     parser.add_argument("--runtime", choices=["auto", "steamvr", "meta", "off"], default="auto")
     parser.add_argument("--check", action="store_true", help="only report the runtime that would be used")
+    parser.add_argument("--no-restart", action="store_true",
+                        help="fail if an editor is already open on this project instead of closing it")
     parser.add_argument("scene", nargs="?", help="scene to open, e.g. res://benchmarks/manipulation_check.tscn")
     options = parser.parse_args(args)
 
-    if native_library_in_use():
+    editors = running_editors()
+    if editors and not options.no_restart and not options.check:
+        print(f"xr_editor: closing the editor already open on this project (pid {', '.join(map(str, editors))}); "
+              "unsaved changes in it are lost")
+        if not close_editors(editors):
+            print("xr_editor: the editor didn't close in time", file=sys.stderr)
+            return 1
+    elif editors and options.check:
+        print(f"xr_editor: would close the editor already open on this project (pid {', '.join(map(str, editors))})")
+    if native_library_in_use() and not options.check:
         print("xr_editor: another Godot editor has the plugin's native library loaded; close it first.", file=sys.stderr)
         return 1
     godot = godot_binary()

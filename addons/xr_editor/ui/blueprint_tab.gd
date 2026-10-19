@@ -1,7 +1,7 @@
 @tool
 class_name XREBlueprintTab
 extends XREPanelTab
-## Project graph catalog and block palette on the forearm or in a floating window.
+## Project graph catalog and block palette in its window.
 
 var _service: XREBlueprints
 var _status: Label
@@ -68,8 +68,8 @@ func get_title() -> String:
 	return "Blueprints"
 
 
-func get_icon_name() -> StringName:
-	return &"VisualShader"
+func get_symbol() -> StringName:
+	return &"blueprints"
 
 
 func _refresh() -> void:

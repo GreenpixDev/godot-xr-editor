@@ -2,15 +2,16 @@
 @abstract
 class_name XREPanelTab
 extends VBoxContainer
-## One tab of the panels in the headset ([XREPanels]): the edited scene's tree,
-## the inspector, signals or the project's files. A tab shows the document and
+## One tab of the panels in the headset ([XREPanels]), shown in a window of
+## its own: the edited scene's tree, the inspector, signals, the project's
+## files, Blueprints or the feature settings. A tab shows the document and
 ## changes it only through [XREDocument], as operations from a panel
 ## ([constant XREDocument.Source.PANEL]).
 ##
 ## A tab keeps itself up to date only while it is shown. A change while it is
 ## hidden marks it dirty ([method mark_dirty]); it refreshes once, at the end
-## of the frame, when it is shown again. The forearm panel is hidden most of
-## the time, and so are the tabs behind the current one.
+## of the frame, when it is shown again: a window pinned to a hand hides while
+## the controller isn't tracked.
 
 ## Translation domain of the editor's interface: tabs say what the desktop's
 ## docks say, in the editor's language.
@@ -28,12 +29,12 @@ func _init(document: XREDocument) -> void:
 	size_flags_vertical = SIZE_EXPAND_FILL
 
 
-## Title on the tab and on its window, in the editor's language.
+## Title on the tab's tile in the launcher and on its window, in the editor's language.
 @abstract func get_title() -> String
 
 
-## Name of the editor icon on the tab and on its window.
-@abstract func get_icon_name() -> StringName
+## The tab's icon in [XRETabIcons]: its tile in the launcher and on its window.
+@abstract func get_symbol() -> StringName
 
 
 ## Finishes an edit made with the pointer. The panel calls it when the

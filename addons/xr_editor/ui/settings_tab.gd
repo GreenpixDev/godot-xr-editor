@@ -41,8 +41,8 @@ func get_title() -> String:
 	return editor_text("Settings")
 
 
-func get_icon_name() -> StringName:
-	return &"Tools"
+func get_symbol() -> StringName:
+	return &"settings"
 
 
 ## Shows page [param category].

@@ -41,8 +41,8 @@ func get_title() -> String:
 	return editor_text("Scene")
 
 
-func get_icon_name() -> StringName:
-	return &"PackedScene"
+func get_symbol() -> StringName:
+	return &"scene"
 
 
 ## The item of [param node], or null if the tree doesn't show it.

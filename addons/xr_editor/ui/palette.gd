@@ -12,7 +12,8 @@ extends Node
 ## [br][br]
 ## Controls:
 ## [br]- X on the left controller: show or hide the tray, and with it the
-## panel on the left forearm ([XREPanels] follows [method is_shown]).
+## tab launcher ([XREPanels] follows [method is_shown]); choosing a tab there
+## hides both ([method close]).
 ## [br]- Grip of the right hand touching a miniature: take that thing out. The
 ## new node is where its miniature was and as big as it, and follows the hand
 ## rigidly; a light is created at its natural scale, as a light has no size.
@@ -168,6 +169,11 @@ func _process(_delta: float) -> void:
 ## Whether the tray is in view.
 func is_shown() -> bool:
 	return _tray.visible
+
+
+## Hides the tray, as X would; X shows it again.
+func close() -> void:
+	_shown = false
 
 
 ## Global transform of the miniature of [param type], or the identity if the

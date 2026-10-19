@@ -32,8 +32,8 @@ func get_title() -> String:
 	return editor_text("Signals")
 
 
-func get_icon_name() -> StringName:
-	return &"Signals"
+func get_symbol() -> StringName:
+	return &"signals"
 
 
 func get_tree_control() -> Tree:

@@ -1081,16 +1081,19 @@ func _apply_keyboard(text: String) -> void:
 	_keyboard_target = null
 
 
-## XR-only scene veil. Its far depth separates world geometry from logic overlays.
-static func create_dimmer() -> MeshInstance3D:
+## XR-only scene veil, [param alpha] opaque. Its far depth separates world
+## geometry from logic overlays. The launcher of the panels dims the scene
+## with one too ([XREPanels]).
+static func create_dimmer(alpha: float = 0.68) -> MeshInstance3D:
 	var shader := Shader.new()
 	shader.code = """
 shader_type spatial;
 render_mode unshaded, depth_test_disabled, depth_draw_always, cull_disabled, fog_disabled;
 void vertex() { POSITION = vec4(VERTEX.xy, 0.0, 1.0); }
+uniform float alpha = 0.68;
 void fragment() {
 	ALBEDO = vec3(0.0);
-	ALPHA = 0.68;
+	ALPHA = alpha;
 	// Godot 4.7 uses reverse-Z, including Compatibility: far depth is zero.
 	DEPTH = 0.0;
 }
@@ -1098,6 +1101,7 @@ void fragment() {
 	var material := ShaderMaterial.new()
 	material.shader = shader
 	material.render_priority = Material.RENDER_PRIORITY_MAX - 2
+	material.set_shader_parameter(&"alpha", alpha)
 	var quad := QuadMesh.new()
 	quad.size = Vector2(2, 2)
 	var mesh := XRERig.create_vr_mesh(quad, material)

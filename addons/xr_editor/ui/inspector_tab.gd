@@ -32,8 +32,8 @@ func get_title() -> String:
 	return editor_text("Inspector")
 
 
-func get_icon_name() -> StringName:
-	return &"Tools"
+func get_symbol() -> StringName:
+	return &"inspector"
 
 
 ## The inspector, once the tab has been shown with a node selected; null before, or without the editor.

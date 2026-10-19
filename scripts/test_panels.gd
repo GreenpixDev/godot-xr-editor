@@ -1,6 +1,6 @@
 extends SceneTree
-## Headless tests of the panels in the headset: XREPanels with the forearm
-## panel and windows, driven by fake controller trackers over a fake document,
+## Headless tests of the panels in the headset: XREPanels with the tab
+## launcher, windows and windows pinned to a hand, driven by fake controller trackers over a fake document,
 ## the scene, signals and file system tabs, and XREInspectorProxy. The
 ## inspector itself needs the editor (scripts/test_inspector.gd). Used by
 ## scripts/check.sh, not shipped with the plugin. Prints "test_panels: FAILED ..."
@@ -108,7 +108,7 @@ var _locomotion: XRELocomotion
 var _palette: XREPalette
 var _panels: XREPanels
 var _manipulator: XREManipulator
-var _hand_panel: XREHandPanel
+var _launcher: XRETabLauncher
 
 var _scene: Node3D
 var _other: Node3D
@@ -125,16 +125,20 @@ var _hold_distance := 0.0
 func _initialize() -> void:
 	_steps = [
 		_build,
-		_show_panel,
-		_scene_tab_filled,
+		_show_launcher,
+		_click_scene_tile,
+		_scene_window_opened,
+		_show_bar,
+		_click_pin_left,
+		_scene_pinned,
+		_scene_on_forearm,
 		_point_at_box,
 		_click_box,
 		_box_selected,
 		_selection_shows,
-		_click_signals_tab,
+		_launcher_again,
+		_click_signals_tile,
 		_signals_listed,
-		_click_pop_out,
-		_window_opened,
 		_aim_at_corner,
 		_corner_lit,
 		_corner_taken,
@@ -146,12 +150,12 @@ func _initialize() -> void:
 		_window_listed,
 		_hover_with_stick,
 		_not_turned,
-		_tear_off_files,
-		_carry_files,
-		_files_carried,
-		_files_placed,
-		_push_files,
-		_files_pushed,
+		_tear_off_scene,
+		_carry_scene,
+		_scene_carried,
+		_scene_placed,
+		_push_scene,
+		_scene_pushed,
 		_fly,
 		_flown,
 		_change_scene,
@@ -163,6 +167,7 @@ func _initialize() -> void:
 		_double_click_scene_3,
 		_double_click_scene_4,
 		_scene_opened,
+		_press_close,
 		_close_signals_window,
 		_signals_window_closed,
 		_point_past_panels,
@@ -178,7 +183,10 @@ func _initialize() -> void:
 		_test_proxy,
 		_test_inspector_tab,
 		_test_fps,
-		_fps_closed,
+		_debug_tab_filled,
+		_press_pin_left,
+		_release_pin_left,
+		_debug_pinned,
 		_finish,
 	]
 
@@ -255,7 +263,7 @@ func _build() -> void:
 	_manipulator = XREManipulator.new(_document, _rig, icons)
 	_rig.add_child(_manipulator)
 	root.add_child(_rig)
-	_hand_panel = _panels.get_hand_panel()
+	_launcher = _panels.get_launcher()
 	_pose(_left, _left_aim, 0.0, 0.0)
 	_pose(_right, Transform3D(Basis.IDENTITY, Vector3(0.2, -0.3, -0.3)), 0.0, 0.0)
 	_left.set_input(&"ax_button", true)
@@ -292,9 +300,18 @@ func _pose(tracker: XRControllerTracker, xform: Transform3D, trigger: float, gri
 
 ## Points the right hand at [param pixel] of [param surface] from [constant AIM_DISTANCE] in front of it.
 func _aim(surface: XREPanelSurface, pixel: Vector2, trigger: float, grip: float = 0.0) -> void:
+	_aim_with(_right, surface, pixel, trigger, grip)
+
+
+## The same with the left hand.
+func _aim_left(surface: XREPanelSurface, pixel: Vector2, trigger: float) -> void:
+	_aim_with(_left, surface, pixel, trigger, 0.0)
+
+
+func _aim_with(tracker: XRControllerTracker, surface: XREPanelSurface, pixel: Vector2, trigger: float, grip: float) -> void:
 	var target := surface.pixel_to_global(pixel)
 	var origin := target + surface.global_basis.z.normalized() * AIM_DISTANCE
-	_pose(_right, Transform3D(Basis.looking_at(target - origin), origin), trigger, grip)
+	_pose(tracker, Transform3D(Basis.looking_at(target - origin), origin), trigger, grip)
 
 
 ## Center of [param control] in its panel's pixels.
@@ -308,8 +325,22 @@ func _item_center(tree: Tree, item: TreeItem) -> Vector2:
 	return tree.get_global_transform() * (rect.position + rect.size * 0.5)
 
 
+func _scene_window() -> XREPanelWindow:
+	return _panels.find_window(XRESceneTab)
+
+
 func _scene_tab() -> XRESceneTab:
-	return _hand_panel.get_tabs()[0] as XRESceneTab
+	return _scene_window().tab as XRESceneTab
+
+
+## Center of the launcher's tile of the tab of class [param type], in its pixels.
+func _tile_center(type: GDScript) -> Vector2:
+	return _center(_launcher.get_tile(type))
+
+
+## Center of [param window]'s pin button, in the bar's pixels.
+func _pin_center(window: XREPanelWindow) -> Vector2:
+	return _center(window.get_pin_button())
 
 
 func _texts(tree: Tree) -> Array[String]:
@@ -321,41 +352,108 @@ func _texts(tree: Tree) -> Array[String]:
 	return texts
 
 
-# Forearm panel and the scene tab.
+# The launcher, the scene window, pinning it to a hand (D-041).
 
-func _show_panel() -> void:
-	_check(_palette.is_shown() and _hand_panel.is_shown(), "X shows the tray and the forearm panel")
-	_check(_hand_panel.global_transform.is_equal_approx(_left_aim * XREPanels.HAND_OFFSET), "hand panel keeps its original forearm tilt")
-	var fps := _panels.get("_fps") as XREFPSWidget
-	_check(fps.is_shown(), "X shows the original FPS chart at the right hand")
-	_check(fps.size_m.is_equal_approx(_hand_panel.size_m), "FPS has the same physical width and height as the left panel")
-	_check(fps.global_transform.is_equal_approx(_rig.right_hand.global_transform * XREPanels.FPS_OFFSET), "FPS follows the tilted right wrist")
+func _show_launcher() -> void:
+	_check(_palette.is_shown() and _launcher.is_shown(), "X shows the tray and the launcher")
+	# The head tracker is absent: the head is at the rig's origin, looking down -Z.
+	_check_vector(_launcher.global_position, Vector3(0.0, -XREPanels.LAUNCHER_DROP, -XREPanels.LAUNCHER_DISTANCE),
+			"the launcher opens in front of the user, below the gaze")
+	_check(_launcher.global_basis.z.is_equal_approx(Vector3.BACK) and _launcher.global_basis.y.is_equal_approx(Vector3.UP),
+			"facing the head, upright")
+	for type: GDScript in XREPanels.tab_types():
+		var tile := _launcher.get_tile(type)
+		var tab := type.new(_document) as XREPanelTab
+		_check(tile != null and _launcher.get_tile_icon(type).texture != null and _launcher.get_tile_title(type) == tab.get_title(),
+				"the launcher has an icon titled %s" % tab.get_title())
+		tab.free()
+	var debug := _launcher.get_tile(XREDebugTab)
+	var scene := _launcher.get_tile(XRESceneTab)
+	_check(debug.get_global_rect().position.y > scene.get_global_rect().end.y
+			and absf(debug.get_parent_control().get_global_rect().get_center().x - _launcher.size_px.x * 0.5) < 1.0
+			and debug.get_parent().get_child_count() == XRETabLauncher.LONG_ROW - 1,
+			"the second row is one shorter and centered, offset from the first, as in Navigator")
+	_check((_panels.get("_dimmer") as MeshInstance3D).visible, "the scene is dimmed behind the launcher")
+	_check(_panels.get_windows().is_empty(), "no window is open before a tile is chosen")
 	_left.set_input(&"ax_button", false)
+	_aim(_launcher, _tile_center(XRESceneTab), 1.0)
 
 
-func _scene_tab_filled() -> void:
+func _click_scene_tile() -> void:
+	_aim(_launcher, _tile_center(XRESceneTab), 0.0)
+
+
+func _scene_window_opened() -> void:
+	var window := _scene_window()
+	_check(_panels.get_windows().size() == 1 and window != null, "a click on a tile opens that tab's window")
+	if window == null:
+		return
+	_check_vector(window.global_position, Vector3(0.0, -XREPanels.WINDOW_DROP, -XREPanels.WINDOW_DISTANCE),
+			"the window opens in front of the user")
+	_check(window.global_basis.z.is_equal_approx(Vector3.BACK) and window.global_basis.y.is_equal_approx(Vector3.UP),
+			"window faces the head horizontally without tilting")
+	_check(not window.is_pinned() and window.has_corner_handles() and window.size_px == XREPanels.WINDOW_SIZE,
+			"a window has full size and corner handles")
 	var texts := _texts(_scene_tab().get_tree_control())
 	_check(texts == ["Scene", "Box", "Lamp", "Trigger", "Prop", "Room"],
 			"the scene tab shows the scene's own nodes: %s" % [texts])
-	_check(_scene_tab().is_visible_in_tree() and not (_hand_panel.get_tabs()[2] as XREPanelTab).is_visible_in_tree(),
-			"the scene tab is shown first, the others are hidden")
-	_aim(_hand_panel, _item_center(_scene_tab().get_tree_control(), _scene_tab().get_item(_box)), 0.0)
+	var bar := window.get_bar()
+	var bottom := window.pixel_to_global(Vector2(window.size_px.x * 0.5, window.size_px.y))
+	_check_vector(bar.global_position, bottom - window.global_basis.y * (bar.size_m.y * 0.5 + XREPanelWindow.BAR_GAP),
+			"the bar lies just under the window")
+	_check(bar.size_m.x * 0.5 < window.size_m.x * 0.5 - XREPanelSurface.HANDLE_ALONG,
+			"between the bottom corner handles")
+	_check(window.get_pin_button().visible and not window.get_unpin_button().visible, "a window's bar offers one pin")
+	_check(not bar.is_shown(), "the control bar hides until a ray is on the window")
+	_aim(window, window.size_px * 0.5, 0.0)
+
+
+func _show_bar() -> void:
+	var window := _scene_window()
+	_check(window.get_bar().is_shown(), "a ray on the window shows its control bar")
+	# The left hand clicks the pin: the window goes to the left forearm, and the right hand works in it.
+	_aim_left(window.get_bar(), _pin_center(window), 1.0)
+
+
+func _click_pin_left() -> void:
+	# The tray goes on the frame after the click, as X would hide it.
+	_check(not _launcher.is_shown() and not _palette.is_shown(), "choosing a tab hides the launcher and the tray")
+	_aim_left(_scene_window().get_bar(), _pin_center(_scene_window()), 0.0)
+
+
+func _scene_pinned() -> void:
+	var window := _scene_window()
+	_check(window.pin == XREPanelWindow.Pin.LEFT_HAND and _panels.get_pinned_window(_rig.left_hand) == window,
+			"the pin clicked with the left hand pins the window to the left forearm")
+	_check(window.size_px == XREPanels.COMPACT_SIZE
+			and window.size_m.is_equal_approx(XREPanels.COMPACT_SIZE * XREPanels.COMPACT_PIXEL_SIZE),
+			"compact, as the forearm panel was: %s" % [window.size_m])
+	_check(not window.has_corner_handles(), "without corner handles")
+	_check(window.get_unpin_button().visible and not window.get_pin_button().visible, "its bar offers to make it a window again")
+	_check(_panels.get_held_window(_rig.left_hand) == null, "the click doesn't take the window")
+	_pose(_left, _left_aim, 0.0, 0.0)
+
+
+func _scene_on_forearm() -> void:
+	var window := _scene_window()
+	_check(window.global_transform.is_equal_approx(_left_aim * XREPanels.HAND_OFFSET), "on the forearm, tilted")
+	_aim(window, _item_center(_scene_tab().get_tree_control(), _scene_tab().get_item(_box)), 0.0)
 
 
 func _point_at_box() -> void:
 	_check(not _rig.right_hand.is_free_for(_manipulator), "a hand on a panel is claimed")
 	_check(not _rig.right_hand.is_stick_free_for(_locomotion), "and its thumbstick too")
 	_operation_count = _operations.size()
-	_aim(_hand_panel, _item_center(_scene_tab().get_tree_control(), _scene_tab().get_item(_box)), 1.0)
+	_aim(_scene_window(), _item_center(_scene_tab().get_tree_control(), _scene_tab().get_item(_box)), 1.0)
 
 
 func _click_box() -> void:
-	_aim(_hand_panel, _item_center(_scene_tab().get_tree_control(), _scene_tab().get_item(_box)), 0.0)
+	_aim(_scene_window(), _item_center(_scene_tab().get_tree_control(), _scene_tab().get_item(_box)), 0.0)
 
 
 func _box_selected() -> void:
 	_check(_operations.slice(_operation_count) == ["select PANEL [\"Box\"]"],
-			"a click in the scene tab selects the node, from a panel, and nothing behind the panel: %s"
+			"a click in the scene tab on the left forearm selects the node, from a panel, and nothing behind the panel: %s"
 			% [_operations.slice(_operation_count)])
 	_document.select([_trigger], XREDocument.Source.TOOL)
 
@@ -365,25 +463,30 @@ func _selection_shows() -> void:
 	var selected := tree.get_next_selected(null)
 	_check(selected == _scene_tab().get_item(_trigger) and tree.get_next_selected(selected) == null,
 			"a selection made elsewhere shows in the scene tab")
-	_aim(_hand_panel, _tab_center(2), 1.0)
-
-
-func _tab_center(index: int) -> Vector2:
-	var bar := _hand_panel.get_tab_bar()
-	return bar.get_global_transform() * bar.get_tab_rect(index).get_center()
+	_left.set_input(&"ax_button", true)
 
 
 # Signals tab and windows.
 
-func _click_signals_tab() -> void:
-	_aim(_hand_panel, _tab_center(2), 0.0)
+func _launcher_again() -> void:
+	_check(_launcher.is_shown(), "X shows the launcher again")
+	_check(_scene_window().is_shown() and _scene_window().is_pinned(), "the pinned window stays on the forearm")
+	_left.set_input(&"ax_button", false)
+	_aim(_launcher, _tile_center(XRESignalsTab), 1.0)
+
+
+func _click_signals_tile() -> void:
+	_aim(_launcher, _tile_center(XRESignalsTab), 0.0)
 
 
 func _signals_listed() -> void:
-	var tab := _hand_panel.get_current_tab() as XRESignalsTab
-	_check(tab != null, "a click on a tab shows it")
-	if tab == null:
+	var window := _panels.find_window(XRESignalsTab)
+	_check(_panels.get_windows().size() == 2 and window != null, "the signals tile opens its window")
+	if window == null:
 		return
+	_check_vector(window.global_position, Vector3(0.0, -XREPanels.WINDOW_DROP, -XREPanels.WINDOW_DISTANCE),
+			"in front of the user")
+	var tab := window.tab as XRESignalsTab
 	var texts := _texts(tab.get_tree_control())
 	var entered := texts.find("body_entered(body: Node3D)")
 	var exited := texts.find("body_exited(body: Node3D)")
@@ -392,23 +495,6 @@ func _signals_listed() -> void:
 	_check(entered >= 0 and texts[entered + 1] == "→ Lamp :: set_visible()",
 			"a connection saved with the scene shows under its signal: %s" % [texts])
 	_check(exited >= 0 and not texts[exited + 1].begins_with("→"), "a connection made at run time doesn't show")
-	_aim(_hand_panel, _center(_hand_panel.get_pop_out_button()), 1.0)
-
-
-func _click_pop_out() -> void:
-	_aim(_hand_panel, _center(_hand_panel.get_pop_out_button()), 0.0)
-
-
-func _window_opened() -> void:
-	var window := _panels.find_window(XRESignalsTab)
-	_check(_panels.get_windows().size() == 1 and window != null, "the button opens the tab as a window")
-	if window == null:
-		return
-	# The head tracker is absent: the head is at the rig's origin, looking down -Z.
-	_check_vector(window.global_position, Vector3(0.0, -XREPanels.WINDOW_DROP, -XREPanels.WINDOW_DISTANCE),
-			"the window opens in front of the user")
-	_check(window.global_basis.z.is_equal_approx(Vector3.BACK) and window.global_basis.y.is_equal_approx(Vector3.UP), "window faces the head horizontally without tilting")
-	_check(window.tab is XRESignalsTab and window.tab != _hand_panel.get_current_tab(), "with its own tab")
 
 
 # Corner handles (D-040): trigger or grip on one moves the window.
@@ -429,7 +515,6 @@ func _aim_at_corner() -> void:
 	if window == null:
 		return
 	_check(window.has_corner_handles(), "a window has corner handles")
-	_check(not _hand_panel.has_corner_handles(), "the forearm panel, hand-locked, has none")
 	# The left ray rests on the window from where it is; it points up, away from every panel, meanwhile.
 	_pose(_left, Transform3D(Basis(Vector3.RIGHT, PI / 2.0), _left_aim.origin), 0.0, 0.0)
 	_aim_at_point(_corner_point(window), window.global_basis.z, 0.0)
@@ -543,31 +628,29 @@ func _not_turned() -> void:
 	_check((-_rig.global_basis.z).is_equal_approx(_rig_before) and _rig_before.is_equal_approx(Vector3.FORWARD),
 			"the right stick doesn't turn the user while the ray is on a panel")
 	_right.set_input(&"primary", Vector2.ZERO)
-	_hand_panel.select_tab(3)
-	_aim(_hand_panel, _hand_panel.size_px * 0.5, 0.0, 1.0)
+	# Grip on the window pinned to the left forearm.
+	_window_before = _scene_window().pixel_to_global(_scene_window().size_px * 0.5)
+	_aim(_scene_window(), _scene_window().size_px * 0.5, 0.0, 1.0)
 
 
-func _tear_off_files() -> void:
-	var window := _panels.find_window(XREFileSystemTab)
-	_check(window != null and _panels.get_held_window(_rig.right_hand) == window,
-			"grip on the forearm panel pulls its tab out as a window, in hand")
-	if window == null:
-		return
-	_check_vector(window.global_position, _hand_panel.pixel_to_global(_hand_panel.size_px * 0.5),
-			"the window comes out where the ray hit the panel")
+func _tear_off_scene() -> void:
+	var window := _scene_window()
+	_check(_panels.get_held_window(_rig.right_hand) == window,
+			"grip on a window pinned to the other hand pulls it off, in hand")
+	_check(not window.is_pinned() and _panels.get_pinned_window(_rig.left_hand) == null
+			and window.size_px == XREPanels.WINDOW_SIZE and window.has_corner_handles(), "as a full window again")
+	_check_vector(window.global_position, _window_before, "centered where the ray hit it")
 	_window_before = window.global_position
 	var hand := _rig.right_hand.global_transform
 	_pose(_right, hand.translated(Vector3(0.2, 0.0, 0.0)), 0.0, 1.0)
 
 
-func _carry_files() -> void:
+func _carry_scene() -> void:
 	pass
 
 
-func _files_carried() -> void:
-	var window := _panels.find_window(XREFileSystemTab)
-	if window == null:
-		return
+func _scene_carried() -> void:
+	var window := _scene_window()
 	_check_vector(window.global_position, _window_before + Vector3(0.2, 0.0, 0.0), "the window follows the hand")
 	var to_head := _rig.camera.global_position - window.global_position
 	to_head.y = 0
@@ -578,22 +661,20 @@ func _files_carried() -> void:
 	_pose(_right, _rig.right_hand.global_transform, 0.0, 0.0)
 
 
-func _files_placed() -> void:
-	var window := _panels.find_window(XREFileSystemTab)
-	_check(_panels.get_held_window(_rig.right_hand) == null and window != null
+func _scene_placed() -> void:
+	var window := _scene_window()
+	_check(_panels.get_held_window(_rig.right_hand) == null
 			and window.global_position.is_equal_approx(_window_before), "letting go leaves the window where it is")
-	if window == null:
-		return
 	_aim(window, window.size_px * 0.5, 0.0, 1.0)
 
 
-func _push_files() -> void:
-	_hold_distance = _rig.right_hand.global_position.distance_to(_panels.find_window(XREFileSystemTab).global_position)
+func _push_scene() -> void:
+	_hold_distance = _rig.right_hand.global_position.distance_to(_scene_window().global_position)
 	_right.set_input(&"primary", Vector2(0.0, 1.0))
 
 
-func _files_pushed() -> void:
-	var window := _panels.find_window(XREFileSystemTab)
+func _scene_pushed() -> void:
+	var window := _scene_window()
 	var distance := _rig.right_hand.global_position.distance_to(window.global_position)
 	_check(distance > _hold_distance, "the right stick pushes a held window away: %f to %f" % [_hold_distance, distance])
 	_right.set_input(&"primary", Vector2.ZERO)
@@ -621,13 +702,15 @@ func _change_scene() -> void:
 	_document.selection.clear()
 	_document.scene_changed.emit()
 	_document.selection_changed.emit()
-	_hand_panel.select_tab(0)
 
 
 func _scene_changed() -> void:
 	_check(_panels.get_windows().size() == 2, "windows stay when the scene changes")
 	var texts := _texts(_scene_tab().get_tree_control())
 	_check(texts == ["Other"], "the scene tab shows the scene now edited: %s" % [texts])
+	# Beside the signals window, which is where a window opens.
+	var files := _panels.open_window(XREFileSystemTab)
+	files.global_position += _rig.global_basis.x * 0.6
 
 
 # File system tab: folders unfold on demand, and a double click opens a scene.
@@ -681,19 +764,24 @@ func _double_click_scene_4() -> void:
 func _scene_opened() -> void:
 	_check(_operations.slice(_operation_count) == ["open_scene PANEL [\"Scene\"]"],
 			"a double click on a scene opens it, from a panel: %s" % [_operations.slice(_operation_count)])
-	_check(_panels.get_windows().size() == 2, "windows stay when a scene is opened from them")
+	_check(_panels.get_windows().size() == 3, "windows stay when a scene is opened from them")
 	var window := _panels.find_window(XRESignalsTab)
-	_aim(window, _center(window.get_close_button()), 1.0)
+	_aim(window, window.size_px * 0.5, 0.0)
+
+
+func _press_close() -> void:
+	var window := _panels.find_window(XRESignalsTab)
+	_aim(window.get_bar(), _center(window.get_close_button()), 1.0)
 
 
 func _close_signals_window() -> void:
 	var window := _panels.find_window(XRESignalsTab)
-	_aim(window, _center(window.get_close_button()), 0.0)
+	_aim(window.get_bar(), _center(window.get_close_button()), 0.0)
 
 
 func _signals_window_closed() -> void:
-	_check(_panels.find_window(XRESignalsTab) == null and _panels.get_windows().size() == 1,
-			"× closes the window")
+	_check(_panels.find_window(XRESignalsTab) == null and _panels.get_windows().size() == 2,
+			"× on the control bar closes the window")
 	_operation_count = _operations.size()
 	# Away from every panel, at the room's wall.
 	_pose(_right, Transform3D(Basis.IDENTITY, _rig.global_position + Vector3(0.3, 0.0, 0.0)).rotated_local(
@@ -786,32 +874,42 @@ func _test_feature_store() -> void:
 	_check(XREFeatureSettings.get_keys(XREFeatureSettings.Category.CONTROLS).is_empty(), "there are no control settings yet")
 
 
+func _settings_window() -> XREPanelWindow:
+	return _panels.find_window(XRESettingsTab)
+
+
 func _settings_tab() -> XRESettingsTab:
-	return _hand_panel.get_tabs()[XREPanels.tab_types().find(XRESettingsTab)] as XRESettingsTab
+	return _settings_window().tab as XRESettingsTab
 
 
+## The settings window, pinned to the right forearm; the left hand clicks it.
 func _open_settings() -> void:
-	_check(_settings_tab() != null, "the forearm panel has a settings tab")
-	# The files window would take the ray in front of the forearm panel.
+	# The other windows would take the rays.
 	for window: XREPanelWindow in _panels.get_windows():
 		window.global_position += Vector3(0.0, 10.0, 0.0)
-	_hand_panel.select_tab(XREPanels.tab_types().find(XRESettingsTab))
+	var window := _panels.open_window(XRESettingsTab)
+	_panels.pin_window(window, XREPanelWindow.Pin.RIGHT_HAND)
+	_check(_panels.get_pinned_window(_rig.right_hand) == window and window.size_px == XREPanels.COMPACT_SIZE,
+			"a window pins, compact, to the right forearm too")
+	_check(window.global_transform.is_equal_approx(_rig.right_hand.global_transform * XREPanels.HAND_OFFSET),
+			"where the FPS chart lies")
 	_check(_settings_tab().get_title() == XREPanelTab.editor_text("Settings"), "the settings tab has the editor's title")
 
 
 func _hover_cuboid() -> void:
-	_aim(_hand_panel, _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
+	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
 
 
 func _press_cuboid() -> void:
 	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
 	_check(billboard != null and billboard.button_pressed, "the features page shows the node display at its current value")
+	_check(not _rig.left_hand.is_free_for(_manipulator), "the left hand points at the window on the right forearm")
 	_operation_count = _operations.size()
-	_aim(_hand_panel, _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 1.0)
+	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 1.0)
 
 
 func _release_cuboid() -> void:
-	_aim(_hand_panel, _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
+	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
 
 
 func _cuboid_set() -> void:
@@ -824,6 +922,7 @@ func _cuboid_set() -> void:
 			"only the current value's button is down")
 	_document.set_feature(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD, XREDocument.Source.TOOL)
 	_settings_tab().select_page(XREFeatureSettings.Category.CONTROLS)
+	_pose(_left, _left_aim, 0.0, 0.0)
 
 
 func _controls_page() -> void:
@@ -832,15 +931,26 @@ func _controls_page() -> void:
 	var content := _settings_tab().find_child("Content", true, false) as VBoxContainer
 	_check(content.get_child_count() == 1 and content.get_child(0) is Label, "the empty controls page says so")
 	_settings_tab().select_page(XREFeatureSettings.Category.FEATURES)
-	_hand_panel.select_tab(0)
 
 
 func _test_inspector_tab() -> void:
-	var tab := _hand_panel.get_tabs()[1] as XREInspectorTab
+	var window := _panels.open_window(XREInspectorTab)
+	var tab := window.tab as XREInspectorTab
 	_document.select([_lamp], XREDocument.Source.TOOL)
-	_hand_panel.select_tab(1)
 	_check(tab.get_title() == XREPanelTab.editor_text("Inspector") and tab.get_inspector() == null,
 			"without the editor the inspector tab has no inspector")
+	_panels.pin_window(window, XREPanelWindow.Pin.RIGHT_HAND)
+	var settings := _settings_window()
+	_check(_panels.get_pinned_window(_rig.right_hand) == window, "another window pins to the right forearm")
+	_check(not settings.is_pinned() and settings.size_px == XREPanels.WINDOW_SIZE and settings.has_corner_handles(),
+			"and the one pinned there before becomes a window again")
+	_check_vector(settings.global_position, _rig.global_transform * Vector3(0.0, -XREPanels.WINDOW_DROP, -XREPanels.WINDOW_DISTANCE),
+			"in front of the user")
+	_panels.pin_window(window, XREPanelWindow.Pin.WINDOW)
+	_check(not window.is_pinned() and _panels.get_pinned_window(_rig.right_hand) == null, "Window on the bar unpins it")
+	_panels.pin_window(window, XREPanelWindow.Pin.LEFT_HAND)
+	_panels.open_window(XREInspectorTab)
+	_check(not window.is_pinned(), "the launcher brings a pinned window back as a window")
 
 
 func _test_fps() -> void:
@@ -854,22 +964,45 @@ func _test_fps() -> void:
 	for sample: int in 600: history.record_interval(0.25, 1 + sample * 0.25, true)
 	_check(history.count == XREFPSHistory.CAPACITY and history.fps.size() == XREFPSHistory.CAPACITY, "FPS history uses a bounded ring")
 	_check(history.timestamps[history.index_at(0)] < history.timestamps[history.index_at(history.count - 1)], "FPS ring keeps chronological order")
-	var widget := _panels.get("_fps") as XREFPSWidget
-	widget.set_shown(true)
-	_check((widget.get("_number") as Label).text.contains("no live XR session"), "missing session does not fabricate a measurement")
+	# The other windows would take the left ray.
+	for other: XREPanelWindow in _panels.get_windows():
+		if not other.is_pinned():
+			other.global_position += Vector3(0.0, 10.0, 0.0)
+	var window := _panels.open_window(XREDebugTab)
+	_check(window.tab is XREDebugTab and window.tab.get_title() == "Debug", "the frame rate is a Debug tab now")
+
+
+func _debug_tab_filled() -> void:
+	var tab := _panels.find_window(XREDebugTab).tab as XREDebugTab
+	_check(tab.get_number_label().text.contains("no live XR session"), "missing session does not fabricate a measurement")
 	var session := XRESession.new()
-	widget.setup(session)
+	tab.setup(session)
 	session.fps_history.record_interval(0.4, 1, true)
-	_check((widget.get("_chart") as XREFPSChart).history == session.fps_history, "restored widget keeps the original chart/history source")
-	_check((widget.get("_number") as Label).text.contains("Main loop"), "restored widget labels its actual source")
-	_check((widget.get("_viewport") as SubViewport).render_target_update_mode == SubViewport.UPDATE_ONCE, "history refresh schedules one render")
-	widget.setup(null)
+	_check(tab.get_chart().history == session.fps_history, "the tab charts the session's history")
+	tab.setup(null)
 	session.free()
-	widget.close_requested.emit()
+	_check(_panels.get_launcher().get_tile(XREDebugTab) != null, "the launcher has a Debug icon")
+	var window := _panels.find_window(XREDebugTab)
+	_aim_left(window, window.size_px * 0.5, 0.0)
 
 
-func _fps_closed() -> void:
-	_check(not (_panels.get("_fps") as XREFPSWidget).is_shown(), "Close FPS hides the wrist widget until menus are reopened")
+## The pin clicked with the left hand: the window goes to the left forearm.
+func _press_pin_left() -> void:
+	var window := _panels.find_window(XREDebugTab)
+	_check(window.get_bar().is_shown(), "the left ray on a window shows its control bar too")
+	_aim_left(window.get_bar(), _pin_center(window), 1.0)
+
+
+func _release_pin_left() -> void:
+	var window := _panels.find_window(XREDebugTab)
+	_aim_left(window.get_bar(), _pin_center(window), 0.0)
+
+
+func _debug_pinned() -> void:
+	var window := _panels.find_window(XREDebugTab)
+	_check(window.pin == XREPanelWindow.Pin.LEFT_HAND and _panels.get_pinned_window(_rig.left_hand) == window,
+			"the pin clicked with the left hand pins the window to the left forearm")
+	_pose(_left, _left_aim, 0.0, 0.0)
 
 
 func _finish() -> void:

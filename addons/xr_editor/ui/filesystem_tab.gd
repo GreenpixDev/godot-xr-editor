@@ -45,8 +45,8 @@ func get_title() -> String:
 	return editor_text("FileSystem")
 
 
-func get_icon_name() -> StringName:
-	return &"Folder"
+func get_symbol() -> StringName:
+	return &"files"
 
 
 func get_tree_control() -> Tree:

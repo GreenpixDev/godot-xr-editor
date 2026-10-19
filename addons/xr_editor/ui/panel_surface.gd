@@ -35,6 +35,8 @@ const DOUBLE_CLICK_USEC := 400000
 const DOUBLE_CLICK_PX := 12.0
 ## Corner radius of the frame, in interface pixels.
 const CORNER_RADIUS := 12
+## Background of a Meta Horizon OS window (D-042): dark neutral gray, no edge.
+const META_WINDOW_COLOR := Color(0.12, 0.13, 0.15)
 ## Corners, in the order of [method get_hit_corner].
 enum Corner { TOP_LEFT, TOP_RIGHT, BOTTOM_RIGHT, BOTTOM_LEFT }
 ## A corner handle's bracket, in meters: its gap from the frame's edge, its
@@ -57,6 +59,9 @@ static var _handle_materials: Array[ShaderMaterial] = []
 
 ## The frame, filling the panel; panels put their controls in it.
 var root: PanelContainer
+## Corner radius of the frame in interface pixels; the corner handles bend
+## around it. Set before [method add_corner_handles].
+var corner_radius := CORNER_RADIUS
 ## Size of the interface, in its own pixels.
 var size_px: Vector2
 ## Size of the quad, in meters.
@@ -64,6 +69,7 @@ var size_m: Vector2
 
 var _viewport: SubViewport
 var _quad: MeshInstance3D
+var _render_scale := 1.0
 var _shown := true
 ## The pointer is on the panel: the viewport was told the mouse entered.
 var _inside := false
@@ -80,6 +86,7 @@ var _hit_local := Vector2.ZERO
 var _hit_corner := -1
 ## Corner handles, in [enum Corner] order; empty on a panel that isn't a window.
 var _handles: Array[MeshInstance3D] = []
+var _handles_enabled := true
 ## What rays were on this frame: a bit per corner and [constant _HOVER_BODY];
 ## [method _process] shows the handles by it and clears it.
 var _hover_mask := 0
@@ -94,6 +101,7 @@ var _overlay_material: ShaderMaterial
 func _init(logical_size: Vector2, pixel_size: float, render_scale: float, theme: Theme) -> void:
 	size_px = logical_size
 	size_m = logical_size * pixel_size
+	_render_scale = render_scale
 
 	root = PanelContainer.new()
 	root.name = "Frame"
@@ -160,11 +168,37 @@ static func frame_style(theme: Theme) -> StyleBoxFlat:
 	return style
 
 
+## A frame as Meta Horizon OS draws a window or a pill (D-042): [param color],
+## no edge, corners rounded by [param radius] interface pixels, contents
+## [param margin] pixels in.
+static func meta_style(color: Color, radius: int, margin: float) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.set_corner_radius_all(radius)
+	style.set_content_margin_all(margin)
+	style.anti_aliasing = true
+	return style
+
+
 ## The editor theme's color [param color_name], or [param fallback] without the editor's theme.
 static func editor_color(theme: Theme, color_name: StringName, fallback: Color) -> Color:
 	if theme != null and theme.has_color(color_name, &"Editor"):
 		return theme.get_color(color_name, &"Editor")
 	return fallback
+
+
+## Lays the panel out anew at [param logical_size] interface pixels, each
+## [param pixel_size] meters in the headset, rendered as finely as before; its
+## corner handles go to the new corners. A window pinned to a hand is
+## compacted this way ([XREPanelWindow]).
+func resize(logical_size: Vector2, pixel_size: float) -> void:
+	size_px = logical_size
+	size_m = logical_size * pixel_size
+	_viewport.size = Vector2i((logical_size * _render_scale).round())
+	_viewport.size_2d_override = Vector2i(logical_size.round())
+	(_quad.mesh as QuadMesh).size = size_m
+	if not _handles.is_empty():
+		_place_handles()
 
 
 ## Whether the panel is in view and takes the ray.
@@ -212,22 +246,33 @@ func get_hit_pixel() -> Vector2:
 func add_corner_handles() -> void:
 	if not _handles.is_empty():
 		return
-	var mesh := _bracket_mesh(CORNER_RADIUS * size_m.x / size_px.x)
 	var angles: Array[float] = [PI / 2.0, 0.0, -PI / 2.0, PI]
 	for corner: int in 4:
-		var handle := XRERig.create_vr_mesh(mesh, _handle_material(false))
+		# The mesh comes with the frame's size (_place_handles).
+		var handle := XRERig.create_vr_mesh(null, _handle_material(false))
 		handle.name = "Handle%s" % (Corner.keys()[corner] as String).to_pascal_case()
-		handle.position = Vector3(_corner_sign(corner).x * size_m.x * 0.5, _corner_sign(corner).y * size_m.y * 0.5, 0.0)
 		handle.rotation.z = angles[corner]
 		handle.visible = false
 		add_child(handle)
 		_handles.append(handle)
+	_place_handles()
 	set_process(true)
 
 
-## Whether the panel is a window, with corner handles.
+## Whether the panel is a window, with corner handles it can be moved by now.
 func has_corner_handles() -> bool:
-	return not _handles.is_empty()
+	return not _handles.is_empty() and _handles_enabled
+
+
+## Turns the corner handles off, or back on: a window pinned to a hand isn't
+## moved by its corners, and they neither show nor take the ray.
+func set_handles_enabled(enabled: bool) -> void:
+	if enabled == _handles_enabled:
+		return
+	_handles_enabled = enabled
+	_hover_mask = 0
+	_shown_mask = 0
+	_update_handles()
 
 
 ## Distance from [param origin] along [param direction] (a unit vector) to
@@ -235,7 +280,7 @@ func has_corner_handles() -> bool:
 ## [param max_distance]; otherwise -1, and always -1 without handles.
 ## [method get_hit_corner] then tells which corner.
 func intersect_handle(origin: Vector3, direction: Vector3, max_distance: float) -> float:
-	if _handles.is_empty():
+	if not has_corner_handles():
 		return -1.0
 	var distance := _cast(origin, direction, max_distance)
 	if distance < 0.0:
@@ -271,7 +316,7 @@ static func corner_at(point: Vector2, size: Vector2) -> int:
 ## ray is, and the one under a ray lights up. A router calls it every frame,
 ## and while it moves the window too.
 func hover_handles(corner: int) -> void:
-	if _handles.is_empty():
+	if not has_corner_handles():
 		return
 	_hover_mask |= (1 << corner) if corner >= 0 else _HOVER_BODY
 
@@ -304,6 +349,14 @@ func _update_handles() -> void:
 		var handle := _handles[corner]
 		handle.visible = shown
 		handle.material_override = _handle_material(shown and _shown_mask & (1 << corner) != 0)
+
+
+## Puts the corner handles at the frame's corners, bent around its rounded corners.
+func _place_handles() -> void:
+	var mesh := _bracket_mesh(corner_radius * size_m.x / size_px.x)
+	for corner: int in _handles.size():
+		_handles[corner].mesh = mesh
+		_handles[corner].position = Vector3(_corner_sign(corner).x * size_m.x * 0.5, _corner_sign(corner).y * size_m.y * 0.5, 0.0)
 
 
 func _handle_material(hot: bool) -> ShaderMaterial:
