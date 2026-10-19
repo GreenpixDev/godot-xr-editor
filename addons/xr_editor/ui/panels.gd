@@ -19,13 +19,15 @@ extends Node3D
 ## the window comes to the user.
 ## [br]- Grip with the ray on the forearm panel: pull the current tab out as a
 ## window, which follows the hand until the grip lets go.
-## [br]- Grip with the ray on a window: move it. It keeps its distance from the
-## hand and turns to face the head; the right thumbstick, up and down, pushes
-## it away or pulls it closer.
+## [br]- Grip with the ray on a window, or trigger or grip on one of its corner
+## handles (D-040): move it while the button is held. It keeps its distance
+## from the hand and turns to face the head; the right thumbstick, up and
+## down, pushes it away or pulls it closer.
 ## [br]- × in a window's title bar: close it.
 ## [br][br]
-## Windows live in the rig's space: flying and turning ([XRELocomotion]) take
-## them along, and they stay when another scene is opened. What the tabs
+## Windows are rig-locked (docs/vr_ui.md): flying and turning
+## ([XRELocomotion]) take them along, the head doesn't, and they stay when
+## another scene is opened. What the tabs
 ## change goes through [XREDocument] as operations from a panel. A hand on a
 ## panel is claimed ([method XREHand.claim]), so that the trigger doesn't also
 ## select what is behind the panel; the right thumbstick is claimed too
@@ -81,6 +83,10 @@ class Pointer:
 	var window: XREPanelWindow
 	## The window's position in the hand's space, fixed when it was taken.
 	var hold: Vector3
+	## The corner handle the window was taken by, or -1 for its interface.
+	var corner := -1
+	## The trigger holds the window, not the grip.
+	var by_trigger := false
 
 	func _init(controller: XREHand, right: bool) -> void:
 		hand = controller
@@ -274,7 +280,7 @@ func _on_pop_out_requested(tab: XREPanelTab) -> void:
 func _update_pointer(pointer: Pointer, delta: float) -> void:
 	var hand := pointer.hand
 	if pointer.window != null:
-		if hand.grip_held and hand.get_has_tracking_data():
+		if (hand.trigger_held if pointer.by_trigger else hand.grip_held) and hand.get_has_tracking_data():
 			_carry(pointer, delta)
 			return
 		pointer.window = null
@@ -285,6 +291,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	var origin := hand.global_position
 	var direction := -hand.global_basis.z.normalized()
 	var surface: XREPanelSurface = null
+	var handle: XREPanelWindow = null
 	var distance := POINT_DISTANCE
 	if pointer.drives and pointer.surface.is_pressed():
 		# A held button keeps the pointer on its panel, as a mouse drag keeps its control.
@@ -306,9 +313,18 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			if hit >= 0.0:
 				surface = window
 				distance = hit
+		# A handle lies outside its window's frame: only one nearer than any panel is taken.
+		for window: XREPanelWindow in _windows:
+			var hit := window.intersect_handle(origin, direction, distance)
+			if hit >= 0.0:
+				handle = window
+				distance = hit
 		if _blueprints != null and _blueprints.takes_pointer(hand, origin, direction, distance):
 			_leave(pointer)
 			return
+	if handle != null:
+		_point_at_handle(pointer, handle, origin + direction * distance, distance)
+		return
 	if surface == null:
 		_leave(pointer)
 		return
@@ -322,6 +338,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		hand.claim_stick(self)
 	if distance >= 0.0:
 		hand.show_ray(distance, true)
+	surface.hover_handles(-1)
 	if not pointer.drives:
 		return
 	if distance >= 0.0:
@@ -364,9 +381,26 @@ func _may_drive(pointer: Pointer, surface: XREPanelSurface) -> bool:
 	return true
 
 
+## The ray on [param window]'s corner handle, [param distance] away at
+## [param point]: it lights up, and the trigger or the grip takes the window.
+func _point_at_handle(pointer: Pointer, window: XREPanelWindow, point: Vector3, distance: float) -> void:
+	_leave(pointer)
+	var hand := pointer.hand
+	hand.claim(self)
+	if pointer.uses_stick:
+		hand.claim_stick(self)
+	hand.show_ray(distance, true)
+	var corner := window.get_hit_corner()
+	window.hover_handles(corner)
+	if hand.trigger_pressed or hand.grip_pressed:
+		_take(pointer, window, point, corner, not hand.grip_pressed)
+
+
 ## Grip on [param surface] at [param point]: a window is taken as it is; the
 ## forearm panel gives its current tab's window, which comes to the point.
-func _take(pointer: Pointer, surface: XREPanelSurface, point: Vector3) -> void:
+## A window taken by its [param corner] handle is held by the trigger if
+## [param by_trigger], otherwise by the grip.
+func _take(pointer: Pointer, surface: XREPanelSurface, point: Vector3, corner: int = -1, by_trigger: bool = false) -> void:
 	var window := surface as XREPanelWindow
 	if window == null:
 		window = _window_for(_hand_panel.get_current_tab().get_script() as Script)
@@ -377,6 +411,8 @@ func _take(pointer: Pointer, surface: XREPanelSurface, point: Vector3) -> void:
 			other.window = null
 	_leave(pointer)
 	pointer.window = window
+	pointer.corner = corner
+	pointer.by_trigger = by_trigger
 	pointer.hold = pointer.hand.global_transform.affine_inverse() * window.global_position
 	pointer.hand.claim(self)
 	if pointer.uses_stick:
@@ -395,6 +431,7 @@ func _carry(pointer: Pointer, delta: float) -> void:
 	var position := hand.global_transform * pointer.hold
 	pointer.window.global_transform = Transform3D(
 			facing(position, _rig.camera.global_position, _rig.global_basis.y), position)
+	pointer.window.hover_handles(pointer.corner)
 	hand.show_ray(maxf(-pointer.hold.z, 0.0), true)
 
 

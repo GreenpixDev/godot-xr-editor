@@ -103,6 +103,7 @@ func _run() -> void:
 	_check(_service.is_open(), "creation opens spatial workspace")
 	await _test_workspace()
 	await _test_node_display()
+	await _test_window_corners()
 	var toolbar := _service.get("_toolbar") as XREPanelSurface
 	var toolbar_point := toolbar.pixel_to_global(Vector2(12, 144))
 	_aim(toolbar_point)
@@ -342,6 +343,75 @@ func _test_node_display() -> void:
 	await _frames()
 	cards = _service.canvas.get("_cards") as Array
 	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is QuadMesh, "open cards are billboards again")
+
+
+## Points the right ray, with [param trigger] and [param grip], at a point
+## just outside [param corner] of [param window], from in front of it.
+func _aim_corner(window: XREPanelSurface, corner: int, trigger: float, grip: float) -> void:
+	var sign := Vector2(-1 if corner == XREPanelSurface.Corner.TOP_LEFT or corner == XREPanelSurface.Corner.BOTTOM_LEFT else 1,
+			1 if corner == XREPanelSurface.Corner.TOP_LEFT or corner == XREPanelSurface.Corner.TOP_RIGHT else -1)
+	var local := Vector3(sign.x * (window.size_m.x * 0.5 + 0.02), sign.y * (window.size_m.y * 0.5 + 0.02), 0)
+	var target := window.global_transform * local
+	var origin := target + window.global_basis.z.normalized() * 0.4
+	_right.set_pose(&"aim", Transform3D(Basis.looking_at(target - origin), origin), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	_right.set_input(&"trigger", trigger)
+	_right.set_input(&"grip", grip)
+
+
+## Corner handles of the graph's windows (D-040): grip on the parameters'
+## corner moves that window; trigger on the toolbar's moves them all.
+func _test_window_corners() -> void:
+	var floating := _service.get("_floating_ui") as Node3D
+	var toolbar := _service.get("_toolbar") as XREPanelSurface
+	var panel := _service.get("_parameter_surface") as XREPanelSurface
+	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
+	var floating_before := floating.global_transform
+	var panel_before := panel.transform
+	var history := _service.blueprint.history.get_version()
+	for window: XREPanelSurface in [toolbar, panel, _service.get("_keyboard") as XREPanelSurface, _service.get("_block_palette") as XREPanelSurface]:
+		_check(window.has_corner_handles(), "graph window %s has corner handles" % window.name)
+	_check(not (_service.get("_badge") as XREPanelSurface).has_corner_handles(), "the object's badge, object-locked, has none")
+
+	_aim_corner(panel, XREPanelSurface.Corner.BOTTOM_RIGHT, 0, 0)
+	await _frames()
+	_check(panel.handle_lit(XREPanelSurface.Corner.BOTTOM_RIGHT), "the ray lights the parameters' corner handle")
+	_check(not toolbar.handle_shown(XREPanelSurface.Corner.TOP_LEFT), "another window's handles stay hidden")
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	_check(pointer.held == panel and pointer.window == panel, "grip on a corner handle takes the parameters window")
+	var start := panel.global_position
+	var hand := _rig.right_hand.global_transform
+	_right.set_pose(&"aim", _rig.global_transform.affine_inverse() * hand.translated(Vector3(0.1, 0.05, 0)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await _frames()
+	_check(panel.global_position.distance_to(start + Vector3(0.1, 0.05, 0)) < 0.001, "the window follows the hand by its corner")
+	_check(panel.global_basis.y.is_equal_approx(Vector3.UP), "and stays upright")
+	_check(toolbar.global_transform.is_equal_approx(floating_before * toolbar.transform), "the parameters move alone")
+	_right.set_input(&"grip", 0.0)
+	await _frames()
+	_check(pointer.held == null, "letting go of the grip leaves the window")
+	panel.transform = panel_before
+
+	_aim_corner(toolbar, XREPanelSurface.Corner.TOP_LEFT, 0, 0)
+	await _frames()
+	_check(toolbar.handle_lit(XREPanelSurface.Corner.TOP_LEFT), "the ray lights the toolbar's corner handle")
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_check(pointer.held == floating and pointer.window == toolbar, "trigger on the toolbar's corner takes the graph's windows")
+	_check(not toolbar.is_pressed(), "without clicking the toolbar")
+	hand = _rig.right_hand.global_transform
+	_right.set_pose(&"aim", _rig.global_transform.affine_inverse() * hand.translated(Vector3(-0.1, 0, 0)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await _frames()
+	_check(floating.global_position.distance_to(floating_before.origin + Vector3(-0.1, 0, 0)) < 0.001, "the graph's windows move together by the toolbar's corner")
+	_check(panel.transform.is_equal_approx(panel_before), "keeping their places in the group")
+	_check(toolbar.handle_lit(XREPanelSurface.Corner.TOP_LEFT), "the handle stays lit while it is held")
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(pointer.held == null, "letting go of the trigger leaves the windows")
+	_check(_service.blueprint.history.get_version() == history, "moving windows is not a graph edit")
+	floating.global_transform = floating_before
+	_aim(Vector3(5, 4, -2))
+	await _frames()
+	_check(not toolbar.handle_shown(XREPanelSurface.Corner.TOP_LEFT), "handles hide when the ray leaves")
 
 
 func _test_workspace() -> void:

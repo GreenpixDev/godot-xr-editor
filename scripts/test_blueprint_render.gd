@@ -36,6 +36,33 @@ func _white_at(image: Image, point: Vector3) -> bool:
 	return false
 
 
+## Corner handles of a window over the logic veil (D-040), looked at away from everything else.
+func _test_window_handles() -> void:
+	var camera_before := _camera.position
+	var window := XREPanelSurface.new(Vector2(200, 120), 0.001, 1.5, null)
+	window.add_corner_handles()
+	window.set_overlay(true)
+	_viewport.add_child(window)
+	window.position = Vector3(5, 5, -0.2)
+	_camera.position = Vector3(5, 5, 2)
+	var arm := XREPanelSurface.HANDLE_GAP + XREPanelSurface.HANDLE_WIDTH * 0.5
+	var lit := window.to_global(Vector3(window.size_m.x * 0.5 + arm, -window.size_m.y * 0.5 + 0.02, 0))
+	var unlit := window.to_global(Vector3(-window.size_m.x * 0.5 - arm, window.size_m.y * 0.5 - 0.02, 0))
+	var hover := func() -> void: window.hover_handles(XREPanelSurface.Corner.BOTTOM_RIGHT)
+	process_frame.connect(hover)
+	var shown := await _capture("window_handles")
+	process_frame.disconnect(hover)
+	_check(_white_at(shown, lit), "the lit corner handle shows over the logic veil")
+	var unlit_color := shown.get_pixelv(Vector2i(_camera.unproject_position(unlit)))
+	var background := shown.get_pixelv(Vector2i(_camera.unproject_position(window.to_global(Vector3(0.0, window.size_m.y * 0.5 + 0.06, 0)))))
+	_check(not _white_at(shown, unlit) and unlit_color.r > background.r + 0.1, "the other handles show, dimmer")
+	var hidden := await _capture("window_handles_hidden")
+	_check(not _white_at(hidden, lit) and absf(hidden.get_pixelv(Vector2i(_camera.unproject_position(unlit))).r - background.r) < 0.02,
+			"the handles hide when no ray is on the window")
+	window.queue_free()
+	_camera.position = camera_before
+
+
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute("res://build")
 	_viewport = SubViewport.new()
@@ -228,6 +255,7 @@ func _run() -> void:
 	var desktop := await _capture("logic_desktop")
 	_check(desktop.get_pixelv(patch_pixel).g > dimmed.get_pixelv(patch_pixel).g * 1.2, "desktop scene camera excludes the VR dimmer")
 	_camera.cull_mask = XRERig.SCENE_LAYERS | XRERig.VR_LAYER
+	await _test_window_handles()
 	veil.hide()
 	patch.hide()
 	glass.hide()

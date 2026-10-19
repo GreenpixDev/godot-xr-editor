@@ -3,9 +3,10 @@ class_name XREPanelWindow
 extends XREPanelSurface
 ## One tab of the forearm panel opened as a window in the scene
 ## (docs/decisions.md, D-016): a title bar with the tab's icon and title and a
-## close button, over the tab. [XREPanels] places and moves it; it lives in
-## the rig's space, so it goes along when the user flies, and it stays when
-## another scene is opened.
+## close button, over the tab. [XREPanels] places and moves it, also by its
+## corner handles (D-040). It is rig-locked (docs/vr_ui.md): it goes along
+## when the user flies or turns with the sticks, not with the head, and it
+## stays when another scene is opened.
 
 ## Emitted when the close button is clicked.
 signal close_requested
@@ -52,6 +53,7 @@ func _init(content: XREPanelTab, logical_size: Vector2, pixel_size: float, rende
 	page.add_child(tab)
 	column.add_child(page)
 	pointer_released.connect(tab.end_edit)
+	add_corner_handles()
 
 
 func get_close_button() -> Button:

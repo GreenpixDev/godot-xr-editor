@@ -135,6 +135,14 @@ func _initialize() -> void:
 		_signals_listed,
 		_click_pop_out,
 		_window_opened,
+		_aim_at_corner,
+		_corner_lit,
+		_corner_taken,
+		_corner_carried,
+		_corner_brought_back,
+		_corner_let_go,
+		_handles_on_window,
+		_handles_hidden,
 		_window_listed,
 		_hover_with_stick,
 		_not_turned,
@@ -159,6 +167,7 @@ func _initialize() -> void:
 		_signals_window_closed,
 		_point_past_panels,
 		_room_selected,
+		_test_corner_zones,
 		_test_feature_store,
 		_open_settings,
 		_hover_cuboid,
@@ -400,6 +409,119 @@ func _window_opened() -> void:
 			"the window opens in front of the user")
 	_check(window.global_basis.z.is_equal_approx(Vector3.BACK) and window.global_basis.y.is_equal_approx(Vector3.UP), "window faces the head horizontally without tilting")
 	_check(window.tab is XRESignalsTab and window.tab != _hand_panel.get_current_tab(), "with its own tab")
+
+
+# Corner handles (D-040): trigger or grip on one moves the window.
+
+## Where the right ray points at the Signals window's bottom right handle, from in front of it.
+func _corner_point(window: XREPanelWindow) -> Vector3:
+	var outward := (window.global_basis.x - window.global_basis.y).normalized() * 0.02
+	return window.pixel_to_global(window.size_px) + outward
+
+
+func _aim_at_point(target: Vector3, normal: Vector3, trigger: float, grip: float = 0.0) -> void:
+	var origin := target + normal.normalized() * AIM_DISTANCE
+	_pose(_right, Transform3D(Basis.looking_at(target - origin), origin), trigger, grip)
+
+
+func _aim_at_corner() -> void:
+	var window := _panels.find_window(XRESignalsTab)
+	if window == null:
+		return
+	_check(window.has_corner_handles(), "a window has corner handles")
+	_check(not _hand_panel.has_corner_handles(), "the forearm panel, hand-locked, has none")
+	# The left ray rests on the window from where it is; it points up, away from every panel, meanwhile.
+	_pose(_left, Transform3D(Basis(Vector3.RIGHT, PI / 2.0), _left_aim.origin), 0.0, 0.0)
+	_aim_at_point(_corner_point(window), window.global_basis.z, 0.0)
+
+
+func _corner_lit() -> void:
+	var window := _panels.find_window(XRESignalsTab)
+	if window == null:
+		return
+	_check(window.handle_lit(XREPanelSurface.Corner.BOTTOM_RIGHT), "the ray on a corner lights its handle")
+	_check(window.handle_shown(XREPanelSurface.Corner.TOP_LEFT) and not window.handle_lit(XREPanelSurface.Corner.TOP_LEFT),
+			"the other handles show, unlit")
+	_check(not _rig.right_hand.is_free_for(_manipulator), "a hand on a handle is the panels'")
+	_window_before = window.global_position
+	_operation_count = _operations.size()
+	_aim_at_point(_corner_point(window), window.global_basis.z, 1.0)
+
+
+func _corner_taken() -> void:
+	var window := _panels.find_window(XRESignalsTab)
+	if window == null:
+		return
+	_check(_panels.get_held_window(_rig.right_hand) == window, "the trigger on a corner handle takes the window")
+	_check(not window.is_pressed(), "and doesn't click the interface")
+	_check(_operations.size() == _operation_count, "nor selects what is behind it: %s" % [_operations.slice(_operation_count)])
+	_pose(_right, _rig.right_hand.global_transform.translated(Vector3(0.1, 0.05, 0.0)), 1.0, 0.0)
+
+
+func _corner_carried() -> void:
+	var window := _panels.find_window(XRESignalsTab)
+	if window == null:
+		return
+	_check_vector(window.global_position, _window_before + Vector3(0.1, 0.05, 0.0), "the window follows the hand while the trigger is held")
+	_check(window.handle_lit(XREPanelSurface.Corner.BOTTOM_RIGHT), "the handle it was taken by stays lit")
+	_check(window.global_basis.y.is_equal_approx(Vector3.UP), "the carried window stays upright")
+	_pose(_right, _rig.right_hand.global_transform.translated(Vector3(-0.1, -0.05, 0.0)), 1.0, 0.0)
+
+
+func _corner_brought_back() -> void:
+	var window := _panels.find_window(XRESignalsTab)
+	if window == null:
+		return
+	_check_vector(window.global_position, _window_before, "and comes back with it")
+	_pose(_right, _rig.right_hand.global_transform, 0.0, 0.0)
+
+
+func _corner_let_go() -> void:
+	var window := _panels.find_window(XRESignalsTab)
+	if window == null:
+		return
+	_check(_panels.get_held_window(_rig.right_hand) == null, "letting go of the trigger leaves the window")
+	_check_vector(window.global_position, _window_before, "where it is")
+	_aim(window, window.size_px * 0.5, 0.0)
+
+
+func _handles_on_window() -> void:
+	var window := _panels.find_window(XRESignalsTab)
+	if window == null:
+		return
+	_check(window.handle_shown(XREPanelSurface.Corner.BOTTOM_RIGHT) and not window.handle_lit(XREPanelSurface.Corner.BOTTOM_RIGHT),
+			"a ray on the interface shows the handles, none lit")
+	# Up, away from every panel.
+	_pose(_right, Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0.2, -0.3, -0.3)), 0.0, 0.0)
+
+
+func _handles_hidden() -> void:
+	var window := _panels.find_window(XRESignalsTab)
+	if window == null:
+		return
+	_check(not window.handle_shown(XREPanelSurface.Corner.BOTTOM_RIGHT), "the handles hide when the ray leaves")
+	_pose(_left, _left_aim, 0.0, 0.0)
+	# Back on the window, for the thumbstick checks after.
+	_aim(window, window.size_px * 0.5, 0.0)
+
+
+func _test_corner_zones() -> void:
+	var size := Vector2(0.4, 0.3)
+	var zones := {
+		Vector2(0.0, 0.0): -1,
+		Vector2(0.19, 0.14): -1,
+		Vector2(0.21, 0.16): XREPanelSurface.Corner.TOP_RIGHT,
+		Vector2(-0.21, 0.13): XREPanelSurface.Corner.TOP_LEFT,
+		Vector2(0.18, -0.16): XREPanelSurface.Corner.BOTTOM_RIGHT,
+		Vector2(-0.22, -0.17): XREPanelSurface.Corner.BOTTOM_LEFT,
+		# Beyond an edge, but away from the corners or too far out.
+		Vector2(0.0, 0.16): -1,
+		Vector2(0.21, 0.0): -1,
+		Vector2(0.3, 0.2): -1,
+	}
+	for point: Vector2 in zones:
+		_check(XREPanelSurface.corner_at(point, size) == zones[point],
+				"corner handle at %s: %d, expected %d" % [point, XREPanelSurface.corner_at(point, size), zones[point]])
 
 
 func _window_listed() -> void:

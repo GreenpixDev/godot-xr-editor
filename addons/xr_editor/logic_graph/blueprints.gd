@@ -29,6 +29,11 @@ class Pointer:
 	var along := Vector3.FORWARD
 	var depth_uses_grip := false
 	var gain := 1.0
+	## A held window: the one whose handles light up, the corner it was taken
+	## by (-1 for its interface) and whether the trigger holds it, not the grip.
+	var window: XREPanelSurface
+	var corner := -1
+	var by_trigger := false
 
 class Marker:
 	var host: Node
@@ -83,6 +88,8 @@ var _picker: XREPicker
 var _keyboard: XREVirtualKeyboard
 var _keyboard_target: WeakRef
 var _block_palette: XREPanelSurface
+## The rig-locked windows of the graph, which move by their corner handles (docs/vr_ui.md, D-040).
+var _windows: Array[XREPanelSurface] = []
 var _built_state: Dictionary = {}
 var _built_path := ""
 var _built_host: WeakRef
@@ -122,6 +129,8 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_keyboard.applied.connect(_apply_keyboard)
 	_floating_ui.add_child(_keyboard)
 	_build_block_palette(theme)
+	_windows = [_toolbar, _parameter_surface, _keyboard, _block_palette]
+	for window: XREPanelSurface in _windows: window.add_corner_handles()
 	_workspace.hide()
 	_floating_ui.hide()
 	_badge = XREPanelSurface.new(Vector2(340, 170), 0.00065, 1.5, theme)
@@ -553,7 +562,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 		if not hand.get_has_tracking_data(): _finish_hold(pointer, false)
 		elif pointer.block >= 0 and pointer.depth_uses_grip and not _rig.has_grip_pose(hand): _finish_hold(pointer, false)
-		elif not hand.grip_held: _finish_hold(pointer, true)
+		elif not (hand.trigger_held if pointer.by_trigger else hand.grip_held): _finish_hold(pointer, true)
 		else:
 			if pointer.block >= 0:
 				var physical := _rig.hand_pose(hand, pointer.depth_uses_grip).origin
@@ -577,6 +586,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				var target := hand.global_transform * pointer.hold
 				if pointer.held == _keyboard: pointer.held.global_transform = target
 				else: pointer.held.global_transform = Transform3D(XREPanels.facing(target.origin, _rig.camera.global_position, Vector3.UP), target.origin)
+				if pointer.window != null: pointer.window.hover_handles(pointer.corner)
 			return
 	if not hand.is_free_for(self) or not hand.get_has_tracking_data():
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
@@ -587,6 +597,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	var direction := -hand.global_basis.z.normalized()
 	var distance := 5.0
 	var surface: XREPanelSurface
+	var handle: XREPanelSurface
 	var canvas_hit := -1.0
 	if _workspace.visible and hand.grip_pressed:
 		var touched := touch_block(hand)
@@ -621,7 +632,26 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			if hit >= 0:
 				surface = _block_palette
 				distance = hit
-		if canvas_hit >= 0 and canvas_hit < distance: surface = null
+			# Handles lie outside the frames: only one nearer than any window is taken.
+			for window: XREPanelSurface in _windows:
+				hit = window.intersect_handle(origin, direction, distance)
+				if hit >= 0:
+					handle = window
+					distance = hit
+			if handle != null: surface = null
+		if canvas_hit >= 0 and canvas_hit < distance:
+			surface = null
+			handle = null
+	if handle != null:
+		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
+		if _pending_hand == hand: _preview_connection(origin + direction * maxf(distance, 0.01))
+		_leave(pointer)
+		hand.claim(self)
+		hand.claim_stick(self)
+		hand.show_ray(maxf(distance, 0.01), true)
+		handle.hover_handles(handle.get_hit_corner())
+		if hand.trigger_pressed or hand.grip_pressed: _hold_window(pointer, handle, handle.get_hit_corner(), not hand.grip_pressed)
+		return
 	if surface != null:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 		if _pending_hand == hand: _preview_connection(origin + direction * maxf(distance, 0.01))
@@ -631,10 +661,11 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		hand.claim(self)
 		hand.claim_stick(self)
 		hand.show_ray(maxf(distance, 0.01), true)
+		surface.hover_handles(-1)
 		if surface == _keyboard:
 			if distance >= 0: _keyboard.hover_pointer(hand, surface.get_hit_pixel())
 			else: _keyboard.leave_pointer(hand)
-			if hand.grip_pressed: _start_hold(pointer, _keyboard, -1)
+			if hand.grip_pressed: _hold_window(pointer, _keyboard, -1, false)
 			return
 		if not pointer.drives:
 			pointer.drives = true
@@ -647,7 +678,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			surface.pointer_move(surface.get_hit_pixel())
 		if hand.trigger_pressed: surface.pointer_button(true)
 		if hand.trigger_released: surface.pointer_button(false)
-		if hand.grip_pressed and surface != _badge and not surface.is_pressed(): _start_hold(pointer, _floating_ui if surface == _toolbar else surface, -1)
+		if hand.grip_pressed and surface != _badge and not surface.is_pressed(): _hold_window(pointer, surface, -1, false)
 		elif hand == _rig.right_hand:
 			var tilt := XREPanels._tilt(hand.get_vector2(&"primary").y)
 			if tilt != 0: surface.pointer_scroll(tilt * XREPanels.SCROLL_SPEED * delta)
@@ -721,6 +752,9 @@ func _start_hold(pointer: Pointer, node: Node3D, block: int, point: Vector3 = Ve
 	_leave(pointer)
 	pointer.held = node
 	pointer.block = block
+	pointer.window = null
+	pointer.corner = -1
+	pointer.by_trigger = false
 	var target := node.global_transform
 	if block >= 0:
 		select_block(block)
@@ -738,6 +772,17 @@ func _start_hold(pointer: Pointer, node: Node3D, block: int, point: Vector3 = Ve
 		else: pointer.hand.show_ray(pointer.distance, true)
 	else: pointer.hold = pointer.hand.global_transform.affine_inverse() * target
 	pointer.hand.claim(self)
+
+
+## Takes [param window], by its [param corner] handle or by its interface
+## with -1, held by the trigger if [param by_trigger], otherwise by the grip.
+## The toolbar leads the graph's windows: taking it moves them all.
+func _hold_window(pointer: Pointer, window: XREPanelSurface, corner: int, by_trigger: bool) -> void:
+	_start_hold(pointer, _floating_ui if window == _toolbar else window, -1)
+	if pointer.held == null: return
+	pointer.window = window
+	pointer.corner = corner
+	pointer.by_trigger = by_trigger
 
 
 ## Distance from [param point] to the body: a vertical shoulder-to-hip segment
@@ -765,6 +810,8 @@ func _finish_hold(pointer: Pointer, commit: bool) -> void:
 		else: canvas.preview_transform(pointer.block, pointer.before)
 	pointer.held = null
 	pointer.block = -1
+	pointer.window = null
+	pointer.by_trigger = false
 	pointer.hand.show_ray(XREHand.RAY_LENGTH, false)
 	pointer.hand.unclaim(self)
 
@@ -799,8 +846,11 @@ func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance:
 	if _workspace.visible:
 		var card_hit := canvas.intersect_ray(origin, direction, distance)
 		if card_hit >= 0 and card_hit < distance: return true
-	var hit := _keyboard.intersect_ray(origin, direction, distance)
-	return hit >= 0 and hit < distance
+	if not _workspace.visible: return false
+	# The graph's windows and their handles, nearer than the panel the ray is on.
+	for window: XREPanelSurface in _windows:
+		if window.intersect_ray(origin, direction, distance) >= 0 or window.intersect_handle(origin, direction, distance) >= 0: return true
+	return false
 
 
 func _selection_changed() -> void:
