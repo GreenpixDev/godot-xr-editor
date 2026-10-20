@@ -114,6 +114,11 @@ func claim(tool: Object) -> void:
 	_claimed_by = tool
 
 
+## The tool that has claimed the hand, or null.
+func get_claimant() -> Object:
+	return _claimed_by
+
+
 ## Lets go of the hand, if [param tool] has claimed it.
 func unclaim(tool: Object) -> void:
 	if _claimed_by == tool:

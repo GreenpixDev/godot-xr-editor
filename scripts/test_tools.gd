@@ -118,8 +118,9 @@ var _manipulator: XREManipulator
 ## The box the manipulator tests grab, in the scene's first lane.
 var _target: MeshInstance3D
 var _gain := 1.0
-## Where the left hand holds the tray for the palette tests.
-var _tray_hand: Vector3
+## The Objects window the palette's miniatures hang in (D-045), and its tab.
+var _objects: XREPanelWindow
+var _objects_tab: XREObjectsTab
 ## The node the palette is holding or has put in the scene.
 var _taken: Node3D
 var _operation_count := 0
@@ -160,6 +161,9 @@ func _initialize() -> void:
 		_box_placed,
 		_light_taken,
 		_light_thrown_away,
+		_sphere_hovered_by_ray,
+		_sphere_taken_by_ray,
+		_sphere_thrown_away,
 		_delete_placed,
 		_placed_deleted,
 		_grab_far,
@@ -429,6 +433,7 @@ func _start_manipulator() -> void:
 	_rig.add_child(_palette)
 	_manipulator = XREManipulator.new(_document, _rig, _icons)
 	_rig.add_child(_manipulator)
+	_palette.set_manipulator(_manipulator)
 	root.add_child(_rig)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
@@ -678,27 +683,35 @@ func _check_hand_over() -> void:
 	var rigid := left_now * left_start.affine_inverse() * Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, -1.0))
 	_check(_target.transform.is_equal_approx(rigid),
 			"the hand that took the node over turns it about itself: %s, expected %s" % [_target.transform, rigid])
-	_check(not _palette.is_shown(), "the tray starts hidden")
-	# The left hand lets go and shows the tray with X.
-	_tray_hand = Vector3(0.0, 0.5, 0.5)
-	_set_hand(_left, _tray_hand, 0.0, 0.0)
-	_left.set_input(&"ax_button", true)
+	_check(not _palette.is_shown(), "without their window the miniatures are hidden")
+	# The Objects window, as the panels open it from the launcher (D-045); facing +Z.
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_objects_tab = XREObjectsTab.new(_document)
+	_objects = XREPanelWindow.new(_objects_tab, _objects_tab.get_window_size(), XREPanels.WINDOW_PIXEL_SIZE, 1.0, null)
+	_rig.add_child(_objects)
+	_palette.set_host(_objects, _objects_tab)
 
 
-# Palette: the right hand takes things out of the tray in the left hand. The
-# tray is moved so that the box's miniature is at (0, 0, 0.5): the right
-# hand touching it also points at the Near box, which the manipulator would grab.
+# Palette: the right hand takes things out of the Objects window. The window
+# is moved so that the box's miniature is at (0, 0, 0.5): the right hand
+# touching it also points at the Near box, which the manipulator would grab.
 
 func _palette_shown() -> void:
-	_check(_palette.is_shown(), "X shows the tray")
-	_left.set_input(&"ax_button", false)
-	_tray_hand += Vector3(0.0, 0.0, 0.5) - _palette.get_item_transform(&"CSGBox3D").origin
-	_set_hand(_left, _tray_hand, 0.0, 0.0)
+	_check(_palette.is_shown(), "the miniatures show in their window")
+	for index: int in XREPalette.ITEMS.size():
+		var type: StringName = XREPalette.ITEMS[index][0]
+		var expected := _objects.pixel_to_global(_objects_tab.get_cell_center(index)) + _objects.global_basis.z * XREPalette.DEPTH
+		_check(_palette.get_item_transform(type).origin.is_equal_approx(expected) and _objects_tab.get_cell_name(index) == XREPalette.ITEMS[index][1],
+				"%s hangs in front of its cell, named under it" % type)
+	_check(_objects_tab.get_frame_color().a < 0.5, "the window is see-through")
+	_objects.global_position += Vector3(0.0, 0.0, 0.5) - _palette.get_item_transform(&"CSGBox3D").origin
 	_set_hand(_right, Vector3(0.0, 0.0, 0.5), 0.0, 0.0)
 
 
 func _touch_miniature() -> void:
 	_check(_palette.get_hovered() == &"CSGBox3D", "the right hand touches the box's miniature: %s" % _palette.get_hovered())
+	_check(_objects_tab.get_hovered() == 0, "its cell lights up")
+	_check(not (_rig.right_hand.get("_ray") as MeshInstance3D).visible, "with the tip inside the miniature, the ray hides (D-049)")
 	_check(not _rig.right_hand.is_free_for(_manipulator), "the palette claims the hand that touches it")
 	_operation_count = _operations.size()
 	_set_hand(_right, Vector3(0.0, 0.0, 0.5), 0.0, 1.0)
@@ -706,7 +719,7 @@ func _touch_miniature() -> void:
 
 func _take_box() -> void:
 	_taken = _palette.get_held()
-	_check(_taken is CSGBox3D, "grip takes a box out of the tray: %s" % _taken)
+	_check(_taken is CSGBox3D, "grip takes a box out of its window: %s" % _taken)
 	_check(_operations.size() == _operation_count, "the manipulator doesn't grab what the ray points at: %s" % [_operations])
 	if _taken == null:
 		return
@@ -743,7 +756,7 @@ func _box_placed() -> void:
 
 func _light_taken() -> void:
 	_taken = _palette.get_held()
-	_check(_taken is OmniLight3D, "grip takes a light out of the tray: %s" % _taken)
+	_check(_taken is OmniLight3D, "grip takes a light out of its window: %s" % _taken)
 	if _taken == null:
 		return
 	var unsnapped := _palette.get_item_transform(&"OmniLight3D").origin
@@ -759,6 +772,31 @@ func _light_thrown_away() -> void:
 	_check(not is_instance_valid(_taken), "the thrown light is freed")
 	_check(_operations.size() == _operation_count, "throwing away records nothing: %s" % [_operations])
 	_check(_document.removed.is_empty(), "the A that throws a light away doesn't delete the selection")
+	_right.set_input(&"ax_button", false)
+	# The ray, from 40 cm in front, on the sphere's miniature (D-045).
+	_document.snap = XRESnap.new(false, 0.5, 15.0, 10.0)
+	_set_hand(_right, _palette.get_item_transform(&"CSGSphere3D").origin + Vector3(0.0, 0.0, 0.4), 0.0, 0.0)
+
+
+func _sphere_hovered_by_ray() -> void:
+	_check(_palette.get_hovered() == &"CSGSphere3D" and _objects_tab.get_hovered() == 2, "the right ray on a miniature lights it and its cell")
+	var ray := _rig.right_hand.get("_ray") as MeshInstance3D
+	_check(ray.visible and is_equal_approx(ray.scale.z, 0.4), "the ray ends at the miniature: %f" % ray.scale.z)
+	_set_hand(_right, _palette.get_item_transform(&"CSGSphere3D").origin + Vector3(0.0, 0.0, 0.4), 0.0, 1.0)
+
+
+func _sphere_taken_by_ray() -> void:
+	_taken = _palette.get_held()
+	_check(_taken is CSGSphere3D, "grip with the ray on it takes the sphere out: %s" % _taken)
+	if _taken != null:
+		var miniature := _palette.get_item_transform(&"CSGSphere3D")
+		_check(_taken.global_transform.is_equal_approx(Transform3D(miniature.basis.orthonormalized() * XREPalette.MINIATURE_SCALE, miniature.origin)),
+				"where its miniature is, as big as it: %s" % _taken.global_transform)
+	_right.set_input(&"ax_button", true)
+
+
+func _sphere_thrown_away() -> void:
+	_check(_palette.get_held() == null and _document.added.size() == 1, "A throws it away")
 	_right.set_input(&"ax_button", false)
 	_set_hand(_right, Vector3(1.0, 1.5, 0.0), 0.0, 0.0)
 
@@ -791,12 +829,13 @@ func _held_deleted() -> void:
 	_check(_document.commits.size() == _commit_count, "a node deleted while held records no move")
 	_set_hand(_right, Vector3(1.0, 1.5, 0.0), 0.0, 0.0)
 	_right.set_input(&"ax_button", false)
-	_left.set_input(&"ax_button", true)
+	# The window closes, as × on its control bar closes it.
+	_palette.set_host(null, null)
+	_objects.queue_free()
 
 
 func _point_at_spot_icon() -> void:
-	_check(not _palette.is_shown(), "X hides the tray")
-	_left.set_input(&"ax_button", false)
+	_check(not _palette.is_shown(), "closing the window hides the miniatures")
 	_operation_count = _operations.size()
 	_set_hand(_right, Vector3(13.0, 0.0, 1.0), 1.0, 0.0)
 

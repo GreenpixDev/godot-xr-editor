@@ -37,6 +37,16 @@ func _init(document: XREDocument) -> void:
 @abstract func get_symbol() -> StringName
 
 
+## Size of the tab's window in interface pixels at editor scale 1.
+func get_window_size() -> Vector2:
+	return XREPanels.WINDOW_SIZE
+
+
+## Color of the tab's window frame: a Meta window's, or a see-through one.
+func get_frame_color() -> Color:
+	return XREPanelSurface.META_WINDOW_COLOR
+
+
 ## Finishes an edit made with the pointer. The panel calls it when the
 ## pointer's button goes up, and the tab when it is hidden.
 func end_edit() -> void:

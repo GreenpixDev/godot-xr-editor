@@ -67,6 +67,8 @@ func _enter_tree() -> void:
 		_manipulator = XREManipulator.new(document, rig, _icons)
 		_manipulator.name = "XREManipulator"
 		rig.add_child(_manipulator)
+		_panels.set_manipulator(_manipulator)
+		_palette.set_manipulator(_manipulator)
 		_play_mode = XREPlayMode.new(document, _session, rig)
 		_play_mode.name = "XREPlayMode"
 		rig.add_child(_play_mode)

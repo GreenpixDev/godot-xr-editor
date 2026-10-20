@@ -5,7 +5,13 @@ extends Node3D
 ## Cached card/port arrays are picked analytically; wires reuse meshes during dragging.
 ## Cards are drawn as the feature setting [constant XREFeatureSettings.NODE_DISPLAY]
 ## says ([method set_display], D-039): flat billboards turned to the head, or
-## solid cuboids that keep the graph's orientation.
+## solid cuboids that keep the graph's orientation. Ports are drawn as
+## [constant XREFeatureSettings.PORT_DISPLAY] says ([method set_port_display],
+## D-043): flat discs, or shaded spheres standing out of the face. A port under
+## a ray grows, as the plus and the trash do, and one wire on it thickens: the
+## one a click on the port would detach (D-044, D-045). With several wires on a port,
+## the height the ray meets the port at picks one: the higher the hit, the
+## higher the wire's other end.
 
 const PIXEL_SIZE := 0.0009
 const CARD_WIDTH := 0.26
@@ -17,6 +23,14 @@ const PORT_RADIUS := 0.010
 const PORT_DEPTH := 0.001
 const PORT_SIZE := Vector3(PORT_RADIUS * 2.0, PORT_RADIUS * 2.0, PORT_DEPTH * 2.0)
 const PORT_HIT_MARGIN := 0.006
+## How far a sphere port's center stands out of the card's face, in its radii.
+const SPHERE_LIFT := 0.35
+## How much a port, the plus or the trash grows under a ray, and a port that a wire may end on.
+const HOVER_SCALE := 1.6
+const COMPATIBLE_SCALE := 1.3
+## How much thicker the wire a click would detach is drawn, in meters added
+## to its radius: twice the tube's 2.2 mm (D-045).
+const LIT_WIRE_GROW := 0.0022
 const PLUS_RADIUS := 0.010
 const TOUCH_RADIUS := 0.035
 ## Lift only the contact dot towards the controller; ray picking stays unchanged.
@@ -58,12 +72,17 @@ class Wire:
 	var to: Card
 	var from_port: int
 	var to_port: int
+	## Index of the wire's edge in the graph's edges.
+	var edge: int
 	var mesh: XREGraphWire
+	var normal: Material
+	var lit: Material
 
 var _cards: Array[Card] = []
 var _wires: Array[Wire] = []
 var _selected_material: Material
 var _port_mesh: CylinderMesh
+var _sphere_mesh: SphereMesh
 var _trash_mesh: ArrayMesh
 var _trash_material: Material
 var _preview: XREGraphWire
@@ -75,6 +94,12 @@ var _hit_port := -1
 var _hit_input := false
 var _hit_plus := false
 var _hit_delete := false
+## Where the last ray met the port it hit, -1 at its bottom to 1 at its top, and the edge that picks.
+var _hit_height := 0.0
+var _hit_edge := -1
+## Edges lit under each hand's ray, or -1.
+var _edge_right := -1
+var _edge_left := -1
 var _frame_material: Material
 var _hover_right := -1
 var _hover_left := -1
@@ -83,6 +108,13 @@ var _delete_left := -1
 var _body_materials: Array[ShaderMaterial] = []
 var _faces_user := false
 var _display := XREFeatureSettings.BILLBOARD
+var _port_display := XREFeatureSettings.FLAT
+## Ports under each hand's ray: the card and the index in [member Card.ports], or -1.
+var _port_right := Vector2i(-1, -1)
+var _port_left := Vector2i(-1, -1)
+## Port type a wire being drawn may connect to, or -1, and whether it ends on inputs.
+var _compatible_type := -1
+var _compatible_input := false
 var _head_position := Vector3.ZERO
 var _view_transform := Transform3D.IDENTITY
 static var _wire_shader: Shader
@@ -112,6 +144,11 @@ void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 	_port_mesh.bottom_radius = PORT_RADIUS
 	_port_mesh.height = PORT_DEPTH * 2.0
 	_port_mesh.radial_segments = 24
+	_sphere_mesh = SphereMesh.new()
+	_sphere_mesh.radius = PORT_RADIUS
+	_sphere_mesh.height = PORT_RADIUS * 2.0
+	_sphere_mesh.radial_segments = 24
+	_sphere_mesh.rings = 12
 	_trash_mesh = _make_trash_mesh()
 	_trash_material = material(Color("ffabb4"), true)
 	_preview = create_scene_wire(Color("ffda82"))
@@ -130,6 +167,20 @@ func set_display(display: StringName) -> bool:
 ## How cards are drawn: a value of [constant XREFeatureSettings.NODE_DISPLAY].
 func get_display() -> StringName:
 	return _display
+
+
+## Switches how ports are drawn to [param display], a value of
+## [constant XREFeatureSettings.PORT_DISPLAY]. Takes effect on the next
+## [method rebuild]; false if it is unknown or already the current one.
+func set_port_display(display: StringName) -> bool:
+	if display == _port_display or not display in XREFeatureSettings.get_values(XREFeatureSettings.PORT_DISPLAY): return false
+	_port_display = display
+	return true
+
+
+## How ports are drawn: a value of [constant XREFeatureSettings.PORT_DISPLAY].
+func get_port_display() -> StringName:
+	return _port_display
 
 
 ## Initializes the view's center once on open, keeping it fixed during edits.
@@ -168,6 +219,10 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	_hover_left = -1
 	_delete_right = -1
 	_delete_left = -1
+	_port_right = Vector2i(-1, -1)
+	_port_left = Vector2i(-1, -1)
+	_edge_right = -1
+	_edge_left = -1
 	for block: Dictionary in graph.nodes:
 		var card := Card.new()
 		card.id = block["id"]
@@ -222,14 +277,19 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		for index: int in outputs.size():
 			_add_port(card, outputs[index], index, false)
 		_cards.append(card)
-	for edge: Dictionary in graph.edges:
+	for edge_index: int in graph.edges.size():
+		var edge: Dictionary = graph.edges[edge_index]
 		var wire := Wire.new()
+		wire.edge = edge_index
 		wire.from = _find_card(edge["from"])
 		wire.to = _find_card(edge["to"])
 		wire.from_port = edge["from_port"]
 		wire.to_port = edge["to_port"]
 		if wire.from == null or wire.to == null: continue
-		wire.mesh = create_scene_wire(COLORS[wire.from.output_types[wire.from_port]])
+		var color := COLORS[wire.from.output_types[wire.from_port]]
+		wire.mesh = create_scene_wire(color)
+		wire.normal = wire.mesh.material_override
+		wire.lit = wire_material(color, LIT_WIRE_GROW)
 		_wires.append(wire)
 	update_wires()
 	select_block(_selected)
@@ -334,6 +394,11 @@ func get_block_transform(id: int) -> Transform3D:
 	return card.node.transform if card != null else Transform3D.IDENTITY
 
 
+## Whether the canvas shows a card for block [param id].
+func has_block(id: int) -> bool:
+	return _find_card(id) != null
+
+
 ## Current preview position of a card in workspace coordinates.
 func get_block_position(id: int) -> Vector3:
 	var card := _find_card(id)
@@ -354,30 +419,102 @@ func hover_plus(id: int, right: bool) -> void:
 	else: _hover_left = id
 	for card: Card in _cards:
 		for face: Node3D in card.plus_faces:
-			face.scale = Vector3.ONE * (1.6 if card.id == _hover_right or card.id == _hover_left else 1.0)
+			face.scale = Vector3.ONE * (HOVER_SCALE if card.id == _hover_right or card.id == _hover_left else 1.0)
 
 
 ## Highlights only type-compatible endpoints while a connection is being made.
 func highlight_ports(type: int, want_input: bool) -> void:
+	_compatible_type = type
+	_compatible_input = want_input
+	_scale_ports()
+
+
+## Grows the ports a wire may end on and, more, the ports under a ray.
+func _scale_ports() -> void:
 	for card: Card in _cards:
 		for index: int in card.ports.size():
 			var input := index < card.inputs.size()
 			var port_index := index if input else index - card.inputs.size()
 			var port_type := card.input_types[port_index] if input else card.output_types[port_index]
-			var compatible := type < 0 or (input == want_input and (XREBlueprintGraph.ports_compatible(type, port_type) if want_input else XREBlueprintGraph.ports_compatible(port_type, type)))
-			card.ports[index].scale = Vector3.ONE * (1.3 if type >= 0 and compatible else 1.0)
+			var compatible := _compatible_type >= 0 and input == _compatible_input and (XREBlueprintGraph.ports_compatible(_compatible_type, port_type) if _compatible_input else XREBlueprintGraph.ports_compatible(port_type, _compatible_type))
+			var hovered := Vector2i(card.id, index) == _port_right or Vector2i(card.id, index) == _port_left
+			card.ports[index].scale = Vector3.ONE * (HOVER_SCALE if hovered else COMPATIBLE_SCALE if compatible else 1.0)
 	update_wires()
 
 
-## Both hands contribute action hover independently, using cached card visuals.
-func hover_actions(id: int, plus: bool, trash: bool, right: bool) -> void:
+## Whether the port of card [param id] at [param index] in its ports is under a hand's ray.
+func is_port_hovered(id: int, port: int, input: bool) -> bool:
+	var card := _find_card(id)
+	if card == null: return false
+	var key := Vector2i(id, port if input else card.inputs.size() + port)
+	return key == _port_right or key == _port_left
+
+
+## Both hands contribute action hover independently, using cached card visuals:
+## the plus, the trash or port [param port] of card [param id] (an input if
+## [param input]) under the ray of the [param right] hand or the other.
+## [param edge] is the wire on that port to light ([method get_hit_edge]), or -1.
+func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1) -> void:
 	hover_plus(id if plus else -1, right)
+	_hover_port(id, port, input, right)
+	_hover_edge(edge if port >= 0 else -1, right)
 	var hovered := id if trash else -1
 	if (right and _delete_right == hovered) or (not right and _delete_left == hovered): return
 	if right: _delete_right = hovered
 	else: _delete_left = hovered
 	for card: Card in _cards:
-		card.trash.scale = Vector3.ONE * (1.6 if card.id == _delete_right or card.id == _delete_left else 1.0)
+		card.trash.scale = Vector3.ONE * (HOVER_SCALE if card.id == _delete_right or card.id == _delete_left else 1.0)
+
+
+func _hover_edge(edge: int, right: bool) -> void:
+	if edge == (_edge_right if right else _edge_left): return
+	if right: _edge_right = edge
+	else: _edge_left = edge
+	for wire: Wire in _wires:
+		wire.mesh.material_override = wire.lit if wire.edge == _edge_right or wire.edge == _edge_left else wire.normal
+
+
+## Whether the wire of graph edge [param edge] is lit under a ray.
+func is_edge_lit(edge: int) -> bool:
+	return edge >= 0 and (edge == _edge_right or edge == _edge_left)
+
+
+## The graph's edges on port [param port] of card [param id] (an input if
+## [param input]), the one whose other end is highest first.
+func port_edges(id: int, port: int, input: bool) -> Array[int]:
+	var found: Array[Wire] = []
+	for wire: Wire in _wires:
+		if (wire.to.id == id and wire.to_port == port) if input else (wire.from.id == id and wire.from_port == port):
+			found.append(wire)
+	found.sort_custom(func(first: Wire, second: Wire) -> bool:
+		return _far_end(first, input).y > _far_end(second, input).y)
+	var edges: Array[int] = []
+	for wire: Wire in found:
+		edges.append(wire.edge)
+	return edges
+
+
+## Where [param wire] ends away from the port it is looked at from: its output's end if that port is an input.
+func _far_end(wire: Wire, input: bool) -> Vector3:
+	return _port_position(wire.from, wire.from_port, false) if input else _port_position(wire.to, wire.to_port, true)
+
+
+## The edge on the port the last ray hit that the hit's height picks
+## ([method port_edges]: the top of the port picks the first), or -1 for no
+## port or no wire on it.
+func get_hit_edge() -> int:
+	return _hit_edge
+
+
+func _hover_port(id: int, port: int, input: bool, right: bool) -> void:
+	var key := Vector2i(-1, -1)
+	if id >= 0 and port >= 0:
+		var card := _find_card(id)
+		if card != null: key = Vector2i(id, port if input else card.inputs.size() + port)
+	if key == (_port_right if right else _port_left): return
+	if right: _port_right = key
+	else: _port_left = key
+	_scale_ports()
 
 
 static func _make_trash_mesh() -> ArrayMesh:
@@ -407,6 +544,8 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 	_hit_input = false
 	_hit_plus = false
 	_hit_delete = false
+	_hit_edge = -1
+	_hit_height = 0.0
 	if not is_visible_in_tree(): return -1.0
 	var inverse := global_transform.affine_inverse()
 	var local_origin := inverse * origin
@@ -457,6 +596,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_input = true
 				_hit_plus = false
 				_hit_delete = false
+				_hit_height = (card_origin + card_direction * hit - center).y / ((PORT_RADIUS + PORT_HIT_MARGIN) * card.ports[index].scale.y)
 		for index: int in card.outputs.size():
 			var center := card.outputs[index]
 			var hit := _port_distance(card_origin, card_direction, center, card.ports[card.inputs.size() + index].scale, nearest)
@@ -470,6 +610,13 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_input = false
 				_hit_plus = false
 				_hit_delete = false
+				_hit_height = (card_origin + card_direction * hit - center).y / ((PORT_RADIUS + PORT_HIT_MARGIN) * card.ports[card.inputs.size() + index].scale.y)
+	if _hit_port >= 0:
+		var edges := port_edges(_hit_id, _hit_port, _hit_input)
+		if not edges.is_empty():
+			# Bands from the port's top down, one per wire.
+			var band := floori((1.0 - clampf(_hit_height, -1.0, 1.0)) * 0.5 * edges.size())
+			_hit_edge = edges[clampi(band, 0, edges.size() - 1)]
 	return nearest if _hit_id >= 0 else -1.0
 
 
@@ -489,7 +636,16 @@ static func _box_distance(origin: Vector3, direction: Vector3, bounds: AABB, max
 	return near
 
 
-static func _port_distance(origin: Vector3, direction: Vector3, center: Vector3, scale: Vector3, maximum: float) -> float:
+func _port_distance(origin: Vector3, direction: Vector3, center: Vector3, scale: Vector3, maximum: float) -> float:
+	if _port_display == XREFeatureSettings.SPHERE:
+		# The sphere and the same margin as a disc's around it.
+		var radius := (PORT_RADIUS + PORT_HIT_MARGIN) * scale.x
+		var along := (center - origin).dot(direction) / direction.length_squared()
+		var off := (origin + direction * along).distance_squared_to(center)
+		if off > radius * radius: return -1.0
+		var depth := sqrt((radius * radius - off) / direction.length_squared())
+		var near := along - depth if along - depth >= 0.0 else along + depth
+		return near if near >= 0.0 and near <= maximum else -1.0
 	if absf(direction.z) < 0.000001: return -1.0
 	var z := PORT_DEPTH * scale.z * (1 if direction.z < 0 else -1)
 	var distance := (center.z + z - origin.z) / direction.z
@@ -545,9 +701,12 @@ func port_position(id: int, port: int, input: bool) -> Vector3:
 	return _port_position(card, port, input)
 
 
-static func _port_position(card: Card, port: int, input: bool) -> Vector3:
+## A wire leaves a disc from its face and a sphere from its center.
+func _port_position(card: Card, port: int, input: bool) -> Vector3:
 	var visual := card.ports[port if input else card.inputs.size() + port]
-	return card.node.transform * ((card.inputs[port] if input else card.outputs[port]) + Vector3.BACK * PORT_DEPTH * visual.scale.z)
+	var center := card.inputs[port] if input else card.outputs[port]
+	if _port_display == XREFeatureSettings.SPHERE: return card.node.transform * center
+	return card.node.transform * (center + Vector3.BACK * PORT_DEPTH * visual.scale.z)
 
 
 ## Wires leave outputs rightwards and enter inputs from the left, as in GraphEdit. The graph's
@@ -608,6 +767,8 @@ func create_scene_wire(color: Color) -> XREGraphWire:
 	wire.layers = XRERig.VR_LAYER
 	wire.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	wire.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	# Room for a thickened wire beyond the tube's own bounds.
+	wire.extra_cull_margin = LIT_WIRE_GROW
 	wire.material_override = wire_material(color)
 	add_child(wire)
 	return wire
@@ -620,9 +781,15 @@ func update_scene_wire(wire: XREGraphWire, id: int, port: int, end: Vector3) -> 
 
 func _add_port(card: Card, spec: Array, index: int, input: bool) -> void:
 	var point := Vector3((-CARD_WIDTH * 0.5 + 0.014) if input else (CARD_WIDTH * 0.5 - 0.014), card.height * 0.5 - 0.064 - index * ROW_HEIGHT, card.face + 0.003)
-	var mesh := XRERig.create_vr_mesh(_port_mesh, material(COLORS[spec[1]], true))
+	var mesh: MeshInstance3D
+	if _port_display == XREFeatureSettings.SPHERE:
+		# Shaded by the view angle, as wires are, so that it reads as round.
+		point.z = card.face + CARD_THICKNESS * 0.5 + PORT_RADIUS * SPHERE_LIFT
+		mesh = XRERig.create_vr_mesh(_sphere_mesh, wire_material(COLORS[spec[1]]))
+	else:
+		mesh = XRERig.create_vr_mesh(_port_mesh, material(COLORS[spec[1]], true))
+		mesh.rotation.x = PI * 0.5
 	mesh.position = point
-	mesh.rotation.x = PI * 0.5
 	card.node.add_child(mesh)
 	card.ports.append(mesh)
 	if input:
@@ -689,13 +856,16 @@ static func material(color: Color, overlay: bool = false) -> StandardMaterial3D:
 
 ## Unlit like the cards, but shaded by the view angle so the tube reads as round. ALPHA keeps
 ## it in the transparent pass above the scene dimmer, with the overlays' render priority.
-static func wire_material(color: Color) -> ShaderMaterial:
+## [param grow] thickens the tube by that many meters around, along its normals.
+static func wire_material(color: Color, grow: float = 0.0) -> ShaderMaterial:
 	if _wire_shader == null:
 		_wire_shader = Shader.new()
 		_wire_shader.code = """
 shader_type spatial;
 render_mode unshaded, depth_draw_always, shadows_disabled, fog_disabled;
 uniform vec4 tint : source_color = vec4(1.0);
+uniform float grow = 0.0;
+void vertex() { VERTEX += NORMAL * grow; }
 void fragment() {
 	float facing = clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
 	ALBEDO = tint.rgb * mix(0.45, 1.0, sqrt(facing));
@@ -706,6 +876,7 @@ void fragment() {
 	result.shader = _wire_shader
 	result.render_priority = Material.RENDER_PRIORITY_MAX
 	result.set_shader_parameter(&"tint", color)
+	result.set_shader_parameter(&"grow", grow)
 	return result
 
 

@@ -85,6 +85,115 @@ func _test_window_handles() -> void:
 	_camera.position = camera_before
 
 
+## D-045: the Objects window shows its miniatures over a see-through frame,
+## named under them (build/blueprint_render_objects.png); a wire a click would
+## detach is drawn thicker, not in another color.
+func _test_objects_and_wire() -> void:
+	var camera_before := _camera.transform
+	var size_before := _camera.size
+	var document := EmptyDocument.new()
+	var rig := XRERig.new()
+	_viewport.add_child(rig)
+	# The rig's own camera isn't the one looking here.
+	rig.camera.current = false
+	_camera.current = true
+	var palette := XREPalette.new(document, rig)
+	rig.add_child(palette)
+	var tab := XREObjectsTab.new(document)
+	var window := XREPanelWindow.new(tab, tab.get_window_size(), XREPanels.WINDOW_PIXEL_SIZE, 2.0, null)
+	_viewport.add_child(window)
+	window.position = Vector3(40.0, 0.0, 0.0)
+	palette.set_host(window, tab)
+	_camera.transform = Transform3D(Basis.IDENTITY, Vector3(40.0, 0.0, 1.0))
+	_camera.size = 0.5
+	var image := await _capture("objects")
+	var box_at := palette.get_item_transform(&"CSGBox3D").origin
+	var box := image.get_pixelv(Vector2i(_camera.unproject_position(box_at)))
+	var cell := image.get_pixelv(Vector2i(_camera.unproject_position(box_at + Vector3(0.035, 0.0, 0.0))))
+	var frame := image.get_pixelv(Vector2i(_camera.unproject_position(window.to_global(Vector3(0.0, -window.size_m.y * 0.5 + 0.005, 0.0)))))
+	var outside := image.get_pixelv(Vector2i(_camera.unproject_position(window.to_global(Vector3(0.0, -window.size_m.y * 0.5 - 0.03, 0.0)))))
+	_check(absf(box.v - cell.v) > 0.03, "a miniature is drawn in front of its cell: %s over %s" % [box, cell])
+	_check(frame.v < outside.v and frame.v > XREPanelSurface.META_WINDOW_COLOR.v + 0.05, "over a see-through frame: %s, outside %s" % [frame, outside])
+	palette.set_host(null, null)
+	window.queue_free()
+	rig.queue_free()
+	_camera.current = true
+
+	var thin := XREBlueprintCanvas.new()
+	_viewport.add_child(thin)
+	var wires: Array[XREGraphWire] = []
+	for row: int in 2:
+		var wire := thin.create_scene_wire(Color.ORANGE)
+		var y := 0.05 - row * 0.1
+		wire.update_curve(Vector3(39.8, y, 0.0), Vector3.RIGHT, Vector3(40.2, y, 0.0), Vector3.RIGHT)
+		wires.append(wire)
+	wires[1].material_override = XREBlueprintCanvas.wire_material(Color.ORANGE, XREBlueprintCanvas.LIT_WIRE_GROW)
+	_camera.transform = Transform3D(Basis.IDENTITY, Vector3(40.0, 0.0, 1.0))
+	_camera.size = 0.2
+	image = await _capture("wire_thickness")
+	var thickness: Array[int] = []
+	for wire: int in 2:
+		var center := Vector2i(_camera.unproject_position(Vector3(40.0, 0.05 - wire * 0.1, 0.0)))
+		var count := 0
+		for y: int in range(center.y - 20, center.y + 21):
+			if image.get_pixel(center.x, y).r > 0.3: count += 1
+		thickness.append(count)
+	_check(thickness[1] >= thickness[0] * 1.6 and thickness[0] > 0, "the lit wire is drawn thicker: %s px, %s px" % [thickness[1], thickness[0]])
+	thin.queue_free()
+	_camera.transform = camera_before
+	_camera.size = size_before
+
+
+## D-043: a window has the same color over the scene and over the logic veil,
+## that of a Meta window; a concave window and sphere ports, saved for a look:
+## build/blueprint_render_concave.png.
+func _test_window_color() -> void:
+	var camera_before := _camera.transform
+	var size_before := _camera.size
+	var plain := XREPanelSurface.new(Vector2(200, 300), 0.001, 1.5, null)
+	var veiled := XREPanelSurface.new(Vector2(200, 300), 0.001, 1.5, null)
+	veiled.set_overlay(true)
+	for surface: XREPanelSurface in [plain, veiled]: _viewport.add_child(surface)
+	plain.position = Vector3(29.85, 0.0, 0.0)
+	veiled.position = Vector3(30.15, 0.0, 0.0)
+	_camera.transform = Transform3D(Basis.IDENTITY, Vector3(30.0, 0.0, 1.0))
+	_camera.size = 0.8
+	var image := await _capture("window_color")
+	var plain_color := image.get_pixelv(Vector2i(_camera.unproject_position(plain.global_position)))
+	var veiled_color := image.get_pixelv(Vector2i(_camera.unproject_position(veiled.global_position)))
+	var meta := XREPanelSurface.META_WINDOW_COLOR
+	_check(absf(plain_color.v - veiled_color.v) < 0.02 and absf(plain_color.r - veiled_color.r) < 0.02,
+			"a window's color doesn't change over the logic veil: %s, %s" % [plain_color, veiled_color])
+	_check(absf(plain_color.v - meta.v) < 0.03, "and it is a Meta window's: %s, %s" % [plain_color, meta])
+	plain.queue_free()
+	veiled.queue_free()
+	var concave := XREPanelSurface.new(Vector2(480, 300), 0.0009, 1.5, null)
+	concave.set_curve_radius(0.8)
+	_viewport.add_child(concave)
+	concave.position = Vector3(30.0, 0.15, 0.0)
+	var graph := XREBlueprintGraph.new()
+	graph.nodes = [{"id": 1, "kind": "print", "position": Vector2.ZERO, "params": {}}]
+	var canvas := XREBlueprintCanvas.new()
+	canvas.set_port_display(XREFeatureSettings.SPHERE)
+	_viewport.add_child(canvas)
+	canvas.position = Vector3(30.0, -0.25, 0.0)
+	canvas.rebuild(graph)
+	_camera.transform = Transform3D(Basis.IDENTITY, Vector3(30.35, 0.0, 1.0)).looking_at(Vector3(30.0, 0.0, 0.0))
+	image = await _capture("concave")
+	var edge := concave.pixel_to_global(Vector2(10, 150))
+	_check(image.get_pixelv(Vector2i(_camera.unproject_position(edge))).v > 0.05, "the concave window's bent edge is drawn")
+	var card := (canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var port := canvas.to_global(card.outputs[0])
+	var lit := image.get_pixelv(Vector2i(_camera.unproject_position(port)))
+	var expected := XREBlueprintCanvas.COLORS[card.output_types[0]]
+	_check(absf(lit.r - expected.r) < 0.15 and absf(lit.g - expected.g) < 0.15 and absf(lit.b - expected.b) < 0.15,
+			"a sphere port is drawn in its type's color: %s, %s" % [lit, expected])
+	concave.queue_free()
+	canvas.queue_free()
+	_camera.transform = camera_before
+	_camera.size = size_before
+
+
 ## The launcher and a window with its control bar as Meta Horizon OS draws them (D-042),
 ## saved for a look: build/blueprint_render_launcher.png.
 func _test_launcher_look() -> void:
@@ -115,6 +224,21 @@ func _test_launcher_look() -> void:
 	var dimmed := image.get_pixelv(Vector2i(_camera.unproject_position(window.to_global(Vector3(0.0, 0.1, 0.0)))))
 	_check(dimmed.v < XREPanelSurface.META_WINDOW_COLOR.v, "the launcher dims what is behind it")
 	_check(window.get_bar().is_shown(), "a hovered window shows its control bar")
+	# D-044: a ray pointing at the launcher is drawn over it, not covered by it.
+	launcher.set_curve_radius(XREPanels.LAUNCHER_DISTANCE)
+	var hand := XREHand.new("LauncherHand", &"right_hand", Color.ORANGE)
+	hand.show_when_tracked = false
+	_viewport.add_child(hand)
+	var target := launcher.global_position
+	hand.global_transform = Transform3D(Basis.IDENTITY, target + Vector3(-0.2, 0.05, 0.25)).looking_at(target)
+	var length := hand.global_position.distance_to(target)
+	hand.show_ray(length, true)
+	var pointed := await _capture("launcher_ray")
+	var ray_pixel := Vector2i(_camera.unproject_position(hand.to_global(Vector3(0.0, 0.0, -length * 0.6))))
+	var ray := pointed.get_pixelv(ray_pixel)
+	var under := image.get_pixelv(ray_pixel)
+	_check(ray.v > under.v + 0.25, "a ray in front of the launcher is drawn over it: %s over %s" % [ray, under])
+	hand.queue_free()
 	dimmer.queue_free()
 	launcher.queue_free()
 	window.queue_free()
@@ -283,6 +407,8 @@ func _run() -> void:
 	session.free()
 	fps.queue_free()
 	await _test_launcher_look()
+	await _test_window_color()
+	await _test_objects_and_wire()
 	canvas.show()
 	keyboard.set_overlay(true)
 	keyboard.open_text("Scene dimmed, overlay unchanged")

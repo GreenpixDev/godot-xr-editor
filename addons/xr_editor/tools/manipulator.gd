@@ -6,7 +6,8 @@ extends Node
 ##
 ## Controls (docs/decisions.md, D-008):
 ## [br]- Point: the ray stops at the node the trigger would select.
-## Touching wins over pointing, without a hover outline.
+## Touching wins over pointing, without a hover outline: the ray, lit, only
+## reaches the touched node, and hides with the tip inside it (D-049).
 ## Nodes the head is inside, like a room, are only pointed at. Icons of lights
 ## ([XREIcons]) are drawn on top, so they are touched and pointed at before
 ## geometry. Selection draws white edges ([XREOutline]).
@@ -32,6 +33,9 @@ extends Node
 ## A hand another tool has claimed ([method XREHand.claim]), like the right
 ## hand touching the [XREPalette] or pointing at a panel ([XREPanels]), is left
 ## alone, its ray included. The manipulator claims the hands that hold a node.
+## The panels leave a hand to it, though their panel is under its ray, when
+## it touches a node, points at one in front of the panel within reach, or
+## joins a hold ([method takes_pointer], D-047).
 ## [br][br]
 ## Picking happens in [XREPicker] (native). A grab changes the scene only
 ## through [XREDocument]: a preview every frame, then one undo step when the
@@ -48,6 +52,10 @@ const TORSO_OFFSET := Vector3(0.0, -0.3, 0.0)
 const MIN_REACH := 0.1
 ## Smallest span between the hands that two-handed scaling and turning use, in meters.
 const MIN_SPAN := 0.05
+## How far from the hand a node in front of a panel takes the ray from the
+## panel, in meters ([method takes_pointer], D-047): within reach, so that a
+## small node put down by a window is grabbed rather than the window.
+const PANEL_REACH := 1.0
 ## Smallest scale factor two hands can apply within one hold.
 const MIN_SCALE_FACTOR := 0.01
 ## Selected nodes beyond this many are not outlined, to bound the work per frame.
@@ -188,6 +196,48 @@ func _process(_delta: float) -> void:
 	_update_outlines()
 
 
+## Whether the manipulator, after the panels in the tree, should have
+## [param hand] although the hand's ray, from [param origin] along
+## [param direction], is on a panel [param panel_distance] away (D-047): the
+## hand touches a node; or the ray hits a node nearer than the panel and
+## within [constant PANEL_REACH]; or the other hand holds a node and this
+## hand's grip joins it, to scale and turn it with both hands. [XREPanels]
+## then leaves the hand alone.
+func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, panel_distance: float) -> bool:
+	var root: Node = _root if is_instance_valid(_root) else null
+	var state := _state_of(hand)
+	if root == null or state == null or state.holding:
+		return false
+	if _holders.size() == 1 and hand.grip_pressed:
+		return true
+	if _icons.find_at_point(origin, TOUCH_RADIUS) \
+			or state.picker.find_at_point(root, origin, TOUCH_RADIUS, _rig.camera.global_position):
+		return true
+	var end := origin + direction * minf(panel_distance, PANEL_REACH)
+	return _icons.cast_segment(origin, end) or state.picker.cast_segment(root, origin, end)
+
+
+func _state_of(hand: XREHand) -> HandState:
+	for state: HandState in _hands:
+		if state.hand == hand:
+			return state
+	return null
+
+
+## How long the ray of a hand touching a node is (D-049): from the tip
+## [param tip] to the node's bounds [param bounds], in its space at
+## [param xform], along [param direction] if the ray meets them, otherwise to
+## their nearest point; -1 with the tip inside them, where the ray hides.
+static func touch_ray_length(tip: Vector3, direction: Vector3, xform: Transform3D, bounds: AABB) -> float:
+	var inverse := xform.affine_inverse()
+	var local_tip := inverse * tip
+	if bounds.has_point(local_tip):
+		return -1.0
+	var hit: Variant = bounds.intersects_ray(local_tip, inverse.basis * direction)
+	var point: Vector3 = hit if hit != null else local_tip.clamp(bounds.position, bounds.end)
+	return tip.distance_to(xform * point)
+
+
 ## HOMER's scale from hand motion to node motion: how many times farther from
 ## the body [param target] is than [param hand], never below 1.
 static func homer_gain(torso: Vector3, hand: Vector3, target: Vector3) -> float:
@@ -268,6 +318,16 @@ func _update_hover(state: HandState, root: Node) -> void:
 			state.hover_icon = _icons.has_icon(node)
 	if node != null and not state.hover_touched:
 		hand.show_ray(state.hover_distance, true)
+	elif node != null:
+		# Touched (D-049): a short lit ray to the node, none from inside it.
+		var icon := state.hover_icon
+		var xform := XREIcons.icon_transform(node.global_transform, _rig.camera.global_position) if icon else node.global_transform
+		var length := touch_ray_length(hand.global_position, -hand.global_basis.z.normalized(), xform,
+				XREIcons.MESH_BOUNDS if icon else state.hover_bounds)
+		if length < 0.0:
+			hand.hide_ray()
+		else:
+			hand.show_ray(length, true)
 	else:
 		hand.show_ray(XREHand.RAY_LENGTH, false)
 

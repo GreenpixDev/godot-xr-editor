@@ -106,6 +106,12 @@ var _left: XRControllerTracker
 var _rig: XRERig
 var _locomotion: XRELocomotion
 var _palette: XREPalette
+## A small node in front of a window (D-047).
+var _small: CSGBox3D
+## A panel with a long list, for drag scrolling (D-045), and where its list was.
+var _scroll_panel: XREPanelSurface
+var _scroll_list: ItemList
+var _scroll_value := 0.0
 var _panels: XREPanels
 var _manipulator: XREManipulator
 var _launcher: XRETabLauncher
@@ -187,6 +193,26 @@ func _initialize() -> void:
 		_press_pin_left,
 		_release_pin_left,
 		_debug_pinned,
+		_test_make_room,
+		_test_objects_window,
+		_objects_ray_on_window,
+		_objects_box_taken,
+		_objects_closed,
+		_test_small_node_by_window,
+		_small_node_pointed,
+		_small_node_grabbed,
+		_small_node_joined,
+		_small_node_touched,
+		_small_node_near,
+		_test_node_before_miniature,
+		_node_before_miniature_grabbed,
+		_node_by_miniature_let_go,
+		_node_by_miniature_hovered,
+		_node_by_miniature_touched,
+		_node_by_miniature_done,
+		_test_drag_scroll,
+		_drag_list,
+		_list_glided,
 		_finish,
 	]
 
@@ -262,6 +288,8 @@ func _build() -> void:
 	_rig.add_child(_panels)
 	_manipulator = XREManipulator.new(_document, _rig, icons)
 	_rig.add_child(_manipulator)
+	_panels.set_manipulator(_manipulator)
+	_palette.set_manipulator(_manipulator)
 	root.add_child(_rig)
 	_launcher = _panels.get_launcher()
 	_pose(_left, _left_aim, 0.0, 0.0)
@@ -355,7 +383,8 @@ func _texts(tree: Tree) -> Array[String]:
 # The launcher, the scene window, pinning it to a hand (D-041).
 
 func _show_launcher() -> void:
-	_check(_palette.is_shown() and _launcher.is_shown(), "X shows the tray and the launcher")
+	_check(_launcher.is_shown() and _panels.is_launcher_shown() and not _palette.is_shown(), "X shows the launcher, and no tray (D-045)")
+	_check(_launcher.get_tile(XREObjectsTab) != null and _launcher.get_tile(XREObjectsTab).get_index() == 0, "the objects come first in the launcher")
 	# The head tracker is absent: the head is at the rig's origin, looking down -Z.
 	_check_vector(_launcher.global_position, Vector3(0.0, -XREPanels.LAUNCHER_DROP, -XREPanels.LAUNCHER_DISTANCE),
 			"the launcher opens in front of the user, below the gaze")
@@ -371,9 +400,17 @@ func _show_launcher() -> void:
 	var scene := _launcher.get_tile(XRESceneTab)
 	_check(debug.get_global_rect().position.y > scene.get_global_rect().end.y
 			and absf(debug.get_parent_control().get_global_rect().get_center().x - _launcher.size_px.x * 0.5) < 1.0
-			and debug.get_parent().get_child_count() == XRETabLauncher.LONG_ROW - 1,
-			"the second row is one shorter and centered, offset from the first, as in Navigator")
+			and debug.get_parent().get_child_count() < XRETabLauncher.LONG_ROW,
+			"the second row is shorter and centered, offset from the first, as in Navigator")
 	_check((_panels.get("_dimmer") as MeshInstance3D).visible, "the scene is dimmed behind the launcher")
+	# D-043: concave whatever the windows are, fading in; no tooltip repeats a title (D-044).
+	_check(is_equal_approx(_launcher.curve_radius, XREPanels.LAUNCHER_DISTANCE), "the launcher is concave, bent around the head")
+	_check(_launcher.to_local(_launcher.pixel_to_global(Vector2.ZERO)).z > 0.03, "its edges come towards the user")
+	_check(_launcher.get_tile(XRESceneTab).tooltip_text.is_empty(), "a tile has no tooltip: its title is under it")
+	var fade := float(_panels.get("_fade"))
+	_check(fade > 0.0, "the launcher fades in: %s" % fade)
+	var dim := float(((_panels.get("_dimmer") as MeshInstance3D).material_override as ShaderMaterial).get_shader_parameter(&"alpha"))
+	_check(dim > 0.0 and dim <= XREPanels.LAUNCHER_DIM, "and the dimming with it: %s" % dim)
 	_check(_panels.get_windows().is_empty(), "no window is open before a tile is chosen")
 	_left.set_input(&"ax_button", false)
 	_aim(_launcher, _tile_center(XRESceneTab), 1.0)
@@ -388,6 +425,9 @@ func _scene_window_opened() -> void:
 	_check(_panels.get_windows().size() == 1 and window != null, "a click on a tile opens that tab's window")
 	if window == null:
 		return
+	_check(window.is_pulsing(), "a window opened pulses once (D-045)")
+	window.stop_pulse()
+	_check(window.scale.is_equal_approx(Vector3.ONE) and not window.is_pulsing(), "and is back to its size after")
 	_check_vector(window.global_position, Vector3(0.0, -XREPanels.WINDOW_DROP, -XREPanels.WINDOW_DISTANCE),
 			"the window opens in front of the user")
 	_check(window.global_basis.z.is_equal_approx(Vector3.BACK) and window.global_basis.y.is_equal_approx(Vector3.UP),
@@ -416,8 +456,10 @@ func _show_bar() -> void:
 
 
 func _click_pin_left() -> void:
-	# The tray goes on the frame after the click, as X would hide it.
-	_check(not _launcher.is_shown() and not _palette.is_shown(), "choosing a tab hides the launcher and the tray")
+	_check(not _panels.is_launcher_shown(), "choosing a tab hides the launcher")
+	_check(_launcher.is_shown(), "it fades out, still drawn (D-045)")
+	_panels.call("_update_fade", 1.0)
+	_check(not _launcher.is_shown() and not (_panels.get("_dimmer") as MeshInstance3D).visible, "and once faded out, it hides with its dimming")
 	_aim_left(_scene_window().get_bar(), _pin_center(_scene_window()), 0.0)
 
 
@@ -484,8 +526,11 @@ func _signals_listed() -> void:
 	_check(_panels.get_windows().size() == 2 and window != null, "the signals tile opens its window")
 	if window == null:
 		return
+	# Where the user looks; a window there makes room (D-044).
 	_check_vector(window.global_position, Vector3(0.0, -XREPanels.WINDOW_DROP, -XREPanels.WINDOW_DISTANCE),
 			"in front of the user")
+	_check(not _panels.overlaps_window(window), "and covers no other window")
+	window.stop_pulse()
 	var tab := window.tab as XRESignalsTab
 	var texts := _texts(tab.get_tree_control())
 	var entered := texts.find("body_entered(body: Node3D)")
@@ -708,9 +753,10 @@ func _scene_changed() -> void:
 	_check(_panels.get_windows().size() == 2, "windows stay when the scene changes")
 	var texts := _texts(_scene_tab().get_tree_control())
 	_check(texts == ["Other"], "the scene tab shows the scene now edited: %s" % [texts])
-	# Beside the signals window, which is where a window opens.
+	# In front of the user, where the signals window was: that one moves aside (D-044).
 	var files := _panels.open_window(XREFileSystemTab)
-	files.global_position += _rig.global_basis.x * 0.6
+	_check(not _panels.overlaps_window(files) and files.global_position.distance_to(_panels.find_window(XRESignalsTab).global_position) > 0.3,
+			"a window opened in front of another moves it aside")
 
 
 # File system tab: folders unfold on demand, and a double click opens a scene.
@@ -783,9 +829,9 @@ func _signals_window_closed() -> void:
 	_check(_panels.find_window(XRESignalsTab) == null and _panels.get_windows().size() == 2,
 			"× on the control bar closes the window")
 	_operation_count = _operations.size()
-	# Away from every panel, at the room's wall.
-	_pose(_right, Transform3D(Basis.IDENTITY, _rig.global_position + Vector3(0.3, 0.0, 0.0)).rotated_local(
-			Vector3.UP, -PI / 2.0), 1.0, 0.0)
+	# Away from every panel, at the room's wall, on the left: windows opened beside others are on the right.
+	_pose(_right, Transform3D(Basis.IDENTITY, _rig.global_position + Vector3(-0.3, 0.0, 0.0)).rotated_local(
+			Vector3.UP, PI / 2.0), 1.0, 0.0)
 
 
 func _point_past_panels() -> void:
@@ -921,6 +967,20 @@ func _cuboid_set() -> void:
 	_check(not billboard.button_pressed and _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID).button_pressed,
 			"only the current value's button is down")
 	_document.set_feature(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD, XREDocument.Source.TOOL)
+	# D-043: concave windows; one on a forearm stays flat, and the launcher stays concave when they are flat again.
+	_check(_settings_tab().get_button(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.CONCAVE) != null
+			and _settings_tab().get_button(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.SPHERE) != null,
+			"the features page has the window shape and the port display")
+	_document.set_feature(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.CONCAVE, XREDocument.Source.TOOL)
+	var bent := 0
+	for window: XREPanelWindow in _panels.get_windows():
+		if window.is_pinned(): _check(window.curve_radius == 0.0, "a window on a forearm stays flat")
+		elif window.curve_radius > 0.0 and window.get_bar().curve_radius == window.curve_radius: bent += 1
+	_check(bent > 0 and bent == _panels.get_windows().size() - 1, "concave windows bend, with their control bars: %d" % bent)
+	_document.set_feature(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.FLAT, XREDocument.Source.TOOL)
+	for window: XREPanelWindow in _panels.get_windows():
+		_check(window.curve_radius == 0.0, "flat windows again")
+	_check(_launcher.curve_radius > 0.0, "the launcher stays concave")
 	_settings_tab().select_page(XREFeatureSettings.Category.CONTROLS)
 	_pose(_left, _left_aim, 0.0, 0.0)
 
@@ -946,11 +1006,21 @@ func _test_inspector_tab() -> void:
 			"and the one pinned there before becomes a window again")
 	_check_vector(settings.global_position, _rig.global_transform * Vector3(0.0, -XREPanels.WINDOW_DROP, -XREPanels.WINDOW_DISTANCE),
 			"in front of the user")
+	_check(not _panels.overlaps_window(settings), "and covers no other window (D-044)")
 	_panels.pin_window(window, XREPanelWindow.Pin.WINDOW)
 	_check(not window.is_pinned() and _panels.get_pinned_window(_rig.right_hand) == null, "Window on the bar unpins it")
 	_panels.pin_window(window, XREPanelWindow.Pin.LEFT_HAND)
+	window.stop_pulse()
 	_panels.open_window(XREInspectorTab)
-	_check(not window.is_pinned(), "the launcher brings a pinned window back as a window")
+	_check(window.is_pinned() and window.is_pulsing(), "the launcher leaves a pinned window on the hand and pulses it (D-045)")
+	_panels.pin_window(window, XREPanelWindow.Pin.WINDOW)
+	window.stop_pulse()
+	var place := window.global_transform
+	_panels.open_window(XREInspectorTab)
+	_check(window.global_transform.orthonormalized().is_equal_approx(place) and window.is_pulsing(), "an open window in view stays where it is and pulses")
+	window.global_position = _rig.camera.global_position - _rig.camera.global_basis.z * -2.0
+	_panels.open_window(XREInspectorTab)
+	_check(_rig.camera.global_basis.z.dot(window.global_position - _rig.camera.global_position) < 0.0, "one out of view comes in front of the user")
 
 
 func _test_fps() -> void:
@@ -1003,6 +1073,239 @@ func _debug_pinned() -> void:
 	_check(window.pin == XREPanelWindow.Pin.LEFT_HAND and _panels.get_pinned_window(_rig.left_hand) == window,
 			"the pin clicked with the left hand pins the window to the left forearm")
 	_pose(_left, _left_aim, 0.0, 0.0)
+
+
+## D-044: a window opens in front of the user; the windows it would cover
+## turn aside around the head, to the side with more room, and push on the
+## ones they then cover.
+func _test_make_room() -> void:
+	for window: XREPanelWindow in _panels.get_windows().duplicate():
+		_panels.call("_close_window", window)
+	var to_head := _rig.camera.global_transform.affine_inverse()
+	var front := Vector3(0.0, -XREPanels.WINDOW_DROP, -XREPanels.WINDOW_DISTANCE)
+	var scene := _panels.open_window(XRESceneTab)
+	var signals := _panels.open_window(XRESignalsTab)
+	_check((to_head * signals.global_position).is_equal_approx(front), "the second window opens in front of the user")
+	var scene_at := to_head * scene.global_position
+	_check(scene_at.x > 0.3 and is_equal_approx(scene_at.y, front.y) and is_equal_approx(Vector2(scene_at.x, scene_at.z).length(), XREPanels.WINDOW_DISTANCE),
+			"the first one moves aside, at its distance and height; to the right, with as much room on both sides: %s" % scene_at)
+	var to_user := _rig.camera.global_position - scene.global_position
+	to_user.y = 0.0
+	_check(scene.global_basis.z.normalized().is_equal_approx(to_user.normalized()), "facing the head")
+	var files := _panels.open_window(XREFileSystemTab)
+	_check((to_head * files.global_position).is_equal_approx(front), "the third window opens in front of the user too")
+	_check((to_head * signals.global_position).x < -0.3 and (to_head * scene.global_position).is_equal_approx(scene_at),
+			"the window it covers goes left, where there is more room; the one on the right stays")
+	var settings := _panels.open_window(XRESettingsTab)
+	# Angles to the right of the gaze, around the head.
+	var files_angle := atan2((to_head * files.global_position).x, -(to_head * files.global_position).z)
+	var scene_angle := atan2((to_head * scene.global_position).x, -(to_head * scene.global_position).z)
+	_check(files_angle > 0.3 and scene_angle > files_angle + 0.3,
+			"pushed right, a window moves on the one it then covers: %s, %s" % [files_angle, scene_angle])
+	for window: XREPanelWindow in [scene, signals, files, settings]:
+		_check(not _panels.overlaps_window(window), "%s covers no window" % window.name)
+
+
+## D-045: the launcher's Objects tile opens the palette's window; closing it hides the miniatures.
+func _test_objects_window() -> void:
+	var window := _panels.open_window(XREObjectsTab)
+	_check(window.tab is XREObjectsTab and window.size_px == (window.tab as XREObjectsTab).get_window_size(),
+			"the objects window has its own size")
+	_check(_palette.get("_host") == window, "its miniatures hang in it")
+	window.stop_pulse()
+	# The right ray on the window, beside the miniatures: the panels have the hand.
+	_aim(window, window.size_px - Vector2(30.0, 30.0), 0.0)
+
+
+## D-046: the ray on the window, then on a miniature in front of it: grip takes the thing out, not the window.
+func _objects_ray_on_window() -> void:
+	_check(_rig.right_hand.get_claimant() == _panels, "the ray on the Objects window is the panels'")
+	var box := _palette.get_item_transform(&"CSGBox3D").origin
+	var window := _panels.find_window(XREObjectsTab)
+	var origin := box + window.global_basis.z.normalized() * 0.3
+	_pose(_right, Transform3D(Basis.looking_at(box - origin), origin), 0.0, 1.0)
+
+
+func _objects_box_taken() -> void:
+	_check(_palette.get_held() is CSGBox3D and _panels.get_held_window(_rig.right_hand) == null,
+			"grip on a miniature in front of its window takes the thing out, not the window")
+	_right.set_input(&"ax_button", true)
+
+
+func _objects_closed() -> void:
+	_check(_palette.get_held() == null, "A throws it away")
+	_right.set_input(&"ax_button", false)
+	_pose(_right, _rig.right_hand.global_transform, 0.0, 0.0)
+	_panels.call("_close_window", _panels.find_window(XREObjectsTab))
+	_check(_palette.get("_host") == null, "closing the window takes the miniatures away")
+
+
+## D-047: a small node put down in front of a window — as one taken out of
+## the Objects window is — is grabbed, touched and scaled with both hands
+## although the rays go on into the window.
+func _test_small_node_by_window() -> void:
+	var window := _panels.open_window(XRESettingsTab)
+	window.stop_pulse()
+	var front := window.global_basis.z.normalized()
+	_small = CSGBox3D.new()
+	_small.name = "Small"
+	_small.size = Vector3.ONE / 30.0
+	# Headless bounds are empty: the picker sees custom ones (see test_tools.gd).
+	_small.custom_aabb = AABB(-_small.size * 0.5, _small.size)
+	var scene := _manipulator.get("_root") as Node
+	scene.add_child(_small)
+	# Part of the edited scene, as the document puts a node there: the picker selects it, not the root.
+	_small.owner = scene
+	_small.global_position = window.global_position + front * 0.05
+	_pose(_right, Transform3D(Basis.looking_at(-front), _small.global_position + front * 0.3), 0.0, 0.0)
+	_pose(_left, _left_aim, 0.0, 0.0)
+
+
+func _small_node_pointed() -> void:
+	_check(_rig.right_hand.get_claimant() != _panels and _manipulator.get("_hands")[1].hover == _small,
+			"a small node in front of a window takes the ray from the window")
+	var front := _panels.find_window(XRESettingsTab).global_basis.z.normalized()
+	_pose(_right, Transform3D(Basis.looking_at(-front), _small.global_position + front * 0.3), 0.0, 1.0)
+
+
+func _small_node_grabbed() -> void:
+	_check(_document.get_selection() == [_small] and (_manipulator.get("_holders") as Array).size() == 1
+			and _panels.get_held_window(_rig.right_hand) == null, "grip on it grabs the node, not the window")
+	# The left ray on the window beside the node: its grip joins the hold.
+	var window := _panels.find_window(XRESettingsTab)
+	_aim_with(_left, window, window.size_px * 0.2, 0.0, 1.0)
+
+
+func _small_node_joined() -> void:
+	_check((_manipulator.get("_holders") as Array).size() == 2 and _panels.get_held_window(_rig.left_hand) == null,
+			"the other hand's grip with its ray on the window joins the hold, to scale with both hands")
+	var front := _panels.find_window(XRESettingsTab).global_basis.z.normalized()
+	_pose(_left, _left_aim, 0.0, 0.0)
+	# The right tip at the node, its ray going on into the window.
+	_pose(_right, Transform3D(Basis.looking_at(-front), _small.global_position + front * 0.01), 0.0, 0.0)
+
+
+func _small_node_touched() -> void:
+	_check(_rig.right_hand.get_claimant() != _panels, "a hand touching a small node in front of a window is the manipulator's")
+	var ray := _rig.right_hand.get("_ray") as MeshInstance3D
+	_check(not ray.visible, "with the tip inside the node, the ray hides (D-049)")
+	# The tip 2.5 cm in front of the node's face: still touching it.
+	var front := _panels.find_window(XRESettingsTab).global_basis.z.normalized()
+	_pose(_right, Transform3D(Basis.looking_at(-front), _small.global_position + front * (_small.size.z * 0.5 + 0.025)), 0.0, 0.0)
+
+
+func _small_node_near() -> void:
+	var ray := _rig.right_hand.get("_ray") as MeshInstance3D
+	_check(ray.visible and bool(_rig.right_hand.get("_ray_hits")) and absf(ray.scale.z - 0.025) < 0.001,
+			"touching it from 2.5 cm, the ray is lit and reaches only its face: %s" % ray.scale.z)
+	_document.select([], XREDocument.Source.TOOL)
+	_small.get_parent().remove_child(_small)
+	_small.free()
+	_panels.call("_close_window", _panels.find_window(XRESettingsTab))
+	_pose(_right, Transform3D(Basis.IDENTITY, _rig.global_position + Vector3(0.0, -1.0, 0.0)), 0.0, 0.0)
+
+
+## D-048: a node put down in front of a miniature of the Objects window, the
+## right hand close to it and its ray going on through it into the miniature:
+## grip grabs the node, not the miniature; touching it too.
+func _test_node_before_miniature() -> void:
+	var window := _panels.open_window(XREObjectsTab)
+	window.stop_pulse()
+	var front := window.global_basis.z.normalized()
+	var miniature := _palette.get_item_transform(&"CSGSphere3D").origin
+	_small = CSGBox3D.new()
+	_small.name = "BeforeMiniature"
+	_small.size = Vector3.ONE / 30.0
+	_small.custom_aabb = AABB(-_small.size * 0.5, _small.size)
+	var scene := _manipulator.get("_root") as Node
+	scene.add_child(_small)
+	_small.owner = scene
+	_small.global_position = miniature + front * 0.04
+	# 6 cm from the node, not touching it; the ray goes on into the sphere's miniature.
+	_pose(_right, Transform3D(Basis.looking_at(-front), _small.global_position + front * 0.06), 0.0, 1.0)
+
+
+func _node_before_miniature_grabbed() -> void:
+	_check(_palette.get_held() == null and _document.get_selection() == [_small] and (_manipulator.get("_holders") as Array).size() == 1,
+			"grip with the ray through a node into a miniature grabs the node, not the miniature")
+	var front := _panels.find_window(XREObjectsTab).global_basis.z.normalized()
+	_pose(_right, Transform3D(Basis.looking_at(-front), _small.global_position + front * 0.06), 0.0, 0.0)
+
+
+func _node_by_miniature_let_go() -> void:
+	_check((_manipulator.get("_holders") as Array).is_empty() and _palette.get_held() == null, "letting go puts the node down")
+	# The tip at the node, 4 cm from the miniature: within the miniature's touch too.
+	var front := _panels.find_window(XREObjectsTab).global_basis.z.normalized()
+	_pose(_right, Transform3D(Basis.looking_at(-front), _small.global_position), 0.0, 0.0)
+
+
+func _node_by_miniature_hovered() -> void:
+	_check(_palette.get_hovered() == &"", "a hand touching a node by a miniature doesn't light the miniature")
+	var front := _panels.find_window(XREObjectsTab).global_basis.z.normalized()
+	_pose(_right, Transform3D(Basis.looking_at(-front), _small.global_position), 0.0, 1.0)
+
+
+func _node_by_miniature_touched() -> void:
+	_check(_palette.get_held() == null and (_manipulator.get("_holders") as Array).size() == 1,
+			"grip touching a node by a miniature grabs the node")
+	_pose(_right, Transform3D(Basis.IDENTITY, _rig.global_position + Vector3(0.0, -1.0, 0.0)), 0.0, 0.0)
+
+
+func _node_by_miniature_done() -> void:
+	_document.select([], XREDocument.Source.TOOL)
+	_small.get_parent().remove_child(_small)
+	_small.free()
+	_panels.call("_close_window", _panels.find_window(XREObjectsTab))
+
+
+## D-045: a list scrolls by dragging it up or down; a click on it is still a
+## click. A panel with a long list, laid out by the next frame.
+func _test_drag_scroll() -> void:
+	_scroll_panel = XREPanelSurface.new(Vector2(300, 200), 0.001, 1.0, null)
+	_scroll_list = ItemList.new()
+	_scroll_list.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for index: int in 60:
+		_scroll_list.add_item("Item %d" % index)
+	_scroll_panel.root.add_child(_scroll_list)
+	root.add_child(_scroll_panel)
+
+
+func _drag_list() -> void:
+	var surface := _scroll_panel
+	var list := _scroll_list
+	var bar := list.get_v_scroll_bar()
+	_check(bar.max_value > bar.page, "the list can scroll")
+	surface.pointer_move(Vector2(150, 150))
+	surface.pointer_button(true)
+	_check(list.get_selected_items().is_empty(), "a press on a list waits")
+	surface.pointer_move(Vector2(151, 148))
+	_check(not surface.is_scrolling(), "a move within the slop is still a click")
+	surface.pointer_move(Vector2(152, 60))
+	surface.pointer_move(Vector2(152, 30))
+	_check(surface.is_scrolling() and is_equal_approx(bar.value, 120.0), "dragged up, the list follows the pointer: %s" % bar.value)
+	surface.pointer_button(false)
+	_check(list.get_selected_items().is_empty(), "a drag selects nothing")
+	_check(surface.is_scrolling(), "let go while moving, it glides on")
+	_scroll_value = bar.value
+
+
+func _list_glided() -> void:
+	var surface := _scroll_panel
+	var list := _scroll_list
+	var bar := list.get_v_scroll_bar()
+	_check(bar.value > _scroll_value, "the glide scrolls further: %s" % bar.value)
+	surface.pointer_move(Vector2(150, 100))
+	surface.pointer_button(true)
+	_check(not surface.is_scrolling(), "a press stops the glide")
+	var top := bar.value
+	surface.pointer_button(false)
+	_check(list.get_selected_items().size() == 1 and is_equal_approx(bar.value, top), "a press let go in place clicks the item under it")
+	surface.pointer_move(Vector2(40, 40))
+	surface.pointer_button(true)
+	surface.pointer_move(Vector2(120, 44))
+	surface.pointer_button(false)
+	_check(not surface.is_scrolling() and is_equal_approx(bar.value, top), "a drag sideways doesn't scroll: it is a press and a mouse drag")
+	surface.queue_free()
 
 
 func _finish() -> void:

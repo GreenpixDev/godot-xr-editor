@@ -5,6 +5,16 @@ extends Node3D
 ## Assignments go through XREDocument; spatial UI is never owned by the scene.
 
 signal changed
+## Asks for the graph's window of tab class [param type] — the parameters
+## ([XREBlueprintParametersTab]) or the block palette ([XREBlueprintPaletteTab])
+## — at [param pose], beside a block (D-044). [XREPanels] opens it there and
+## calls [method window_closed] when it closes.
+signal window_requested(type: GDScript, pose: Transform3D)
+## Asks for the window of tab class [param type] to close: [param always], or
+## only if it isn't pinned to a hand.
+signal window_dismissed(type: GDScript, always: bool)
+## Asks the open window of tab class [param type] to pulse where it is (D-046).
+signal window_pulse_requested(type: GDScript)
 
 ## Neck pivot relative to the eye center, in head coordinates: behind and below
 ## the eyes. Turning or tilting the head then leaves the measured hand motion alone.
@@ -13,6 +23,14 @@ const NECK_FROM_EYES := Vector3(0.0, -0.075, 0.0805)
 ## below the neck pivot: a hand low at the lap is still near the body.
 const BODY_TOP := 0.175
 const BODY_BOTTOM := 0.65
+## Farther than this from the head, in meters, the badge over a selected
+## object grows with the distance and so keeps its size in view (D-043).
+const BADGE_DISTANCE := 1.2
+## Gap between a block and its parameters or palette window beside it, in
+## meters, and how much nearer the head than the block, and than any card it
+## covers, the window is: so that no card covers it or takes its ray.
+const PARAMETERS_GAP := 0.04
+const PARAMETERS_LIFT := 0.05
 
 class Pointer:
 	var hand: XREHand
@@ -63,7 +81,15 @@ var _workspace: Node3D
 var _floating_ui: Node3D
 var _dimmer: MeshInstance3D
 var _toolbar: XREPanelSurface
-var _parameter_surface: XREPanelSurface
+## The block palette's form: a button per block a card's plus adds ([XREBlueprintPaletteTab]).
+var block_list: Control
+## Keeps the forms off screen while no window shows them.
+var _forms_home: SubViewport
+## Tab classes of the graph's windows that are open (D-044).
+var _open_windows: Array[GDScript] = []
+## The block the parameters window was opened beside, or -1, and on which side of it: -1 left, 1 right.
+var _parameters_block := -1
+var _parameters_side := -1.0
 var _badge: XREPanelSurface
 var _badge_anchor: Node3D
 var _badge_geometry: Array[GeometryInstance3D] = []
@@ -87,7 +113,6 @@ var _rebuild_queued := false
 var _picker: XREPicker
 var _keyboard: XREVirtualKeyboard
 var _keyboard_target: WeakRef
-var _block_palette: XREPanelSurface
 ## The rig-locked windows of the graph, which move by their corner handles (docs/vr_ui.md, D-040).
 var _windows: Array[XREPanelSurface] = []
 var _built_state: Dictionary = {}
@@ -110,27 +135,32 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	add_child(_floating_ui)
 	canvas = XREBlueprintCanvas.new()
 	canvas.set_display(document.features.get_value(XREFeatureSettings.NODE_DISPLAY))
+	canvas.set_port_display(document.features.get_value(XREFeatureSettings.PORT_DISPLAY))
 	_workspace.add_child(canvas)
 	_toolbar = XREPanelSurface.new(Vector2(840, 150), 0.0009, 1.5, theme)
 	_toolbar.position = Vector3(0, 0.42, 0.03)
 	_floating_ui.add_child(_toolbar)
 	_build_toolbar()
-	_parameter_surface = XREPanelSurface.new(Vector2(480, 640), 0.0009, 1.5, theme)
-	_parameter_surface.position = Vector3(0.85, -0.05, 0.03)
-	_parameter_surface.basis = XREPanels.facing(_parameter_surface.position, Vector3(0, 0.12, 1), Vector3.UP)
-	_floating_ui.add_child(_parameter_surface)
+	_forms_home = SubViewport.new()
+	_forms_home.name = "FormsHome"
+	_forms_home.disable_3d = true
+	_forms_home.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_child(_forms_home)
 	parameters = XREBlueprintEditor.new()
 	parameters.operation_source = &"vr_panel"
-	_parameter_surface.root.add_child(parameters)
+	parameters.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	if theme != null: parameters.theme = theme
+	_forms_home.add_child(parameters)
 	parameters.setup(blueprint, true)
 	parameters.graph_scene_requested.connect(_open_owner_scene)
 	parameters.text_edit_requested.connect(_show_keyboard, CONNECT_DEFERRED)
 	_keyboard = XREVirtualKeyboard.new(theme)
 	_keyboard.applied.connect(_apply_keyboard)
 	_floating_ui.add_child(_keyboard)
-	_build_block_palette(theme)
-	_windows = [_toolbar, _parameter_surface, _keyboard, _block_palette]
+	_build_block_list(theme)
+	_windows = [_toolbar, _keyboard]
 	for window: XREPanelSurface in _windows: window.add_corner_handles()
+	_update_window_shape()
 	_workspace.hide()
 	_floating_ui.hide()
 	_badge = XREPanelSurface.new(Vector2(340, 170), 0.00065, 1.5, theme)
@@ -194,8 +224,14 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
 	if is_instance_valid(_badge_anchor) and _badge_anchor.is_inside_tree():
-		var point := _badge_position()
-		_badge.global_transform = Transform3D(XREPanels.facing(point, _rig.camera.global_position, _rig.global_basis.y), point)
+		# As light icons do (XREIcons), the badge keeps its size in view farther than
+		# BADGE_DISTANCE away, so that its text stays readable (D-043); nearer, it keeps its size.
+		var head := _rig.camera.global_position
+		var up := _rig.global_basis.y.normalized()
+		var base := _badge_position()
+		var size := maxf(base.distance_to(head) / BADGE_DISTANCE, 1.0)
+		var point := base + up * (_badge.size_m.y * 0.5 * size)
+		_badge.global_transform = Transform3D(XREPanels.facing(point, head, up) * Basis.from_scale(Vector3.ONE * size), point)
 	else:
 		_badge.set_shown(false)
 	for marker: Marker in _markers:
@@ -333,7 +369,8 @@ func show_graph() -> void:
 	canvas.face_user(head)
 	_floating_ui.global_transform = ui_pose
 	_keyboard.close()
-	_block_palette.set_shown(false)
+	close_block_palette()
+	close_parameters()
 	_workspace.show()
 	_floating_ui.show()
 	_dimmer.show()
@@ -352,7 +389,8 @@ func close_graph() -> void:
 	cancel_connection()
 	_target_pick = -1
 	_keyboard.close()
-	_block_palette.set_shown(false)
+	close_block_palette()
+	close_parameters()
 	_workspace.hide()
 	_floating_ui.hide()
 	_dimmer.hide()
@@ -433,15 +471,149 @@ func add_block(kind: String) -> void:
 	else: point += Vector2(320 * blueprint.graph.nodes.size(), 0)
 	blueprint.perform(blueprint.add_block.bind(kind, point), &"vr_panel")
 	if not blueprint.graph.nodes.is_empty(): select_block(blueprint.graph.nodes.back()["id"])
-	_block_palette.set_shown(false)
+	# Pinned to a hand, the palette stays for the next block.
+	_dismiss_window(XREBlueprintPaletteTab, false)
 
 
-## Selects a graph block without replacing the editor's scene selection.
-func select_block(id: int) -> void:
+## Selects a graph block without replacing the editor's scene selection. Its
+## parameters window opens beside it (D-043, D-044), or comes there from
+## another block, or pulses if it is there already (D-046); with no block, -1,
+## it closes, unless it is pinned to a hand. Without [param open_parameters]
+## the window is left as it is: the plus opens only the block palette.
+func select_block(id: int, open_parameters: bool = true) -> void:
 	_selected = id
 	canvas.select_block(id)
 	parameters.select_block(id)
+	if id >= 0:
+		if open_parameters: _show_parameters(id)
+	else: _dismiss_window(XREBlueprintParametersTab, false)
 	changed.emit()
+
+
+## Closes the parameters window, pinned too, keeping what was typed in it; the block stays selected.
+func close_parameters() -> void:
+	_dismiss_window(XREBlueprintParametersTab, true)
+
+
+## Whether the parameters window is open.
+func is_parameters_shown() -> bool:
+	return XREBlueprintParametersTab in _open_windows
+
+
+## Closes the block palette, pinned too.
+func close_block_palette() -> void:
+	_dismiss_window(XREBlueprintPaletteTab, true)
+
+
+## Whether the block palette is open.
+func is_block_palette_shown() -> bool:
+	return XREBlueprintPaletteTab in _open_windows
+
+
+## The graph's window of tab class [param type] was closed, by its × or as the
+## graph asked: what was typed in it is kept, and the keyboard typing into it closes.
+func window_closed(type: GDScript) -> void:
+	_open_windows.erase(type)
+	if type != XREBlueprintParametersTab: return
+	_parameters_block = -1
+	if is_instance_valid(parameters) and parameters.is_inside_tree(): parameters.flush_parameters()
+	var field := _keyboard_target.get_ref() as LineEdit if _keyboard_target != null else null
+	if field != null and parameters.is_ancestor_of(field): _keyboard.close()
+
+
+## Puts [param form] back off screen when the window that showed it is freed ([XREBlueprintFormTab]).
+func take_back(form: Control) -> void:
+	if is_instance_valid(_forms_home) and not _forms_home.is_queued_for_deletion() and form.get_parent() == null:
+		_forms_home.add_child(form)
+
+
+## Where the parameters window of block [param id] goes: beside the card, at
+## its height, facing the head; on its left, or on its right if more cards are
+## there to cover on the left. Without the card, to the right of the graph's
+## toolbar, where the window was before D-044.
+func parameters_pose(id: int) -> Transform3D:
+	if not canvas.has_block(id):
+		var point := _floating_ui.global_transform * Vector3(0.85, -0.05, 0.03)
+		return Transform3D(XREPanels.facing(point, _rig.camera.global_position, _rig.global_basis.y), point)
+	var card := canvas.global_transform * canvas.get_block_transform(id)
+	var size := XREPanels.WINDOW_SIZE * XREPanels.WINDOW_PIXEL_SIZE
+	var reach := XREBlueprintCanvas.CARD_WIDTH + PARAMETERS_GAP + size.x
+	var inverse := card.affine_inverse()
+	var left := 0
+	var right := 0
+	for block: Dictionary in blueprint.graph.nodes:
+		if block["id"] == id or not canvas.has_block(block["id"]): continue
+		var other := inverse * (canvas.global_transform * canvas.get_block_transform(block["id"])).origin
+		if absf(other.y) > size.y * 0.5 or absf(other.x) > reach: continue
+		if other.x < 0.0: left += 1
+		else: right += 1
+	_parameters_side = -1.0 if left <= right else 1.0
+	return _beside(card, _parameters_side)
+
+
+## Where the block palette of block [param id] goes: beside the card, on the
+## side its parameters window isn't.
+func palette_pose(id: int) -> Transform3D:
+	var card := canvas.global_transform * canvas.get_block_transform(id)
+	var side := -_parameters_side if is_parameters_shown() and _parameters_block == id else 1.0
+	return _beside(card, side)
+
+
+## A window's pose beside a card at [param card], on its [param side] (-1 left,
+## 1 right), at its height, facing the head: nearer the head than the card and
+## than the cards it covers, by [constant PARAMETERS_LIFT].
+func _beside(card: Transform3D, side: float) -> Transform3D:
+	var size := XREPanels.WINDOW_SIZE * XREPanels.WINDOW_PIXEL_SIZE
+	var head := _rig.camera.global_position
+	var up := _rig.global_basis.y.normalized()
+	var across := card.basis.x.normalized()
+	var point := card.origin + across * side * (XREBlueprintCanvas.CARD_WIDTH * 0.5 + PARAMETERS_GAP + size.x * 0.5)
+	var distance := minf(head.distance_to(point), head.distance_to(card.origin))
+	var inverse := card.affine_inverse()
+	for block: Dictionary in blueprint.graph.nodes:
+		if not canvas.has_block(block["id"]): continue
+		var other := (canvas.global_transform * canvas.get_block_transform(block["id"])).origin
+		var local := inverse * other
+		# Cards whose centers are within the window and half a card around it, as seen beside the block.
+		var from := XREBlueprintCanvas.CARD_WIDTH * 0.5 + PARAMETERS_GAP
+		var along := local.x * side
+		if along < from - XREBlueprintCanvas.CARD_WIDTH or along > from + size.x + XREBlueprintCanvas.CARD_WIDTH * 0.5 or absf(local.y) > size.y * 0.5 + 0.15: continue
+		distance = minf(distance, head.distance_to(other) - XREBlueprintCanvas.CUBOID_DEPTH)
+	point = head + (point - head).normalized() * maxf(distance - PARAMETERS_LIFT, 0.2)
+	return Transform3D(XREPanels.facing(point, head, up), point)
+
+
+## Asks for the graph's window of tab class [param type] at [param pose].
+func _request_window(type: GDScript, pose: Transform3D) -> void:
+	if not type in _open_windows: _open_windows.append(type)
+	window_requested.emit(type, pose)
+
+
+## Asks for the graph's window of tab class [param type] to close: [param always], or unless pinned.
+func _dismiss_window(type: GDScript, always: bool) -> void:
+	if not type in _open_windows: return
+	# Without the panels (a test of the graph alone) the window just closes.
+	if window_dismissed.get_connections().is_empty(): window_closed(type)
+	else: window_dismissed.emit(type, always)
+
+
+## Whether [param hand] holds a card or a window of the graph.
+func is_holding(hand: XREHand) -> bool:
+	for pointer: Pointer in _pointers:
+		if pointer.hand == hand: return pointer.held != null
+	return false
+
+
+## Opens the parameters window beside block [param id] (-1: the selected one,
+## or none); open there already, it pulses.
+func _show_parameters(id: int = -1) -> void:
+	if not _workspace.visible: return
+	if id < 0: id = _selected
+	if is_parameters_shown() and (id == _parameters_block or id < 0):
+		window_pulse_requested.emit(XREBlueprintParametersTab)
+		return
+	_parameters_block = id
+	_request_window(XREBlueprintParametersTab, parameters_pose(id))
 
 
 ## Removes the selected block and incident wires through the graph document.
@@ -452,28 +624,50 @@ func delete_block(id: int = -1) -> void:
 		if pointer.block == target: _finish_hold(pointer, false)
 	cancel_connection()
 	if _target_pick == target: _target_pick = -1
+	var was_selected := target == _selected
 	blueprint.perform(blueprint.remove_blocks.bind([target] as Array[int]), &"vr_graph")
-	_selected = -1
+	if was_selected: select_block(-1)
 
 
-## Connected ports disconnect as one undo step; empty ports start a click-click wire.
-func click_port(id: int, port: int, input: bool, hand: XREHand = null) -> bool:
+## Connected ports detach one wire as one undo step; empty ports start a click-click wire.
+## [param edge] is the wire on the port to detach, the one lit under the ray
+## ([method XREBlueprintCanvas.get_hit_edge]); -1 or another port's takes the port's last wire.
+func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int = -1) -> bool:
 	if not canvas.has_port(id, port, input): return false
+	if _pending_id == id and _pending_port == port and _pending_input == input:
+		# The same port again takes the wire back (D-043), as the trigger on nothing does.
+		cancel_connection()
+		_message("Wire cancelled.")
+		return true
 	if _pending_id < 0:
-		var state := blueprint.graph.snapshot()
-		var remaining: Array[Dictionary] = []
-		for edge: Dictionary in blueprint.graph.edges:
-			if (input and edge["to"] == id and edge["to_port"] == port) or (not input and edge["from"] == id and edge["from_port"] == port): continue
-			remaining.append(edge)
-		if remaining.size() != blueprint.graph.edges.size():
-			state["edges"] = remaining
-			return blueprint.perform(blueprint.commit.bind("Disconnect Ports", state), &"vr_graph")
+		# A connected port lets go of its end of the last wire on it, as dragging a connected
+		# port does in GraphEdit (D-044): the wire stays on its other end and follows the ray,
+		# to go to another port, or away with the trigger on nothing. One undo puts it back.
+		var detached := -1
+		for index: int in blueprint.graph.edges.size():
+			var wire_on: Dictionary = blueprint.graph.edges[index]
+			if (input and wire_on["to"] == id and wire_on["to_port"] == port) or (not input and wire_on["from"] == id and wire_on["from_port"] == port):
+				detached = index
+				if index == edge: break
+		if detached >= 0:
+			var state := blueprint.graph.snapshot()
+			var edges: Array = state["edges"]
+			var wire: Dictionary = edges[detached]
+			edges.remove_at(detached)
+			if not blueprint.perform(blueprint.commit.bind("Disconnect Ports", state), &"vr_graph"): return false
+			_pending_id = wire["from"] if input else wire["to"]
+			_pending_port = wire["from_port"] if input else wire["to_port"]
+			_pending_input = not input
+			_pending_hand = hand
+			canvas.highlight_ports(canvas.port_type(_pending_id, _pending_port, _pending_input), not _pending_input)
+			_message("Wire detached. Trigger on a port reconnects it; on empty space removes it.")
+			return true
 		_pending_id = id
 		_pending_port = port
 		_pending_input = input
 		_pending_hand = hand
 		canvas.highlight_ports(canvas.port_type(id, port, input), not input)
-		_message("Press trigger on a compatible port. Cancel wire stops connecting.")
+		_message("Press trigger on a compatible port. The same port or empty space cancels the wire.")
 		return true
 	if input == _pending_input:
 		_message("Connect an output to an input.")
@@ -549,8 +743,12 @@ func _build_toolbar() -> void:
 	_button(second, "Cancel wire / target", func() -> void:
 		cancel_connection()
 		_target_pick = -1)
-	_button(second, "Variables", func() -> void: parameters.show_variables())
-	_button(second, "Choose host", func() -> void: parameters.show_host_picker())
+	_button(second, "Variables", func() -> void:
+		parameters.show_variables()
+		_show_parameters())
+	_button(second, "Choose host", func() -> void:
+		parameters.show_host_picker()
+		_show_parameters())
 	_status_label = Label.new()
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(_status_label)
@@ -616,25 +814,14 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				surface = _badge
 				distance = hit
 		if _workspace.visible:
-			var hit := _toolbar.intersect_ray(origin, direction, distance)
-			if hit >= 0:
-				surface = _toolbar
-				distance = hit
-			hit = _parameter_surface.intersect_ray(origin, direction, distance)
-			if hit >= 0:
-				surface = _parameter_surface
-				distance = hit
-			hit = _keyboard.intersect_ray(origin, direction, distance)
-			if hit >= 0:
-				surface = _keyboard
-				distance = hit
-			hit = _block_palette.intersect_ray(origin, direction, distance)
-			if hit >= 0:
-				surface = _block_palette
-				distance = hit
+			for window: XREPanelSurface in _windows:
+				var hit := window.intersect_ray(origin, direction, distance)
+				if hit >= 0:
+					surface = window
+					distance = hit
 			# Handles lie outside the frames: only one nearer than any window is taken.
 			for window: XREPanelSurface in _windows:
-				hit = window.intersect_handle(origin, direction, distance)
+				var hit := window.intersect_handle(origin, direction, distance)
 				if hit >= 0:
 					handle = window
 					distance = hit
@@ -691,12 +878,12 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			hand.claim(self)
 			hand.show_ray(hit, true, XREBlueprintCanvas.HIT_DOT_OFFSET)
 			var id := canvas.get_hit_id()
-			canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), hand == _rig.right_hand)
+			canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), hand == _rig.right_hand, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1)
 			if hand.grip_pressed: _start_hold(pointer, canvas, id, origin + direction * hit)
 			elif hand.trigger_pressed:
 				if canvas.get_hit_plus(): _show_block_palette(id)
 				elif canvas.get_hit_delete(): delete_block(id)
-				elif canvas.get_hit_port() >= 0: click_port(id, canvas.get_hit_port(), canvas.get_hit_input(), hand)
+				elif canvas.get_hit_port() >= 0: click_port(id, canvas.get_hit_port(), canvas.get_hit_input(), hand, canvas.get_hit_edge())
 				else: select_block(id)
 			if hand == _rig.right_hand and hand.ax_pressed: delete_block()
 			return
@@ -707,6 +894,10 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	if _pending_hand == hand:
 		hand.claim(self)
 		hand.show_ray(0.8, false)
+		# The trigger on nothing takes the wire back (D-043).
+		if hand.trigger_pressed:
+			cancel_connection()
+			_message("Wire cancelled.")
 		return
 	if _target_pick >= 0:
 		if not blueprint.scene_context_active():
@@ -892,7 +1083,7 @@ func _badge_position() -> Vector3:
 	# Support of the world AABB along rig-up keeps the whole panel outside it,
 	# including rotated/nonuniform scales, offset children and changing CSG bounds.
 	var radius := bounds.size.dot(up.abs()) * 0.5
-	return bounds.get_center() + up * (radius + _badge.size_m.y * 0.5 + 0.1)
+	return bounds.get_center() + up * (radius + 0.1)
 
 
 func _scene_changed() -> void:
@@ -913,8 +1104,16 @@ func _scene_operation(operation: StringName, _source: XREDocument.Source, _nodes
 
 
 ## A switch of the node display (D-039) redraws the open cards at once; a held card is put down first.
+## So does a switch of the port display; a switch of the window shape bends or flattens the graph's windows.
 func _feature_changed(key: StringName) -> void:
-	if key != XREFeatureSettings.NODE_DISPLAY or not canvas.set_display(_document.features.get_value(key)): return
+	if key == XREFeatureSettings.WINDOW_SHAPE:
+		_update_window_shape()
+		return
+	var value := _document.features.get_value(key)
+	var switched := false
+	if key == XREFeatureSettings.NODE_DISPLAY: switched = canvas.set_display(value)
+	elif key == XREFeatureSettings.PORT_DISPLAY: switched = canvas.set_port_display(value)
+	if not switched: return
 	_finish_holds()
 	cancel_connection()
 	canvas.rebuild(blueprint.graph)
@@ -1035,31 +1234,34 @@ func _button(parent: Node, text: String, action: Callable) -> Button:
 	return button
 
 
-func _build_block_palette(theme: Theme) -> void:
-	_block_palette = XREPanelSurface.new(Vector2(420, 500), 0.0007, 1.5, theme)
-	_block_palette.name = "BlockPalette"
-	_floating_ui.add_child(_block_palette)
-	var column := VBoxContainer.new()
-	_block_palette.root.add_child(column)
-	_button(column, "Close palette", func() -> void: _block_palette.set_shown(false))
+func _build_block_list(theme: Theme) -> void:
 	var scroll := ScrollContainer.new()
+	scroll.name = "BlockList"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(scroll)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	if theme != null: scroll.theme = theme
 	var blocks := VBoxContainer.new()
 	blocks.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(blocks)
 	for kind: String in XREBlueprintGraph.BLOCKS:
 		_button(blocks, XREBlueprintGraph.BLOCKS[kind]["title"], add_block.bind(kind))
-	_block_palette.set_shown(false)
+	block_list = scroll
+	_forms_home.add_child(block_list)
 
 
+## Bends the graph's windows as the setting [constant XREFeatureSettings.WINDOW_SHAPE] says (D-043).
+func _update_window_shape() -> void:
+	var concave := _document.features.get_value(XREFeatureSettings.WINDOW_SHAPE) == XREFeatureSettings.CONCAVE
+	for window: XREPanelSurface in _windows: window.set_curve_radius(XREPanels.CONCAVE_RADIUS if concave else 0.0)
+
+
+## Opens the block palette beside card [param id], whose plus was clicked,
+## and selects the card without opening its parameters (D-046); open ones
+## stay, and the palette goes on their other side.
 func _show_block_palette(id: int) -> void:
 	cancel_connection()
-	select_block(id)
-	var point := canvas.to_global(canvas.get_block_position(id))
-	point += _workspace.global_basis.x * 0.42 + _workspace.global_basis.z * 0.06
-	_block_palette.global_transform = Transform3D(XREPanels.facing(point, _rig.camera.global_position, Vector3.UP), point)
-	_block_palette.set_shown(true)
+	select_block(id, false)
+	_request_window(XREBlueprintPaletteTab, palette_pose(id))
 
 
 func _show_keyboard(field: LineEdit) -> void:
@@ -1112,7 +1314,7 @@ void fragment() {
 
 
 func _set_ui_overlay(enabled: bool) -> void:
-	for surface: XREPanelSurface in [_toolbar, _parameter_surface, _keyboard, _block_palette, _badge]: surface.set_overlay(enabled)
+	for surface: XREPanelSurface in [_toolbar, _keyboard, _badge]: surface.set_overlay(enabled)
 	_rig.left_hand.set_overlay(enabled)
 	_rig.right_hand.set_overlay(enabled)
 
@@ -1192,3 +1394,6 @@ func _update_scene_target_pointer(hand: XREHand, origin: Vector3, direction: Vec
 	hand.show_ray(distance, target != null)
 	if _pending_hand == hand: _preview_connection(origin + direction * distance)
 	if hand.trigger_pressed and target != null: connect_scene_target(_pending_id, target)
+	elif hand.trigger_pressed and _pending_hand == hand:
+		cancel_connection()
+		_message("Wire cancelled.")

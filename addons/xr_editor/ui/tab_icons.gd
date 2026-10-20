@@ -14,6 +14,9 @@ extends RefCounted
 ## Tab icons, by [method XREPanelTab.get_symbol]: the gradient's top and
 ## bottom colors, and the glyph.
 const TABS: Dictionary[StringName, Array] = {
+	# Things to add to the scene (D-045): a cube.
+	&"objects": ["#ff8ad8", "#c94ab0", """<g fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round">
+<path d="M64 24L102 45V87L64 108L26 87V45Z"/><path d="M26 45L64 66L102 45M64 66V108"/></g>"""],
 	&"scene": ["#6d97ff", "#3d63e6", """<g fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"
 stroke-linejoin="round"><circle cx="38" cy="36" r="10"/><path d="M38 46V92M38 64H66M38 92H66"/>
 <rect x="68" y="54" width="28" height="20" rx="5"/><rect x="68" y="82" width="28" height="20" rx="5"/></g>"""],
@@ -29,6 +32,13 @@ stroke-linejoin="round"><circle cx="38" cy="36" r="10"/><path d="M38 46V92M38 64
 	&"blueprints": ["#4fd0e8", "#1f8fb5", """<g fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"
 stroke-linejoin="round"><rect x="20" y="34" width="34" height="28" rx="6"/><rect x="74" y="66" width="34"
 height="28" rx="6"/><path d="M54 48C70 48 58 80 74 80"/></g>"""],
+	# A block's parameters: the inspector's sliders in the Blueprints' colors (D-044).
+	&"parameters": ["#4fd0e8", "#1f8fb5", """<g stroke="#fff" stroke-width="8" stroke-linecap="round">
+<path d="M28 40H100M28 64H100M28 88H100"/></g><g fill="#fff"><circle cx="76" cy="40" r="11"/>
+<circle cx="48" cy="64" r="11"/><circle cx="84" cy="88" r="11"/></g>"""],
+	# Adding a block to the graph: a plus in the Blueprints' colors (D-044).
+	&"add_block": ["#4fd0e8", "#1f8fb5", """<path d="M64 34V94M34 64H94" stroke="#fff" stroke-width="10"
+stroke-linecap="round"/>"""],
 	&"settings": ["#9aa3b2", "#5c6472", """<g fill="none" stroke="#fff" stroke-linecap="round">
 <circle cx="64" cy="64" r="24" stroke-width="8"/><circle cx="64" cy="64" r="8" stroke-width="7"/>
 <path stroke-width="11" d="M92 64H100M36 64H28M64 36V28M64 92V100M83.8 44.2L89.5 38.5M44.2 83.8L38.5 89.5

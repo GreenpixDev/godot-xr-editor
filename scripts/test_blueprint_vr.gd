@@ -4,6 +4,8 @@ extends Node
 
 var _document: XREDocument
 var _service: XREBlueprints
+## The panels, which open the graph's parameters window (D-044).
+var _panels: XREPanels
 var _rig: XRERig
 var _right: XRControllerTracker
 var _left: XRControllerTracker
@@ -16,6 +18,9 @@ var _hover_pulses := 0
 var _keyboard_clicks := 0
 ## The editor's node display before the test, put back at the end.
 var _saved_display := XREFeatureSettings.BILLBOARD
+## The same for the port display and the window shape (D-043).
+var _saved_ports := XREFeatureSettings.FLAT
+var _saved_shape := XREFeatureSettings.FLAT
 
 
 func _init(document: XREDocument) -> void:
@@ -63,6 +68,10 @@ func _run() -> void:
 	# The editor's saved variant is put back at the end; the checks expect the default billboards.
 	_saved_display = _document.features.get_value(XREFeatureSettings.NODE_DISPLAY)
 	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
+	_saved_ports = _document.features.get_value(XREFeatureSettings.PORT_DISPLAY)
+	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.FLAT)
+	_saved_shape = _document.features.get_value(XREFeatureSettings.WINDOW_SHAPE)
+	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.FLAT)
 	DirAccess.make_dir_recursive_absolute("res://build/blueprint_vr_tests")
 	_right = XRControllerTracker.new()
 	_right.name = &"right_hand"
@@ -81,9 +90,15 @@ func _run() -> void:
 	_rig.camera.position = Vector3(0, 1.4, 0)
 	var icons := XREIcons.new(_document, _rig)
 	_rig.add_child(icons)
+	# In the plugin's order: the palette and the panels before the graph.
+	var palette := XREPalette.new(_document, _rig)
+	_rig.add_child(palette)
+	_panels = XREPanels.new(_document, _rig, palette, EditorInterface.get_editor_theme(), 1.0)
+	_rig.add_child(_panels)
 	_service = XREBlueprints.new(_document, _rig, icons, EditorInterface.get_editor_theme())
 	_service.source_folder = "res://build/blueprint_vr_tests"
 	_rig.add_child(_service)
+	_panels.set_blueprints(_service)
 	_rig.add_child(XREManipulator.new(_document, _rig, icons))
 	_document.operation_recorded.connect(_record)
 	_host = Node3D.new()
@@ -151,7 +166,11 @@ func _run() -> void:
 	await _frames()
 	_check(_service.blueprint.graph.edges.size() == 1, "graph redo restores spatial connection")
 	await _click(_service.canvas.to_global(_service.canvas.port_position(print_id, 0, true)))
-	_check(_service.blueprint.graph.edges.is_empty(), "clicking a connected port disconnects its wires")
+	_check(_service.blueprint.graph.edges.is_empty(), "clicking a connected port detaches the wire from it")
+	_check(_service.get("_pending_id") == 1 and _service.get("_pending_port") == 0 and not _service.get("_pending_input")
+			and _service.get("_pending_hand") == _rig.right_hand and preview.visible,
+			"the wire stays on its other end and follows the ray (D-044)")
+	_service.cancel_connection()
 	_service.blueprint.undo()
 	await _frames()
 	var before := _service.canvas.get_block_position(print_id)
@@ -181,6 +200,7 @@ func _run() -> void:
 	await _test_depth_direction(print_id)
 	await _test_depth_lap(print_id)
 	await _test_keyboard()
+	await _test_windows_and_ports(print_id)
 	_service.add_block("branch")
 	await _frames()
 	var branch_id: int = _service.blueprint.graph.nodes.back()["id"]
@@ -320,6 +340,8 @@ func _run() -> void:
 	_viewport.queue_free()
 	await _frames()
 	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, _saved_display)
+	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, _saved_ports)
+	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, _saved_shape)
 	print("test_blueprint_vr: %d of %d checks failed" % [_failures, _checks])
 	get_tree().quit(1 if _failures > 0 else 0)
 
@@ -358,34 +380,36 @@ func _aim_corner(window: XREPanelSurface, corner: int, trigger: float, grip: flo
 	_right.set_input(&"grip", grip)
 
 
-## Corner handles of the graph's windows (D-040): grip on the parameters'
-## corner moves that window; trigger on the toolbar's moves them all.
+## Corner handles of the graph's windows (D-040): grip on the keyboard's
+## corner moves that window; trigger on the toolbar's moves them all. The
+## parameters and the block palette are the panels' windows since D-044.
 func _test_window_corners() -> void:
 	var floating := _service.get("_floating_ui") as Node3D
 	var toolbar := _service.get("_toolbar") as XREPanelSurface
-	var panel := _service.get("_parameter_surface") as XREPanelSurface
+	var panel := _service.get("_keyboard") as XREVirtualKeyboard
 	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
 	var floating_before := floating.global_transform
-	var panel_before := panel.transform
 	var history := _service.blueprint.history.get_version()
-	for window: XREPanelSurface in [toolbar, panel, _service.get("_keyboard") as XREPanelSurface, _service.get("_block_palette") as XREPanelSurface]:
+	for window: XREPanelSurface in [toolbar, panel]:
 		_check(window.has_corner_handles(), "graph window %s has corner handles" % window.name)
 	_check(not (_service.get("_badge") as XREPanelSurface).has_corner_handles(), "the object's badge, object-locked, has none")
+	panel.open_text("corner")
+	var panel_before := panel.transform
 
 	_aim_corner(panel, XREPanelSurface.Corner.BOTTOM_RIGHT, 0, 0)
 	await _frames()
-	_check(panel.handle_lit(XREPanelSurface.Corner.BOTTOM_RIGHT), "the ray lights the parameters' corner handle")
+	_check(panel.handle_lit(XREPanelSurface.Corner.BOTTOM_RIGHT), "the ray lights the keyboard's corner handle")
 	_check(not toolbar.handle_shown(XREPanelSurface.Corner.TOP_LEFT), "another window's handles stay hidden")
 	_right.set_input(&"grip", 1.0)
 	await _frames()
-	_check(pointer.held == panel and pointer.window == panel, "grip on a corner handle takes the parameters window")
+	_check(pointer.held == panel and pointer.window == panel, "grip on a corner handle takes the keyboard")
 	var start := panel.global_position
 	var hand := _rig.right_hand.global_transform
 	_right.set_pose(&"aim", _rig.global_transform.affine_inverse() * hand.translated(Vector3(0.1, 0.05, 0)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 	await _frames()
 	_check(panel.global_position.distance_to(start + Vector3(0.1, 0.05, 0)) < 0.001, "the window follows the hand by its corner")
-	_check(panel.global_basis.y.is_equal_approx(Vector3.UP), "and stays upright")
-	_check(toolbar.global_transform.is_equal_approx(floating_before * toolbar.transform), "the parameters move alone")
+	_check(panel.global_basis.is_equal_approx(floating_before.basis * panel_before.basis), "and keeps its tilt")
+	_check(toolbar.global_transform.is_equal_approx(floating_before * toolbar.transform), "the keyboard moves alone")
 	_right.set_input(&"grip", 0.0)
 	await _frames()
 	_check(pointer.held == null, "letting go of the grip leaves the window")
@@ -412,6 +436,7 @@ func _test_window_corners() -> void:
 	_aim(Vector3(5, 4, -2))
 	await _frames()
 	_check(not toolbar.handle_shown(XREPanelSurface.Corner.TOP_LEFT), "handles hide when the ray leaves")
+	panel.close()
 
 
 func _test_workspace() -> void:
@@ -442,8 +467,8 @@ func _test_workspace() -> void:
 	await _frames()
 	var card := (_service.canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
 	await _click(card.node.to_global(card.plus_point))
-	_check((_service.get("_block_palette") as XREPanelSurface).is_shown(), "trigger on plus opens a block palette")
-	(_service.get("_block_palette") as XREPanelSurface).set_shown(false)
+	_check(_service.is_block_palette_shown(), "trigger on plus opens a block palette")
+	_service.close_block_palette()
 	_rig.camera.position = Vector3(0, 0, -2)
 	await _frames()
 	_check(card.node.global_basis.z.dot(Vector3.FORWARD) > 0.99, "walking behind the graph turns each flat card towards the head")
@@ -454,8 +479,8 @@ func _test_workspace() -> void:
 	await _frames()
 	_right.set_input(&"trigger", 0.0)
 	await _frames()
-	_check((_service.get("_block_palette") as XREPanelSurface).is_shown(), "automatically facing plus opens the palette from the user's new side")
-	(_service.get("_block_palette") as XREPanelSurface).set_shown(false)
+	_check(_service.is_block_palette_shown(), "automatically facing plus opens the palette from the user's new side")
+	_service.close_block_palette()
 	_rig.camera.position = head_before
 	await _frames()
 	_aim(Vector3(5, 4, -2))
@@ -725,6 +750,219 @@ func _test_depth_direction(id: int) -> void:
 	_right.set_input(&"grip", 0.0)
 	_aim(Vector3(5, 4, -2))
 	await _frames()
+
+
+## Points the right ray at interface pixel [param pixel] of [param surface], from in front of it, without clicking.
+func _hover_on(surface: XREPanelSurface, pixel: Vector2) -> void:
+	var target := surface.pixel_to_global(pixel)
+	var origin := target + surface.global_basis.z.normalized() * 0.4
+	_right.set_pose(&"aim", Transform3D(Basis.looking_at(target - origin), origin), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await _frames()
+
+
+## Clicks the right trigger on interface pixel [param pixel] of [param surface], from in front of it.
+func _click_on(surface: XREPanelSurface, pixel: Vector2) -> void:
+	var target := surface.pixel_to_global(pixel)
+	var origin := target + surface.global_basis.z.normalized() * 0.4
+	_right.set_pose(&"aim", Transform3D(Basis.looking_at(target - origin), origin), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+
+
+func _card(id: int) -> XREBlueprintCanvas.Card:
+	for card: XREBlueprintCanvas.Card in _service.canvas.get("_cards") as Array:
+		if card.id == id: return card
+	return null
+
+
+## D-043, D-044: the parameters window opens beside the selected block as a
+## window of the panels, which closes and pins to a hand by its control bar;
+## the block palette closes by ×; a wire is taken back by its own port or by
+## the trigger on nothing; a port under the ray grows; sphere ports; concave windows.
+func _test_windows_and_ports(id: int) -> void:
+	_service.select_block(-1)
+	await _frames()
+	_check(not _service.is_parameters_shown() and _panels.find_window(XREBlueprintParametersTab) == null,
+			"without a selected block there is no parameters window")
+	_service.select_block(id)
+	var window := _panels.find_window(XREBlueprintParametersTab)
+	_check(_service.is_parameters_shown() and window != null, "selecting a block opens its parameters window")
+	if window == null: return
+	_check(window.tab.is_ancestor_of(_service.parameters) and _service.parameters.is_visible_in_tree(), "the window shows the parameters form")
+	_check(window.get_bar() != null and window.has_corner_handles(), "a window as the tabs' are: control bar and corner handles")
+	var card_pose := _card(id).node.global_transform
+	var beside := card_pose.affine_inverse() * window.global_position
+	# Pulled towards the head from beside the card, it drifts a little towards the head's height.
+	_check(absf(beside.y) < 0.1 and absf(beside.x) > XREBlueprintCanvas.CARD_WIDTH * 0.5 and absf(beside.x) < XREBlueprintCanvas.CARD_WIDTH + window.size_m.x,
+			"beside the selected block: %s" % beside)
+	_check(_rig.camera.global_position.distance_to(window.global_position) < _rig.camera.global_position.distance_to(card_pose.origin),
+			"nearer the head than the block")
+	var first: int = _service.blueprint.graph.nodes[0]["id"]
+	_service.select_block(first)
+	_check(_panels.find_window(XREBlueprintParametersTab) == window
+			and (_card(first).node.global_transform.affine_inverse() * window.global_position).length() < 0.5,
+			"selecting another block brings the window beside it")
+	_service.select_block(id)
+	# The ray on the window shows its control bar; × on it closes the window.
+	var bar := window.get_bar()
+	await _hover_on(window, window.size_px * 0.5)
+	await _click_on(bar, window.get_close_button().get_global_rect().get_center())
+	await _frames()
+	_check(not _service.is_parameters_shown() and _panels.find_window(XREBlueprintParametersTab) == null and _service.get("_selected") == id,
+			"× on the control bar closes the parameters window and the block stays selected")
+	_check(is_instance_valid(_service.parameters) and _service.parameters.get_parent() == _service.get("_forms_home"),
+			"the form outlives its window")
+	_service.select_block(-1)
+	_service.select_block(id)
+	window = _panels.find_window(XREBlueprintParametersTab)
+	_check(window != null and window.tab.is_ancestor_of(_service.parameters), "selecting the block again opens the window again")
+	await _hover_on(window, window.size_px * 0.5)
+	await _click_on(window.get_bar(), window.get_pin_button().get_global_rect().get_center())
+	await _frames()
+	_check(window.pin == XREPanelWindow.Pin.RIGHT_HAND and _panels.get_pinned_window(_rig.right_hand) == window,
+			"the pin on its control bar pins the parameters window to the hand that clicked")
+	var pinned := window.global_transform
+	_service.select_block(first)
+	_check(window.global_transform.is_equal_approx(pinned) and window.is_pinned(), "a pinned parameters window stays on the hand when another block is selected")
+	_service.close_parameters()
+	_check(_panels.find_window(XREBlueprintParametersTab) == null and _panels.get_pinned_window(_rig.right_hand) == null, "the graph closes it, pinned too")
+	await _frames()
+	_service.select_block(id)
+	_service.close_parameters()
+	await _frames()
+	# The plus's palette: a window of the panels too, beside the card, on the other side than the parameters.
+	_service.call("_show_block_palette", id)
+	var palette := _panels.find_window(XREBlueprintPaletteTab)
+	_check(_service.is_block_palette_shown() and palette != null and palette.tab.is_ancestor_of(_service.block_list), "the plus opens the block palette window")
+	_check(not _service.is_parameters_shown() and _panels.find_window(XREBlueprintParametersTab) == null and _service.get("_selected") == id,
+			"and not the parameters, though it selects the block (D-046)")
+	_service.select_block(id)
+	var parameters := _panels.find_window(XREBlueprintParametersTab)
+	_check(parameters != null, "selecting the block opens its parameters")
+	if palette == null or parameters == null: return
+	# The block selected again: its parameters pulse where they are (D-046).
+	parameters.stop_pulse()
+	var parameters_at := parameters.global_transform
+	_service.select_block(id)
+	_check(parameters.is_pulsing() and parameters.global_transform.orthonormalized().is_equal_approx(parameters_at),
+			"selecting the block again pulses its parameters where they are")
+	parameters.stop_pulse()
+	_service.call("_show_block_palette", id)
+	_check(palette.is_pulsing(), "the plus again pulses the open palette")
+	var card_inverse := _card(id).node.global_transform.affine_inverse()
+	_check(signf((card_inverse * palette.global_position).x) == -signf((card_inverse * parameters.global_position).x),
+			"beside the card, on the other side than its parameters")
+	var blocks_before := _service.blueprint.graph.nodes.size()
+	await _hover_on(palette, palette.size_px * 0.5)
+	await _click_on(palette.get_bar(), palette.get_close_button().get_global_rect().get_center())
+	await _frames()
+	_check(not _service.is_block_palette_shown() and _panels.find_window(XREBlueprintPaletteTab) == null
+			and _service.block_list.get_parent() == _service.get("_forms_home") and _service.blueprint.graph.nodes.size() == blocks_before,
+			"× on its control bar closes the block palette")
+	_service.call("_show_block_palette", id)
+	palette = _panels.find_window(XREBlueprintPaletteTab)
+	_panels.pin_window(palette, XREPanelWindow.Pin.LEFT_HAND)
+	var nodes_before := _service.blueprint.graph.nodes.size()
+	_service.add_block("print")
+	_check(_service.blueprint.graph.nodes.size() == nodes_before + 1 and _service.is_block_palette_shown() and palette.is_pinned(),
+			"pinned to a hand, the palette stays after a block is added")
+	_service.blueprint.undo()
+	await _frames()
+	_service.call("_show_block_palette", id)
+	_check(palette.is_pinned() and _panels.get_pinned_window(_rig.left_hand) == palette, "the plus leaves a pinned palette on the hand")
+	_service.close_block_palette()
+	_service.close_parameters()
+	await _frames()
+	_check(_panels.find_window(XREBlueprintPaletteTab) == null, "the graph closes the pinned palette")
+	# A port with two wires detaches only the one picked, from this port; its other end keeps it (D-044).
+	var history := _service.blueprint.history.get_version()
+	_service.add_block("value")
+	var value_id: int = _service.blueprint.graph.nodes.back()["id"]
+	_service.add_block("print")
+	var second_id: int = _service.blueprint.graph.nodes.back()["id"]
+	_service.blueprint.perform(_service.blueprint.connect_blocks.bind(value_id, 0, id, 1), &"vr_graph")
+	_service.blueprint.perform(_service.blueprint.connect_blocks.bind(value_id, 0, second_id, 1), &"vr_graph")
+	await _frames()
+	var chosen := -1
+	for index: int in _service.blueprint.graph.edges.size():
+		var edge: Dictionary = _service.blueprint.graph.edges[index]
+		if edge["from"] == value_id and edge["to"] == second_id: chosen = index
+	var edges_before := _service.blueprint.graph.edges.size()
+	_check(_service.click_port(value_id, 0, false, _rig.right_hand, chosen), "a click on a port with two wires")
+	var kept := false
+	var gone := true
+	for edge: Dictionary in _service.blueprint.graph.edges:
+		if edge["from"] == value_id and edge["to"] == id: kept = true
+		if edge["from"] == value_id and edge["to"] == second_id: gone = false
+	_check(_service.blueprint.graph.edges.size() == edges_before - 1 and kept and gone, "detaches only the picked wire")
+	_check(_service.get("_pending_id") == second_id and _service.get("_pending_port") == 1 and _service.get("_pending_input"),
+			"which stays on its other end, at the other port")
+	_service.cancel_connection()
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+	_service.select_block(id)
+	_service.close_parameters()
+	await _frames()
+
+	var preview := _service.canvas.get("_preview") as XREGraphWire
+	var port := _service.canvas.to_global(_service.canvas.port_position(id, 0, false))
+	var front := _card(id).node.global_basis.z.normalized()
+	var aim_port := func() -> void:
+		_right.set_pose(&"aim", Transform3D(Basis.looking_at(-front), port + front * 0.4), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	aim_port.call()
+	await _frames()
+	_check(_service.canvas.is_port_hovered(id, 0, false), "the port under the ray grows, as the plus does")
+	_check(is_equal_approx(_card(id).ports[_card(id).inputs.size()].scale.x, XREBlueprintCanvas.HOVER_SCALE), "by the plus's hover scale")
+	for click: int in 2:
+		aim_port.call()
+		_right.set_input(&"trigger", 1.0)
+		await _frames()
+		_right.set_input(&"trigger", 0.0)
+		await _frames()
+		if click == 0: _check(_service.get("_pending_id") == id and preview.visible, "trigger on a port draws a wire")
+	_check(int(_service.get("_pending_id")) == -1 and not preview.visible, "the same port again takes the wire back")
+	aim_port.call()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(_service.get("_pending_hand") == _rig.right_hand, "a wire again, by the right hand")
+	var selection := _document.get_selection()
+	await _click(Vector3(5, 4, -2))
+	_check(_document.get_selection() == selection, "the trigger that takes the wire back selects nothing in the scene")
+	_check(int(_service.get("_pending_id")) == -1 and not preview.visible, "the trigger on nothing takes the wire back")
+	_check(not _service.canvas.is_port_hovered(id, 0, false), "a port the ray left is back to its size")
+
+	_check(_document.set_feature(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.SPHERE, XREDocument.Source.PANEL), "ports switch to spheres")
+	await _frames()
+	var card := _card(id)
+	_check(card.ports[0].mesh is SphereMesh, "open cards' ports are spheres")
+	port = _service.canvas.to_global(_service.canvas.port_position(id, 0, false))
+	_check(_service.canvas.intersect_ray(port + front * 0.4, -front, 1.0) >= 0 and _service.canvas.get_hit_port() == 0 and not _service.canvas.get_hit_input(),
+			"a sphere port takes the ray")
+	var side := (front * 0.5 + _card(id).node.global_basis.x.normalized() * 0.866).normalized()
+	_check(_service.canvas.intersect_ray(port + side * 0.3, -side, 1.0) >= 0 and _service.canvas.get_hit_port() == 0,
+			"from aside too, as a sphere")
+	_check(_document.set_feature(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.FLAT, XREDocument.Source.PANEL), "ports switch back")
+	await _frames()
+	_check(_card(id).ports[0].mesh is CylinderMesh, "flat ports again")
+
+	var toolbar := _service.get("_toolbar") as XREPanelSurface
+	_check(_document.set_feature(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.CONCAVE, XREDocument.Source.PANEL), "windows switch to concave")
+	_check(toolbar.curve_radius > 0.0 and (_service.get("_keyboard") as XREPanelSurface).curve_radius > 0.0 and not (_service.get("_badge") as XREPanelSurface).curve_radius > 0.0,
+			"the graph's windows bend, the object's badge doesn't")
+	var pixel := Vector2(60, 40)
+	var point := toolbar.pixel_to_global(pixel)
+	_check(toolbar.to_local(point).z > 0.05, "a concave window's edge comes towards the user")
+	var normal := toolbar.global_basis.z.normalized()
+	_check(toolbar.intersect_ray(point + normal * 0.3, -normal, 1.0) >= 0 and toolbar.get_hit_pixel().distance_to(pixel) < 0.5,
+			"the ray hits the pixel drawn there: %s" % toolbar.get_hit_pixel())
+	_check(_document.set_feature(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.FLAT, XREDocument.Source.PANEL) and toolbar.curve_radius == 0.0,
+			"and flat again")
 
 
 func _test_keyboard() -> void:

@@ -6,7 +6,9 @@ extends Node3D
 ## (docs/decisions.md, D-016). [XREPanels] drives the pointer.
 ##
 ## The quad lies in the node's XY plane, centered on its origin, and faces +Z;
-## only its front takes the ray. The interface is laid out at
+## only its front takes the ray. A concave panel ([method set_curve_radius],
+## D-043) bends it around a vertical axis in front of it, its edges towards
+## the user; the interface keeps its size along the curve. The interface is laid out at
 ## [member size_px] and rendered at a multiple of it, so that text stays sharp
 ## in the headset. [member root] is the frame every panel shares: the editor's
 ## theme, its base color, rounded corners. Popups open inside the panel, never
@@ -17,6 +19,14 @@ extends Node3D
 ## hand tremor doesn't turn a click into a drag. Godot leaves double clicks to
 ## the platform, so the panel marks a press soon after another, at the same
 ## place, as one.
+## [br][br]
+## Lists scroll by dragging, as on a phone or in Meta Horizon OS (D-045): a
+## press on a list that can scroll — a [ScrollContainer], [Tree], [ItemList]
+## or [RichTextLabel], or a control in one — waits. Let go within
+## [constant CLICK_SLOP_PX], it is a click; moved further up or down, the
+## list follows the ray, with no click, and, let go while moving, glides on
+## and slows down. Moved further sideways, it is the press it was, and the
+## drag goes on as a mouse drag (a slider's).
 ## [br][br]
 ## A window (rig-locked, docs/vr_ui.md, D-040) has corner handles
 ## ([method add_corner_handles]): brackets just outside its corners, shown
@@ -54,8 +64,20 @@ const HANDLE_COLOR := Color(1.0, 1.0, 1.0, 0.45)
 const HANDLE_HOT_COLOR := Color(1.0, 1.0, 1.0, 0.95)
 const _HOVER_BODY := 1 << 4
 
+## A pulse ([method pulse]): how long it takes, in seconds, and how much the
+## panel grows at its height.
+const PULSE_TIME := 0.25
+const PULSE_GROWTH := 0.06
+## A list let go while dragged glides on: its speed falls by this factor
+## per second, and it stops below [constant MIN_GLIDE_SPEED], in interface pixels per second.
+const GLIDE_FRICTION := 5.0
+const MIN_GLIDE_SPEED := 40.0
+## How finely a concave panel is bent: segments of its curve per radian.
+const CURVE_SEGMENTS_PER_RADIAN := 24.0
+
 ## Handle materials shared by every window: idle and hot, over the scene and over the logic veil.
 static var _handle_materials: Array[ShaderMaterial] = []
+static var _panel_shader: Shader
 
 ## The frame, filling the panel; panels put their controls in it.
 var root: PanelContainer
@@ -64,8 +86,10 @@ var root: PanelContainer
 var corner_radius := CORNER_RADIUS
 ## Size of the interface, in its own pixels.
 var size_px: Vector2
-## Size of the quad, in meters.
+## Size of the quad, in meters; along its curve for a concave panel.
 var size_m: Vector2
+## Radius of a concave panel's curve in meters, or 0 for a flat one ([method set_curve_radius]).
+var curve_radius := 0.0
 
 var _viewport: SubViewport
 var _quad: MeshInstance3D
@@ -92,7 +116,17 @@ var _handles_enabled := true
 var _hover_mask := 0
 var _shown_mask := -1
 var _overlay := false
-var _scene_material: StandardMaterial3D
+## Seconds into the pulse, or -1 without one.
+var _pulse := -1.0
+## Drag scrolling: the list a press waits on, the one being dragged, the one
+## gliding, the content's speed in pixels per second, and the last drag.
+var _waiting_bar: ScrollBar
+var _drag_bar: ScrollBar
+var _glide_bar: ScrollBar
+var _scroll_speed := 0.0
+var _drag_y := 0.0
+var _drag_usec := 0
+var _scene_material: ShaderMaterial
 var _overlay_material: ShaderMaterial
 
 
@@ -106,7 +140,7 @@ func _init(logical_size: Vector2, pixel_size: float, render_scale: float, theme:
 	root = PanelContainer.new()
 	root.name = "Frame"
 	root.theme = theme
-	root.add_theme_stylebox_override(&"panel", frame_style(theme))
+	root.add_theme_stylebox_override(&"panel", meta_style(META_WINDOW_COLOR, CORNER_RADIUS, 8.0))
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	_viewport = SubViewport.new()
@@ -121,40 +155,19 @@ func _init(logical_size: Vector2, pixel_size: float, render_scale: float, theme:
 	_viewport.add_child(root)
 	add_child(_viewport)
 
-	var mesh := QuadMesh.new()
-	mesh.size = size_m
-	var material := StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
-	material.albedo_texture = _viewport.get_texture()
-	# The viewport renders in sRGB, and the material would read it as linear.
-	material.albedo_texture_force_srgb = true
-	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
-	material.disable_fog = true
-	_scene_material = material
-	var shader := Shader.new()
-	shader.code = """
-shader_type spatial;
-render_mode unshaded, depth_draw_always, fog_disabled;
-uniform sampler2D panel_texture : source_color, filter_linear;
-void fragment() {
-	vec4 color = texture(panel_texture, UV);
-	if (color.a < 0.01) discard;
-	ALBEDO = color.rgb;
-	ALPHA = color.a;
-}
-"""
-	_overlay_material = ShaderMaterial.new()
-	_overlay_material.shader = shader
-	_overlay_material.render_priority = Material.RENDER_PRIORITY_MAX
-	_overlay_material.set_shader_parameter(&"panel_texture", _viewport.get_texture())
-	_quad = XRERig.create_vr_mesh(mesh, material)
+	# One shader over the scene and over the logic veil, so that a panel's colors don't change
+	# when the veil comes (D-043): a StandardMaterial3D with albedo_texture_force_srgb decoded
+	# the viewport's sRGB twice and drew the panel almost black.
+	_scene_material = _make_panel_material(0)
+	_overlay_material = _make_panel_material(Material.RENDER_PRIORITY_MAX)
+	_quad = XRERig.create_vr_mesh(_make_mesh(), _scene_material)
 	_quad.name = "Quad"
 	add_child(_quad)
 
 
-## The frame of every panel: the editor's base color, rounded corners and an
-## edge in its accent color.
+## A frame in the editor's base color, with rounded corners and an edge in
+## its accent color. Panels have the frame of a Meta Horizon OS window instead
+## (D-042, D-043), so that the graph's windows look as the tabs' do.
 static func frame_style(theme: Theme) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = editor_color(theme, &"base_color", Color(0.13, 0.15, 0.19))
@@ -196,9 +209,39 @@ func resize(logical_size: Vector2, pixel_size: float) -> void:
 	size_m = logical_size * pixel_size
 	_viewport.size = Vector2i((logical_size * _render_scale).round())
 	_viewport.size_2d_override = Vector2i(logical_size.round())
-	(_quad.mesh as QuadMesh).size = size_m
+	_quad.mesh = _make_mesh()
 	if not _handles.is_empty():
 		_place_handles()
+
+
+## Bends the panel around a vertical axis [param radius] meters in front of
+## it, so that its edges come towards the user (D-043); 0 makes it flat. Its
+## size along the curve, its pixels and its handles stay.
+func set_curve_radius(radius: float) -> void:
+	radius = maxf(radius, 0.0)
+	if is_equal_approx(radius, curve_radius):
+		return
+	curve_radius = radius
+	_quad.mesh = _make_mesh()
+	if not _handles.is_empty():
+		_place_handles()
+
+
+## How opaque the panel is drawn, 0 to 1: the launcher fades in by it. It
+## doesn't change what takes the ray.
+func set_opacity(opacity: float) -> void:
+	for material: ShaderMaterial in [_scene_material, _overlay_material]:
+		material.set_shader_parameter(&"opacity", clampf(opacity, 0.0, 1.0))
+
+
+## Where a point [param local] of the flat panel, in meters from its center,
+## lies on the panel as it is drawn: bent onto the curve of a concave one.
+func bend(local: Vector3) -> Vector3:
+	if curve_radius <= 0.0:
+		return local
+	var angle := local.x / curve_radius
+	var depth := curve_radius - local.z
+	return Vector3(depth * sin(angle), local.y, curve_radius - depth * cos(angle))
 
 
 ## Whether the panel is in view and takes the ray.
@@ -224,7 +267,7 @@ func set_shown(shown: bool) -> void:
 ## [param max_distance]; otherwise -1. [method get_hit_pixel] then tells the
 ## pixel. With [param bounded] off, any point of the panel's plane counts:
 ## a pointer holding the button down follows the ray past the edges.
-## The panel must not be scaled, for the distance to be in meters.
+## The panel may be scaled uniformly: the distance is along the ray, in meters.
 func intersect_ray(origin: Vector3, direction: Vector3, max_distance: float, bounded: bool = true) -> float:
 	var distance := _cast(origin, direction, max_distance)
 	if distance < 0.0:
@@ -246,12 +289,10 @@ func get_hit_pixel() -> Vector2:
 func add_corner_handles() -> void:
 	if not _handles.is_empty():
 		return
-	var angles: Array[float] = [PI / 2.0, 0.0, -PI / 2.0, PI]
 	for corner: int in 4:
-		# The mesh comes with the frame's size (_place_handles).
+		# The mesh comes with the frame's size and curve (_place_handles).
 		var handle := XRERig.create_vr_mesh(null, _handle_material(false))
 		handle.name = "Handle%s" % (Corner.keys()[corner] as String).to_pascal_case()
-		handle.rotation.z = angles[corner]
 		handle.visible = false
 		add_child(handle)
 		_handles.append(handle)
@@ -330,12 +371,65 @@ func handle_lit(corner: int) -> bool:
 	return handle_shown(corner) and _handles[corner].material_override == _handle_material(true)
 
 
+## Pulses the panel once (D-045): it grows and shrinks back, and shows its
+## corner handles meanwhile, so that the user sees where it is, as it appears
+## or when it is asked for again while open.
+func pulse() -> void:
+	_pulse = 0.0
+	_update_processing()
+
+
+## Ends the pulse at once, back to the panel's size: a window taken in hand stops pulsing.
+func stop_pulse() -> void:
+	if _pulse < 0.0:
+		return
+	_pulse = -1.0
+	scale = Vector3.ONE
+	_update_processing()
+
+
+## Whether the panel is pulsing.
+func is_pulsing() -> bool:
+	return _pulse >= 0.0
+
+
+## Whether a list of the panel is being dragged or glides on.
+func is_scrolling() -> bool:
+	return _drag_bar != null or _glide_bar != null
+
+
 func _ready() -> void:
-	# Only windows look at the rays each frame.
-	set_process(not _handles.is_empty())
+	_update_processing()
 
 
-func _process(_delta: float) -> void:
+## Only windows look at the rays each frame; other panels while they pulse or a list glides.
+func _update_processing() -> void:
+	set_process(not _handles.is_empty() or _pulse >= 0.0 or _glide_bar != null)
+
+
+func _process(delta: float) -> void:
+	if _glide_bar != null:
+		var gliding := is_instance_valid(_glide_bar)
+		if gliding:
+			var before := _glide_bar.value
+			_glide_bar.value += _scroll_speed * delta
+			_scroll_speed *= exp(-GLIDE_FRICTION * delta)
+			# Slowed down, or at an end of the list.
+			gliding = absf(_scroll_speed) >= MIN_GLIDE_SPEED and not is_equal_approx(_glide_bar.value, before)
+		if not gliding:
+			_glide_bar = null
+			_update_processing()
+	if _pulse >= 0.0:
+		_pulse += delta
+		var progress := _pulse / PULSE_TIME
+		if progress >= 1.0:
+			_pulse = -1.0
+			scale = Vector3.ONE
+			_update_processing()
+		else:
+			# After whoever places the panel this frame: its router runs before it in the tree.
+			scale = Vector3.ONE * (1.0 + PULSE_GROWTH * sin(PI * progress))
+			_hover_mask |= _HOVER_BODY
 	# The routers run before their panels in the tree: they have told this frame's hover.
 	if _hover_mask != _shown_mask:
 		_shown_mask = _hover_mask
@@ -351,12 +445,23 @@ func _update_handles() -> void:
 		handle.material_override = _handle_material(shown and _shown_mask & (1 << corner) != 0)
 
 
-## Puts the corner handles at the frame's corners, bent around its rounded corners.
+## Puts the corner handles at the frame's corners, bent around its rounded
+## corners and, on a concave panel, onto its curve.
 func _place_handles() -> void:
-	var mesh := _bracket_mesh(corner_radius * size_m.x / size_px.x)
+	var outline := _bracket_outline(corner_radius * size_m.x / size_px.x)
+	var angles: Array[float] = [PI / 2.0, 0.0, -PI / 2.0, PI]
 	for corner: int in _handles.size():
+		var place := Transform2D(angles[corner], Vector2(_corner_sign(corner).x * size_m.x * 0.5, _corner_sign(corner).y * size_m.y * 0.5))
+		var vertices := PackedVector3Array()
+		for point: Vector2 in outline:
+			var flat := place * point
+			vertices.append(bend(Vector3(flat.x, flat.y, 0.0)))
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = vertices
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLE_STRIP, arrays)
 		_handles[corner].mesh = mesh
-		_handles[corner].position = Vector3(_corner_sign(corner).x * size_m.x * 0.5, _corner_sign(corner).y * size_m.y * 0.5, 0.0)
 
 
 func _handle_material(hot: bool) -> ShaderMaterial:
@@ -385,8 +490,9 @@ void fragment() {
 ## The top right corner's bracket, around the corner at the origin of a frame
 ## whose corners are rounded by [param radius] meters: an arm along the top
 ## edge, an arc around the rounded corner, an arm down the right edge, all
-## [constant HANDLE_GAP] outside the frame. The other corners turn it.
-static func _bracket_mesh(radius: float) -> ArrayMesh:
+## [constant HANDLE_GAP] outside the frame, as a triangle strip's points. The
+## other corners turn it.
+static func _bracket_outline(radius: float) -> PackedVector2Array:
 	var center := Vector2(-radius, -radius)
 	var inner := radius + HANDLE_GAP
 	var arm := maxf(HANDLE_ARM - radius, 0.01)
@@ -401,17 +507,56 @@ static func _bracket_mesh(radius: float) -> ArrayMesh:
 		normals.append(normal)
 	points.append(Vector2(center.x + inner, center.y - arm))
 	normals.append(Vector2(1.0, 0.0))
-	var vertices := PackedVector3Array()
+	var strip := PackedVector2Array()
 	for index: int in points.size():
-		var outer := points[index] + normals[index] * HANDLE_WIDTH
-		vertices.append(Vector3(points[index].x, points[index].y, 0.0))
-		vertices.append(Vector3(outer.x, outer.y, 0.0))
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
+		strip.append(points[index])
+		strip.append(points[index] + normals[index] * HANDLE_WIDTH)
+	return strip
+
+
+## The quad as it is drawn: flat, or bent onto the curve of a concave panel.
+func _make_mesh() -> Mesh:
+	var quad := QuadMesh.new()
+	quad.size = size_m
+	if curve_radius <= 0.0:
+		return quad
+	quad.subdivide_width = maxi(ceili(size_m.x / curve_radius * CURVE_SEGMENTS_PER_RADIAN), 1)
+	var arrays := quad.get_mesh_arrays()
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	for index: int in vertices.size():
+		var angle := vertices[index].x / curve_radius
+		vertices[index] = bend(vertices[index])
+		normals[index] = Vector3(-sin(angle), 0.0, cos(angle))
 	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TANGENT] = null
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLE_STRIP, arrays)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+
+## The panel's material at [param priority]: the scene's (0) or the logic veil's (maximum).
+func _make_panel_material(priority: int) -> ShaderMaterial:
+	if _panel_shader == null:
+		_panel_shader = Shader.new()
+		_panel_shader.code = """
+shader_type spatial;
+render_mode unshaded, depth_draw_always, fog_disabled;
+uniform sampler2D panel_texture : source_color, filter_linear;
+uniform float opacity = 1.0;
+void fragment() {
+	vec4 color = texture(panel_texture, UV);
+	if (color.a * opacity < 0.01) discard;
+	ALBEDO = color.rgb;
+	ALPHA = color.a * opacity;
+}
+"""
+	var material := ShaderMaterial.new()
+	material.shader = _panel_shader
+	material.render_priority = priority
+	material.set_shader_parameter(&"panel_texture", _viewport.get_texture())
+	return material
 
 
 ## Signs of [param corner]'s coordinates from the panel's center.
@@ -431,6 +576,8 @@ func _cast(origin: Vector3, direction: Vector3, max_distance: float) -> float:
 	var to_local := global_transform.affine_inverse()
 	var local_origin := to_local * origin
 	var local_direction := to_local.basis * direction
+	if curve_radius > 0.0:
+		return _cast_curve(local_origin, local_direction, max_distance)
 	if local_origin.z <= 0.0 or local_direction.z >= 0.0:
 		return -1.0
 	var distance := -local_origin.z / local_direction.z
@@ -438,6 +585,29 @@ func _cast(origin: Vector3, direction: Vector3, max_distance: float) -> float:
 		return -1.0
 	var hit := local_origin + local_direction * distance
 	_hit_local = Vector2(hit.x, hit.y)
+	return distance
+
+
+## [method _cast] onto a concave panel: where the ray leaves the cylinder the
+## curve lies on, on the cylinder's half nearer the panel, is the curve's
+## front. [member _hit_local] is unrolled: along the curve, and up.
+func _cast_curve(origin: Vector3, direction: Vector3, max_distance: float) -> float:
+	var axis_z := origin.z - curve_radius
+	var a := direction.x * direction.x + direction.z * direction.z
+	if a < 0.000001:
+		return -1.0
+	var b := 2.0 * (origin.x * direction.x + axis_z * direction.z)
+	var c := origin.x * origin.x + axis_z * axis_z - curve_radius * curve_radius
+	var discriminant := b * b - 4.0 * a * c
+	if discriminant < 0.0:
+		return -1.0
+	var distance := (-b + sqrt(discriminant)) / (2.0 * a)
+	if distance < 0.0 or distance > max_distance:
+		return -1.0
+	var hit := origin + direction * distance
+	if hit.z >= curve_radius:
+		return -1.0
+	_hit_local = Vector2(atan2(hit.x, curve_radius - hit.z) * curve_radius, hit.y)
 	return distance
 
 
@@ -452,7 +622,7 @@ func set_overlay(enabled: bool) -> void:
 ## Global position of the interface pixel [param pixel] on the quad.
 func pixel_to_global(pixel: Vector2) -> Vector3:
 	var local := Vector3((pixel.x / size_px.x - 0.5) * size_m.x, (0.5 - pixel.y / size_px.y) * size_m.y, 0.0)
-	return global_transform * local
+	return global_transform * bend(local)
 
 
 ## Where the pointer is, in interface pixels.
@@ -467,6 +637,25 @@ func is_pressed() -> bool:
 
 ## Moves the pointer to [param pixel], entering the panel if it was off it.
 func pointer_move(pixel: Vector2) -> void:
+	if _waiting_bar != null:
+		var moved := pixel - _press_position
+		if moved.length() < CLICK_SLOP_PX:
+			return
+		_pinned = false
+		if absf(moved.y) >= absf(moved.x) and is_instance_valid(_waiting_bar):
+			# Up or down: the list follows, and no click is made.
+			_drag_bar = _waiting_bar
+			_waiting_bar = null
+			_drag_y = _press_position.y
+			_drag_usec = Time.get_ticks_usec()
+			_scroll_speed = 0.0
+		else:
+			# Sideways: the press it was, then a mouse drag.
+			_waiting_bar = null
+			_send_button(true)
+	if _drag_bar != null:
+		_drag(pixel)
+		return
 	if _pinned:
 		if pixel.distance_to(_press_position) < CLICK_SLOP_PX:
 			return
@@ -488,16 +677,102 @@ func pointer_move(pixel: Vector2) -> void:
 	_viewport.push_input(event, true)
 
 
-## Presses or lets go of the pointer's button where the pointer is.
+## Presses or lets go of the pointer's button where the pointer is. A press
+## on a list that can scroll waits to see whether it is a click or a drag.
 func pointer_button(pressed: bool) -> void:
 	if pressed == _pressed or not _inside:
 		return
+	_pressed = pressed
+	if pressed:
+		_glide_bar = null
+		_press_position = _pointer
+		_pinned = true
+		_waiting_bar = _scroll_bar_at_pointer()
+		if _waiting_bar == null:
+			_send_button(true)
+		return
+	_pinned = false
+	if _waiting_bar != null:
+		# Let go where it was pressed: a click.
+		_waiting_bar = null
+		_send_button(true)
+		_send_button(false)
+	elif _drag_bar != null:
+		# A drag let go while moving glides on.
+		if absf(_scroll_speed) >= MIN_GLIDE_SPEED and Time.get_ticks_usec() - _drag_usec < 100000:
+			_glide_bar = _drag_bar
+		_drag_bar = null
+		_update_processing()
+	else:
+		_send_button(false)
+	pointer_released.emit()
+
+
+## Scrolls the dragged list so that its content follows the pointer, up or down, and keeps its speed.
+func _drag(pixel: Vector2) -> void:
+	_pointer = pixel
+	if not is_instance_valid(_drag_bar):
+		_drag_bar = null
+		return
+	var now := Time.get_ticks_usec()
+	var moved := pixel.y - _drag_y
+	var seconds := float(now - _drag_usec) / 1000000.0
+	if is_zero_approx(moved):
+		if seconds > 0.05:
+			_scroll_speed = 0.0
+		return
+	_drag_bar.value -= moved
+	if seconds > 0.0:
+		_scroll_speed = lerpf(_scroll_speed, -moved / seconds, 0.6)
+	_drag_y = pixel.y
+	_drag_usec = now
+
+
+## The vertical scroll bar of the innermost list under the pointer that can
+## scroll; null otherwise, and on a scroll bar itself. Found by the controls'
+## rectangles, not by the viewport's hover, which a quick press right after
+## the ray moved can find a frame old (D-046).
+func _scroll_bar_at_pointer() -> ScrollBar:
+	var found: ScrollBar = null
+	var pending: Array[Control] = [root]
+	while not pending.is_empty():
+		var control: Control = pending.pop_back()
+		if not control.is_visible_in_tree() or not control.get_global_rect().has_point(_pointer):
+			continue
+		var bar := _vertical_bar(control)
+		if bar != null and bar.is_visible_in_tree():
+			if bar.get_global_rect().has_point(_pointer):
+				return null
+			if bar.max_value - bar.page > 0.5:
+				found = bar
+		for child: Node in control.get_children():
+			if child is Control and not (child as Control).top_level:
+				pending.append(child as Control)
+	return found
+
+
+## The vertical scroll bar of [param control] if it is a list, or null.
+static func _vertical_bar(control: Control) -> ScrollBar:
+	if control is ScrollContainer:
+		return (control as ScrollContainer).get_v_scroll_bar()
+	if control is ItemList:
+		return (control as ItemList).get_v_scroll_bar()
+	if control is RichTextLabel:
+		return (control as RichTextLabel).get_v_scroll_bar()
+	if control is Tree:
+		for child: Node in control.get_children(true):
+			if child is VScrollBar:
+				return child as VScrollBar
+	return null
+
+
+## Sends the pointer's button to the interface where the pointer is.
+func _send_button(pressed: bool) -> void:
 	var event := InputEventMouseButton.new()
 	event.button_index = MOUSE_BUTTON_LEFT
 	event.pressed = pressed
 	event.position = _pointer
 	event.global_position = _pointer
-	_pressed = pressed
 	if pressed:
 		event.button_mask = MOUSE_BUTTON_MASK_LEFT
 		var now := Time.get_ticks_usec()
@@ -506,12 +781,7 @@ func pointer_button(pressed: bool) -> void:
 		# A double click ends the series: the next press starts a new one.
 		_last_press_usec = -DOUBLE_CLICK_USEC if event.double_click else now
 		_last_press_position = _pointer
-		_press_position = _pointer
-		_pinned = true
 	_viewport.push_input(event, true)
-	if not pressed:
-		_pinned = false
-		pointer_released.emit()
 
 
 ## Turns the mouse wheel by [param notches] where the pointer is: positive
@@ -531,6 +801,9 @@ func pointer_scroll(notches: float) -> void:
 
 ## Takes the pointer off the panel, letting go of its button first.
 func pointer_exit() -> void:
+	# A press waiting on a list, or a drag, ends without a click.
+	_waiting_bar = null
+	_drag_bar = null
 	if not _inside or not _viewport.is_inside_tree():
 		_inside = false
 		_pressed = false

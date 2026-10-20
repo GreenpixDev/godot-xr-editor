@@ -57,6 +57,46 @@ func _test_cuboid(graph: XREBlueprintGraph) -> void:
 	_check(card.node.global_basis.z.dot(Vector3.FORWARD) > 0.99, "billboards turn to the head again")
 
 
+## D-044, D-045: a port under the ray thickens one of its wires, which the height of
+## the hit on the port picks, the top of the port the wire going highest.
+func _test_port_wires() -> void:
+	var graph := XREBlueprintGraph.new()
+	graph.nodes = [
+		{"id": 1, "kind": "value", "position": Vector2(0, 0), "params": {"value": 1.0}},
+		{"id": 2, "kind": "print", "position": Vector2(400, -300), "params": {}},
+		{"id": 3, "kind": "print", "position": Vector2(400, 300), "params": {}},
+	]
+	graph.edges = [
+		{"from": 1, "from_port": 0, "to": 3, "to_port": 1},
+		{"from": 1, "from_port": 0, "to": 2, "to_port": 1},
+	]
+	_canvas.set_display(XREFeatureSettings.BILLBOARD)
+	_canvas.center_graph(graph)
+	_canvas.rebuild(graph)
+	_canvas.face_user(_canvas.to_global(Vector3(0, 0, 2)))
+	_check(_canvas.port_edges(1, 0, false) == ([1, 0] as Array[int]), "a port's wires, the one going highest first: %s" % [_canvas.port_edges(1, 0, false)])
+	var card := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var port := card.node.position + card.outputs[0]
+	var reach := XREBlueprintCanvas.PORT_RADIUS * 0.9
+	_check(_hit(port + Vector3.UP * reach, Vector3.FORWARD) >= 0 and _canvas.get_hit_port() == 0 and _canvas.get_hit_edge() == 1,
+			"the port's top picks the wire going up")
+	_check(_hit(port + Vector3.DOWN * reach, Vector3.FORWARD) >= 0 and _canvas.get_hit_edge() == 0, "its bottom the wire going down")
+	_canvas.hover_actions(1, false, false, true, 0, false, _canvas.get_hit_edge())
+	_check(_canvas.is_edge_lit(0) and not _canvas.is_edge_lit(1), "the picked wire lights up")
+	var wires := _canvas.get("_wires") as Array
+	var lit := wires[0] as XREBlueprintCanvas.Wire
+	_check(lit.mesh.material_override == lit.lit and (wires[1] as XREBlueprintCanvas.Wire).mesh.material_override != (wires[1] as XREBlueprintCanvas.Wire).lit,
+			"drawn lit, the other one not")
+	var lit_material := lit.lit as ShaderMaterial
+	var normal_material := lit.normal as ShaderMaterial
+	_check(is_equal_approx(float(lit_material.get_shader_parameter(&"grow")), XREBlueprintCanvas.LIT_WIRE_GROW)
+			and lit_material.get_shader_parameter(&"tint") == normal_material.get_shader_parameter(&"tint"),
+			"lit means thicker, in the same color (D-045)")
+	_canvas.hover_actions(-1, false, false, true)
+	_check(not _canvas.is_edge_lit(0) and lit.mesh.material_override == lit.normal, "the ray leaving the port puts the wire out")
+	_check(_hit(card.node.position + card.outputs[0], Vector3.FORWARD) >= 0 and _canvas.get_hit_edge() >= 0, "a port with one wire or more always picks one")
+
+
 func _run() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [{"id": 1, "kind": "ready", "position": Vector2.ZERO, "params": {"policy": "parallel"}}]
@@ -127,6 +167,7 @@ func _run() -> void:
 	_canvas.preview_grab(1, contact, local_contact, head)
 	_check(card.node.to_global(local_contact).is_equal_approx(contact), "minimum horizontal reach cannot detach an off-center grab from the rod")
 	_test_cuboid(graph)
+	_test_port_wires()
 	_canvas.queue_free()
 	await process_frame
 	await process_frame

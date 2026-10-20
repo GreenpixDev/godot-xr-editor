@@ -3,11 +3,12 @@ class_name XRETabLauncher
 extends XREPanelSurface
 ## The tab launcher, drawn as the app library of Meta Horizon OS's Navigator
 ## (docs/decisions.md, D-041, D-042): no panel behind it, icons with their
-## titles under them in offset rows — four, then three, then four — and a
+## titles under them in offset rows — five, then three, centered (D-045) — and a
 ## pill-shaped dock at the bottom with the library's glyph, lit as the open
 ## page, and the time. [XREPanels] shows it in front of the user on X, dims
 ## the scene behind it, and hides it again; a click on a tile asks for that
 ## tab's window ([signal tab_chosen]). The ray on a tile grows its icon.
+## The launcher is concave and fades in and out (D-043 — D-045).
 
 ## Emitted when the tile of the tab of class [param type] is clicked.
 signal tab_chosen(type: GDScript)
@@ -15,7 +16,7 @@ signal tab_chosen(type: GDScript)
 ## Layout at editor scale 1, in interface pixels: tiles in the long rows, a
 ## tile and the icon on it, the space between tiles and rows, the dock's
 ## height.
-const LONG_ROW := 4
+const LONG_ROW := 5
 const TILE_SIZE := Vector2(120.0, 116.0)
 const ICON_SIZE := 72.0
 const SPACING := 16.0
@@ -122,7 +123,6 @@ func update_clock() -> void:
 func _make_tile(tab: XREPanelTab, render_scale: float, layout_scale: float) -> Button:
 	var tile := Button.new()
 	tile.name = String(tab.get_symbol()).to_pascal_case()
-	tile.tooltip_text = tab.get_title()
 	tile.custom_minimum_size = TILE_SIZE * layout_scale
 	for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"focus", &"disabled"]:
 		tile.add_theme_stylebox_override(state, StyleBoxEmpty.new())

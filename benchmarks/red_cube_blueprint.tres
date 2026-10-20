@@ -10,8 +10,8 @@ nodes = Array[Dictionary]([{
 "params": {
 "policy": "parallel"
 },
-"position": Vector2(-1529.32, -41.912224),
-"vr_depth": 0.48008674
+"position": Vector2(-1218.1891, -111.4335),
+"vr_depth": 1.2172234
 }, {
 "id": 2,
 "kind": "set_property",
@@ -20,26 +20,25 @@ nodes = Array[Dictionary]([{
 "target": ".",
 "value": false
 },
-"position": Vector2(-312.21454, -30.556187),
+"position": Vector2(-219.50381, 105.61734),
 "property_type": 1,
-"vr_depth": 0.7521082
+"vr_depth": 0.8831382
 }, {
 "id": 3,
 "kind": "delay",
 "params": {
 "seconds": 1.0
 },
-"position": Vector2(-984.50305, -79.52614),
-"vr_depth": 0.13734597,
-"vr_rotation": Vector3(0.13315834, 0.27043974, 0.012951943)
+"position": Vector2(-884.3643, 18.612045),
+"vr_depth": 0.711759
 }, {
 "id": 4,
 "kind": "delay",
 "params": {
 "seconds": 1.0
 },
-"position": Vector2(190.35706, 46.688225),
-"vr_depth": -0.01033932
+"position": Vector2(108.57269, -318.31958),
+"vr_depth": 0.41591722
 }, {
 "id": 5,
 "kind": "set_property",
@@ -48,21 +47,11 @@ nodes = Array[Dictionary]([{
 "target": ".",
 "value": true
 },
-"position": Vector2(-346.19315, -461.03436),
+"position": Vector2(-1013.1538, -455.9516),
 "property_type": 1,
-"vr_depth": 0.1562145
+"vr_depth": 0.5957657
 }])
 edges = Array[Dictionary]([{
-"from": 3,
-"from_port": 0,
-"to": 2,
-"to_port": 0
-}, {
-"from": 1,
-"from_port": 0,
-"to": 3,
-"to_port": 0
-}, {
 "from": 2,
 "from_port": 0,
 "to": 4,
@@ -73,6 +62,16 @@ edges = Array[Dictionary]([{
 "to": 5,
 "to_port": 0
 }, {
+"from": 3,
+"from_port": 0,
+"to": 2,
+"to_port": 0
+}, {
+"from": 1,
+"from_port": 0,
+"to": 3,
+"to_port": 0
+}, {
 "from": 5,
 "from_port": 0,
 "to": 3,
@@ -80,3 +79,6 @@ edges = Array[Dictionary]([{
 }])
 host_path = NodePath("RedCube")
 scene_path = "res://benchmarks/play_check.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.9978389, 0, 0.065708116, 0, 1, 0, -0.06570812, 0, 0.99783885, -0.0819741, 1.0570134, -1.0063282)
+vr_center = Vector2(-669.48145, -207.17307)

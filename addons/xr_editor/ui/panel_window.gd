@@ -67,9 +67,9 @@ var _hovered_usec := -BAR_LINGER_USEC
 func _init(content: XREPanelTab, logical_size: Vector2, pixel_size: float, render_scale: float, theme: Theme) -> void:
 	super(logical_size, pixel_size, render_scale, theme)
 	tab = content
-	var layout_scale := logical_size.x / XREPanels.WINDOW_SIZE.x
+	var layout_scale := logical_size.x / content.get_window_size().x
 	corner_radius = roundi(WINDOW_RADIUS * layout_scale)
-	root.add_theme_stylebox_override(&"panel", meta_style(META_WINDOW_COLOR, corner_radius, 12.0 * layout_scale))
+	root.add_theme_stylebox_override(&"panel", meta_style(content.get_frame_color(), corner_radius, 12.0 * layout_scale))
 	root.add_child(tab)
 	pointer_released.connect(tab.end_edit)
 	add_corner_handles()
@@ -159,6 +159,12 @@ func hover_handles(corner: int) -> void:
 func set_overlay(enabled: bool) -> void:
 	super(enabled)
 	_bar.set_overlay(enabled)
+
+
+## The control bar bends with the window, around the same axis.
+func set_curve_radius(radius: float) -> void:
+	super(radius)
+	_bar.set_curve_radius(radius)
 
 
 func _process(delta: float) -> void:

@@ -34,6 +34,19 @@ const BILLBOARD := &"billboard"
 ## Solid boxes in the graph's orientation, seen from the side when walked around.
 const CUBOID := &"cuboid"
 
+## How the ports of logic graph cards are drawn ([XREBlueprintCanvas], D-043).
+const PORT_DISPLAY := &"port_display"
+## Flat discs on the card's face.
+const FLAT := &"flat"
+## Round, shaded spheres standing out of the card's face.
+const SPHERE := &"sphere"
+
+## Shape of the windows (rig-locked panels, docs/vr_ui.md; D-043). The tab
+## launcher is concave either way.
+const WINDOW_SHAPE := &"window_shape"
+## Bent around the user: the edges come nearer, as the launcher's do.
+const CONCAVE := &"concave"
+
 ## Every setting by key: its page, title, values (the first is the default),
 ## the values' titles and a line of explanation.
 const DEFINITIONS: Dictionary[StringName, Dictionary] = {
@@ -43,6 +56,20 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [BILLBOARD, CUBOID],
 		"labels": ["Billboard", "Cuboid"],
 		"hint": "Billboard: flat cards facing you. Cuboid: solid boxes fixed in the graph.",
+	},
+	PORT_DISPLAY: {
+		"category": Category.FEATURES,
+		"title": "Port display",
+		"values": [FLAT, SPHERE],
+		"labels": ["Flat", "Sphere"],
+		"hint": "Flat: discs on the card. Sphere: round ports standing out of it.",
+	},
+	WINDOW_SHAPE: {
+		"category": Category.FEATURES,
+		"title": "Window shape",
+		"values": [FLAT, CONCAVE],
+		"labels": ["Flat", "Concave"],
+		"hint": "Flat: plane windows. Concave: windows bent around you, as the launcher is.",
 	},
 }
 
