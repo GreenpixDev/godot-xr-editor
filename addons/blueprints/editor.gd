@@ -573,7 +573,8 @@ func _set_parameter(id: int, key: String, value: Variant) -> void:
 	var params: Dictionary = block["params"]
 	var same_type := typeof(params.get(key)) == typeof(value)
 	if key in ["target", "property", "signal", "variable", "wait"]: same_type = false
-	var value_changed: bool = params.get(key) != value
+	# Variants of different types can't be compared: a literal switched from Vector2 to Vector3 would stop here.
+	var value_changed: bool = typeof(params.get(key)) != typeof(value) or params.get(key) != value
 	if document.perform(document.set_parameter.bind(id, key, value), operation_source):
 		# Keep focus when committing one field by clicking or tabbing to another.
 		if value_changed:

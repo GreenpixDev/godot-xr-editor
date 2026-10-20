@@ -32,6 +32,16 @@ func run(plugin: EditorPlugin, document: XREBlueprintDocument, view: XREBlueprin
 	view.canvas.node_selected.emit(view.canvas.get_node("6"))
 	await get_tree().process_frame
 	_check((view.canvas.get_node("6") as GraphNode).get_input_port_count() == 3, "property block has execution, value and target inputs")
+	# A literal's type picker: values of different types must not be compared.
+	var literal_before := document.graph.snapshot()
+	for literal: Variant in [Vector2(1, 2), Vector3(1, 2, 3), Color.RED]:
+		view.call("_set_parameter", 6, "value", literal)
+		var stored: Variant = (document.graph.find_node(6)["params"] as Dictionary).get("value")
+		_check(typeof(stored) == typeof(literal) and stored == literal, "the literal switches to %s: %s" % [type_string(typeof(literal)), stored])
+	for step: int in 3:
+		document.undo()
+	_check(document.graph.snapshot() == literal_before, "undo restores the literal")
+	await get_tree().process_frame
 	view.call("_set_parameter", 6, "value", "changed")
 	document.undo()
 	await get_tree().process_frame
