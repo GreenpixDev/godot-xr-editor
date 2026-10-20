@@ -5,7 +5,7 @@ extends XREPanelSurface
 ## (docs/decisions.md, D-041, D-042): no panel behind it, icons with their
 ## titles under them in offset rows — five, then three, centered (D-045) — and a
 ## pill-shaped dock at the bottom with the library's glyph, lit as the open
-## page, and the time. [XREPanels] shows it in front of the user on X, dims
+## page, and the time. [XREPanels] shows it in front of the user on its button (D-050), dims
 ## the scene behind it, and hides it again; a click on a tile asks for that
 ## tab's window ([signal tab_chosen]). The ray on a tile grows its icon.
 ## The launcher is concave and fades in and out (D-043 — D-045).

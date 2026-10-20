@@ -38,12 +38,18 @@ func _enter_tree() -> void:
 	_session = XRESession.new()
 	_session.name = "XRESession"
 	add_child(_session)
+	var xr := _session.get_xr_interface()
+	if xr != null:
+		var runtime := XREFeatureSettings.layout_for_runtime(
+				xr.get_system_info().get("XRRuntimeName", ""), XREStandalone.is_standalone())
+		document.features.runtime_layout = runtime
+		print("XR Editor: controls layout ", document.features.get_layout(), " (runtime layout ", runtime, ")")
 	# Tools draw in the headset, so they live under the rig; no rig, no VR view.
 	var rig := _session.get_rig()
 	if rig != null:
 		# First: the tools after it see where the rig is this frame, and what
 		# follows a hand doesn't lag a frame behind while the user flies.
-		_locomotion = XRELocomotion.new(rig)
+		_locomotion = XRELocomotion.new(rig, document)
 		_locomotion.name = "XRELocomotion"
 		rig.add_child(_locomotion)
 		_icons = XREIcons.new(document, rig)
@@ -128,7 +134,7 @@ func _exit_tree() -> void:
 func _run_scene(_scene: String, args: PackedStringArray) -> PackedStringArray:
 	if _session == null or _session.get_xr_interface() == null:
 		return args
-	return XREPlayMode.game_args(args)
+	return XREPlayMode.game_args(args, document.features)
 
 
 func _build() -> bool:

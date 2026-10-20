@@ -242,8 +242,9 @@ func _process(delta: float) -> void:
 		_update_pointer(pointer, delta)
 		_keyboard.poll_trigger(pointer.hand, pointer.surface == _keyboard and _keyboard.is_shown())
 	_update_target_wires()
-	if _workspace.visible and _rig.right_hand.ax_pressed and _rig.right_hand.is_free_for(self):
-		_rig.right_hand.claim(self)
+	var delete_hand := _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE)
+	if _workspace.visible and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and delete_hand.is_free_for(self):
+		delete_hand.claim(self)
 		delete_block()
 
 
@@ -885,7 +886,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				elif canvas.get_hit_delete(): delete_block(id)
 				elif canvas.get_hit_port() >= 0: click_port(id, canvas.get_hit_port(), canvas.get_hit_input(), hand, canvas.get_hit_edge())
 				else: select_block(id)
-			if hand == _rig.right_hand and hand.ax_pressed: delete_block()
+			if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE): delete_block()
 			return
 	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 	if _pending_scene_target():

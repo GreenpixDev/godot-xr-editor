@@ -21,6 +21,10 @@ var left_hand: XREHand
 var right_hand: XREHand
 var left_controller: XREControllerModel
 var right_controller: XREControllerModel
+## A panel waits for a button to bind ([method set_capturing]): actions see none.
+var _capturing := false
+## The capture ended; actions see no button until every one is up.
+var _blocked_until_released := false
 
 
 func _init() -> void:
@@ -45,6 +49,56 @@ func _process(_delta: float) -> void:
 	# Before the tools under the rig: a node processes before its children.
 	left_hand.update_input()
 	right_hand.update_input()
+	if _blocked_until_released and not _any_button_held():
+		_blocked_until_released = false
+
+
+## Keeps the action buttons from the tools while a panel waits for one to bind
+## (D-050). When the wait ends, they stay blocked until every button is up:
+## the press that was bound must not also act, in this frame or while held.
+func set_capturing(capturing: bool) -> void:
+	if _capturing and not capturing:
+		_blocked_until_released = true
+	_capturing = capturing
+
+
+## Whether a panel waits for a button, or the button it took is still down.
+func is_capturing() -> bool:
+	return _capturing or _blocked_until_released
+
+
+## The hand whose button [param action] ([constant XREFeatureSettings.ACTIONS])
+## is bound to in [param features] (D-050); null features mean the default layout.
+func get_action_hand(features: XREFeatureSettings, action: StringName) -> XREHand:
+	return get_button_hand(XREFeatureSettings.binding_of(features, action))
+
+
+## Whether the button of [param action] went down this frame.
+func is_action_pressed(features: XREFeatureSettings, action: StringName) -> bool:
+	if is_capturing():
+		return false
+	var button := XREFeatureSettings.binding_of(features, action)
+	return get_action_hand(features, action).was_input_pressed(XREFeatureSettings.button_input(button))
+
+
+## Whether the button of [param action] is down.
+func is_action_held(features: XREFeatureSettings, action: StringName) -> bool:
+	if is_capturing():
+		return false
+	var button := XREFeatureSettings.binding_of(features, action)
+	return get_action_hand(features, action).is_input_held(XREFeatureSettings.button_input(button))
+
+
+## The hand of [param button], a key of [constant XREFeatureSettings.BUTTONS].
+func get_button_hand(button: StringName) -> XREHand:
+	return left_hand if XREFeatureSettings.button_hand(button) == &"left_hand" else right_hand
+
+
+func _any_button_held() -> bool:
+	for button: StringName in XREFeatureSettings.BUTTONS:
+		if get_button_hand(button).is_input_held(XREFeatureSettings.button_input(button)):
+			return true
+	return false
 
 
 ## Whether a controller currently provides its physical grip pose.

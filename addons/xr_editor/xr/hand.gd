@@ -44,10 +44,16 @@ var stick_click_held := false
 ## The thumbstick went in since the previous [method update_input].
 var stick_click_pressed := false
 
+## Buttons [method is_input_held] and [method was_input_pressed] answer for.
+const _BUTTON_INPUTS: Array[StringName] = [&"ax_button", &"by_button", &"primary_click", &"menu_button"]
+
 ## The tool that claimed the hand, or null.
 var _claimed_by: Object
 ## The tool that claimed the thumbstick, or null.
 var _stick_claimed_by: Object
+## Which of [constant _BUTTON_INPUTS] is down, and which went down this frame.
+var _input_held: Dictionary[StringName, bool] = {}
+var _input_pressed: Dictionary[StringName, bool] = {}
 var _ray: MeshInstance3D
 var _dot: MeshInstance3D
 var _ray_material: StandardMaterial3D
@@ -94,13 +100,27 @@ func update_input() -> void:
 	grip_pressed = grip_held and not was_held
 	grip_released = was_held and not grip_held
 
-	was_held = ax_held
-	ax_held = is_button_pressed(&"ax_button")
-	ax_pressed = ax_held and not was_held
+	for input: StringName in _BUTTON_INPUTS:
+		was_held = _input_held.get(input, false)
+		var held := is_button_pressed(input)
+		_input_held[input] = held
+		_input_pressed[input] = held and not was_held
 
-	was_held = stick_click_held
-	stick_click_held = is_button_pressed(&"primary_click")
-	stick_click_pressed = stick_click_held and not was_held
+	ax_held = _input_held[&"ax_button"]
+	ax_pressed = _input_pressed[&"ax_button"]
+	stick_click_held = _input_held[&"primary_click"]
+	stick_click_pressed = _input_pressed[&"primary_click"]
+
+
+## Whether button [param input] of the tracker ([code]ax_button[/code],
+## [code]by_button[/code], [code]primary_click[/code] or [code]menu_button[/code]) is down.
+func is_input_held(input: StringName) -> bool:
+	return _input_held.get(input, false)
+
+
+## Whether button [param input] went down since the previous [method update_input].
+func was_input_pressed(input: StringName) -> bool:
+	return _input_pressed.get(input, false)
 
 
 ## Whether [param tool] may act on this hand: no other tool has claimed it.

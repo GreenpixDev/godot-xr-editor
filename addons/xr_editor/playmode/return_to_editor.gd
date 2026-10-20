@@ -23,11 +23,14 @@ extends Node3D
 
 ## Command-line argument the editor adds to the games it runs while its VR view is on.
 const GAME_FLAG := "--xre-play"
-## Input of the left controller's tracker that returns to the editor when held.
+## Input of the left controller's tracker that returns to the editor when held,
+## unless [constant BUTTON_FLAG] names another (D-050).
 ## Not Menu: SteamVR keeps the left Menu button for its dashboard.
 const BUTTON := &"by_button"
 ## Tracker of the controller that has the button.
 const HAND := &"left_hand"
+## Command-line argument that names the button, as [code]--xre-return-button=left_hand:by_button[/code].
+const BUTTON_FLAG := "--xre-return-button="
 ## How long the button must be held, in seconds.
 const HOLD_SEC := 1.0
 ## A hold shorter than this shows nothing: a tap is meant for the game.
@@ -54,6 +57,8 @@ var _screen: XRETransitionScreen
 var _leaving := false
 ## In a game the VR editor ran; see the class description.
 var _active := false
+var _hand := HAND
+var _button := BUTTON
 
 
 func _ready() -> void:
@@ -62,6 +67,12 @@ func _ready() -> void:
 		queue_free()
 		return
 	_active = true
+	for arg: String in OS.get_cmdline_args():
+		if arg.begins_with(BUTTON_FLAG):
+			var parts := arg.trim_prefix(BUTTON_FLAG).split(":")
+			if parts.size() == 2:
+				_hand = StringName(parts[0])
+				_button = StringName(parts[1])
 	# Quitting from the runtime's own menu: SteamVR kills an application that
 	# doesn't quit within 5 s, and the editor would wait for the headset that long.
 	_xr.instance_exiting.connect(get_tree().quit)
@@ -141,10 +152,10 @@ func _leave() -> void:
 
 
 func _button_held() -> bool:
-	var tracker := XRServer.get_tracker(HAND) as XRPositionalTracker
+	var tracker := XRServer.get_tracker(_hand) as XRPositionalTracker
 	if tracker == null:
 		return false
-	var value: Variant = tracker.get_input(BUTTON)
+	var value: Variant = tracker.get_input(_button)
 	return value is bool and value
 
 

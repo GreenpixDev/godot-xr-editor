@@ -164,7 +164,7 @@ func _process(_delta: float) -> void:
 	# throws it away must not also delete the selection.
 	var was_holding := _held != null
 	if _held != null:
-		if right.ax_pressed:
+		if _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
 			_discard()
 		elif not right.grip_held:
 			_place()

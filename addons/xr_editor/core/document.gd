@@ -57,6 +57,28 @@ func set_feature(key: StringName, value: StringName, source: Source) -> bool:
 	return true
 
 
+## Picks controls layout [param layout] ([constant XREFeatureSettings.LAYOUTS])
+## and records one [code]&"set_layout"[/code] operation. False if it is unknown
+## or already in use.
+func set_controls_layout(layout: StringName, source: Source) -> bool:
+	if not features.set_layout(layout):
+		return false
+	print("XR Editor: controls layout = %s" % layout)
+	_record(&"set_layout", source, [])
+	return true
+
+
+## Binds [param action] to [param button] and records one [code]&"set_binding"[/code]
+## operation. A preset layout in use becomes the custom one with every other
+## binding as it was ([method XREFeatureSettings.set_binding]).
+func set_binding(action: StringName, button: StringName, source: Source) -> bool:
+	if not features.set_binding(action, button):
+		return false
+	print("XR Editor: binding %s = %s, layout %s" % [action, button, features.get_layout()])
+	_record(&"set_binding", source, [])
+	return true
+
+
 ## Associates graph source and generated script in one scene-history operation.
 ## Runtime/fake documents may override this; unrelated scripts must be protected.
 func assign_blueprint(_host: Node, _path: String, _script: Script, _source: Source) -> bool:

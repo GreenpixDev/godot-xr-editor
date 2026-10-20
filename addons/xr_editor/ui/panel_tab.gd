@@ -78,6 +78,18 @@ static func theme_icon(theme: Theme, icon_name: StringName) -> Texture2D:
 	return null
 
 
+## Whether the tab waits for a controller button to be pressed
+## ([constant XREFeatureSettings.BUTTONS]). [XREPanels] then gives it the next
+## one ([method take_button]), and no tool acts on that press.
+func wants_button() -> bool:
+	return false
+
+
+## Takes [param button], pressed while [method wants_button].
+func take_button(_button: StringName) -> void:
+	pass
+
+
 ## Rebuilds what the tab shows from the document.
 @abstract func _refresh() -> void
 

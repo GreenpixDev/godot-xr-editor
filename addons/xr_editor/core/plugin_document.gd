@@ -266,7 +266,7 @@ func _play_separately(scene_path: String) -> Error:
 		EditorInterface.save_all_scenes()
 	# The arguments the plugin gives the editor's Play while the VR view is on.
 	var args := XREPlayMode.game_args(PackedStringArray([
-			"--path", ProjectSettings.globalize_path("res://"), "--scene", scene_path]))
+			"--path", ProjectSettings.globalize_path("res://"), "--scene", scene_path]), features)
 	if XREStandalone.is_standalone():
 		# From the XR activity, the new instance replaces this process.
 		return OK if OS.create_instance(args) >= 0 else ERR_CANT_FORK

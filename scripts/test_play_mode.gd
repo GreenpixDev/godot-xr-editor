@@ -375,7 +375,7 @@ func _standalone_game_starts() -> void:
 	_check(_operations.size() == 5 and _operations[4] == "play TOOL" and _document.separate,
 			"Y plays without the editor's Play and its debugger on a standalone headset: %s" % [_operations])
 	_check(_session.releases == 1, "the session isn't released for a game that replaces the editor")
-	_check(_play_mode.transition.get_text().contains("Hold Y"),
+	_check(_play_mode.transition.get_text().contains("Hold Left Y"),
 			"the loading screen says how to come back: %s" % _play_mode.transition.get_text())
 	# The game ends; the editor it opens finds what this one left, and opens another scene first.
 	_document.playing = false
@@ -464,6 +464,13 @@ func _test_game_args() -> void:
 	_check(XREPlayMode.game_args(args) == args, "the arguments are added once: %s" % XREPlayMode.game_args(args))
 	var regular := XREPlayMode.game_args(PackedStringArray(["--xr-mode", "off"]))
 	_check(regular.count("--xr-mode") == 1 and regular[1] == "off", "Run in Regular Mode stays regular: %s" % regular)
+	var features := XREFeatureSettings.new()
+	var with_button := XREPlayMode.game_args(PackedStringArray(), features)
+	_check(with_button.has(ReturnToEditor.BUTTON_FLAG + "left_hand:by_button"), "the game learns the button that returns: %s" % with_button)
+	features.set_binding(XREFeatureSettings.PLAY, &"right_b")
+	var rebound := XREPlayMode.game_args(with_button, features)
+	_check(rebound.has(ReturnToEditor.BUTTON_FLAG + "right_hand:by_button") and rebound.size() == with_button.size(),
+			"a rebinding replaces it: %s" % rebound)
 
 
 func _test_standalone() -> void:

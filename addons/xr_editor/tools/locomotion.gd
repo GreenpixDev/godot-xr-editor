@@ -68,6 +68,7 @@ void fragment() {
 """
 
 var _rig: XRERig
+var _document: XREDocument
 var _vignette: MeshInstance3D
 var _vignette_material: ShaderMaterial
 var _strength := 0.0
@@ -76,8 +77,10 @@ var _speed_label: Label3D
 var _speed_label_until_usec := 0
 
 
-func _init(rig: XRERig) -> void:
+## [param document] gives the binding of the speed button; without one it is the default layout's.
+func _init(rig: XRERig, document: XREDocument = null) -> void:
 	_rig = rig
+	_document = document
 	var shader := Shader.new()
 	shader.code = _SHADER
 	_vignette_material = ShaderMaterial.new()
@@ -102,7 +105,7 @@ func _init(rig: XRERig) -> void:
 
 
 func _process(delta: float) -> void:
-	if _rig.left_hand.stick_click_pressed:
+	if _rig.is_action_pressed(_document.features if _document != null else null, XREFeatureSettings.SPEED):
 		_speed = (_speed + 1) % SPEEDS.size()
 		_speed_label.text = "Flying speed %.1f m/s" % SPEEDS[_speed]
 		_speed_label.visible = true

@@ -190,7 +190,7 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
-	if _rig.left_hand.ax_pressed:
+	if _rig.is_action_pressed(_document.features, XREFeatureSettings.LAUNCHER):
 		show_launcher(not _menus_shown)
 	_update_fade(delta)
 	for window: XREPanelWindow in _windows:
@@ -201,6 +201,26 @@ func _process(delta: float) -> void:
 				window.global_transform = hand.global_transform * HAND_OFFSET
 	for pointer: Pointer in _pointers:
 		_update_pointer(pointer, delta)
+	_poll_button_capture()
+
+
+## Gives a tab waiting for a controller button ([method XREPanelTab.wants_button])
+## the first one pressed, and keeps the buttons from the tools meanwhile (D-050).
+## After the pointers: a click that starts the wait blocks the tools from the next frame.
+func _poll_button_capture() -> void:
+	var waiting: XREPanelTab = null
+	for window: XREPanelWindow in _windows:
+		if window.tab.wants_button():
+			waiting = window.tab
+			break
+	_rig.set_capturing(waiting != null)
+	if waiting == null:
+		return
+	for button: StringName in XREFeatureSettings.BUTTONS:
+		if _rig.get_button_hand(button).was_input_pressed(XREFeatureSettings.button_input(button)):
+			waiting.take_button(button)
+			_rig.set_capturing(false)
+			return
 
 
 func get_launcher() -> XRETabLauncher:
@@ -208,7 +228,7 @@ func get_launcher() -> XRETabLauncher:
 
 
 ## Shows the launcher in front of the user, over a dimmed scene, or hides it
-## (D-041, D-042): X toggles it. It fades in and out (D-043, D-045); it takes
+## (D-041, D-042): the launcher action toggles it (left Menu, X on SteamVR, D-050). It fades in and out (D-043, D-045); it takes
 ## the ray only while shown, not while it fades out.
 func show_launcher(shown: bool) -> void:
 	if shown == _menus_shown:

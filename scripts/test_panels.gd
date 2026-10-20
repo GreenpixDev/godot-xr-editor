@@ -186,6 +186,8 @@ func _initialize() -> void:
 		_release_cuboid,
 		_cuboid_set,
 		_controls_page,
+		_controls_page_captured,
+		_controls_page_released,
 		_test_proxy,
 		_test_inspector_tab,
 		_test_fps,
@@ -294,7 +296,7 @@ func _build() -> void:
 	_launcher = _panels.get_launcher()
 	_pose(_left, _left_aim, 0.0, 0.0)
 	_pose(_right, Transform3D(Basis.IDENTITY, Vector3(0.2, -0.3, -0.3)), 0.0, 0.0)
-	_left.set_input(&"ax_button", true)
+	_left.set_input(&"menu_button", true)
 
 
 func _make_scene(scene_name: String) -> Node3D:
@@ -412,7 +414,7 @@ func _show_launcher() -> void:
 	var dim := float(((_panels.get("_dimmer") as MeshInstance3D).material_override as ShaderMaterial).get_shader_parameter(&"alpha"))
 	_check(dim > 0.0 and dim <= XREPanels.LAUNCHER_DIM, "and the dimming with it: %s" % dim)
 	_check(_panels.get_windows().is_empty(), "no window is open before a tile is chosen")
-	_left.set_input(&"ax_button", false)
+	_left.set_input(&"menu_button", false)
 	_aim(_launcher, _tile_center(XRESceneTab), 1.0)
 
 
@@ -505,15 +507,15 @@ func _selection_shows() -> void:
 	var selected := tree.get_next_selected(null)
 	_check(selected == _scene_tab().get_item(_trigger) and tree.get_next_selected(selected) == null,
 			"a selection made elsewhere shows in the scene tab")
-	_left.set_input(&"ax_button", true)
+	_left.set_input(&"menu_button", true)
 
 
 # Signals tab and windows.
 
 func _launcher_again() -> void:
-	_check(_launcher.is_shown(), "X shows the launcher again")
+	_check(_launcher.is_shown(), "Menu shows the launcher again")
 	_check(_scene_window().is_shown() and _scene_window().is_pinned(), "the pinned window stays on the forearm")
-	_left.set_input(&"ax_button", false)
+	_left.set_input(&"menu_button", false)
 	_aim(_launcher, _tile_center(XRESignalsTab), 1.0)
 
 
@@ -917,7 +919,57 @@ func _test_feature_store() -> void:
 	config.save(path)
 	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.BILLBOARD, "a saved value no longer known falls back to the default")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
-	_check(XREFeatureSettings.get_keys(XREFeatureSettings.Category.CONTROLS).is_empty(), "there are no control settings yet")
+	_check(XREFeatureSettings.get_keys(XREFeatureSettings.Category.CONTROLS).is_empty(), "the controls page has no variant settings")
+	_test_controls_store(path)
+
+
+## The controls layouts and bindings (D-050).
+func _test_controls_store(path: String) -> void:
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var store := XREFeatureSettings.new(path)
+	var delete := XREFeatureSettings.DELETE
+	_check(store.get_layout() == XREFeatureSettings.HORIZON_LINK, "the layout starts as the runtime's, Link here")
+	_check(XREFeatureSettings.layout_for_runtime("SteamVR/OpenXR", false) == XREFeatureSettings.STEAMVR
+			and XREFeatureSettings.layout_for_runtime("Oculus", false) == XREFeatureSettings.HORIZON_LINK
+			and XREFeatureSettings.layout_for_runtime("Oculus", true) == XREFeatureSettings.HORIZON_OS,
+			"the runtime picks the layout")
+	store.runtime_layout = XREFeatureSettings.STEAMVR
+	_check(store.get_layout() == XREFeatureSettings.STEAMVR, "the runtime's layout is in use until one is picked")
+	_check(store.get_binding(delete) == &"right_a" and store.get_binding(XREFeatureSettings.PLAY) == &"left_y"
+			and store.get_binding(XREFeatureSettings.LAUNCHER) == &"left_x" and store.get_binding(XREFeatureSettings.SPEED) == &"left_stick",
+			"SteamVR binds the buttons the tools had: its dashboard has the left Menu")
+	_check(XREFeatureSettings.preset_binding(XREFeatureSettings.HORIZON_LINK, XREFeatureSettings.LAUNCHER) == &"left_menu"
+			and XREFeatureSettings.preset_binding(XREFeatureSettings.HORIZON_OS, XREFeatureSettings.LAUNCHER) == &"left_menu",
+			"Meta's runtimes open the launcher with the left Menu")
+	var events: Array[StringName] = []
+	store.changed.connect(func(key: StringName) -> void: events.append(key))
+	_check(not store.set_binding(delete, &"right_a") and not store.set_binding(delete, &"no_such_button")
+			and not store.set_binding(&"no_such_action", &"right_b") and not store.set_layout(&"no_such_layout"),
+			"unknown names and the binding in use are refused")
+	_check(store.set_binding(delete, &"right_b") and events == [XREFeatureSettings.CONTROLS], "a new binding is set and announced")
+	_check(store.get_layout() == XREFeatureSettings.CUSTOM, "rebinding in a preset switches to the custom layout")
+	_check(store.get_binding(delete) == &"right_b" and store.get_binding(XREFeatureSettings.PLAY) == &"left_y"
+			and store.get_binding(XREFeatureSettings.LAUNCHER) == &"left_x" and store.get_binding(XREFeatureSettings.SPEED) == &"left_stick",
+			"the other bindings carry over to the custom layout")
+	_check(store.set_binding(XREFeatureSettings.PLAY, &"right_b") and store.get_binding(XREFeatureSettings.PLAY) == &"right_b"
+			and store.get_binding(delete) == &"left_y", "a button another action had goes to the one given up")
+	_check(store.set_layout(XREFeatureSettings.HORIZON_OS) and store.get_binding(delete) == &"right_a"
+			and store.get_binding(XREFeatureSettings.PLAY) == &"left_y" and store.get_binding(XREFeatureSettings.LAUNCHER) == &"left_menu",
+			"a preset has its own bindings")
+	_check(store.set_layout(XREFeatureSettings.CUSTOM) and store.get_binding(delete) == &"left_y"
+			and store.get_binding(XREFeatureSettings.PLAY) == &"right_b", "the custom bindings are kept")
+	var reloaded := XREFeatureSettings.new(path)
+	reloaded.runtime_layout = XREFeatureSettings.HORIZON_OS
+	_check(reloaded.get_layout() == XREFeatureSettings.CUSTOM and reloaded.get_binding(delete) == &"left_y",
+			"the custom layout persists and is used on every runtime")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var fresh := XREFeatureSettings.new(path)
+	fresh.runtime_layout = XREFeatureSettings.HORIZON_OS
+	_check(fresh.get_layout() == XREFeatureSettings.HORIZON_OS and fresh.set_layout(XREFeatureSettings.CUSTOM)
+			and fresh.get_binding(delete) == &"right_a", "custom starts as a copy of the layout in use")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	_check(XREFeatureSettings.button_hand(&"right_b") == &"right_hand" and XREFeatureSettings.button_input(&"left_stick") == &"primary_click"
+			and XREFeatureSettings.button_label(&"left_y") == "Left Y", "a button knows its hand, input and name")
 
 
 func _settings_window() -> XREPanelWindow:
@@ -986,10 +1038,55 @@ func _cuboid_set() -> void:
 
 
 func _controls_page() -> void:
-	_check(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD) == null,
+	var tab := _settings_tab()
+	_check(tab.get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD) == null,
 			"the controls page doesn't show feature settings")
-	var content := _settings_tab().find_child("Content", true, false) as VBoxContainer
-	_check(content.get_child_count() == 1 and content.get_child(0) is Label, "the empty controls page says so")
+	var features := _document.features
+	_check(tab.get_layout_button(XREFeatureSettings.HORIZON_LINK) != null and tab.get_layout_button(XREFeatureSettings.CUSTOM) != null,
+			"the controls page has the layouts")
+	_check(tab.get_layout_button(features.get_layout()).button_pressed, "the layout in use is down")
+	var delete := XREFeatureSettings.DELETE
+	var row := tab.get_binding_button(delete).get_parent()
+	_check(row.get_child(0) is Label and (row.get_child(0) as Label).text == XREFeatureSettings.ACTION_TITLES[delete]
+			and row.get_child(1) == tab.get_binding_button(delete), "an action's name is on the left, its binding on the right")
+	_check(tab.get_binding_glyph(delete) == &"right_a" and tab.get_binding_text(delete) == "Right A",
+			"the binding shows the button's icon and name")
+	_operation_count = _operations.size()
+	tab.get_binding_button(delete).pressed.emit()
+	_check(tab.get_capturing() == delete and tab.get_binding_text(delete) == XRESettingsTab.PRESS_TEXT
+			and tab.get_binding_glyph(delete) == &"", "a click on the binding waits for a button")
+	_check(_operations.size() == _operation_count and features.get_binding(delete) == &"right_a", "waiting changes nothing yet")
+	_right.set_input(&"by_button", true)
+
+
+func _controls_page_captured() -> void:
+	var tab := _settings_tab()
+	var features := _document.features
+	var delete := XREFeatureSettings.DELETE
+	_check(features.get_layout() == XREFeatureSettings.CUSTOM and features.get_binding(delete) == &"right_b",
+			"the button pressed becomes the action's, in the custom layout")
+	_check(features.get_binding(XREFeatureSettings.LAUNCHER) == &"left_menu" and features.get_binding(XREFeatureSettings.PLAY) == &"left_y",
+			"the other bindings carry over")
+	_check(_operations.slice(_operation_count) == ["set_binding PANEL []"], "the rebinding is one operation: %s" % [_operations.slice(_operation_count)])
+	_check(tab.get_capturing() == &"" and _rig.is_capturing() and not _rig.is_action_pressed(features, delete),
+			"the press that was bound doesn't act while it is held")
+	_right.set_input(&"by_button", false)
+
+
+func _controls_page_released() -> void:
+	var tab := _settings_tab()
+	var features := _document.features
+	var delete := XREFeatureSettings.DELETE
+	_check(not _rig.is_capturing(), "the buttons act again once released")
+	_check(tab.get_binding_glyph(delete) == &"right_b" and tab.get_binding_text(delete) == "Right B"
+			and tab.get_layout_button(XREFeatureSettings.CUSTOM).button_pressed, "the page follows the rebinding")
+	tab.get_binding_button(XREFeatureSettings.SPEED).pressed.emit()
+	tab.get_binding_button(XREFeatureSettings.SPEED).pressed.emit()
+	_check(tab.get_capturing() == &"" and tab.get_binding_text(XREFeatureSettings.SPEED) == "Left stick click",
+			"a second click stops waiting")
+	tab.get_layout_button(XREFeatureSettings.STEAMVR).pressed.emit()
+	_check(features.get_binding(delete) == &"right_a" and _operations.back() == "set_layout PANEL []", "a click on a preset picks it, as one operation")
+	features.set_layout(XREFeatureSettings.HORIZON_LINK)
 	_settings_tab().select_page(XREFeatureSettings.Category.FEATURES)
 
 

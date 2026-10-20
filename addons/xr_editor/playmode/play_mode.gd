@@ -60,7 +60,7 @@ const _ReturnToEditor := preload("return_to_editor.gd")
 const _LOG_PREFIX := "XR Editor: play: "
 ## On the loading screen: while the game starts, and on a standalone headset
 ## while the editor opened after the game puts the scene back.
-const _STARTING_TEXT := "Starting the game…\nHold Y in it to come back."
+const _STARTING_TEXT := "Starting the game…\nHold %s in it to come back."
 const _RESTORING_TEXT := "Opening the scene…"
 
 enum _State {
@@ -171,8 +171,10 @@ func _process(_delta: float) -> void:
 ## [br]- [code]--ignore-error-breaks[/code]: otherwise a script error stops
 ## the game in the debugger, and the headset shows a frozen frame with no way
 ## back but the system menu;
-## [br]- the flag that keeps [constant RETURN_AUTOLOAD] in the game.
-static func game_args(args: PackedStringArray) -> PackedStringArray:
+## [br]- the flag that keeps [constant RETURN_AUTOLOAD] in the game;
+## [br]- with [param features], the button that returns from the game: the one
+## bound to the play action ([code]--xre-return-button=[/code]).
+static func game_args(args: PackedStringArray, features: XREFeatureSettings = null) -> PackedStringArray:
 	var result := args.duplicate()
 	if not result.has("--xr-mode"):
 		result.append("--xr-mode")
@@ -181,6 +183,16 @@ static func game_args(args: PackedStringArray) -> PackedStringArray:
 		result.append("--ignore-error-breaks")
 	if not result.has(_ReturnToEditor.GAME_FLAG):
 		result.append(_ReturnToEditor.GAME_FLAG)
+	if features != null:
+		var button := features.get_binding(XREFeatureSettings.PLAY)
+		var flag := "%s%s:%s" % [_ReturnToEditor.BUTTON_FLAG, XREFeatureSettings.button_hand(button), XREFeatureSettings.button_input(button)]
+		var kept := false
+		for index: int in result.size():
+			if result[index].begins_with(_ReturnToEditor.BUTTON_FLAG):
+				result[index] = flag
+				kept = true
+		if not kept:
+			result.append(flag)
 	return result
 
 
@@ -225,7 +237,7 @@ func _on_button_pressed(now: int) -> void:
 	# The game starts in _process() once the headset has been sent the covered view.
 	_state = _State.COVERING
 	_message.visible = false
-	transition.cover(_STARTING_TEXT)
+	transition.cover(_STARTING_TEXT % _play_button())
 
 
 func _start_game(now: int) -> void:
@@ -290,7 +302,7 @@ func _play_replacing_editor(now: int) -> void:
 		_state = _State.IDLE
 		_show("Could not start the game (%s)." % error_string(error))
 		return
-	_log("starting the game; holding Y in it opens the editor again.")
+	_log("starting the game; holding %s in it opens the editor again." % _play_button())
 
 
 ## Why the game can't start now, or an empty string if it can.
@@ -349,7 +361,7 @@ func _check_start(now: int) -> void:
 		_show("The game quit before it took the headset.")
 	elif now - _play_usec > START_TIMEOUT_SEC * 1000000.0:
 		_state = _State.IDLE
-		_show("The game runs without the headset. Y stops it.")
+		_show("The game runs without the headset. %s stops it." % _play_button())
 
 
 ## Opens [member _scene_after_game] once the editor has opened a scene of its
@@ -367,8 +379,13 @@ func _open_scene_after_game(now: int) -> void:
 		_log("could not open %s after the game (%s)." % [path, error_string(error)])
 
 
+## Name of the play action's button, for the messages: "Left Y".
+func _play_button() -> String:
+	return XREFeatureSettings.button_label(_document.features.get_binding(XREFeatureSettings.PLAY))
+
+
 func _button_held() -> bool:
-	return _rig.left_hand.is_button_pressed(_ReturnToEditor.BUTTON)
+	return _rig.is_action_held(_document.features, XREFeatureSettings.PLAY)
 
 
 ## Shows [param text] in front of the user for [constant MESSAGE_SEC] and logs it.

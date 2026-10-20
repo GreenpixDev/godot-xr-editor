@@ -187,8 +187,8 @@ func _process(_delta: float) -> void:
 		elif state.hand.trigger_pressed and _holders.is_empty():
 			_select(state.hover)
 
-	var right := _rig.right_hand
-	if right.ax_pressed and right.is_free_for(self):
+	var delete_hand := _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE)
+	if _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and delete_hand.is_free_for(self):
 		_delete_selection()
 
 	if not _holders.is_empty():
