@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://c1g8ty1jn88e8"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_55by0"]
+
+[resource]
+script = ExtResource("1_55by0")
+host_path = NodePath("GreenCube")
+scene_path = "res://benchmarks/play_check.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.9938158, 0, 0.11104121, 0, 1, 0, -0.11104121, 0, 0.9938158, 0.08443325, 1.2216905, -0.4687121)
+vr_center = Vector2(80, 100)

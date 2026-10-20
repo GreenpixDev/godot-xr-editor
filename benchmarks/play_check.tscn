@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://u2perwrhiqlm" path="res://benchmarks/play_check.gd" id="1_script"]
 [ext_resource type="Script" uid="uid://dudskovnhoyfb" path="res://benchmarks/red_cube_blueprint.generated.gd" id="2_qwb6r"]
+[ext_resource type="Script" uid="uid://dgdufwkj50d2q" path="res://benchmarks/green_cube_blueprint_2.generated.gd" id="3_c5342"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_material"]
 
@@ -64,6 +65,8 @@ metadata/_xre_blueprint = "res://benchmarks/red_cube_blueprint.tres"
 transform = Transform3D(0.9994264, 0.014317249, 0.030676655, -0.015355073, 0.9993072, 0.03386228, -0.03017065, -0.0343138, 0.9989546, 0.26011112, 0.9083628, -0.50202113)
 mesh = SubResource("cube_mesh")
 surface_material_override/0 = SubResource("green")
+script = ExtResource("3_c5342")
+metadata/_xre_blueprint = "res://benchmarks/green_cube_blueprint_2.tres"
 
 [node name="BlueCube" type="MeshInstance3D" parent="." unique_id=747555017]
 transform = Transform3D(0.9998164, -0.01704937, -0.008745119, 0.017588805, 0.9976745, 0.0658479, 0.0076021105, -0.0659896, 0.9977913, 0.2838829, 0.80116606, -0.5008966)
