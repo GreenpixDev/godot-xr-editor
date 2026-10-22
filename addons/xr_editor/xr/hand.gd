@@ -180,6 +180,22 @@ func show_ray(length: float, hit: bool, dot_offset: float = 0.0) -> void:
 		_dot.position = Vector3(0.0, 0.0, -maxf(length - dot_offset, _DOT_RADIUS))
 
 
+## Whether the ray shows ([method show_ray]) rather than being hidden ([method hide_ray]).
+func is_ray_shown() -> bool:
+	return _ray.visible
+
+
+## Where the ray ends, in global space: where it hits or [constant RAY_LENGTH]
+## ahead. Meaningful while [method is_ray_shown].
+func get_ray_end() -> Vector3:
+	return _ray.global_transform * Vector3(0.0, 0.0, -0.5)
+
+
+## The material the ray is drawn with now: the hand's color, or white on a hit.
+func get_ray_material() -> Material:
+	return _ray.material_override
+
+
 ## Keeps pointer visuals above the scene-only logic dimmer.
 func set_overlay(enabled: bool) -> void:
 	for material: StandardMaterial3D in [_ray_material, _hit_material]:

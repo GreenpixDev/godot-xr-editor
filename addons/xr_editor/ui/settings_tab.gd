@@ -33,6 +33,8 @@ var _binding_buttons: Dictionary[StringName, Button] = {}
 ## The icon and the name in each binding button, by action.
 var _binding_glyphs: Dictionary[StringName, XREButtonGlyph] = {}
 var _binding_labels: Dictionary[StringName, Label] = {}
+## The keys besides the buttons, shown while buttons are keys (D-057), or null off the Controls page.
+var _keys_label: Label
 ## The action waiting for a button, or empty.
 var _capturing := &""
 var _capture_until_usec := 0
@@ -155,6 +157,8 @@ func _refresh() -> void:
 		_layout_buttons[key].set_pressed_no_signal(key == layout)
 	for action: StringName in _binding_buttons:
 		_show_binding(action)
+	if _keys_label != null:
+		_keys_label.visible = _document.features.uses_keyboard()
 
 
 func _on_hidden() -> void:
@@ -172,6 +176,7 @@ func _stop_capture() -> void:
 func _show_binding(action: StringName) -> void:
 	var waiting := action == _capturing
 	var bound := _document.features.get_binding(action)
+	_binding_glyphs[action].keyboard = _document.features.uses_keyboard()
 	_binding_glyphs[action].button = bound
 	_binding_glyphs[action].visible = not waiting
 	_binding_labels[action].text = PRESS_TEXT if waiting else XREFeatureSettings.button_label(bound)
@@ -187,6 +192,7 @@ func _build_page() -> void:
 	_binding_buttons.clear()
 	_binding_glyphs.clear()
 	_binding_labels.clear()
+	_keys_label = null
 	_capturing = &""
 	if _pages.current_tab == XREFeatureSettings.Category.CONTROLS:
 		_build_controls_page()
@@ -252,6 +258,13 @@ func _build_controls_page() -> void:
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.modulate = Color(1.0, 1.0, 1.0, 0.7)
 	_content.add_child(hint)
+	# The keys that aren't controller buttons don't rebind; they show here.
+	_keys_label = Label.new()
+	_keys_label.name = "Keys"
+	_keys_label.text = XRESimulator.HELP
+	_keys_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_keys_label.visible = _document.features.uses_keyboard()
+	_content.add_child(_keys_label)
 	for action: StringName in XREFeatureSettings.ACTIONS:
 		var row_action := HBoxContainer.new()
 		row_action.name = String(action)

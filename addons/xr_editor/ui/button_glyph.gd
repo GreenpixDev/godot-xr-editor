@@ -4,7 +4,8 @@ extends Control
 ## Icon of a controller button ([constant XREFeatureSettings.BUTTONS]), drawn
 ## as a game shows a gamepad's: a round face button in its color with its
 ## letter, a stick with a ring and LS or RS, or the menu button: a dark circle
-## with three lines (D-050). Sized to the theme's font.
+## with three lines (D-050). Sized to the theme's font. With [member keyboard],
+## the key that stands for the button without a headset, as a keycap (D-057).
 
 ## Face button colors by letter, as on an Xbox controller.
 const COLORS: Dictionary[String, Color] = {
@@ -17,12 +18,19 @@ const _STICK_COLOR := Color(0.24, 0.25, 0.28)
 const _RING_COLOR := Color(0.78, 0.79, 0.82)
 ## The glyph's diameter, in the theme's font sizes.
 const _SIZE := 1.6
+const _KEYCAP_COLOR := Color(0.86, 0.87, 0.9)
+const _KEYCAP_TEXT_COLOR := Color(0.12, 0.13, 0.15)
 
 ## The button drawn, a key of [constant XREFeatureSettings.BUTTONS].
 var button := &"":
 	set(value):
 		button = value
-		queue_redraw()
+		_resize()
+## Draws the key of the button ([method XRESimulator.key_label]) instead of the button.
+var keyboard := false:
+	set(value):
+		keyboard = value
+		_resize()
 
 
 func _init(shown: StringName = &"") -> void:
@@ -33,10 +41,25 @@ func _init(shown: StringName = &"") -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_THEME_CHANGED or what == NOTIFICATION_ENTER_TREE:
-		custom_minimum_size = Vector2.ONE * roundf(get_theme_default_font_size() * _SIZE)
+		_resize()
+
+
+## A keycap is as wide as its key's name.
+func _resize() -> void:
+	var height := roundf(get_theme_default_font_size() * _SIZE)
+	var width := height
+	if keyboard:
+		var font_size := int(height * 0.5)
+		var text := XRESimulator.key_label(button)
+		width = maxf(height, get_theme_default_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + height * 0.6)
+	custom_minimum_size = Vector2(width, height)
+	queue_redraw()
 
 
 func _draw() -> void:
+	if keyboard:
+		_draw_keycap()
+		return
 	var letter := XREFeatureSettings.button_glyph(button)
 	if letter.is_empty():
 		return
@@ -64,3 +87,21 @@ func _draw() -> void:
 	var text_size := font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var baseline := center.y + (font.get_ascent(font_size) - font.get_descent(font_size)) / 2.0
 	draw_string(font, Vector2(center.x - text_size.x / 2.0, baseline), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
+
+
+func _draw_keycap() -> void:
+	var text := XRESimulator.key_label(button)
+	if text.is_empty():
+		return
+	var rect := Rect2(Vector2.ONE, size - Vector2.ONE * 2.0)
+	var box := StyleBoxFlat.new()
+	box.bg_color = _KEYCAP_COLOR
+	box.set_corner_radius_all(int(rect.size.y * 0.2))
+	box.border_color = _KEYCAP_COLOR.darkened(0.35)
+	box.border_width_bottom = maxi(2, int(rect.size.y * 0.08))
+	draw_style_box(box, rect)
+	var font := get_theme_default_font()
+	var font_size := int(size.y * 0.5)
+	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var baseline := size.y / 2.0 + (font.get_ascent(font_size) - font.get_descent(font_size)) / 2.0 - 1.0
+	draw_string(font, Vector2((size.x - text_size.x) / 2.0, baseline), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, _KEYCAP_TEXT_COLOR)

@@ -83,10 +83,13 @@ const CONTROLS := &"controls"
 const HORIZON_LINK := &"horizon_link"
 const STEAMVR := &"steamvr"
 const HORIZON_OS := &"horizon_os"
+## The VR view without a headset (D-057): the controllers' buttons are keys
+## ([constant XRESimulator.BUTTON_KEYS]), and the controls page shows the keys.
+const NON_VR := &"non_vr"
 ## The user's own bindings. Once chosen it is used on every runtime.
 const CUSTOM := &"custom"
-const LAYOUTS: Array[StringName] = [HORIZON_LINK, STEAMVR, HORIZON_OS, CUSTOM]
-const LAYOUT_LABELS: Array[String] = ["Horizon Link", "SteamVR", "Horizon OS", "Custom"]
+const LAYOUTS: Array[StringName] = [HORIZON_LINK, STEAMVR, HORIZON_OS, NON_VR, CUSTOM]
+const LAYOUT_LABELS: Array[String] = ["Horizon Link", "SteamVR", "Horizon OS", "NonVR", "Custom"]
 
 ## Actions with a button of their own, in the order of the controls page.
 const DELETE := &"delete"
@@ -119,11 +122,13 @@ const BUTTONS: Dictionary[StringName, Dictionary] = {
 
 ## Bindings of the presets, by layout. On Meta's runtimes the launcher is on
 ## the left Menu button, as Meta's own apps open their menus; SteamVR keeps
-## that button for its dashboard, so there the launcher stays on X.
+## that button for its dashboard, so there the launcher stays on X. Without a
+## headset the keys are Tab, Y, E and Shift.
 const _PRESETS: Dictionary[StringName, Dictionary] = {
 	HORIZON_LINK: {LAUNCHER: &"left_menu", PLAY: &"left_y", DELETE: &"right_a", SPEED: &"left_stick"},
 	STEAMVR: {LAUNCHER: &"left_x", PLAY: &"left_y", DELETE: &"right_a", SPEED: &"left_stick"},
 	HORIZON_OS: {LAUNCHER: &"left_menu", PLAY: &"left_y", DELETE: &"right_a", SPEED: &"left_stick"},
+	NON_VR: {LAUNCHER: &"left_menu", PLAY: &"left_y", DELETE: &"right_a", SPEED: &"left_stick"},
 }
 
 const _SECTION := "features"
@@ -218,6 +223,12 @@ static func layout_for_runtime(runtime_name: String, standalone: bool) -> String
 ## The layout in use: the user's pick, or the runtime's.
 func get_layout() -> StringName:
 	return _layout if _layout != &"" else runtime_layout
+
+
+## Whether buttons are keys of the keyboard: the NonVR layout is in use, or
+## the VR view runs without a headset (its runtime layout), whatever the user picked.
+func uses_keyboard() -> bool:
+	return get_layout() == NON_VR or runtime_layout == NON_VR
 
 
 ## The button action [param action] has in the current layout, a key of [constant BUTTONS].

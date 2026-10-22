@@ -11,6 +11,12 @@ extends Node
 ## window V-Sync is off, and the native XREEditorFrameLoop keeps low-processor
 ## mode off (it must be, from the first frame, or the runtime drops the session).
 ## After the session ends, both are restored from the editor settings.
+## [br][br]
+## Without OpenXR the VR view can run without a headset ([method start_simulator],
+## D-057): an [XRESimulator] window with the keyboard and mouse for controllers.
+
+## Emitted when the user closes the window of [method start_simulator].
+signal simulator_closed
 
 ## Display refresh rate the spike is measured against: 11.1 ms per frame (docs/plan.md).
 const TARGET_REFRESH_RATE := 90.0
@@ -47,6 +53,7 @@ const _PIPELINE_MONITORS: Array[Performance.Monitor] = [
 ]
 
 var _xr: OpenXRInterface
+var _simulator: XRESimulator
 var _viewport: SubViewport
 var _rig: XRERig
 var _status_timer: Timer
@@ -173,6 +180,45 @@ func get_xr_interface() -> OpenXRInterface:
 	return _xr
 
 
+## Starts the VR view without a headset (D-057), if OpenXR isn't running:
+## [method get_rig] is then the simulator's. False if there is a VR view already.
+func start_simulator() -> bool:
+	if _xr != null or _simulator != null:
+		return false
+	var editor_viewport := EditorInterface.get_editor_viewport_3d(0)
+	if editor_viewport == null:
+		_log("no 3D editor viewport, no VR view without a headset.")
+		return false
+	_simulator = XRESimulator.new(editor_viewport.find_world_3d())
+	_simulator.closed.connect(simulator_closed.emit)
+	_rig = _simulator.rig
+	add_child(_simulator)
+	var camera := editor_viewport.get_camera_3d()
+	if camera != null:
+		# Where the desktop 3D view looks from.
+		_simulator.look_from(camera.global_transform)
+	return true
+
+
+## Closes the VR view without a headset, and the tools under its rig with it.
+func stop_simulator() -> void:
+	if _simulator == null:
+		return
+	_simulator.queue_free()
+	_simulator = null
+	_rig = null
+
+
+## Whether the VR view runs without a headset ([method start_simulator]).
+func is_simulating() -> bool:
+	return _simulator != null
+
+
+## The VR view without a headset, or null.
+func get_simulator() -> XRESimulator:
+	return _simulator
+
+
 ## The headset's viewport while the VR view is on, otherwise null.
 func get_xr_viewport() -> SubViewport:
 	return _viewport
@@ -192,14 +238,18 @@ func is_session_released() -> bool:
 
 ## Whether the headset shows the editor and sends it the controllers' input:
 ## not while a game, the system menu or another application has the headset,
-## nor while the session is released.
+## nor while the session is released. Without a headset: while the
+## simulator's window has the keyboard.
 func has_headset_focus() -> bool:
+	if _simulator != null:
+		return _simulator.has_focus()
 	return _xr != null and not _released and not _fresh_session \
 			and _xr.get_session_state() == OpenXRInterface.SESSION_STATE_FOCUSED
 
 
 ## Status for UI sampled at low frequency, matching the log's state vocabulary.
 func session_state_text() -> String:
+	if _simulator != null: return "SIMULATED"
 	if _xr == null: return "OFF"
 	if _released: return "RELEASED"
 	return _STATE_NAMES[_xr.get_session_state()]
@@ -211,9 +261,10 @@ func session_state_text() -> String:
 ## headset and kills it 5 s later ([XREHandoffBenchmark]); there the editor
 ## releases its session for the game instead (D-012). Only Meta Link and
 ## SteamVR were tried; other runtimes are assumed to behave like Meta Link.
+## Without a headset there is nothing to give up: the game runs on the desktop.
 func can_yield_headset() -> bool:
 	if _xr == null:
-		return false
+		return _simulator != null
 	var runtime: String = _xr.get_system_info().get("XRRuntimeName", "")
 	return not runtime.begins_with("SteamVR")
 

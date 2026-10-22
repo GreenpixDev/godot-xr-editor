@@ -4,7 +4,9 @@
 Picks the OpenXR runtime itself, in this order:
 1. SteamVR, if it is already running and sees a headset (Quest through Steam Link);
 2. Meta Horizon, if it sees a headset (Quest Link);
-3. no VR (--xr-mode off).
+3. no VR (--xr-mode off), or with --fallback sim the VR view in a window.
+--runtime sim skips the headset: the VR view opens in a window of its own,
+with the keyboard and mouse for controllers (docs/decisions.md, D-057).
 A runtime sees a headset when xrGetSystem finds a head-mounted display. The
 check creates and destroys an OpenXR instance, without a session, in a child
 process that exits before Godot starts. SteamVR is never checked unless it is
@@ -18,9 +20,11 @@ plugin's native library: a second editor on this project starts without it,
 and without it VR doesn't work (docs/decisions.md, D-005). Unsaved changes in
 the editor closed are lost; --no-restart fails instead.
 
-Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off] [--check] [--no-restart] [scene] [-- arguments for the plugin]
+Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--check] [--no-restart] [scene] [-- arguments for the plugin]
   py scripts/xr_editor.py res://benchmarks/manipulation_check.tscn
   py scripts/xr_editor.py --runtime meta res://benchmarks/empty.tscn -- --xre-benchmark
+  py scripts/xr_editor.py --runtime sim res://benchmarks/play_check.tscn
+  py scripts/xr_editor.py --fallback sim    (Rider's XR Editor: the headset if one is found, else the window)
 --runtime steamvr or meta skips the order above and fails if that runtime
 sees no headset (steamvr launches SteamVR if needed). --check only reports
 the runtime that would be used, without starting Godot. Override the Godot
@@ -279,10 +283,11 @@ def godot_binary() -> str | None:
     return None
 
 
-def pick_runtime(requested: str) -> tuple[str, Path | None]:
-    """Name of the runtime to use ("steamvr", "meta" or "off") and its manifest."""
-    if requested == "off":
-        return "off", None
+def pick_runtime(requested: str, fallback: str = "off") -> tuple[str, Path | None]:
+    """Name of the runtime to use ("steamvr", "meta", "off" or "sim") and its manifest.
+    With "auto", fallback ("off" or "sim") is used when no runtime sees a headset."""
+    if requested in ("off", "sim"):
+        return requested, None
     steamvr = steamvr_manifest()
     meta = meta_manifest()
     if requested == "steamvr":
@@ -306,7 +311,9 @@ def pick_runtime(requested: str) -> tuple[str, Path | None]:
         return "steamvr", steamvr
     if meta is not None and check_runtime("Meta Horizon", meta):
         return "meta", meta
-    return "off", None
+    if fallback == "sim":
+        print("xr_editor: no runtime sees a headset, falling back to the VR view in a window")
+    return fallback, None
 
 
 def main() -> int:
@@ -326,7 +333,9 @@ def main() -> int:
         plugin_args = args[args.index("--") + 1:]
         args = args[:args.index("--")]
     parser = argparse.ArgumentParser(description="Start the Godot editor on this project, in VR if a headset is available.")
-    parser.add_argument("--runtime", choices=["auto", "steamvr", "meta", "off"], default="auto")
+    parser.add_argument("--runtime", choices=["auto", "steamvr", "meta", "off", "sim"], default="auto")
+    parser.add_argument("--fallback", choices=["off", "sim"], default="off",
+                        help="with --runtime auto and no headset: no VR (off) or the VR view in a window (sim)")
     parser.add_argument("--check", action="store_true", help="only report the runtime that would be used")
     parser.add_argument("--no-restart", action="store_true",
                         help="fail if an editor is already open on this project instead of closing it")
@@ -350,10 +359,13 @@ def main() -> int:
         print("xr_editor: Godot 4.7 not found: put godot.cmd on PATH or set GODOT", file=sys.stderr)
         return 1
 
-    runtime, manifest = pick_runtime(options.runtime)
+    runtime, manifest = pick_runtime(options.runtime, options.fallback)
+    mode = f"in VR on {runtime}" if manifest else "with the VR view in a window, no headset" if runtime == "sim" else "without VR"
     if options.check:
-        print(f"xr_editor: would start the editor {'in VR on ' + runtime if manifest else 'without VR'}")
+        print(f"xr_editor: would start the editor {mode}")
         return 0
+    if runtime == "sim" and "--xre-simulator" not in plugin_args:
+        plugin_args.insert(0, "--xre-simulator")
     env = dict(os.environ)
     if manifest is not None:
         env["XR_RUNTIME_JSON"] = str(manifest)
@@ -362,7 +374,7 @@ def main() -> int:
     logs = REPO / "logs"
     logs.mkdir(exist_ok=True)
     log = logs / f"editor_{runtime}_{time.strftime('%Y-%m-%dT%H-%M-%S')}.log"
-    print(f"xr_editor: starting the editor {'in VR on ' + runtime if manifest else 'without VR'}, "
+    print(f"xr_editor: starting the editor {mode}, "
           f"log {log.relative_to(REPO).as_posix()}")
 
     command = [godot, "--path", str(REPO), "--editor", "--xr-mode", "on" if manifest else "off", "--log-file", str(log)]

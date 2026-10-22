@@ -2,7 +2,8 @@
 # Check of the project without a headset:
 #   1. every GDScript parses and type-checks (warnings configured as errors in project.godot);
 #   2. the VR tools pass their headless tests (picking, snapping, manipulation, the palette and
-#      deleting, with fake controllers), and so do the panels, the controller models and play mode;
+#      deleting, with fake controllers), and so do the panels, the controller models, play mode
+#      and the VR view without a headset (keyboard and mouse for controllers);
 #   3. the plugin loads in a headless editor without errors, and the inspector in the headset
 #      works there with the editor's own EditorInspector.
 # Exits non-zero on any error. Override the binary with GODOT=/path/to/godot.
@@ -22,6 +23,7 @@ run -s res://scripts/test_tools.gd # tests XREPicker, XRESnap, XREIcons, XREMani
 run -s res://scripts/test_controller_model.gd # tests XREControllerModel
 run -s res://scripts/test_play_mode.gd # tests XREPlayMode and the game's way back to the editor
 run -s res://scripts/test_panels.gd # tests XREPanels, its tabs and XREInspectorProxy with fake controllers
+run -s res://scripts/test_simulator.gd # tests XRESimulator: keyboard and mouse in, head and hands out
 run -s res://scripts/test_blueprints.gd # tests standalone visual scripting and generated runtime code
 run -s res://scripts/test_blueprint_picking.gd # tests card edges, sides and ports against their visible geometry
 run -s res://scripts/test_blueprint_wires.gd # tests Bezier wires: port attachment, exit directions, smoothness, stability
@@ -36,11 +38,11 @@ if grep -E "SCRIPT ERROR|ERROR:|WARNING:|: FAILED" "$log"; then
 	exit 1
 fi
 # A test run that died or hung prints no summary.
-for test in test_tools test_controller_model test_play_mode test_panels test_inspector test_blueprints test_blueprint_picking test_blueprint_wires test_blueprint_editor test_blueprint_vr; do
+for test in test_tools test_controller_model test_play_mode test_panels test_simulator test_inspector test_blueprints test_blueprint_picking test_blueprint_wires test_blueprint_editor test_blueprint_vr; do
 	if ! grep -q "$test: 0 of [0-9]* checks failed" "$log"; then
 		echo "check: FAILED, $test didn't finish" >&2
 		exit 1
 	fi
 done
-grep -E "parse_all:|test_tools:|test_controller_model:|test_play_mode:|test_panels:|test_inspector:|test_blueprints:|test_blueprint_picking:|test_blueprint_wires:|test_blueprint_editor:|test_blueprint_vr:" "$log"
+grep -E "parse_all:|test_tools:|test_controller_model:|test_play_mode:|test_panels:|test_simulator:|test_inspector:|test_blueprints:|test_blueprint_picking:|test_blueprint_wires:|test_blueprint_editor:|test_blueprint_vr:" "$log"
 echo "check: OK"
