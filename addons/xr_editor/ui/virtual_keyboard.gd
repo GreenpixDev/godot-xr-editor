@@ -3,6 +3,11 @@ class_name XREVirtualKeyboard
 extends XREPanelSurface
 ## A separate tilted keyboard using SteamVR's five-row English key arrangement.
 ## Hover pulses belong to the pointing hand; clicks use an original generated sound.
+## For a number it is a keypad ([method open_number], D-057): big digits, a
+## point, a comma for vectors; π, e, + − × /, ^, √ and brackets write
+## expressions such as 3π, π/2 or 2√(1+π) (D-062, D-063), which
+## [method XREBlueprintTokens.parse_number] reads. It has no letters: a number
+## is typed only as a number (D-063).
 
 signal applied(text: String)
 signal hover_feedback(hand: XREHand)
@@ -15,6 +20,8 @@ const TILT := PI / 5.0
 ## A shallow release is enough for fast typing; scene tools retain their wider hysteresis.
 const KEY_RELEASE_THRESHOLD := 0.55
 const KEY_HIT_MARGIN := 3.0
+## The keypad's keys, row by row; "⌫" and "Done" act, the rest type themselves ("−" a minus).
+const KEYPAD: Array[String] = ["7", "8", "9", "(", ")", "⌫", "4", "5", "6", "×", "/", "√", "1", "2", "3", "+", "−", "^", "0", ".", ",", "π", "e", "Done"]
 
 var value: LineEdit
 var _keys: Array[Button] = []
@@ -30,6 +37,9 @@ var _sound: AudioStreamPlayer
 var _normal_style: StyleBoxFlat
 var _hover_style: StyleBoxFlat
 var _pressed_style: StyleBoxFlat
+var _letters: VBoxContainer
+var _keypad: GridContainer
+var _comma: Button
 
 
 func _init(theme: Theme = null) -> void:
@@ -54,11 +64,14 @@ func _init(theme: Theme = null) -> void:
 	value.custom_minimum_size.y = 52
 	header.add_child(value)
 	_add_key(header, "×", close, 0.7)
+	_letters = VBoxContainer.new()
+	_letters.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(_letters)
 	for row_index: int in NORMAL.size():
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		column.add_child(row)
+		_letters.add_child(row)
 		if row_index == 2: _add_key(row, "123 / #+=", _symbols, 1.3)
 		if row_index == 3: _add_key(row, "Shift", _shift, 1.0)
 		for character: String in NORMAL[row_index]:
@@ -70,9 +83,27 @@ func _init(theme: Theme = null) -> void:
 	var bottom := HBoxContainer.new()
 	bottom.alignment = BoxContainer.ALIGNMENT_CENTER
 	bottom.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(bottom)
+	_letters.add_child(bottom)
 	_add_key(bottom, "Space", func() -> void: value.insert_text_at_caret(" "), 9.0)
 	_add_key(bottom, "Done", _apply, 3.0)
+	_keypad = GridContainer.new()
+	_keypad.columns = 6
+	_keypad.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_keypad.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_keypad.add_theme_constant_override(&"h_separation", 8)
+	_keypad.add_theme_constant_override(&"v_separation", 8)
+	_keypad.visible = false
+	column.add_child(_keypad)
+	for text: String in KEYPAD:
+		var action: Callable = {
+			"⌫": value.delete_char_at_caret,
+			"Done": _apply,
+			"−": func() -> void: value.insert_text_at_caret("-"),
+		}.get(text, Callable())
+		var key := _add_key(_keypad, text, action, 2.3)
+		key.add_theme_font_size_override(&"font_size", 30)
+		if not action.is_valid(): key.pressed.connect(_insert.bind(key))
+		if text == ",": _comma = key
 	value.text_submitted.connect(func(_text: String) -> void: _apply())
 	_sound = AudioStreamPlayer.new()
 	_sound.stream = _click_sound()
@@ -89,7 +120,28 @@ func open_text(text: String) -> void:
 	value.caret_column = text.length()
 	_plane = 0
 	_update_labels()
+	_show_letters()
 	set_shown(true)
+
+
+## Opens as a keypad for a number, with a comma between components when
+## [param components] is more than one (a vector), until Done is pressed.
+func open_number(text: String, components: int = 1) -> void:
+	open_text(text)
+	_letters.visible = false
+	_keypad.visible = true
+	_comma.disabled = components < 2
+	_comma.modulate.a = 1.0 if components >= 2 else 0.25
+
+
+## Whether the keypad, not the letters, is shown.
+func is_keypad() -> bool:
+	return _keypad.visible
+
+
+func _show_letters() -> void:
+	_letters.visible = true
+	_keypad.visible = false
 
 
 ## Cancels the current draft and clears both hands' hover state.
@@ -108,6 +160,7 @@ func hover_pointer(hand: XREHand, pixel: Vector2) -> void:
 	var nearest := INF
 	if is_shown():
 		for i: int in _keys.size():
+			if not _keys[i].is_visible_in_tree() or _keys[i].disabled: continue
 			var bounds := _keys[i].get_global_rect()
 			if bounds.has_point(pixel):
 				index = i

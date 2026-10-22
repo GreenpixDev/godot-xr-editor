@@ -5,10 +5,13 @@
 [resource]
 script = ExtResource("1_b1cs4")
 nodes = Array[Dictionary]([{
+"arguments": Array[Dictionary]([]),
 "id": 1,
-"kind": "ready",
+"kind": "signal",
 "params": {
-"policy": "parallel"
+"policy": "parallel",
+"signal": "ready",
+"target": "."
 },
 "position": Vector2(-1218.1891, -111.4335),
 "vr_depth": 1.2172234
@@ -24,16 +27,90 @@ nodes = Array[Dictionary]([{
 "property_type": 1,
 "vr_depth": 0.8831382
 }, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"default": 1.0,
+"key": "seconds",
+"label": "Seconds",
+"name": "seconds",
+"positive": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Flow",
+"class": "XREBlueprintLibrary",
+"description": "Waits [param seconds] of game time, or until the event's run is cancelled.",
+"extra": 0,
+"keywords": "wait timer pause sleep",
+"name": "delay",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": [],
+"then": "Finished",
+"title": "Delay",
+"vararg": false
+},
 "id": 3,
-"kind": "delay",
+"kind": "call",
 "params": {
 "seconds": 1.0
 },
 "position": Vector2(-884.3643, 18.612045),
 "vr_depth": 0.711759
 }, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"default": 1.0,
+"key": "seconds",
+"label": "Seconds",
+"name": "seconds",
+"positive": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Flow",
+"class": "XREBlueprintLibrary",
+"description": "Waits [param seconds] of game time, or until the event's run is cancelled.",
+"extra": 0,
+"keywords": "wait timer pause sleep",
+"name": "delay",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": [],
+"then": "Finished",
+"title": "Delay",
+"vararg": false
+},
 "id": 4,
-"kind": "delay",
+"kind": "call",
 "params": {
 "seconds": 1.0
 },

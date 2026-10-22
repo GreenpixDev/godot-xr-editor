@@ -4,6 +4,8 @@ extends RefCounted
 ## Reflection and supported value types for scene-bound graph ports.
 
 const LITERAL_TYPES: Array[int] = [TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_COLOR]
+## Property types a Tween can interpolate.
+const TWEENABLE_TYPES: Array[int] = [TYPE_INT, TYPE_FLOAT, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_COLOR]
 
 
 ## Human-readable type name, also used in diagnostics and port tooltips.
@@ -80,36 +82,99 @@ static func signal_arguments(object: Object, signal_name: String) -> Array[Dicti
 	return result
 
 
+## Whether [param object] is of class [param cls]: an engine class, or a
+## script's [code]class_name[/code] in its script's inheritance.
+static func is_of_class(object: Object, cls: String) -> bool:
+	if ClassDB.class_exists(cls): return object.is_class(cls)
+	var script := object.get_script() as Script
+	while script != null:
+		if str(script.get_global_name()) == cls: return true
+		script = script.get_base_script()
+	return false
+
+
+## Classes a call block's Target may be, empty for any node.
+static func target_classes(block: Dictionary) -> Array:
+	var function: Variant = block.get("function")
+	return (function as Dictionary).get("targets", []) if block.get("kind") == "call" and function is Dictionary else []
+
+
 ## Fundamental target requirements, independent of the selected member name.
 ## The picker can disable these nodes while keeping other nodes available for configuration.
-static func target_kind_problem(kind: String, target: Node) -> String:
-	if kind == "play_animation" and not target is AnimationPlayer:
-		return "requires AnimationPlayer"
-	if kind == "play_sound" and not (target is AudioStreamPlayer or target is AudioStreamPlayer2D or target is AudioStreamPlayer3D):
-		return "requires an audio player"
-	return ""
+static func target_kind_problem(block: Dictionary, target: Node) -> String:
+	var classes := target_classes(block)
+	if classes.is_empty(): return ""
+	for cls: Variant in classes:
+		if is_of_class(target, str(cls)): return ""
+	var names := PackedStringArray()
+	for cls: Variant in classes: names.append(str(cls))
+	if names.size() == 1: return "requires " + names[0]
+	return "requires %s or %s" % [", ".join(names.slice(0, names.size() - 1)), names[names.size() - 1]]
+
+
+## Names a value provider offers for an argument of [param target]: its
+## animations, readable properties or signals ([XREBlueprintFunctions]).
+static func provided_names(target: Object, provider: String) -> PackedStringArray:
+	var names := PackedStringArray()
+	if target == null: return names
+	match provider:
+		"animation":
+			if target is AnimationMixer:
+				for name: StringName in (target as AnimationMixer).get_animation_list(): names.append(str(name))
+		"property":
+			for info: Dictionary in properties(target): names.append(str(info["name"]))
+		"signal":
+			for info: Dictionary in target.get_signal_list(): names.append(str(info["name"]))
+	return names
 
 
 ## Shared target suitability rules for the field, suggestions, picker and build.
 static func target_problem(block: Dictionary, target: Node) -> String:
 	if target == null: return "missing target"
 	var kind: String = block["kind"]
-	var problem := target_kind_problem(kind, target)
+	var problem := target_kind_problem(block, target)
 	if not problem.is_empty(): return problem
 	var params: Dictionary = block["params"]
-	if params.has("property"):
+	if kind in ["get_property", "set_property"]:
 		var property: String = params["property"]
 		var info := property_info(target, property)
 		if info.is_empty(): return "missing property: " + property
-		if kind in ["set_property", "tween"] and int(info.get("usage", 0)) & PROPERTY_USAGE_READ_ONLY:
+		if kind == "set_property" and int(info.get("usage", 0)) & PROPERTY_USAGE_READ_ONLY:
 			return "read-only property: " + property
-		if kind == "tween" and not int(info["type"]) in [TYPE_INT, TYPE_FLOAT, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_COLOR]:
-			return "property cannot be tweened: " + property
 	if kind == "signal" and not target.has_signal(params["signal"]):
 		return "missing signal: " + str(params["signal"])
-	if kind == "play_animation":
-		var player := target as AnimationPlayer
-		if not player.has_animation(params["animation"]): return "missing animation: " + str(params["animation"])
-		if params["wait"] and player.get_animation(params["animation"]).loop_mode != Animation.LOOP_NONE:
-			return "cannot wait for a looping animation"
+	if kind == "call":
+		return _call_problem(block, target)
 	return ""
+
+
+static func _call_problem(block: Dictionary, target: Node) -> String:
+	var function: Dictionary = block["function"]
+	var params: Dictionary = block["params"]
+	if function["scope"] == "method" and not target.has_method(str(function["name"])):
+		return "missing method: " + str(function["name"])
+	for argument: Dictionary in function["args"]:
+		var provider := str(argument.get("provider", ""))
+		if provider.is_empty() or not params.has(argument["key"]): continue
+		var value := str(params[argument["key"]])
+		match provider:
+			"animation":
+				if not target is AnimationMixer or not (target as AnimationMixer).has_animation(value): return "missing animation: " + value
+			"property":
+				if property_info(target, value).is_empty(): return "missing property: " + value
+			"signal":
+				if not target.has_signal(value): return "missing signal: " + value
+	var script_path := str(function.get("script", ""))
+	var validator := "_validate_" + str(function["name"])
+	if function["scope"] == "static" and not script_path.is_empty() and ResourceLoader.exists(script_path):
+		var script := load(script_path) as Script
+		if script != null and _has_static(script, validator):
+			var problem: Variant = script.call(validator, target, params)
+			if problem is String and not (problem as String).is_empty(): return problem
+	return ""
+
+
+static func _has_static(script: Script, name: String) -> bool:
+	for info: Dictionary in script.get_script_method_list():
+		if str(info["name"]) == name and int(info["flags"]) & METHOD_FLAG_STATIC: return true
+	return false

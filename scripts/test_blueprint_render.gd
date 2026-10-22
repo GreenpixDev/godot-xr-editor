@@ -173,6 +173,7 @@ func _test_window_color() -> void:
 	concave.position = Vector3(30.0, 0.15, 0.0)
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [{"id": 1, "kind": "print", "position": Vector2.ZERO, "params": {}}]
+	graph.upgrade()
 	var canvas := XREBlueprintCanvas.new()
 	canvas.set_port_display(XREFeatureSettings.SPHERE)
 	_viewport.add_child(canvas)
@@ -274,6 +275,7 @@ func _run() -> void:
 	_check(not outline.is_boxed() and outline.get_part_count() == 1, "rendered outline uses mesh edges, not a bounding box")
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [{"id": 1, "kind": "ready", "position": Vector2.ZERO, "params": {}}]
+	graph.upgrade()
 	var canvas := XREBlueprintCanvas.new()
 	_viewport.add_child(canvas)
 	canvas.rebuild(graph)

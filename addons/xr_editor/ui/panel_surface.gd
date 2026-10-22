@@ -78,6 +78,7 @@ const CURVE_SEGMENTS_PER_RADIAN := 24.0
 ## Handle materials shared by every window: idle and hot, over the scene and over the logic veil.
 static var _handle_materials: Array[ShaderMaterial] = []
 static var _panel_shader: Shader
+static var _top_shader: Shader
 
 ## The frame, filling the panel; panels put their controls in it.
 var root: PanelContainer
@@ -116,6 +117,7 @@ var _handles_enabled := true
 var _hover_mask := 0
 var _shown_mask := -1
 var _overlay := false
+var _on_top := false
 ## Seconds into the pulse, or -1 without one.
 var _pulse := -1.0
 ## Drag scrolling: the list a press waits on, the one being dragged, the one
@@ -128,6 +130,7 @@ var _drag_y := 0.0
 var _drag_usec := 0
 var _scene_material: ShaderMaterial
 var _overlay_material: ShaderMaterial
+var _top_material: ShaderMaterial
 
 
 ## A panel [param logical_size] interface pixels large, each [param pixel_size]
@@ -536,8 +539,29 @@ func _make_mesh() -> Mesh:
 	return mesh
 
 
-## The panel's material at [param priority]: the scene's (0) or the logic veil's (maximum).
-func _make_panel_material(priority: int) -> ShaderMaterial:
+## The panel's material at [param priority]: the scene's (0) or the logic veil's
+## (maximum); [param on_top] draws it with no depth test.
+func _make_panel_material(priority: int, on_top: bool = false) -> ShaderMaterial:
+	if on_top:
+		if _top_shader == null:
+			_top_shader = Shader.new()
+			_top_shader.code = """
+shader_type spatial;
+render_mode unshaded, depth_draw_always, depth_test_disabled, fog_disabled;
+uniform sampler2D panel_texture : source_color, filter_linear;
+uniform float opacity = 1.0;
+void fragment() {
+	vec4 color = texture(panel_texture, UV);
+	if (color.a * opacity < 0.01) discard;
+	ALBEDO = color.rgb;
+	ALPHA = color.a * opacity;
+}
+"""
+		var top := ShaderMaterial.new()
+		top.shader = _top_shader
+		top.render_priority = priority
+		top.set_shader_parameter(&"panel_texture", _viewport.get_texture())
+		return top
 	if _panel_shader == null:
 		_panel_shader = Shader.new()
 		_panel_shader.code = """
@@ -616,7 +640,22 @@ func set_overlay(enabled: bool) -> void:
 	if enabled == _overlay: return
 	_overlay = enabled
 	if not _handles.is_empty(): _update_handles()
-	_quad.material_override = _overlay_material if enabled else _scene_material
+	_quad.material_override = _top_material if _on_top else (_overlay_material if enabled else _scene_material)
+
+
+## Draws the panel over everything — the scene, cards, other windows — with no
+## depth test and sorted last (D-058): for a keyboard that must not sink into
+## the graph. Its ray hit wins over nearer cards too ([method is_on_top]).
+func set_on_top(enabled: bool) -> void:
+	_on_top = enabled
+	if enabled and _top_material == null: _top_material = _make_panel_material(Material.RENDER_PRIORITY_MAX, true)
+	_quad.sorting_offset = 100.0 if enabled else 0.0
+	_quad.material_override = _top_material if enabled else (_overlay_material if _overlay else _scene_material)
+
+
+## Whether the panel is drawn over everything ([method set_on_top]).
+func is_on_top() -> bool:
+	return _on_top
 
 
 ## Global position of the interface pixel [param pixel] on the quad.

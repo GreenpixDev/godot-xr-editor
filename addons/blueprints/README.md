@@ -4,7 +4,7 @@ A standalone, early visual scripting editor. No XR plugin, native extension or h
 
 Copy this folder to `addons/blueprints` in a Godot 4.7.x project, keeping the `.gd.uid` files. Enable **Blueprints 2D** in **Project → Project Settings → Plugins**. Open the **Blueprints** main-screen tab.
 
-Double-click a block in the left palette, connect its ports, and edit its parameters on the right. White wires carry execution, blue wires carry values, and pink wires carry booleans. **Save** writes a `.tres` graph and builds a neighboring `.generated.gd` script. Select a scene node without a script, choose **Attach to selected**, save the scene, and run it. Use **Focus graph** for more canvas space.
+Add blocks from the **Add block** menu on the left, by right-clicking the canvas, or by letting a wire go on empty canvas: the menu then lists only blocks that fit and wires the one chosen. Edit parameters on the right. White wires carry execution, blue wires carry values, and pink wires carry booleans. **Save** writes a `.tres` graph and builds a neighboring `.generated.gd` script. Select a scene node without a script, choose **Attach to selected**, save the scene, and run it. Use **Focus graph** for more canvas space.
 
 Use **Script host…** to choose the node holding the script, and **Choose from scene…** for targets. Properties, signals and animations offer lists from the selected node. Typed ports reject incompatible connections; integers may widen to floats. Bound targets follow renames and reparenting while this graph is open. Targets still serialize as relative paths, so changes made with the graph closed require checking its bindings.
 
@@ -16,7 +16,7 @@ On Signal exposes its arguments as data ports. Each invocation owns its argument
 
 Events support `parallel`, `ignore` and `restart`. Restart cancels old continuations and their active Tweens / waited animations; it does not undo changes already made. Play Animation optionally waits for named completion, diagnoses interruption and deleted targets, rejects looping waits, and has a real-time timeout. Runtime errors include a block ID and can be handled with the generated `blueprint_error` signal.
 
-The graph is the source. Generated scripts contain ordinary GDScript and run without this addon. Do not hand-edit them: building replaces them. Unrelated scripts on scene nodes are protected.
+The graph is the source. Generated scripts contain ordinary GDScript; since 0.4.0 they need the scripts of this folder at runtime (XREBlueprintRun, XREBlueprintLibrary, XREBlueprintSchema). Version 0.4.0 keeps few native blocks and adds **Call**: any method of a scene node, static function of a class_name script, autoload method or @GlobalScope function. On Ready, Boolean, Print, Delay, Tween, Play Sound and Play Animation are presets; a static function in your own class_name script appears in the menu, shaped by `## @bp_*` tags. Format-2 graphs migrate in memory. Do not hand-edit them: building replaces them. Unrelated scripts on scene nodes are protected.
 
 Version 0.3.1 optionally stores the VR workspace placement and layout origin. XR Editor pins them on first VR opening through the graph document; subsequent openings retain the same scene location. Desktop layout and generated logic ignore this editor-only metadata. Standalone 2D usage still needs no XR/native extension.
 

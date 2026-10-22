@@ -204,6 +204,13 @@ func set_overlay(enabled: bool) -> void:
 		material.render_priority = Material.RENDER_PRIORITY_MAX if enabled else 0
 
 
+## Draws the ray and its dot over everything (D-061), while an input has the user's attention.
+func set_on_top(enabled: bool) -> void:
+	_ray.sorting_offset = 200.0 if enabled else 0.0
+	_dot.sorting_offset = 200.0 if enabled else 0.0
+	for material: StandardMaterial3D in [_ray_material, _hit_material]: material.no_depth_test = enabled
+
+
 func hide_ray() -> void:
 	if not _ray.visible:
 		return

@@ -1,0 +1,229 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://q40eh2aaqox4"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_sn1rj"]
+
+[resource]
+script = ExtResource("1_sn1rj")
+nodes = Array[Dictionary]([{
+"arguments": Array[Dictionary]([]),
+"id": 1,
+"kind": "signal",
+"params": {
+"policy": "parallel",
+"signal": "ready",
+"target": "."
+},
+"position": Vector2(80, 100)
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "Node3D",
+"key": "target",
+"label": "Target",
+"name": "target",
+"self": true,
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"key": "angle",
+"label": "Angle",
+"name": "angle",
+"type": 3
+}]),
+"awaits": false,
+"category": "Node3D",
+"class": "Node3D",
+"description": "",
+"extra": 0,
+"keywords": "",
+"name": "rotate_x",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "method",
+"script": "",
+"targets": ["Node3D"],
+"then": "Then",
+"title": "Rotate X",
+"vararg": false
+},
+"id": 2,
+"kind": "call",
+"params": {
+"angle": 0.0,
+"target": "."
+},
+"position": Vector2(624.2445, 12.621841),
+"vr_depth": 0.030601844
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"default": 1.0,
+"key": "seconds",
+"label": "Seconds",
+"name": "seconds",
+"non_negative": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Flow",
+"class": "XREBlueprintLibrary",
+"description": "Waits [param seconds] of game time, or until the event's run is cancelled.",
+"extra": 0,
+"keywords": "wait timer pause sleep",
+"name": "delay",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": [],
+"then": "Finished",
+"title": "Delay",
+"vararg": false
+},
+"id": 3,
+"kind": "call",
+"params": {
+"seconds": 0.01
+},
+"position": Vector2(976.49884, 12.538795),
+"vr_depth": 0.18541647
+}, {
+"expressions": {
+"value": "1.4, √2, 0.5"
+},
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "Node",
+"key": "target",
+"label": "Target",
+"name": "target",
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"default": "position",
+"key": "property",
+"label": "Property",
+"literal": true,
+"name": "property",
+"provider": "property",
+"type": 4
+}, {
+"class_name": "",
+"default": Vector2(400, 240),
+"key": "value",
+"label": "Value",
+"name": "value",
+"type": 0,
+"type_of": "property"
+}, {
+"class_name": "",
+"default": 1.0,
+"key": "seconds",
+"label": "Seconds",
+"name": "seconds",
+"non_negative": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Motion",
+"class": "XREBlueprintLibrary",
+"description": "Changes [param property] of [param target] smoothly to [param value] over [param seconds], then continues. Cancelling the run kills the Tween; what has changed stays.",
+"extra": 0,
+"keywords": "move animate interpolate slide fade",
+"name": "tween_property",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": ["Node"],
+"then": "Finished",
+"title": "Tween Property",
+"vararg": false
+},
+"id": 4,
+"kind": "call",
+"params": {
+"property": "rotation",
+"seconds": 0.0,
+"target": ".",
+"value": Vector3(1.4, 1.4142135, 0.5)
+},
+"position": Vector2(462.76718, 116.21776),
+"property_type": 9,
+"vr_anchor": Vector3(0, 0, 0),
+"vr_depth": 0.68125486
+}, {
+"id": 5,
+"kind": "get_variable",
+"params": {
+"variable": "test"
+},
+"position": Vector2(324.2445, 152.62184),
+"vr_depth": 0.030601844,
+"vr_inline": true
+}, {
+"id": 6,
+"kind": "set_variable",
+"params": {
+"value": Color(1, 0.39999998, 0.5246705, 1),
+"variable": "c"
+},
+"position": Vector2(-21.402298, 292.1585),
+"vr_depth": 0.5906555
+}])
+edges = Array[Dictionary]([{
+"from": 2,
+"from_port": 0,
+"to": 3,
+"to_port": 0
+}, {
+"from": 1,
+"from_port": 0,
+"to": 4,
+"to_port": 0
+}, {
+"from": 5,
+"from_port": 0,
+"to": 2,
+"to_port": 2
+}])
+variables = Array[Dictionary]([{
+"name": "test",
+"value": 0.0
+}, {
+"name": "c",
+"value": Color(1, 1, 1, 1)
+}])
+host_path = NodePath("GreenCube")
+scene_path = "res://benchmarks/play_check.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.99501145, 0, 0.09976084, 0, 1, 0, -0.09976084, 0, 0.99501145, 0.14058676, 1.3882774, 0.13637733)
+vr_center = Vector2(80, 100)

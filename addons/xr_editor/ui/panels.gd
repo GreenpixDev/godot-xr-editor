@@ -661,7 +661,10 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	# graph has the hand, say for a wire being drawn, unless the graph holds something with it.
 	var on_launcher := _launcher.intersect_ray(origin, direction, POINT_DISTANCE) if _menus_shown else -1.0
 	var graph_lets_go := _blueprints != null and hand.is_free_for(_blueprints) and not _blueprints.is_holding(hand)
-	if not hand.get_has_tracking_data() or not (hand.is_free_for(self) or (on_launcher >= 0.0 and graph_lets_go)):
+	# A wire being drawn in the graph gives way to windows (D-058): the ray on a window is
+	# the window's, and a click there lets the wire go, as a click on its own port does.
+	var graph_wire := graph_lets_go and _blueprints.has_wire(hand)
+	if not hand.get_has_tracking_data() or not (hand.is_free_for(self) or (on_launcher >= 0.0 and graph_lets_go) or graph_wire):
 		_leave(pointer)
 		return
 
@@ -695,6 +698,9 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			if hit >= 0.0:
 				handle = window
 				distance = hit
+		if graph_wire and surface == null and handle == null:
+			_leave(pointer)
+			return
 		if _blueprints != null and _blueprints.takes_pointer(hand, origin, direction, distance):
 			_leave(pointer)
 			return

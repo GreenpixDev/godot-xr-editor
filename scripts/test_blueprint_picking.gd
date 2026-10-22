@@ -70,6 +70,8 @@ func _test_port_wires() -> void:
 		{"from": 1, "from_port": 0, "to": 3, "to_port": 1},
 		{"from": 1, "from_port": 0, "to": 2, "to_port": 1},
 	]
+	# Written in format 2: Print is a preset of the global print since D-051.
+	graph.upgrade()
 	_canvas.set_display(XREFeatureSettings.BILLBOARD)
 	_canvas.center_graph(graph)
 	_canvas.rebuild(graph)
@@ -100,6 +102,7 @@ func _test_port_wires() -> void:
 func _run() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [{"id": 1, "kind": "ready", "position": Vector2.ZERO, "params": {"policy": "parallel"}}]
+	graph.upgrade()
 	_canvas = XREBlueprintCanvas.new()
 	root.add_child(_canvas)
 	_canvas.rebuild(graph)
@@ -161,8 +164,7 @@ func _run() -> void:
 	_canvas.preview_grab(1, contact, local_contact, head)
 	_check(card.node.to_global(local_contact).is_equal_approx(contact), "off-center grab stays attached to the rod after automatic facing")
 	var front := head - card.node.global_position
-	front.y = 0.0
-	_check(card.node.global_basis.z.dot(front.normalized()) > 0.999, "grabbed panel continues facing the head without tilt")
+	_check(card.node.global_basis.z.dot(front.normalized()) > 0.99 and absf(card.node.global_basis.x.y) < 0.001, "grabbed panel faces the head, tilted up or down to it, rows level (D-061)")
 	contact = Vector3(head.x + 0.03, 0.1, head.z)
 	_canvas.preview_grab(1, contact, local_contact, head)
 	_check(card.node.to_global(local_contact).is_equal_approx(contact), "minimum horizontal reach cannot detach an off-center grab from the rod")

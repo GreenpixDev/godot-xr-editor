@@ -2,8 +2,16 @@
 class_name XREBlueprintGraph
 extends Resource
 ## Serializable visual program. The UI and compiler share this format, not UI nodes.
+##
+## Format 3 (D-051) keeps only the blocks a function call can't express:
+## events ([code]signal[/code]), [code]call[/code], [code]branch[/code],
+## [code]value[/code], variables, properties and [code]equals[/code]. On
+## Ready, Boolean, Print, Delay, Tween, Play Sound and Play Animation are
+## presets ([constant PRESETS]): an event, a value or a call of a function of
+## the Blueprint library ([XREBlueprintLibrary]) or of @GlobalScope. Version
+## 2 graphs migrate in memory ([method upgrade]).
 
-const FORMAT_VERSION := 2
+const FORMAT_VERSION := 3
 const MAX_NODES := 256
 const EXEC := 0
 const VALUE := 1
@@ -15,24 +23,35 @@ const VECTOR2 := 6
 const VECTOR3 := 7
 const OBJECT := 8
 const COLOR := 9
-## Port entries are [label, type]. Execution flows and values cannot be mixed.
+## Port entries are [label, type, key]: the key names the parameter an
+## unconnected input takes its value from, empty for none. Execution flows and
+## values cannot be mixed. A call block's ports come from its function ([XREBlueprintFunctions]).
 const BLOCKS := {
-	"ready": {"title": "On Ready", "in": [], "out": [["Then", EXEC]], "params": {"policy": "parallel"}},
-	"signal": {"title": "On Signal", "in": [], "out": [["Then", EXEC]], "params": {"target": ".", "signal": "pressed", "policy": "parallel"}},
-	"print": {"title": "Print", "in": [["In", EXEC], ["Value", VALUE]], "out": [["Then", EXEC]], "params": {"value": "Hello from Blueprints"}},
-	"set_property": {"title": "Set Property", "in": [["In", EXEC], ["Value", VALUE], ["Target", OBJECT]], "out": [["Then", EXEC]], "params": {"target": ".", "property": "visible", "value": true}},
-	"tween": {"title": "Tween Property", "in": [["In", EXEC], ["Value", VALUE], ["Target", OBJECT]], "out": [["Finished", EXEC]], "params": {"target": ".", "property": "position", "value": Vector2(400, 240), "seconds": 1.0}},
-	"branch": {"title": "Branch", "in": [["In", EXEC], ["Condition", BOOLEAN]], "out": [["True", EXEC], ["False", EXEC]], "params": {"condition": true}},
-	"delay": {"title": "Delay", "in": [["In", EXEC]], "out": [["Finished", EXEC]], "params": {"seconds": 1.0}},
-	"play_sound": {"title": "Play Sound", "in": [["In", EXEC], ["Target", OBJECT]], "out": [["Then", EXEC]], "params": {"target": "AudioStreamPlayer"}},
-	"play_animation": {"title": "Play Animation", "in": [["In", EXEC], ["Target", OBJECT]], "out": [["Then", EXEC]], "params": {"target": "AnimationPlayer", "animation": "open", "wait": false, "timeout": 30.0}},
-	"value": {"title": "Value", "in": [], "out": [["Value", VALUE]], "params": {"value": 1.0}},
-	"boolean": {"title": "Boolean", "in": [], "out": [["Value", BOOLEAN]], "params": {"value": true}},
-	"get_property": {"title": "Get Property", "in": [["Target", OBJECT]], "out": [["Value", VALUE]], "params": {"target": ".", "property": "visible"}},
-	"equals": {"title": "Equal", "in": [["A", VALUE], ["B", VALUE]], "out": [["Result", BOOLEAN]], "params": {"a": 1.0, "b": 1.0}},
-	"get_variable": {"title": "Get Variable", "in": [], "out": [["Value", VALUE]], "params": {"variable": ""}},
-	"set_variable": {"title": "Set Variable", "in": [["In", EXEC], ["Value", VALUE]], "out": [["Then", EXEC]], "params": {"variable": "", "value": false}},
+	"signal": {"title": "On Signal", "in": [], "out": [["Then", EXEC, ""]], "params": {"target": ".", "signal": "pressed", "policy": "parallel"}},
+	"call": {"title": "Call", "in": [], "out": [], "params": {}},
+	"branch": {"title": "Branch", "in": [["In", EXEC, ""], ["Condition", BOOLEAN, "condition"]], "out": [["True", EXEC, ""], ["False", EXEC, ""]], "params": {"condition": true}},
+	"value": {"title": "Value", "in": [], "out": [["Value", VALUE, ""]], "params": {"value": 1.0}},
+	"get_property": {"title": "Get Property", "in": [["Target", OBJECT, "target"]], "out": [["Value", VALUE, ""]], "params": {"target": ".", "property": "visible"}},
+	"set_property": {"title": "Set Property", "in": [["In", EXEC, ""], ["Value", VALUE, "value"], ["Target", OBJECT, "target"]], "out": [["Then", EXEC, ""]], "params": {"target": ".", "property": "visible", "value": true}},
+	"equals": {"title": "Equal", "in": [["A", VALUE, "a"], ["B", VALUE, "b"]], "out": [["Result", BOOLEAN, ""]], "params": {"a": 1.0, "b": 1.0}},
+	"get_variable": {"title": "Get Variable", "in": [], "out": [["Value", VALUE, ""]], "params": {"variable": ""}},
+	"set_variable": {"title": "Set Variable", "in": [["In", EXEC, ""], ["Value", VALUE, "value"]], "out": [["Then", EXEC, ""]], "params": {"variable": "", "value": false}},
 }
+## Shortcuts that are a configured block of another kind (D-051): On Ready is
+## On Signal of the host's ready, Boolean a Value, the rest call a function
+## of the library or of @GlobalScope. They are also the block kinds of format 2.
+const PRESETS := {
+	"ready": {"title": "On Ready", "kind": "signal", "params": {"target": ".", "signal": "ready", "policy": "parallel"}},
+	"boolean": {"title": "Boolean", "kind": "value", "params": {"value": true}},
+	"print": {"title": "Print", "kind": "call", "scope": "global", "class": "", "name": "print", "params": {"value": "Hello from Blueprints"}},
+	"delay": {"title": "Delay", "kind": "call", "scope": "static", "class": "XREBlueprintLibrary", "name": "delay", "params": {}},
+	"tween": {"title": "Tween Property", "kind": "call", "scope": "static", "class": "XREBlueprintLibrary", "name": "tween_property", "params": {}},
+	"play_sound": {"title": "Play Sound", "kind": "call", "scope": "static", "class": "XREBlueprintLibrary", "name": "play_sound", "params": {"target": "AudioStreamPlayer"}},
+	"play_animation": {"title": "Play Animation", "kind": "call", "scope": "static", "class": "XREBlueprintLibrary", "name": "play_animation", "params": {"target": "AnimationPlayer"}},
+}
+## Parameter keys of the inputs of format 2 blocks that became calls, by
+## port: migration finds the same parameter's port on the call.
+const _V2_INPUTS := {"print": ["", "value"], "tween": ["", "value", "target"], "delay": [""], "play_sound": ["", "target"], "play_animation": ["", "target"]}
 
 @export var format_version: int = FORMAT_VERSION
 @export var nodes: Array[Dictionary] = []
@@ -61,6 +80,7 @@ func structure_key() -> Array:
 		shape.erase("position")
 		shape.erase("vr_depth")
 		shape.erase("vr_rotation")
+		shape.erase("vr_anchor")
 		blocks.append(shape)
 	return [blocks, edges.duplicate(true), variables.duplicate(true), host_path, scene_path, vr_placed, vr_workspace, vr_center]
 
@@ -87,6 +107,23 @@ func find_node(id: int) -> Dictionary:
 	return {}
 
 
+## The fixed type of a graph variable: its start value's, or, with that taken
+## out (D-054), the type it keeps in "type".
+static func variable_type(variable: Dictionary) -> int:
+	if variable.has("value"): return typeof(variable["value"])
+	return int(variable.get("type", TYPE_NIL))
+
+
+## Keys of the inputs of [param block] whose literal may be taken out, leaving
+## an empty socket that the build reports (D-054): the values of its ports.
+func socket_keys(block: Dictionary) -> Array[String]:
+	var keys: Array[String] = []
+	for spec: Array in ports(block, true):
+		var key: String = spec[2] if spec.size() > 2 else ""
+		if not key.is_empty() and key != "target": keys.append(key)
+	return keys
+
+
 ## Finds a graph variable. Its default determines its fixed type.
 func find_variable(name: String) -> Dictionary:
 	for variable: Dictionary in variables:
@@ -95,34 +132,147 @@ func find_variable(name: String) -> Dictionary:
 	return {}
 
 
-## Migrates first-version files in memory. Saving is explicit and preserves old wires.
+## The title a block shows: its function's for a call, On Ready for the
+## host's ready, Boolean for a boolean value.
+static func title(block: Dictionary) -> String:
+	var kind: String = str(block.get("kind", ""))
+	var params: Dictionary = block.get("params", {})
+	match kind:
+		"call":
+			var function: Variant = block.get("function")
+			return str((function as Dictionary).get("title", "Call")) if function is Dictionary else "Call"
+		"signal":
+			return "On Ready" if params.get("signal") == "ready" and params.get("target") == "." else "On Signal"
+		"value":
+			return "Boolean" if params.get("value") is bool else "Value"
+	return str(BLOCKS[kind]["title"]) if BLOCKS.has(kind) else kind
+
+
+## Migrates older files in memory. Saving is explicit and preserves old wires:
+## format 2 blocks that are presets now become their event, value or call, and
+## wires keep their ports by parameter.
 func upgrade() -> void:
 	if format_version > FORMAT_VERSION:
 		return
 	for block: Dictionary in nodes:
-		if BLOCKS.has(block.get("kind")) and block.get("params") is Dictionary:
-			(block["params"] as Dictionary).merge(BLOCKS[block["kind"]]["params"], false)
+		if BLOCKS.has(block.get("kind")) and block.get("params") is Dictionary and block["kind"] != "call":
+			# Settings missing from older files get their defaults; an empty socket stays empty (D-054).
+			var sockets := socket_keys(block)
+			for key: String in BLOCKS[block["kind"]]["params"]:
+				if not (block["params"] as Dictionary).has(key) and not key in sockets: block["params"][key] = BLOCKS[block["kind"]]["params"][key]
+		elif PRESETS.has(block.get("kind")) and block.get("params") is Dictionary:
+			(block["params"] as Dictionary).merge(_legacy_params(str(block["kind"])), false)
+	# Calls made before property and variable were free argument keys kept them as arg_property and arg_variable.
+	for block: Dictionary in nodes:
+		var function: Variant = block.get("function")
+		if block.get("kind") != "call" or not function is Dictionary or not block.get("params") is Dictionary: continue
+		var bounds := _library_bounds(function as Dictionary)
+		for argument: Variant in (function as Dictionary).get("args", []):
+			if not argument is Dictionary: continue
+			var entry := argument as Dictionary
+			var name := str(entry.get("name", ""))
+			# A library function's bounds as its source has them now: a Delay saved
+			# when its seconds had to be positive may be 0 now (D-063).
+			if bounds.has(name):
+				for flag: String in ["positive", "non_negative"]:
+					if name in (bounds[name] as Dictionary)[flag]: entry[flag] = true
+					else: entry.erase(flag)
+			if name in ["property", "variable"] and entry.get("key") == "arg_" + name:
+				entry["key"] = name
+				var params: Dictionary = block["params"]
+				if params.has("arg_" + name):
+					params[name] = params["arg_" + name]
+					params.erase("arg_" + name)
+	# By content, not by version: format 2 files saved its version as the default,
+	# so they don't store it and load as the current format.
+	var legacy := nodes.any(func(block: Dictionary) -> bool: return PRESETS.has(block.get("kind")))
+	if format_version < 3 or legacy:
+		var remaps: Dictionary[int, Array] = {}
+		for index: int in nodes.size():
+			var old: Dictionary = nodes[index]
+			var kind := str(old.get("kind", ""))
+			if not PRESETS.has(kind) or not old.get("id") is int or not old.get("params") is Dictionary:
+				continue
+			var block := make_node(old["id"], kind, old.get("position", Vector2.ZERO))
+			if block.is_empty():
+				continue
+			for key: String in block["params"]:
+				if (old["params"] as Dictionary).has(key): block["params"][key] = old["params"][key]
+			for key: String in ["vr_depth", "vr_rotation", "property_type", "arguments"]:
+				if old.has(key): block[key] = old[key]
+			nodes[index] = block
+			if _V2_INPUTS.has(kind): remaps[int(old["id"])] = _V2_INPUTS[kind]
+		for edge: Dictionary in edges:
+			if not edge.get("to") is int or not remaps.has(edge["to"]) or not edge.get("to_port") is int: continue
+			var keys: Array = remaps[edge["to"]]
+			if edge["to_port"] < 0 or edge["to_port"] >= keys.size(): continue
+			edge["to_port"] = input_port(find_node(edge["to"]), keys[edge["to_port"]])
 	format_version = FORMAT_VERSION
+
+
+## The bounds of the numbers of library function [param function] as its
+## source tags them now: [code]{argument: {"positive": [...], "non_negative": [...]}}[/code]
+## for each argument, empty for a function of no script class.
+static func _library_bounds(function: Dictionary) -> Dictionary:
+	if function.get("scope") != "static": return {}
+	var script := XREBlueprintFunctions.global_script(str(function.get("class", "")))
+	if script == null: return {}
+	var tags := XREBlueprintFunctions.script_tags(script, str(function.get("name", "")))
+	var bounds := {}
+	for argument: Variant in function.get("args", []):
+		if not argument is Dictionary: continue
+		var name := str((argument as Dictionary).get("name", ""))
+		bounds[name] = {"positive": tags.get("positive", []), "non_negative": tags.get("non_negative", [])}
+	return bounds
+
+
+## Parameters a format 2 block of preset [param kind] had, for files saved before they existed.
+static func _legacy_params(kind: String) -> Dictionary:
+	match kind:
+		"ready": return {"policy": "parallel"}
+		"print": return {"value": "Hello from Blueprints"}
+		"tween": return {"target": ".", "property": "position", "value": Vector2(400, 240), "seconds": 1.0}
+		"delay": return {"seconds": 1.0}
+		"play_sound": return {"target": "AudioStreamPlayer"}
+		"play_animation": return {"target": "AnimationPlayer", "animation": "open", "wait": false, "timeout": 30.0}
+		"boolean": return {"value": true}
+	return {}
 
 
 ## Port arrays include reflected properties, variables and signal arguments.
 func ports(block: Dictionary, input: bool) -> Array:
-	var result: Array = (BLOCKS[block["kind"]]["in" if input else "out"] as Array).duplicate(true)
 	var kind: String = block["kind"]
+	if kind == "call":
+		var function: Variant = block.get("function")
+		if not function is Dictionary or not (function as Dictionary).get("args") is Array: return []
+		return (XREBlueprintFunctions.ports(function, int(block.get("property_type", TYPE_NIL)))[0 if input else 1] as Array).duplicate(true)
+	var result: Array = (BLOCKS[kind]["in" if input else "out"] as Array).duplicate(true)
 	var params: Dictionary = block["params"]
 	if not input and kind == "signal":
 		for argument: Dictionary in block.get("arguments", []):
-			result.append([argument["name"], port_type(argument["type"])])
+			result.append([argument["name"], port_type(argument["type"]), ""])
 	if not input and kind == "value":
 		result[0][1] = port_type(typeof(params["value"]))
-	if kind in ["get_property", "set_property", "tween"]:
-		if (input and kind != "get_property") or (not input and kind == "get_property"):
+	if kind in ["get_property", "set_property"]:
+		if (input and kind == "set_property") or (not input and kind == "get_property"):
 			result[1 if input else 0][1] = port_type(block.get("property_type", TYPE_NIL))
 	if kind in ["get_variable", "set_variable"]:
 		var variable := find_variable(params["variable"])
 		if not variable.is_empty() and ((input and kind == "set_variable") or (not input and kind == "get_variable")):
-			result[1 if input else 0][1] = port_type(typeof(variable["value"]))
+			result[1 if input else 0][1] = port_type(variable_type(variable))
 	return result
+
+
+## Index of the input of [param block] whose unconnected value is parameter
+## [param key], or of its execution input for an empty key; -1 if none.
+func input_port(block: Dictionary, key: String) -> int:
+	if block.is_empty(): return -1
+	var inputs := ports(block, true)
+	for index: int in inputs.size():
+		var spec: Array = inputs[index]
+		if key.is_empty() and spec[1] == EXEC: return index
+		if not key.is_empty() and spec.size() > 2 and spec[2] == key: return index
+	return -1
 
 
 ## Maps Godot's Variant type to a graph port category.
@@ -137,12 +287,64 @@ static func ports_compatible(from: int, to: int) -> bool:
 
 ## Index of the optional runtime Target input; object-valued data inputs are separate.
 static func target_port(block: Dictionary) -> int:
-	return {"get_property": 0, "set_property": 2, "tween": 2, "play_sound": 1, "play_animation": 1}.get(block["kind"], -1)
+	match block.get("kind"):
+		"get_property": return 0
+		"set_property": return 2
+		"call":
+			var function: Variant = block.get("function")
+			if not function is Dictionary: return -1
+			var inputs: Array = XREBlueprintFunctions.ports(function, int(block.get("property_type", TYPE_NIL)))[0]
+			for index: int in inputs.size():
+				var spec: Array = inputs[index]
+				if spec.size() > 2 and spec[2] == "target": return index
+	return -1
 
 
-## Creates a block with isolated default parameters.
+## Whether a block has a Target: a scene node path, and maybe a port that overrides it.
+static func has_target(block: Dictionary) -> bool:
+	return (block.get("params", {}) as Dictionary).has("target")
+
+
+## Whether a block computes data on demand, without execution ports.
+static func is_pure(block: Dictionary) -> bool:
+	match block.get("kind"):
+		"value", "get_property", "equals", "get_variable": return true
+		"call":
+			var function: Variant = block.get("function")
+			return function is Dictionary and bool((function as Dictionary).get("pure", false))
+	return false
+
+
+## Whether a block starts execution.
+static func is_event(block: Dictionary) -> bool:
+	return block.get("kind") == "signal"
+
+
+## Creates a block with isolated default parameters: a native kind or a preset ([constant PRESETS]).
+## An empty dictionary if the preset's function can't be found.
 static func make_node(id: int, kind: String, position: Vector2) -> Dictionary:
-	return {"id": id, "kind": kind, "position": position, "params": (BLOCKS[kind]["params"] as Dictionary).duplicate(true)}
+	if BLOCKS.has(kind) and kind != "call":
+		return {"id": id, "kind": kind, "position": position, "params": (BLOCKS[kind]["params"] as Dictionary).duplicate(true)}
+	if not PRESETS.has(kind):
+		return {}
+	var preset: Dictionary = PRESETS[kind]
+	var block: Dictionary
+	if preset["kind"] == "call":
+		var signature := XREBlueprintFunctions.find(preset["scope"], preset["class"], preset["name"])
+		if signature.is_empty():
+			push_error("Blueprints: the function of preset %s is missing." % kind)
+			return {}
+		signature["title"] = preset["title"]
+		block = make_call(id, signature, position)
+	else:
+		block = {"id": id, "kind": preset["kind"], "position": position, "params": (BLOCKS[preset["kind"]]["params"] as Dictionary).duplicate(true)}
+	(block["params"] as Dictionary).merge((preset["params"] as Dictionary).duplicate(true), true)
+	return block
+
+
+## Creates a call block of function [param signature] ([XREBlueprintFunctions]).
+static func make_call(id: int, signature: Dictionary, position: Vector2) -> Dictionary:
+	return {"id": id, "kind": "call", "position": position, "function": signature.duplicate(true), "params": XREBlueprintFunctions.default_params(signature)}
 
 
 ## Whether a literal can be represented by this version of the editor/compiler.
@@ -175,7 +377,8 @@ func validate() -> PackedStringArray:
 	var names: Dictionary = {}
 	for variable: Dictionary in variables:
 		var name: String = str(variable.get("name", ""))
-		if not variable.get("name") is String or not name.is_valid_identifier() or names.has(name) or not is_literal(variable.get("value")):
+		var typed := variable.has("value") and is_literal(variable["value"]) or not variable.has("value") and variable.get("type") is int and int(variable["type"]) in XREBlueprintSchema.LITERAL_TYPES
+		if not variable.get("name") is String or not name.is_valid_identifier() or names.has(name) or not typed:
 			errors.append("Variables need unique identifiers and supported default values.")
 		names[name] = true
 	for block: Dictionary in nodes:
@@ -195,27 +398,28 @@ func validate() -> PackedStringArray:
 			errors.append("Block #%s has invalid VR depth." % id)
 		if block.has("vr_rotation") and (not block["vr_rotation"] is Vector3 or not (block["vr_rotation"] as Vector3).is_finite()):
 			errors.append("Block #%s has invalid VR rotation." % id)
+		if block.has("vr_anchor") and (not block["vr_anchor"] is Vector3 or not (block["vr_anchor"] as Vector3).is_finite()):
+			errors.append("Block #%s has invalid VR anchor." % id)
 		var params: Dictionary = block["params"]
+		if kind == "call":
+			errors.append_array(_validate_call(block))
 		var defaults: Dictionary = BLOCKS[kind]["params"]
+		var sockets := socket_keys(block) if kind != "call" else ([] as Array[String])
 		for key: String in defaults:
+			# A port's value may be taken out: the build reports the empty socket (D-054).
+			if not params.has(key) and key in sockets: continue
 			if not params.has(key) or not is_literal(params[key]):
 				errors.append("Block #%s: invalid %s." % [id, key])
 				continue
-			if key in ["target", "property", "signal", "animation"]:
+			if key in ["target", "property", "signal"]:
 				if not params[key] is String or (key != "target" and str(params[key]).strip_edges().is_empty()):
 					errors.append("Block #%s: %s must be nonempty text." % [id, key])
-			if key == "seconds" and (not typeof(params[key]) in [TYPE_INT, TYPE_FLOAT] or float(params[key]) <= 0.0):
-				errors.append("Block #%s: duration must be positive." % id)
-			if (key == "condition" or kind == "boolean") and not params[key] is bool:
+			if key == "condition" and not params[key] is bool:
 				errors.append("Block #%s: expected a boolean." % id)
 			if key == "policy" and not params[key] in ["parallel", "ignore", "restart"]:
 				errors.append("Block #%s: unknown event policy." % id)
-			if key == "wait" and not params[key] is bool:
-				errors.append("Block #%s: wait must be boolean." % id)
 			if key == "variable" and not params[key] is String:
 				errors.append("Block #%s: variable must be an identifier." % id)
-			if key == "timeout" and (not typeof(params[key]) in [TYPE_INT, TYPE_FLOAT] or float(params[key]) <= 0):
-				errors.append("Block #%s: timeout must be positive." % id)
 		if block.has("property_type") and (not block["property_type"] is int or block["property_type"] < TYPE_NIL or block["property_type"] >= TYPE_MAX):
 			errors.append("Block #%s: invalid property type." % id)
 		if not block.get("arguments", []) is Array:
@@ -269,6 +473,52 @@ func validate() -> PackedStringArray:
 				pending.append(next)
 	if visited != ids.size():
 		errors.append("Data dependency cycles are not supported. Store changing state in a variable.")
+	return errors
+
+
+## The function of a call block and its parameters: one per argument with a value.
+func _validate_call(block: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var id: int = block["id"]
+	var function: Variant = block.get("function")
+	if not function is Dictionary or not (function as Dictionary).get("args") is Array or not (function as Dictionary).get("name") is String \
+			or str((function as Dictionary)["name"]).is_empty() or not (function as Dictionary).get("scope") in ["method", "static", "global"]:
+		errors.append("Block #%d has an invalid function." % id)
+		return errors
+	var signature := function as Dictionary
+	if not XREBlueprintFunctions.problem(signature).is_empty():
+		errors.append("Block #%d: %s." % [id, XREBlueprintFunctions.problem(signature)])
+	var params: Dictionary = block["params"]
+	for argument: Variant in signature["args"]:
+		if not argument is Dictionary or not (argument as Dictionary).get("name") is String or not (argument as Dictionary).get("type") is int \
+				or not (argument as Dictionary).get("key", "") is String or int(argument["type"]) < TYPE_NIL or int(argument["type"]) >= TYPE_MAX:
+			errors.append("Block #%d has an invalid function argument." % id)
+			return errors
+		var entry := argument as Dictionary
+		if entry.get("target", false):
+			if not params.get("target") is String:
+				errors.append("Block #%d: target must be text." % id)
+			continue
+		if not XREBlueprintFunctions.has_literal(entry):
+			continue
+		var key: String = entry["key"]
+		if not params.has(key) and not entry.get("literal", false) and not entry.get("advanced", false): continue
+		if not params.has(key) or not is_literal(params[key]):
+			errors.append("Block #%d: invalid %s." % [id, key])
+			continue
+		if not str(entry.get("provider", "")).is_empty() and not params[key] is String:
+			errors.append("Block #%d: %s must be text." % [id, key])
+		if entry.get("positive", false) and (not typeof(params[key]) in [TYPE_INT, TYPE_FLOAT] or float(params[key]) <= 0.0):
+			errors.append("Block #%d: %s must be positive." % [id, key])
+		if entry.get("non_negative", false) and (not typeof(params[key]) in [TYPE_INT, TYPE_FLOAT] or float(params[key]) < 0.0):
+			errors.append("Block #%d: %s must not be negative." % [id, key])
+	var extra: Variant = signature.get("extra", 0)
+	if not extra is int or int(extra) < 0 or int(extra) > XREBlueprintFunctions.MAX_EXTRA or (int(extra) > 0 and not signature.get("vararg", false)):
+		errors.append("Block #%d: invalid number of extra arguments." % id)
+	else:
+		for index: int in int(extra):
+			if params.has(XREBlueprintFunctions.extra_key(index)) and not is_literal(params.get(XREBlueprintFunctions.extra_key(index))):
+				errors.append("Block #%d: invalid %s." % [id, XREBlueprintFunctions.extra_key(index)])
 	return errors
 
 

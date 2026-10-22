@@ -19,6 +19,18 @@ class Target extends Node:
 class NumericStatus extends Node:
 	var text: int = 42
 
+class Counter extends Node:
+	var total := 0
+
+	func add(amount: int) -> int:
+		total += amount
+		return total
+
+	func slow_add(amount: int) -> int:
+		await get_tree().process_frame
+		total += amount
+		return total
+
 class LoopTarget extends Node:
 	var count := 0
 	var continue_loop := true
@@ -83,6 +95,10 @@ func _run() -> void:
 	await _test_restart_tween_and_errors()
 	await _test_animation_wait()
 	await _test_demo()
+	_test_migration()
+	await _test_calls()
+	_test_insert_block()
+	_test_actions()
 	print("test_blueprints: %d of %d checks failed" % [_failures, _checks])
 	quit(1 if _failures > 0 else 0)
 
@@ -118,7 +134,13 @@ func _test_validation() -> void:
 	_check(not graph.validate().is_empty(), "unknown blocks rejected without crashing")
 	graph.restore(saved)
 	graph.nodes[1]["params"] = {}
-	_check(not graph.validate().is_empty(), "missing parameter rejected")
+	_check(graph.validate().is_empty(), "a port's value may be taken out (D-054)")
+	_check((XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray).is_empty(), "a wire into the empty socket gives it its value")
+	graph.edges.resize(1)
+	_check((XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray).has("Block #2: Condition is empty: put a token in or wire it."), "without one the build reports the empty socket")
+	graph.restore(saved)
+	graph.nodes[1]["params"] = {"condition": 1.0}
+	_check(not graph.validate().is_empty(), "a value of the wrong type is still rejected")
 	graph.restore(saved)
 	graph.format_version += 1
 	_check(not graph.validate().is_empty(), "future format rejected")
@@ -207,7 +229,9 @@ func _test_document() -> void:
 func _test_all_blocks_compile() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.variables.append({"name": "flag", "value": false})
-	for kind: String in XREBlueprintGraph.BLOCKS:
+	var kinds: Array = XREBlueprintGraph.BLOCKS.keys().filter(func(kind: String) -> bool: return kind != "call")
+	kinds.append_array(XREBlueprintGraph.PRESETS.keys())
+	for kind: String in kinds:
 		_block(graph, kind, {"variable": "flag"} if kind in ["get_variable", "set_variable"] else {})
 	var first := XREBlueprintCompiler.compile(graph)
 	var second := XREBlueprintCompiler.compile(graph)
@@ -282,7 +306,7 @@ func _test_types_and_scope() -> void:
 	graph.format_version = 1
 	graph.nodes.append({"id": 1, "kind": "signal", "position": Vector2.ZERO, "params": {"target": ".", "signal": "ready"}})
 	graph.upgrade()
-	_check(graph.format_version == 2 and graph.nodes[0]["params"]["policy"] == "parallel", "v1 migration preserves parallel behavior")
+	_check(graph.format_version == XREBlueprintGraph.FORMAT_VERSION and graph.nodes[0]["params"]["policy"] == "parallel", "v1 migration preserves parallel behavior")
 	_check(graph.validate().is_empty(), "migrated graph is valid")
 
 
@@ -297,6 +321,16 @@ func _test_scene_bindings() -> void:
 	doc.add_block("tween", Vector2.ZERO)
 	_check(doc.choose_target(2, door), "target can be selected from scene nodes")
 	_check(doc.graph.find_node(2)["property_type"] == TYPE_VECTOR2, "property schema comes from selected target")
+	_check(doc.graph.find_node(2)["params"]["value"] is Vector2 and doc.graph.ports(doc.graph.find_node(2), true)[2][1] == XREBlueprintGraph.VECTOR2, "the tweened value takes the property's type")
+	var solid := Node3D.new()
+	solid.name = "Solid"
+	scene.add_child(solid)
+	doc.set_parameter(2, "property", "rotation")
+	doc.choose_target(2, solid)
+	_check(doc.graph.find_node(2)["params"]["value"] is Vector3 and doc.graph.find_node(2)["property_type"] == TYPE_VECTOR3, "another target's property changes the value's type")
+	doc.choose_target(2, door)
+	doc.set_parameter(2, "property", "position")
+	solid.free()
 	_check(doc.scene_nodes().has(door), "scene picker includes child")
 	door.name = "RenamedDoor"
 	doc.refresh_bindings()
@@ -317,6 +351,9 @@ func _test_scene_bindings() -> void:
 	doc.undo()
 	_check(doc.get_host() == scene, "host selection is undoable")
 	_check(doc.set_variable("has_key", false), "variable can be added")
+	_check(doc.clear_variable_value("has_key") and XREBlueprintGraph.variable_type(doc.graph.find_variable("has_key")) == TYPE_BOOL, "a variable's start value can be taken out, keeping its type")
+	_check((XREBlueprintCompiler.compile(doc.graph)["errors"] as PackedStringArray).has("Variable has_key has no start value: put a token in its box."), "the build reports an empty box")
+	_check(doc.set_variable("has_key", true) and doc.graph.find_variable("has_key")["value"] == true, "a value goes back into the box")
 	doc.add_block("get_variable", Vector2.ZERO)
 	_check(not doc.remove_variable("has_key"), "referenced variable cannot be deleted silently")
 	door.free()
@@ -354,7 +391,7 @@ func _test_target_feedback() -> void:
 	_check(not doc.choose_target(2, body), "tree selection refuses a fundamentally unsuitable target")
 	_check(doc.choose_target(2, player), "tree accepts an AnimationPlayer")
 	doc.add_block("play_sound", Vector2.ZERO)
-	_check(doc.target_problem(3, "Body") == "requires an audio player", "sound rejects unrelated nodes")
+	_check(doc.target_problem(3, "Body") == "requires AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D", "sound rejects unrelated nodes")
 	_check(doc.target_suggestions(3, "") == PackedStringArray(["Audio"]), "sound completion includes only audio players")
 	doc.add_block("set_property", Vector2.ZERO)
 	doc.set_parameter(4, "property", "text")
@@ -654,7 +691,7 @@ func _test_restart_tween_and_errors() -> void:
 	graph.nodes[1]["property_type"] = TYPE_VECTOR2
 	_block(graph, "set_property", {"target": "Target", "property": "message", "value": "finished"})
 	_wire(graph, 1, 2)
-	_wire(graph, 1, 2, 1, 1)
+	_wire(graph, 1, 2, 1, graph.input_port(graph.nodes[1], "value"))
 	_wire(graph, 2, 3)
 	var scene := Node.new()
 	scene.set_script(_script(graph))
@@ -750,3 +787,184 @@ func _test_signal_and_tween() -> void:
 	_check(label.text == "finished", "continuation waits for tween")
 	scene.queue_free()
 	await process_frame
+
+
+func _test_migration() -> void:
+	var graph := XREBlueprintGraph.new()
+	graph.format_version = 2
+	graph.nodes.append({"id": 1, "kind": "ready", "position": Vector2.ZERO, "params": {"policy": "restart"}})
+	graph.nodes.append({"id": 2, "kind": "tween", "position": Vector2(200, 0), "params": {"target": "Door", "property": "position", "value": Vector2.ONE, "seconds": 0.5}, "property_type": TYPE_VECTOR2})
+	graph.nodes.append({"id": 3, "kind": "value", "position": Vector2(0, 200), "params": {"value": Vector2(3, 4)}})
+	graph.nodes.append({"id": 4, "kind": "print", "position": Vector2(400, 0), "params": {"value": "done"}})
+	graph.nodes.append({"id": 5, "kind": "boolean", "position": Vector2(0, 300), "params": {"value": false}})
+	graph.nodes.append({"id": 6, "kind": "play_animation", "position": Vector2(600, 0), "params": {"target": "Player", "animation": "close", "wait": true, "timeout": 2.0}})
+	_wire(graph, 1, 2)
+	_wire(graph, 3, 2, 0, 1)
+	_wire(graph, 2, 4)
+	_wire(graph, 4, 6)
+	graph.upgrade()
+	_check(graph.format_version == XREBlueprintGraph.FORMAT_VERSION, "format 2 upgrades to the current format")
+	var ready := graph.find_node(1)
+	_check(ready["kind"] == "signal" and ready["params"]["signal"] == "ready" and ready["params"]["target"] == "." and ready["params"]["policy"] == "restart", "On Ready becomes On Signal of the host's ready, keeping its policy")
+	_check(XREBlueprintGraph.title(ready) == "On Ready", "the migrated event is still titled On Ready")
+	var tween := graph.find_node(2)
+	_check(tween["kind"] == "call" and tween["function"]["name"] == "tween_property" and tween["params"]["seconds"] == 0.5 and tween["property_type"] == TYPE_VECTOR2, "Tween becomes a library call with its parameters")
+	_check((tween["params"] as Dictionary).get("property") == "position", "Tween keeps its property")
+	_check(graph.edges[1]["to_port"] == graph.input_port(tween, "value"), "a wire into Tween's Value moves to the call's value port")
+	_check(graph.find_node(4)["function"]["name"] == "print" and graph.find_node(4)["params"]["value"] == "done", "Print becomes the global print")
+	_check(graph.find_node(5)["kind"] == "value" and graph.find_node(5)["params"]["value"] == false, "Boolean becomes a Value")
+	_check(graph.find_node(6)["params"]["animation"] == "close" and graph.find_node(6)["params"]["wait"] == true, "Play Animation keeps its animation and wait")
+	_check(graph.validate().is_empty(), "the migrated graph is valid")
+	_check((XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray).is_empty(), "the migrated graph compiles")
+
+
+func _test_calls() -> void:
+	var counter := Counter.new()
+	var graph := XREBlueprintGraph.new()
+	graph.variables.append({"name": "total", "value": 0})
+	graph.variables.append({"name": "clamped", "value": 0.0})
+	graph.variables.append({"name": "grouped", "value": false})
+	_block(graph, "ready")
+	var add := XREBlueprintGraph.make_call(2, XREBlueprintFunctions.script_method(counter.get_script(), "Node", "add"), Vector2.ZERO)
+	add["params"]["target"] = "Counter"
+	add["params"]["amount"] = 5
+	graph.nodes.append(add)
+	_block(graph, "set_variable", {"variable": "total", "value": 0})
+	var clamp := XREBlueprintGraph.make_call(4, XREBlueprintFunctions.global("clampf"), Vector2.ZERO)
+	clamp["params"]["value"] = 15.0
+	clamp["params"]["min"] = 0.0
+	clamp["params"]["max"] = 10.0
+	graph.nodes.append(clamp)
+	_block(graph, "set_variable", {"variable": "clamped", "value": 0.0})
+	var group := XREBlueprintGraph.make_call(6, XREBlueprintFunctions.method("Node", "add_to_group"), Vector2.ZERO)
+	group["params"]["target"] = "Counter"
+	group["params"]["group"] = "enemies"
+	graph.nodes.append(group)
+	var check := XREBlueprintGraph.make_call(7, XREBlueprintFunctions.method("Node", "is_in_group"), Vector2.ZERO)
+	check["params"]["target"] = "Counter"
+	check["params"]["group"] = "enemies"
+	graph.nodes.append(check)
+	_block(graph, "branch")
+	_block(graph, "set_variable", {"variable": "grouped", "value": true})
+	_check(not XREBlueprintGraph.is_pure(add) and XREBlueprintGraph.is_pure(clamp) and XREBlueprintGraph.is_pure(check), "script methods have execution ports, const and math functions are pure")
+	_check(graph.ports(add, false).size() == 2 and graph.ports(add, false)[1][0] == "Result", "a method with a result has Then and Result")
+	_wire(graph, 1, 2)
+	_wire(graph, 2, 3)
+	_wire(graph, 2, 3, 1, 1)
+	_wire(graph, 3, 5)
+	_wire(graph, 4, 5, 0, 1)
+	_wire(graph, 5, 6)
+	_wire(graph, 6, 8)
+	_wire(graph, 7, 8, 0, 1)
+	_wire(graph, 8, 9)
+	var scene := Node.new()
+	scene.set_script(_script(graph))
+	counter.name = "Counter"
+	scene.add_child(counter)
+	root.add_child(scene)
+	_check(counter.total == 5 and scene.get("_bp_var_total") == 5, "a script method runs on its target and its result is read after it ran")
+	_check(is_equal_approx(scene.get("_bp_var_clamped"), 10.0), "a pure global function computes its value on demand")
+	_check(counter.is_in_group("enemies") and scene.get("_bp_var_grouped") == true, "an engine method runs and a pure method feeds a branch")
+	scene.queue_free()
+	await process_frame
+	graph = XREBlueprintGraph.new()
+	graph.variables.append({"name": "total", "value": 0})
+	_block(graph, "ready")
+	counter = Counter.new()
+	var slow := XREBlueprintGraph.make_call(2, XREBlueprintFunctions.script_method(counter.get_script(), "Node", "slow_add"), Vector2.ZERO)
+	# An inner class has no source to scan for await: the test marks the coroutine itself.
+	slow["function"]["awaits"] = true
+	slow["params"]["target"] = "Counter"
+	slow["params"]["amount"] = 3
+	graph.nodes.append(slow)
+	_block(graph, "set_variable", {"variable": "total", "value": 0})
+	_wire(graph, 1, 2)
+	_wire(graph, 2, 3)
+	_wire(graph, 2, 3, 1, 1)
+	scene = Node.new()
+	scene.set_script(_script(graph))
+	counter.name = "Counter"
+	scene.add_child(counter)
+	root.add_child(scene)
+	_check(scene.get("_bp_var_total") == 0, "a coroutine call is awaited before its continuation")
+	await _wait_until(func() -> bool: return scene.get("_bp_var_total") == 3)
+	_check(scene.get("_bp_var_total") == 3, "the awaited coroutine's result reaches the next block")
+	scene.queue_free()
+	await process_frame
+	var print_block := XREBlueprintGraph.make_node(1, "print", Vector2.ZERO)
+	_check(print_block["function"]["extra"] == 1 and (print_block["function"]["args"] as Array).is_empty(), "print's values are its extra arguments")
+	var doc := XREBlueprintDocument.new()
+	doc.insert_block(print_block, Vector2.ZERO)
+	_check(doc.set_extra_arguments(2, 3) and doc.graph.ports(doc.graph.find_node(2), true).size() == 4, "a vararg call takes more values")
+	_check(str(XREBlueprintCompiler.compile(doc.graph)["code"]).contains("print(a0, a1, a2)"), "extra values are passed in order")
+	_check(doc.set_extra_arguments(2, 1), "extra values can be removed while unwired")
+	var play := XREBlueprintGraph.make_call(3, XREBlueprintFunctions.method("AnimationPlayer", "play"), Vector2.ZERO)
+	_check(play["function"]["args"][1]["literal"] == true and play["function"]["args"][1]["provider"] == "animation", "the animation name of play() is offered by its target")
+	doc.insert_block(play, Vector2.ZERO)
+	var before := doc.graph.ports(doc.graph.find_node(3), true).size()
+	_check(doc.set_advanced_shown(3, true) and doc.graph.ports(doc.graph.find_node(3), true).size() == before + 3, "advanced arguments add their ports at the end")
+	_check(doc.set_advanced_shown(3, false) and doc.graph.ports(doc.graph.find_node(3), true).size() == before, "advanced arguments hide again")
+	var unsupported := XREBlueprintFunctions.global("bytes_to_var")
+	_check(not XREBlueprintFunctions.problem(unsupported).is_empty(), "a function with an unsupported argument explains why it can't be added")
+
+
+func _test_insert_block() -> void:
+	var doc := XREBlueprintDocument.new()
+	var print_block := XREBlueprintGraph.make_node(0, "print", Vector2.ZERO)
+	var id := doc.insert_block(print_block, Vector2(300, 100), {"from": 1, "from_port": 0})
+	_check(id == 2 and doc.graph.edges == [{"from": 1, "from_port": 0, "to": 2, "to_port": 0}], "a block added from an execution output is wired to its In")
+	var value := doc.insert_block(XREBlueprintGraph.make_node(0, "value", Vector2.ZERO), Vector2(100, 300), {"to": 2, "to_port": 1})
+	_check(doc.graph.edges.has({"from": value, "from_port": 0, "to": 2, "to_port": 1}), "a block added from a data input gives it its output")
+	doc.undo()
+	_check(doc.graph.nodes.size() == 2 and doc.graph.edges.size() == 1, "the block and its wire are one undo step")
+	_check(doc.insert_block(XREBlueprintGraph.make_node(0, "print", Vector2.ZERO), Vector2.ZERO, {"from": 1, "from_port": 0}) == -1 and not doc.last_error.is_empty(), "an occupied execution output refuses another wire")
+
+
+func _test_actions() -> void:
+	var scene := Node3D.new()
+	var player := AnimationPlayer.new()
+	player.name = "Animations"
+	scene.add_child(player)
+	root.add_child(scene)
+	var doc := XREBlueprintDocument.new()
+	doc.set_scene_root(scene)
+	doc.set_variable("door_open", false)
+	var actions := XREBlueprintActions.new()
+	var context := {"chip": XREBlueprintActions.CONTEXT, "node": player, "host": scene, "graph": doc.graph}
+	var sections := actions.sections(context)
+	var titles: Array[String] = []
+	for section: Dictionary in sections: titles.append(section["title"])
+	_check(titles.has("Presets") and titles.has("Animations · AnimationPlayer") and titles.has("Signals · Animations"), "an object's menu has presets, its own members and its signals: %s" % [titles])
+	var all := XREBlueprintActions.flatten(sections)
+	var ids: Array[String] = []
+	for action: Dictionary in all: ids.append(action["id"])
+	_check(ids.has("preset:play_animation") and ids.has("method:AnimationPlayer.play") and ids.has("signal:animation_finished"), "presets, methods and signals are offered")
+	_check(not ids.has("method:AnimationPlayer.set_speed_scale") and ids.has("set:AnimationPlayer.speed_scale"), "property accessors are Get and Set actions, not methods")
+	var preset: Dictionary = all[ids.find("preset:play_animation")]
+	_check(preset["target"] == player, "a preset for the context object aims at it")
+	var advanced: Dictionary = sections.filter(func(section: Dictionary) -> bool: return section["advanced"])[0]
+	_check(advanced["count"] > 0 and (advanced["actions"] as Array).is_empty(), "Node and Object members wait under Advanced")
+	context["query"] = "queue free"
+	_check(XREBlueprintActions.flatten(actions.sections(context)).any(func(action: Dictionary) -> bool: return action["id"] == "method:Node.queue_free"), "searching includes Advanced")
+	context["query"] = "anim fin"
+	_check(XREBlueprintActions.flatten(actions.sections(context)).any(func(action: Dictionary) -> bool: return action["id"] == "signal:animation_finished"), "every word of a search must match")
+	context["query"] = ""
+	context["pin"] = {"type": XREBlueprintGraph.EXEC, "output": true}
+	var after_exec := XREBlueprintActions.flatten(actions.sections(context))
+	_check(not after_exec.is_empty() and after_exec.all(func(action: Dictionary) -> bool: return action["kind"] != "event" and action["kind"] != "pure"), "an execution output offers no events and no pure blocks")
+	context["pin"] = {"type": XREBlueprintGraph.BOOLEAN, "output": false}
+	_check(XREBlueprintActions.flatten(actions.sections(context)).all(func(action: Dictionary) -> bool: return XREBlueprintActions.fits_pin(action, XREBlueprintGraph.BOOLEAN, false)), "a boolean input offers blocks with a boolean output")
+	var library := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.LIBRARY, "host": scene, "graph": doc.graph}))
+	var names: Array[String] = []
+	for action: Dictionary in library: names.append(action["title"])
+	_check(names.has("Delay") and names.has("Tween Property") and names.has("Play Sound") and names.has("Play Animation"), "the library offers its functions by their tagged names")
+	_check(not names.has("Property Info"), "static helpers of the addons are not offered without tags")
+	var globals := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.GLOBAL, "graph": doc.graph, "query": "clamp"}))
+	_check(globals.any(func(action: Dictionary) -> bool: return action["id"] == "global:clampf"), "global functions are searchable")
+	var natives := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.NATIVE, "host": scene, "graph": doc.graph}))
+	_check(natives.any(func(action: Dictionary) -> bool: return action["id"] == "native:branch") and natives.any(func(action: Dictionary) -> bool: return action["id"] == "variable:set:door_open"), "native blocks include each variable's Get and Set")
+	var id := doc.insert_block(preset["block"], Vector2(200, 0), {"from": 1, "from_port": 0}, player)
+	_check(id > 0 and doc.graph.find_node(id)["params"]["target"] == "Animations" and not doc.target_is_connected(id), "an action's block is added aimed at its object")
+	actions.remember(preset)
+	_check(actions.sections({"chip": XREBlueprintActions.CONTEXT, "node": player, "host": scene, "graph": doc.graph})[0]["title"] == "Recent", "recently added actions come first")
+	scene.free()

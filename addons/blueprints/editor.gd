@@ -24,8 +24,16 @@ var _details: VBoxContainer
 var _source: CodeEdit
 var _status: Label
 var _filename: Label
-var _palette: ItemList
-var _search: LineEdit
+## The scene nodes selected in the editor, for the menu's first context: set by the plugin.
+var selected_nodes_provider: Callable
+## Whether a parameter shows in the details, [code]func(block, key) -> bool[/code]:
+## the headset sets some in the graph instead (D-052). Without it, all show.
+var parameter_filter: Callable
+var _menu: XREBlueprintActionMenu
+var _popup: PopupPanel
+var _popup_menu: XREBlueprintActionMenu
+var _popup_wire: Dictionary = {}
+var _popup_position := Vector2.ZERO
 var _selected_id := -1
 var _pending_refresh := false
 var _rebuilding := false
@@ -84,21 +92,12 @@ func setup(value: XREBlueprintDocument, parameters_only: bool = false) -> void:
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(body)
 	var library := VBoxContainer.new()
-	library.custom_minimum_size.x = 175
+	library.custom_minimum_size.x = 300
 	body.add_child(library)
-	_label(library, "BLOCKS")
-	_search = LineEdit.new()
-	_search.placeholder_text = "Search blocks…"
-	library.add_child(_search)
-	_search.text_changed.connect(func(_text: String) -> void: _fill_palette())
-	_palette = ItemList.new()
-	_palette.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	library.add_child(_palette)
-	_palette.item_activated.connect(_add_block)
-	_button(library, "Add selected block", func() -> void:
-		var items := _palette.get_selected_items()
-		if not items.is_empty():
-			_add_block(items[0]))
+	_label(library, "ADD BLOCK")
+	_menu = XREBlueprintActionMenu.new()
+	library.add_child(_menu)
+	_menu.action_chosen.connect(_add_action)
 	var main := HSplitContainer.new()
 	main.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_child(main)
@@ -114,6 +113,9 @@ func setup(value: XREBlueprintDocument, parameters_only: bool = false) -> void:
 	canvas.show_arrange_button = false
 	tabs.add_child(canvas)
 	canvas.connection_request.connect(_connect_blocks)
+	canvas.connection_to_empty.connect(_connection_to_empty)
+	canvas.connection_from_empty.connect(_connection_from_empty)
+	canvas.popup_request.connect(_menu_at)
 	canvas.disconnection_request.connect(_disconnect_blocks)
 	canvas.delete_nodes_request.connect(_delete_blocks)
 	canvas.node_selected.connect(_select_block)
@@ -149,6 +151,13 @@ func setup(value: XREBlueprintDocument, parameters_only: bool = false) -> void:
 	_variables_dialog = AcceptDialog.new()
 	_variables_dialog.title = "Graph variables"
 	add_child(_variables_dialog)
+	_popup = PopupPanel.new()
+	_popup.size = Vector2i(460, 520)
+	add_child(_popup)
+	_popup_menu = XREBlueprintActionMenu.new()
+	_popup.add_child(_popup_menu)
+	_popup_menu.action_chosen.connect(_add_popup_action)
+	_popup_menu.pin_cleared.connect(func() -> void: _popup_wire = {})
 	if parameters_only:
 		toolbar.hide()
 		library.hide()
@@ -156,7 +165,7 @@ func setup(value: XREBlueprintDocument, parameters_only: bool = false) -> void:
 		focus_button.hide()
 		_host_label.hide()
 	document.changed.connect(_schedule_refresh)
-	_fill_palette()
+	refresh_menu()
 	_refresh()
 
 
@@ -254,23 +263,99 @@ func _label(parent: Node, text: String) -> Label:
 	return label
 
 
-func _fill_palette() -> void:
-	_palette.clear()
-	for kind: String in XREBlueprintGraph.BLOCKS:
-		var title: String = XREBlueprintGraph.BLOCKS[kind]["title"]
-		if not _search.text.is_empty() and not title.to_lower().contains(_search.text.to_lower()):
-			continue
-		var index := _palette.add_item(title)
-		_palette.set_item_metadata(index, kind)
-	if _palette.item_count > 0:
-		_palette.select(0)
+## Points the add-block menu at the selected scene node, the selected block's target and the host.
+func refresh_menu() -> void:
+	if _menu == null or _parameters_only: return
+	_menu.set_contexts(menu_contexts(), document.get_host(), document.graph)
 
 
-func _add_block(index: int) -> void:
+## Context objects of the add-block menu (D-051): the scene node selected in
+## the editor, the selected block's target and the graph's host, each once.
+func menu_contexts() -> Array[Dictionary]:
+	var nodes: Array[Node] = []
+	if selected_nodes_provider.is_valid():
+		var selected: Array = selected_nodes_provider.call()
+		if not selected.is_empty() and selected[0] is Node: nodes.append(selected[0])
+	if _selected_id >= 0: nodes.append(document.target_node(_selected_id))
+	nodes.append(document.get_host())
+	var contexts: Array[Dictionary] = []
+	var scene := document.scene_nodes()
+	var seen: Array[Node] = []
+	for node: Node in nodes:
+		if node == null or seen.has(node) or not scene.has(node): continue
+		seen.append(node)
+		contexts.append({"label": str(node.name), "node": node})
+	return contexts
+
+
+func _add_action(action: Dictionary) -> void:
 	var offset := Vector2(80, 80) + Vector2(24, 24) * (document.graph.nodes.size() % 7)
-	document.add_block(_palette.get_item_metadata(index), (canvas.scroll_offset + offset) / canvas.zoom)
+	_insert(action, (canvas.scroll_offset + offset) / canvas.zoom, {})
+
+
+func _add_popup_action(action: Dictionary) -> void:
+	_popup.hide()
+	_insert(action, _popup_position, _popup_wire)
+
+
+func _insert(action: Dictionary, position: Vector2, wire: Dictionary) -> void:
 	if document.graph.nodes.size() >= XREBlueprintGraph.MAX_NODES:
 		show_status("Block limit reached.", true)
+		return
+	var target := action.get("target") as Node
+	var id: int = document.perform(document.insert_block.bind(action["block"], position, wire, target), operation_source)
+	if id < 0:
+		show_status(document.last_error, true)
+		return
+	_selected_id = id
+	show_status("Added %s." % action["title"])
+
+
+## The add-block menu where the canvas was right-clicked, without a wire.
+func _menu_at(at_position: Vector2) -> void:
+	_popup_wire = {}
+	_open_popup(at_position, {}, [])
+
+
+## A wire from output [param from_port] of block [param from_node] let go on
+## the empty canvas: the menu lists the blocks that can take it, and wires the
+## one chosen (D-051).
+func _connection_to_empty(from_node: StringName, from_port: int, release_position: Vector2) -> void:
+	var block := document.graph.find_node(int(str(from_node)))
+	if block.is_empty(): return
+	var spec: Array = document.graph.ports(block, false)[from_port]
+	_popup_wire = {"from": block["id"], "from_port": from_port}
+	_open_popup(release_position, {"type": spec[1], "output": true, "label": "%s ▸ %s · %s" % [XREBlueprintGraph.title(block), spec[0], _port_name(spec[1])]}, _pin_contexts(block, from_port, spec))
+
+
+## The same for a wire pulled out of input [param to_port] of block [param to_node].
+func _connection_from_empty(to_node: StringName, to_port: int, release_position: Vector2) -> void:
+	var block := document.graph.find_node(int(str(to_node)))
+	if block.is_empty(): return
+	var spec: Array = document.graph.ports(block, true)[to_port]
+	_popup_wire = {"to": block["id"], "to_port": to_port}
+	_open_popup(release_position, {"type": spec[1], "output": false, "label": "%s ▸ %s · %s" % [XREBlueprintGraph.title(block), spec[0], _port_name(spec[1])]}, [])
+
+
+## An object output of a signal is a context of its own: its class's members, aimed by the wire.
+func _pin_contexts(block: Dictionary, port: int, spec: Array) -> Array[Dictionary]:
+	var contexts: Array[Dictionary] = []
+	if spec[1] != XREBlueprintGraph.OBJECT or block["kind"] != "signal": return contexts
+	var arguments: Array = block.get("arguments", [])
+	if port - 1 < 0 or port - 1 >= arguments.size(): return contexts
+	var argument: Dictionary = arguments[port - 1]
+	var cls := str(argument.get("class_name", ""))
+	contexts.append({"label": "%s · %s" % [argument["name"], cls if not cls.is_empty() else "Object"], "class": cls if not cls.is_empty() else "Node"})
+	return contexts
+
+
+func _open_popup(release_position: Vector2, pin: Dictionary, extra_contexts: Array[Dictionary]) -> void:
+	_popup_position = (release_position + canvas.scroll_offset) / canvas.zoom
+	var contexts := extra_contexts.duplicate()
+	contexts.append_array(menu_contexts())
+	_popup_menu.open(contexts, document.get_host(), document.graph, pin)
+	_popup.popup(Rect2i(Vector2i(canvas.get_screen_position() + release_position), _popup.size))
+	_popup_menu.search.grab_focus()
 
 
 func _schedule_refresh() -> void:
@@ -302,9 +387,8 @@ func _refresh() -> void:
 	for block: Dictionary in document.graph.nodes:
 		var node := GraphNode.new()
 		var kind: String = block["kind"]
-		var spec: Dictionary = XREBlueprintGraph.BLOCKS[kind]
 		node.name = str(block["id"])
-		node.title = "%s · %d" % [spec["title"], block["id"]]
+		node.title = "%s · %d" % [XREBlueprintGraph.title(block), block["id"]]
 		node.custom_minimum_size.x = 190
 		node.position_offset = block["position"]
 		canvas.add_child(node)
@@ -337,6 +421,7 @@ func _refresh() -> void:
 	if context_active != _context_was_active:
 		show_status("Graph scene active." if context_active else document.scene_context_message())
 	_context_was_active = context_active
+	refresh_menu()
 	_undo_button.disabled = not document.history.has_undo()
 	_redo_button.disabled = not document.history.has_redo()
 	var result := XREBlueprintCompiler.compile(document.graph)
@@ -365,6 +450,7 @@ func _select_block(node: Node) -> void:
 		return
 	_selected_id = int(str(node.name))
 	_refresh_details()
+	refresh_menu()
 
 
 ## What the compact details show; a block move leaves it unchanged, so the form is kept.
@@ -392,9 +478,12 @@ func _refresh_details() -> void:
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_rebuilding = false
 		return
-	_label(_details, XREBlueprintGraph.BLOCKS[block["kind"]]["title"])
+	_label(_details, XREBlueprintGraph.title(block))
 	var params: Dictionary = block["params"]
-	for key: String in params:
+	if block["kind"] == "call":
+		_call_details(block)
+	for key: String in (params if block["kind"] != "call" else {}):
+		if not _shows(block, key): continue
 		_label(_details, key.capitalize())
 		if key == "target":
 			_target_editor(block)
@@ -410,6 +499,13 @@ func _refresh_details() -> void:
 			_literal_editor(block["id"], key, params[key])
 		else:
 			_parameter_editor(block["id"], key, params[key])
+	# Values taken out in the headset leave their sockets empty (D-054).
+	if block["kind"] != "call":
+		var defaults: Dictionary = XREBlueprintGraph.BLOCKS[block["kind"]]["params"]
+		for key: String in defaults:
+			if params.has(key) or not _shows(block, key): continue
+			_label(_details, key.capitalize())
+			_empty_editor(block["id"], key, defaults[key])
 	if block.has("property_type"):
 		_label(_details, "Property type: " + XREBlueprintSchema.type_name(block["property_type"]))
 	if block["kind"] == "signal":
@@ -670,6 +766,103 @@ func _options(id: int, key: String, options: Array[String], current: String) -> 
 	if key in ["property", "signal", "animation"]: _parameter_editor(id, key, current)
 
 
+## The settings of a call: its Target, each argument with a value, extra values and advanced arguments.
+func _call_details(block: Dictionary) -> void:
+	var function: Dictionary = block["function"]
+	var params: Dictionary = block["params"]
+	var id: int = block["id"]
+	var signature := _label(_details, "%s%s" % [str(function["class"]) + "." if not str(function["class"]).is_empty() else "", function["name"]])
+	signature.modulate = Color("adbac9")
+	if not str(function.get("description", "")).is_empty():
+		var description := _label(_details, function["description"])
+		description.modulate = Color("adbac9")
+		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var has_advanced := false
+	for argument: Dictionary in function["args"]:
+		if argument.get("advanced", false): has_advanced = true
+		if not _shows(block, str(argument.get("key", ""))) and not str(argument.get("key", "")).is_empty(): continue
+		if argument.get("target", false):
+			_label(_details, "Target")
+			_target_editor(block)
+			continue
+		if not XREBlueprintFunctions.has_literal(argument):
+			if int(argument["type"]) == TYPE_OBJECT and not argument.get("run", false) and not argument.get("fixed", false):
+				var wire := _label(_details, "%s: connect an object" % argument["label"])
+				wire.modulate = Color("adbac9")
+			continue
+		if argument.get("advanced", false) and not function.get("advanced_shown", false): continue
+		var key: String = argument["key"]
+		_label(_details, argument["label"])
+		if not params.has(key):
+			_empty_editor(id, key, XREBlueprintFunctions.initial_value(argument))
+			continue
+		var provider := str(argument.get("provider", ""))
+		var target := document.target_node(id)
+		if not provider.is_empty() and target != null:
+			var names: Array[String] = []
+			names.assign(XREBlueprintSchema.provided_names(target, provider))
+			_options(id, key, names, str(params[key]))
+			_parameter_editor(id, key, params[key])
+		elif not str(argument.get("enum", "")).is_empty() and str(argument["enum"]).contains("."):
+			_enum_options(id, key, str(argument["enum"]), int(params[key]))
+		elif int(argument["type"]) == TYPE_NIL:
+			_literal_editor(id, key, params[key])
+		else:
+			_parameter_editor(id, key, params[key])
+	for index: int in int(function.get("extra", 0)):
+		var key := XREBlueprintFunctions.extra_key(index)
+		if not _shows(block, key): continue
+		_label(_details, XREBlueprintFunctions.title_of(key))
+		if params.has(key): _literal_editor(id, key, params[key])
+		else: _empty_editor(id, key, "")
+	if function.get("vararg", false):
+		var row := HBoxContainer.new()
+		_details.add_child(row)
+		_button(row, "+ value", func() -> void: _set_call_option(document.set_extra_arguments.bind(id, int(function.get("extra", 0)) + 1)))
+		_button(row, "− value", func() -> void: _set_call_option(document.set_extra_arguments.bind(id, int(function.get("extra", 0)) - 1)))
+	if has_advanced:
+		var advanced := CheckBox.new()
+		advanced.text = "Show advanced arguments"
+		advanced.button_pressed = function.get("advanced_shown", false)
+		_details.add_child(advanced)
+		advanced.toggled.connect(func(shown: bool) -> void: _set_call_option(document.set_advanced_shown.bind(id, shown)))
+
+
+## An empty socket's note, and a button that puts [param value] in it.
+func _empty_editor(id: int, key: String, value: Variant) -> void:
+	var row := HBoxContainer.new()
+	_details.add_child(row)
+	var note := _label(row, "empty — wire it or set a value")
+	note.modulate = Color("e5b57b")
+	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_button(row, "Set", func() -> void: _set_parameter(id, key, value))
+
+
+func _shows(block: Dictionary, key: String) -> bool:
+	return not parameter_filter.is_valid() or parameter_filter.call(block, key)
+
+
+func _set_call_option(action: Callable) -> void:
+	if _rebuilding: return
+	if not document.perform(action, operation_source): show_status(document.last_error, true)
+
+
+## A choice among the constants of enumeration [param enum_path], "Class.Enum".
+func _enum_options(id: int, key: String, enum_path: String, current: int) -> void:
+	var parts := enum_path.split(".")
+	var picker := OptionButton.new()
+	var values: Array[int] = []
+	for constant: String in ClassDB.class_get_enum_constants(parts[0], parts[1]):
+		values.append(ClassDB.class_get_integer_constant(parts[0], constant))
+		picker.add_item(constant.capitalize())
+	if not values.has(current):
+		values.append(current)
+		picker.add_item(str(current))
+	picker.select(values.find(current))
+	_details.add_child(picker)
+	picker.item_selected.connect(func(index: int) -> void: _set_parameter(id, key, values[index]))
+
+
 func _scene_options(block: Dictionary, key: String) -> void:
 	var target := document.target_node(block["id"])
 	var names: Array[String] = []
@@ -701,8 +894,7 @@ func _show_picker(id: int) -> void:
 		item.set_text(0, "%s (%s)" % [node.name, node.get_class()])
 		item.set_metadata(0, weakref(node))
 		if id >= 0:
-			var kind: String = document.graph.find_node(id)["kind"]
-			var kind_problem := XREBlueprintSchema.target_kind_problem(kind, node)
+			var kind_problem := XREBlueprintSchema.target_kind_problem(document.graph.find_node(id), node)
 			var problem := XREBlueprintSchema.target_problem(document.graph.find_node(id), node)
 			if not kind_problem.is_empty():
 				item.set_selectable(0, false)
@@ -736,8 +928,11 @@ func _show_variables() -> void:
 	var error := _label(fields, "")
 	error.modulate = Color("ffaaaa")
 	for variable: Dictionary in document.graph.variables:
-		_label(fields, "%s: %s" % [variable["name"], type_string(typeof(variable["value"]))])
-		_parameter_editor(-1, variable["name"], variable["value"], fields)
+		var type := XREBlueprintGraph.variable_type(variable)
+		_label(fields, "%s: %s" % [variable["name"], type_string(type)])
+		if variable.has("value"): _parameter_editor(-1, variable["name"], variable["value"], fields)
+		else: _button(fields, "Set a start value", func() -> void:
+			if document.perform(document.set_variable.bind(variable["name"], XREBlueprintSchema.default_value(type)), operation_source): _show_variables.call_deferred())
 		_button(fields, "Remove " + variable["name"], func() -> void:
 			if document.perform(document.remove_variable.bind(variable["name"]), operation_source): _show_variables.call_deferred()
 			else: error.text = document.last_error)

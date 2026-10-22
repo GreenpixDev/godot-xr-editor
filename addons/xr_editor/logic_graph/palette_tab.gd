@@ -1,9 +1,11 @@
 @tool
 class_name XREBlueprintPaletteTab
 extends XREBlueprintFormTab
-## The blocks a card's plus adds, in a window beside the card (D-044): the
-## form is [member XREBlueprints.block_list]. Pinned to a hand, it stays open
-## after a block is added, so that several are added in a row.
+## The block menu, in a window beside the card whose plus opened it, at a
+## wire let go in empty space, or in front of the user (D-044, D-051): the
+## form is [member XREBlueprints.block_menu], the action menu of the desktop
+## view. Pinned to a hand, it stays open after a block is added, and the next
+## block follows the new one, so that a chain is added in a row.
 
 
 func _init(document: XREDocument) -> void:
@@ -20,4 +22,4 @@ func get_symbol() -> StringName:
 
 
 func _form() -> Control:
-	return _service.block_list
+	return _service.block_menu

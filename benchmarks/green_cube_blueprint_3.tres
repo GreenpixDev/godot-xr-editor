@@ -1,0 +1,103 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://drsucytxbqaqt"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_she1h"]
+
+[resource]
+script = ExtResource("1_she1h")
+nodes = Array[Dictionary]([{
+"arguments": Array[Dictionary]([]),
+"id": 1,
+"kind": "signal",
+"params": {
+"policy": "parallel",
+"signal": "ready",
+"target": "."
+},
+"position": Vector2(604.1376, 309.0107),
+"vr_depth": -0.3693121
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "Node",
+"key": "target",
+"label": "Target",
+"name": "target",
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"default": "position",
+"key": "arg_property",
+"label": "Property",
+"literal": true,
+"name": "property",
+"provider": "property",
+"type": 4
+}, {
+"class_name": "",
+"default": Vector2(400, 240),
+"key": "value",
+"label": "Value",
+"name": "value",
+"type": 0,
+"type_of": "property"
+}, {
+"class_name": "",
+"default": 1.0,
+"key": "seconds",
+"label": "Seconds",
+"name": "seconds",
+"positive": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Motion",
+"class": "XREBlueprintLibrary",
+"description": "Changes [param property] of [param target] smoothly to [param value] over [param seconds], then continues. Cancelling the run kills the Tween; what has changed stays.",
+"extra": 0,
+"keywords": "move animate interpolate slide fade",
+"name": "tween_property",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": ["Node"],
+"then": "Finished",
+"title": "Tween Property",
+"vararg": false
+},
+"id": 2,
+"kind": "call",
+"params": {
+"arg_property": "rotation",
+"seconds": 1.0,
+"target": ".",
+"value": Vector2(400, 240)
+},
+"position": Vector2(997.41394, 365.74612),
+"property_type": 9,
+"vr_anchor": Vector3(-0.0014651418, -0.0017902851, 0.0521698),
+"vr_depth": -0.20480487
+}])
+edges = Array[Dictionary]([{
+"from": 1,
+"from_port": 0,
+"to": 2,
+"to_port": 0
+}])
+host_path = NodePath("GreenCube")
+scene_path = "res://benchmarks/play_check.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.98959124, 0, -0.14390707, 0, 1.0000001, 0, 0.14390707, 0, 0.98959124, 0.095205665, 1.4327517, 0.06701791)
+vr_center = Vector2(80, 100)

@@ -1,12 +1,11 @@
 @tool
 class_name XREBlueprintTab
 extends XREPanelTab
-## Project graph catalog and block palette in its window.
+## Project graph catalog, and Add block, which opens the block menu (D-051).
 
 var _service: XREBlueprints
 var _status: Label
 var _graphs: ItemList
-var _blocks: OptionButton
 var _markers: CheckBox
 
 
@@ -35,18 +34,9 @@ func _init(document: XREDocument) -> void:
 	_button(self, "Open selected graph", func() -> void:
 		var selected := _graphs.get_selected_items()
 		if not selected.is_empty(): _open_item(selected[0]))
-	var palette := HBoxContainer.new()
-	add_child(palette)
-	_blocks = OptionButton.new()
-	_blocks.size_flags_horizontal = SIZE_EXPAND_FILL
-	for kind: String in XREBlueprintGraph.BLOCKS:
-		_blocks.add_item(XREBlueprintGraph.BLOCKS[kind]["title"])
-		_blocks.set_item_metadata(_blocks.item_count - 1, kind)
-	palette.add_child(_blocks)
-	_button(palette, "Add block", func() -> void:
-		if _service != null:
-			if not _service.is_open(): _service.show_graph()
-			_service.add_block(_blocks.get_item_metadata(_blocks.selected)))
+	# The block menu, without a pin; the block goes beside the selected card (D-051).
+	_button(self, "Add block…", func() -> void:
+		if _service != null: _service.open_block_menu())
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_status)

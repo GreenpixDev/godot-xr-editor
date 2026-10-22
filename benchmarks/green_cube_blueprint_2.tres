@@ -4,54 +4,6 @@
 
 [resource]
 script = ExtResource("1_35g2d")
-nodes = Array[Dictionary]([{
-"id": 1,
-"kind": "ready",
-"params": {
-"policy": "parallel"
-},
-"position": Vector2(523.2594, 513.35925),
-"vr_depth": -0.4133728
-}, {
-"id": 2,
-"kind": "tween",
-"params": {
-"property": "rotation",
-"seconds": 1.0,
-"target": ".",
-"value": Vector3(3.14, 0, 0)
-},
-"position": Vector2(822.70807, 601.92725),
-"property_type": 9,
-"vr_depth": -0.25033617
-}, {
-"id": 3,
-"kind": "set_property",
-"params": {
-"property": "rotation",
-"target": ".",
-"value": Vector3(0, 0, 0)
-},
-"position": Vector2(1093.6948, 768.0969),
-"property_type": 9,
-"vr_depth": 0.0026426464
-}])
-edges = Array[Dictionary]([{
-"from": 1,
-"from_port": 0,
-"to": 2,
-"to_port": 0
-}, {
-"from": 2,
-"from_port": 0,
-"to": 3,
-"to_port": 0
-}, {
-"from": 3,
-"from_port": 0,
-"to": 2,
-"to_port": 0
-}])
 host_path = NodePath("GreenCube")
 scene_path = "res://benchmarks/play_check.tscn"
 vr_placed = true

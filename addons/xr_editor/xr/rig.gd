@@ -146,6 +146,9 @@ static func create_vr_label(font_size: int, pixel_size: float) -> Label3D:
 	label.font = vr_font()
 	label.font_size = font_size
 	label.pixel_size = pixel_size
+	# The editor would translate words it knows ("Source", "Target", "In") into its
+	# own language; the headset UI is English, and layouts measure the English text.
+	label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	return label
 
 

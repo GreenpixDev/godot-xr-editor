@@ -26,6 +26,25 @@ const BODY_BOTTOM := 0.65
 ## Farther than this from the head, in meters, the badge over a selected
 ## object grows with the distance and so keeps its size in view (D-043).
 const BADGE_DISTANCE := 1.2
+## How far below a token and in front of it, toward the head, its keyboard opens, in meters (D-057).
+## How far along a number's line the ray must go before the line follows it (D-062): a click stays a click.
+const LINE_START := 0.008
+const KEYBOARD_DROP := 0.2
+const KEYBOARD_LEAD := 0.26
+## How far in front of a vector token, toward the head, its Vector window opens (D-061).
+const VECTOR_LEAD := 0.3
+## How dark all but the input in use goes (D-061).
+const FOCUS_DIM := 0.87
+## A trigger let go sooner than this, the value unchanged, is a click on a
+## number or a choice (D-063): it types or steps; held longer it only shows its line.
+const CLICK_USEC := 350000
+## The keyboard is never nearer the head than this, in meters (D-063).
+const KEYBOARD_NEAREST := 0.45
+## How far below the Vector window's bottom edge the keypad of one axis
+## stands, in meters: its tilted top clear of the window's buttons (D-063).
+const KEYBOARD_BELOW_WINDOW := 0.3
+## What the trigger on a member's name does, shown over it under the ray (D-057).
+const MEMBER_HINT := "click: pick on the object's petals"
 ## Gap between a block and its parameters or palette window beside it, in
 ## meters, and how much nearer the head than the block, and than any card it
 ## covers, the window is: so that no card covers it or takes its ray.
@@ -52,6 +71,69 @@ class Pointer:
 	var window: XREPanelSurface
 	var corner := -1
 	var by_trigger := false
+	## A token turned by the wrist while the trigger is held (D-052): its block
+	## (or the variable of its box), parameter, value now and at the start, the
+	## hand's basis at the start, and the turn so far.
+	var token_block := -1
+	var token_box := ""
+	var token_key := ""
+	var token_value: Variant
+	var token_start: Variant
+	var token_basis := Basis.IDENTITY
+	var token_angle := 0.0
+	var token_last := 0.0
+	var token_steps := 0
+	## How far the wrist turned lately, decaying over a tenth of a second, and when it was last looked at.
+	var token_recent := 0.0
+	var token_usec := 0
+	## Where the ray met the token at the press, and how far: moving the ray off it drags the token.
+	var token_point := Vector3.ZERO
+	var token_distance := 0.0
+	## Thumbstick steps not yet made while the trigger holds a number, and whether the value changed at all.
+	var token_stick := 0.0
+	var token_moved := false
+	## Steps the ray has made up the token's plane since the trigger took it (D-061).
+	var token_ray := 0
+	## The ray has left the point it took a number at: the number line follows it (D-062).
+	var token_line := false
+	## When the trigger took the token: a short press is a click (D-063).
+	var token_press_usec := 0
+	## The trigger closed an input by a click away (D-063): until it is let go
+	## the click goes nowhere else, nor selects a scene object.
+	var swallow := false
+	## A carried token is held by the trigger, not the grip: it was dragged off its socket.
+	var carried_trigger := false
+	## An arrow of a vector token pulled while the trigger is held: its axis, the pull's start and the value then.
+	var arrow_axis := -1
+	var arrow_start := 0.0
+	var arrow_value: Variant
+	var arrow_block := -1
+	var arrow_key := ""
+	var arrow_box := ""
+	## How far the arrow was pulled at most: a click without a pull sets its component to 0.
+	var arrow_reach := 0.0
+	## The white arrow (D-060): how far along the ray it was taken, and the point taken.
+	var arrow_distance := 0.0
+	var arrow_grab := Vector3.ZERO
+	## A trigger pressed on petals: the fan, the item under it, the height it
+	## was pressed at, the rows scrolled since and whether it dragged (D-052).
+	var fan: XREBlueprintPetals
+	var fan_item: Dictionary = {}
+	var fan_height := 0.0
+	var fan_rows := 0
+	var fan_dragged := false
+	## This hand's ray lit a petal of the fan last frame.
+	var fan_hover := false
+	## Thumbstick scrolling of petals, in rows not yet scrolled.
+	var fan_scroll := 0.0
+	## A token the grip carries: its mesh, value and parameter, the socket or
+	## box it came from (none from the tray), and whether it is a copy.
+	var carried: Node3D
+	var carried_value: Variant
+	var carried_key := ""
+	var carried_block := -1
+	var carried_box := ""
+	var carried_copy := false
 
 class Marker:
 	var host: Node
@@ -65,9 +147,30 @@ class TargetWire:
 	var target: Node
 	var anchor: Node3D
 	var mesh: XREGraphWire
+	## Where the wire's stem grows from on its target, in the target's space,
+	## and the petal of its member there, on a stem from that point, where the
+	## wire ends (D-052): [member offset] from the point, global.
+	var point := Vector3.ZERO
+	var label: Node3D
+	var stem: MeshInstance3D
+	var dot: MeshInstance3D
+	var offset := Vector3.ZERO
+	var width := 0.0
+	## The target's local bounds: the petals of one object stand in one column beside them.
+	var bounds := AABB()
+	## The wire leaves an event's Source socket, not a port.
+	var source := false
+	## A ray is on its petal this frame: it grows.
+	var hot := false
+	## A ray is on its Target port, its adapter or its Source this frame: it thickens (D-061).
+	var lit := false
+	var normal: Material
+	var lit_material: Material
 
 var blueprint: XREBlueprintDocument
 var canvas: XREBlueprintCanvas
+## The form of the Vector window (D-061).
+var vector_panel: XREBlueprintVectorPanel
 var parameters: XREBlueprintEditor
 var status := "Select an object, then Create Blueprint or Open Blueprint."
 var logic_mode := false
@@ -80,9 +183,71 @@ var _root: Node
 var _workspace: Node3D
 var _floating_ui: Node3D
 var _dimmer: MeshInstance3D
+## Darkens all but the input in use (D-061): a value's widget, the keyboard,
+## the petals of a member being picked. Drawn over cards and windows, under
+## what is drawn over everything.
+var _focus_dimmer: MeshInstance3D
+var _focused := false
 var _toolbar: XREPanelSurface
-## The block palette's form: a button per block a card's plus adds ([XREBlueprintPaletteTab]).
-var block_list: Control
+## The block menu's form ([XREBlueprintPaletteTab]): the action menu of the
+## desktop view, with larger rows (D-051). A card's plus, a wire let go in
+## empty space and Add block of the Blueprints tab open it.
+var block_menu: XREBlueprintActionMenu
+## Where the menu adds its block: beside this card, wired to this port
+## ([method XREBlueprintDocument.insert_block]), or at a point of the
+## workspace where a wire was let go; and in which direction it was added.
+var _menu_card := -1
+var _menu_wire: Dictionary = {}
+var _menu_point := Vector3.ZERO
+var _menu_at_point := false
+## A row pulled out of the menu (D-051): the hand that pulls it, its distance and its block's stand-in.
+var _drag_action: Dictionary = {}
+var _drag_hand: XREHand
+var _drag_distance := 0.6
+var _ghost: Node3D
+## The ready tokens of the Tokens window ([XREBlueprintTokensTab], D-052).
+var token_tray: XREBlueprintTokenTray
+## The members of a scene object a wire picks, and the white outline of that object (D-052).
+var _petals: XREBlueprintPetals
+var _petal_outline: XREOutline
+## The block whose member the petals pick, -1 for the selected object's
+## petals of Create from scene; whether they are at its Target port, for a
+## target that comes by wire.
+var _petal_block := -1
+var _petal_dynamic := false
+## A small fan of choices at a point: Get, Set or Tween for a property, a type for a new variable.
+var _choice: XREBlueprintPetals
+var _choice_point := Vector3.ZERO
+## A wire from a petal of the selected object (Create from scene) and the hand that draws it.
+var _member_link: Dictionary = {}
+var _member_hand: XREHand
+## A Source or Variable socket being wired, by the hand that started it; a box starts one too.
+var _link_kind := -1
+var _link_block := -1
+var _link_box := ""
+var _link_hand: XREHand
+## Play Animation's output 0 a wire is drawn from: 1 Finished, 0 Then, -1 another port.
+var _pending_finished := -1
+## The token typed on the keyboard, or a new variable's name ([member _token_field]).
+var _token_field: LineEdit
+var _token_edit: Dictionary = {}
+var _new_variable := ""
+## The input around a token, as in the concept: a dial, a choice, a ring of hues, arrows (D-052).
+var _token_editor: XREBlueprintTokenEditor
+## The token the ring or the arrows edit: [code]{"block", "key", "box", "value"}[/code].
+var _value_edit: Dictionary = {}
+## The delete button acted on a token or a box this frame: the selected block stays.
+var _delete_consumed := false
+## What each hand's ray picks on the value widget this frame, lit together in [method _process].
+var _editor_right: Dictionary = {}
+var _editor_left: Dictionary = {}
+## The frame a token under a ray last showed its hint in.
+var _hint_frame := -1
+## The socket the tray's dimming fits: the card and the socket index, or -1.
+var _tray_socket := Vector2i(-1, -1)
+## Solid tokens hung in front of the tray's cells (D-055), rebuilt when its cells change.
+var _tray_tokens: Array[Node3D] = []
+var _tray_dirty := true
 ## Keeps the forms off screen while no window shows them.
 var _forms_home: SubViewport
 ## Tab classes of the graph's windows that are open (D-044).
@@ -115,6 +280,8 @@ var _keyboard: XREVirtualKeyboard
 var _keyboard_target: WeakRef
 ## The rig-locked windows of the graph, which move by their corner handles (docs/vr_ui.md, D-040).
 var _windows: Array[XREPanelSurface] = []
+## The object a new graph was opened for by selecting it, not yet saved (D-063).
+var _unsaved_host: WeakRef
 var _built_state: Dictionary = {}
 var _built_path := ""
 var _built_host: WeakRef
@@ -135,8 +302,18 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	add_child(_floating_ui)
 	canvas = XREBlueprintCanvas.new()
 	canvas.set_display(document.features.get_value(XREFeatureSettings.NODE_DISPLAY))
+	canvas.set_plus_shown(document.features.get_value(XREFeatureSettings.CARD_PLUS) == XREFeatureSettings.SHOWN)
 	canvas.set_port_display(document.features.get_value(XREFeatureSettings.PORT_DISPLAY))
+	canvas.set_parameter_modes(document.features.get_value(XREFeatureSettings.VALUE_INPUT), document.features.get_value(XREFeatureSettings.TARGET_INPUT),
+			document.features.get_value(XREFeatureSettings.ANIMATION_WAIT), document.features.get_value(XREFeatureSettings.VARIABLE_INPUT))
 	_workspace.add_child(canvas)
+	_petals = XREBlueprintPetals.new()
+	add_child(_petals)
+	_choice = XREBlueprintPetals.new()
+	_choice.name = "Choice"
+	add_child(_choice)
+	_petal_outline = XREOutline.new(Color.WHITE)
+	add_child(_petal_outline)
 	_toolbar = XREPanelSurface.new(Vector2(840, 150), 0.0009, 1.5, theme)
 	_toolbar.position = Vector3(0, 0.42, 0.03)
 	_floating_ui.add_child(_toolbar)
@@ -150,14 +327,37 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	parameters.operation_source = &"vr_panel"
 	parameters.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	if theme != null: parameters.theme = theme
+	# Only what the parameter settings leave in the window shows there (D-052).
+	parameters.parameter_filter = shows_in_window
 	_forms_home.add_child(parameters)
 	parameters.setup(blueprint, true)
 	parameters.graph_scene_requested.connect(_open_owner_scene)
 	parameters.text_edit_requested.connect(_show_keyboard, CONNECT_DEFERRED)
 	_keyboard = XREVirtualKeyboard.new(theme)
+	# Over everything, so that it never sinks into a card (D-058); grip moves it, × closes it.
+	_keyboard.set_on_top(true)
 	_keyboard.applied.connect(_apply_keyboard)
 	_floating_ui.add_child(_keyboard)
-	_build_block_list(theme)
+	_build_block_menu(theme)
+	vector_panel = XREBlueprintVectorPanel.new()
+	if theme != null: vector_panel.theme = theme
+	vector_panel.zero_pressed.connect(_vector_action.bind(false))
+	vector_panel.normalize_pressed.connect(_vector_action.bind(true))
+	vector_panel.component_pressed.connect(_type_component)
+	vector_panel.component_zero_pressed.connect(_zero_component)
+	vector_panel.done_pressed.connect(_end_vector.bind(true))
+	vector_panel.close_pressed.connect(_close_inputs)
+	_forms_home.add_child(vector_panel)
+	token_tray = XREBlueprintTokenTray.new()
+	if theme != null: token_tray.theme = theme
+	token_tray.cells_changed.connect(func() -> void: _tray_dirty = true)
+	_forms_home.add_child(token_tray)
+	_token_field = LineEdit.new()
+	_token_field.name = "TokenText"
+	_token_field.text_submitted.connect(_token_text_submitted)
+	_forms_home.add_child(_token_field)
+	_token_editor = XREBlueprintTokenEditor.new()
+	add_child(_token_editor)
 	_windows = [_toolbar, _keyboard]
 	for window: XREPanelSurface in _windows: window.add_corner_handles()
 	_update_window_shape()
@@ -181,10 +381,14 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 
 
 func _enter_tree() -> void:
-	print("XR Editor: Blueprints VR D-034 loaded from ", ProjectSettings.globalize_path("res://"))
+	print("XR Editor: Blueprints VR D-052 loaded from ", ProjectSettings.globalize_path("res://"))
 	_dimmer = create_dimmer()
 	_rig.camera.add_child(_dimmer)
 	_dimmer.hide()
+	_focus_dimmer = create_dimmer(FOCUS_DIM, Material.RENDER_PRIORITY_MAX)
+	_focus_dimmer.name = "FocusDimmer"
+	_rig.camera.add_child(_focus_dimmer)
+	_focus_dimmer.hide()
 	_picker.scenario = get_viewport().find_world_3d().scenario
 	_root = _document.get_scene_root()
 	blueprint.update_active_scene(_root)
@@ -203,6 +407,7 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	_set_ui_overlay(false)
 	if is_instance_valid(_dimmer): _dimmer.queue_free()
+	if is_instance_valid(_focus_dimmer): _focus_dimmer.queue_free()
 	cancel_connection()
 	_target_pick = -1
 	save_draft()
@@ -238,12 +443,29 @@ func _process(delta: float) -> void:
 		marker.visual.visible = logic_mode and is_instance_valid(marker.host) and marker.host.is_inside_tree() and is_instance_valid(marker.anchor) and marker.anchor.is_inside_tree()
 		if marker.visual.visible: marker.visual.global_position = marker.anchor.global_position + _rig.global_basis.y * 0.22
 	if _workspace.visible: canvas.face_user(_rig.camera.global_position)
+	_delete_consumed = false
+	_close_on_click_away()
+	for wire: TargetWire in _target_wires:
+		wire.hot = false
+		wire.lit = false
 	for pointer: Pointer in _pointers:
 		_update_pointer(pointer, delta)
 		_keyboard.poll_trigger(pointer.hand, pointer.surface == _keyboard and _keyboard.is_shown())
+	if _token_editor.is_interactive(): _token_editor.light(_editor_right if not _editor_right.is_empty() else _editor_left)
+	_place_vector_arrows()
+	_update_focus()
+	_editor_right = {}
+	_editor_left = {}
 	_update_target_wires()
+	_update_drag()
+	_update_tray_tokens()
+	if _token_editor.mode == XREBlueprintTokenEditor.HINT and _hint_frame != Engine.get_process_frames(): _token_editor.close()
+	_petals.follow(_rig.camera.global_position)
+	var marked := _petals.get_object()
+	if marked != null and marked.is_inside_tree(): _petal_outline.show_node(marked, XREPicker.get_local_bounds(marked))
+	elif _petal_outline.is_active(): _petal_outline.clear()
 	var delete_hand := _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE)
-	if _workspace.visible and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and delete_hand.is_free_for(self):
+	if _workspace.visible and not _delete_consumed and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and delete_hand.is_free_for(self):
 		delete_hand.claim(self)
 		delete_block()
 
@@ -266,6 +488,7 @@ func graph_paths() -> PackedStringArray:
 ## Creates source without changing a scene node; its host is chosen explicitly later.
 func create_unassigned() -> bool:
 	if _root == null: return false
+	_unsaved_host = null
 	_finish_holds()
 	if not save_draft(): return false
 	blueprint.perform(blueprint.new_graph, &"vr_panel")
@@ -306,6 +529,7 @@ func create_for(node: Node) -> bool:
 	if _root == null or not is_instance_valid(node) or not (node == _root or _root.is_ancestor_of(node)): return false
 	_finish_holds()
 	if not save_draft(): return false
+	_unsaved_host = null
 	var host := node
 	if node.get_script() != null:
 		host = Node.new()
@@ -342,12 +566,62 @@ func open_graph(path: String) -> bool:
 	_finish_holds()
 	if blueprint.path != path:
 		if not save_draft(): return false
+		_unsaved_host = null
 		if not blueprint.perform(blueprint.open_graph.bind(path), &"vr_panel"):
 			_message(blueprint.last_error)
 			return false
 	show_graph()
 	_message("Opened " + path.get_file())
 	return true
+
+
+## In the graph, selecting a scene object by pointing at it opens its graph (D-063): the one of
+## its host, or a new one for it, written to disk only once it is changed
+## ([method _save_new_graph]). An object with a script of its own keeps the
+## graph that is open: its Blueprint needs a Logic child, which Create Blueprint adds.
+func _follow_selection() -> void:
+	if not _workspace.visible or _root == null: return
+	var nodes := _document.get_selection()
+	if nodes.size() != 1 or not is_instance_valid(nodes[0]): return
+	var node := nodes[0]
+	if not (node == _root or _root.is_ancestor_of(node)): return
+	var host := related_host(node)
+	if host != null:
+		if host != blueprint.get_host() or source_path(host) != blueprint.path: open_graph(source_path(host))
+		return
+	if node == blueprint.get_host(): return
+	if node.get_script() != null:
+		_message("%s has a script of its own: Create Blueprint adds a Logic child for its graph." % node.name)
+		return
+	_finish_holds()
+	if not save_draft(): return
+	blueprint.perform(blueprint.new_graph, &"vr_panel")
+	blueprint.set_scene_root(_root)
+	if not blueprint.perform(blueprint.set_host_node.bind(node), &"vr_panel"):
+		_message(blueprint.last_error)
+		return
+	show_graph()
+	blueprint.mark_saved()
+	_unsaved_host = weakref(node)
+	_message("%s has no Blueprint yet: this one is saved with its first change." % node.name)
+
+
+## The first change of a new graph opened for a selected object (D-063):
+## the graph is saved beside the scene and assigned to the object.
+func _save_new_graph() -> void:
+	var host := _unsaved_host.get_ref() as Node if _unsaved_host != null else null
+	if host == null or not blueprint.path.is_empty() or not blueprint.is_dirty(): return
+	_unsaved_host = null
+	if host != blueprint.get_host() or not host.is_inside_tree(): return
+	var path := _new_path(host)
+	if not blueprint.perform(blueprint.save_graph.bind(path), &"vr_panel"):
+		_message(blueprint.last_error)
+		return
+	if not _document.assign_blueprint(host, path, null, XREDocument.Source.PANEL):
+		_message("Could not assign Blueprint to this scene node.")
+		return
+	_refresh_markers()
+	_message("Saved " + path.get_file() + ". Build & Attach enables its behavior.")
 
 
 ## Reopening focuses one shared workspace rather than copying its document.
@@ -377,6 +651,8 @@ func show_graph() -> void:
 	_dimmer.show()
 	_set_ui_overlay(true)
 	parameters.select_block(-1)
+	_update_tray()
+	_update_selection_fan()
 	_schedule_rebuild()
 	changed.emit()
 
@@ -392,6 +668,10 @@ func close_graph() -> void:
 	_keyboard.close()
 	close_block_palette()
 	close_parameters()
+	_dismiss_window(XREBlueprintTokensTab, true)
+	_token_editor.close()
+	_petals.close()
+	_choice.close()
 	_workspace.hide()
 	_floating_ui.hide()
 	_dimmer.hide()
@@ -464,16 +744,221 @@ func build_and_attach() -> bool:
 	return true
 
 
-## Adds a palette block beside the selected card through graph undo history.
+## Adds a block of a native kind or a preset beside the selected card through graph undo history.
 func add_block(kind: String) -> void:
-	var point := Vector2(80, 100)
-	var previous := blueprint.graph.find_node(_selected)
-	if not previous.is_empty(): point = previous["position"] + Vector2(320, 0)
-	else: point += Vector2(320 * blueprint.graph.nodes.size(), 0)
-	blueprint.perform(blueprint.add_block.bind(kind, point), &"vr_panel")
-	if not blueprint.graph.nodes.is_empty(): select_block(blueprint.graph.nodes.back()["id"])
-	# Pinned to a hand, the palette stays for the next block.
+	var block := XREBlueprintGraph.make_node(0, kind, Vector2.ZERO)
+	if block.is_empty(): return
+	_menu_card = _selected
+	_menu_wire = {}
+	_menu_at_point = false
+	_add_from_menu({"id": "kind:" + kind, "title": XREBlueprintGraph.title(block), "block": block, "target": null})
+
+
+## Opens the block menu from the Blueprints tab or the launcher (D-051): no
+## pin, the selected object first, the block beside the selected card.
+func open_block_menu() -> void:
+	if not _workspace.visible: show_graph()
+	cancel_connection()
+	_menu_card = _selected
+	_menu_wire = {}
+	_menu_at_point = false
+	block_menu.open(_menu_contexts(-1), blueprint.get_host(), blueprint.graph)
+	var head := _rig.camera.global_position
+	var forward := -_rig.camera.global_basis.z
+	forward.y = 0.0
+	var point := head + (forward.normalized() if not forward.is_zero_approx() else Vector3.FORWARD) * XREPanels.WINDOW_DISTANCE - Vector3.UP * XREPanels.WINDOW_DROP
+	_request_window(XREBlueprintPaletteTab, Transform3D(XREPanels.facing(point, head, _rig.global_basis.y), point))
+
+
+## Adds [param action]'s block where the menu was opened, wired to its pin, as
+## one undo step. Pinned to a hand, the menu stays: the next block follows
+## from the new one's execution output, so that a chain is added in a row.
+func _add_from_menu(action: Dictionary, point: Variant = null) -> void:
+	var position := _menu_position(point)
+	var block: Dictionary = (action["block"] as Dictionary).duplicate(true)
+	if point is Vector3 or _menu_at_point: block["vr_depth"] = (point as Vector3).z if point is Vector3 else _menu_point.z
+	# From a box (D-063) the block comes unwired; the box is wired into its first fitting input then.
+	var box := str(_menu_wire.get("box", ""))
+	var id: int = blueprint.perform(blueprint.insert_block.bind(block, position, _menu_wire if box.is_empty() else {}, action.get("target") as Node), &"vr_panel")
+	if id < 0:
+		_message(blueprint.last_error)
+		return
+	if _menu_at_point: cancel_connection()
+	if not box.is_empty():
+		_menu_wire = {}
+		var port := _box_input(id, box)
+		if port >= 0: _wire_box_to_port(box, id, port)
+	select_block(id, false)
+	_message("Added %s." % action["title"])
+	# Pinned to a hand, the menu stays for the next block.
 	_dismiss_window(XREBlueprintPaletteTab, false)
+	if is_block_palette_shown():
+		_menu_card = id
+		_menu_at_point = false
+		var pin := _exec_pin(id)
+		_menu_wire = {"from": id, "from_port": pin["port"]} if not pin.is_empty() else {}
+		block_menu.open(_menu_contexts(id), blueprint.get_host(), blueprint.graph, pin)
+
+
+## Graph coordinates of a block the menu adds: at [param point] (workspace),
+## at the point a wire was let go, or beside the menu's card — to the right of
+## an output, to the left of an input — and below the cards there.
+func _menu_position(point: Variant) -> Vector2:
+	if point is Vector3: return canvas.block_position(point)
+	if _menu_at_point: return canvas.block_position(_menu_point)
+	var source := blueprint.graph.find_node(_menu_card)
+	var position := Vector2(80, 100) + Vector2(320 * blueprint.graph.nodes.size(), 0)
+	if not source.is_empty():
+		position = source["position"] + Vector2(-320 if _menu_wire.has("to") else 320, 0)
+	for attempt: int in 8:
+		var free := true
+		for block: Dictionary in blueprint.graph.nodes:
+			var offset: Vector2 = block["position"] - position
+			if absf(offset.x) < 260 and absf(offset.y) < 140: free = false
+		if free: break
+		position.y += 160
+	return position
+
+
+## The context objects of the menu (D-051): the selected scene object, the
+## target of card [param id], then the host; a pin's object class first.
+func _menu_contexts(id: int, pin_context: Dictionary = {}) -> Array[Dictionary]:
+	var contexts: Array[Dictionary] = []
+	if not pin_context.is_empty(): contexts.append(pin_context)
+	var nodes: Array[Node] = []
+	var selection := _document.get_selection()
+	if selection.size() == 1: nodes.append(selection[0])
+	if id >= 0: nodes.append(blueprint.target_node(id))
+	nodes.append(blueprint.get_host())
+	var scene := blueprint.scene_nodes()
+	var seen: Array[Node] = []
+	for node: Node in nodes:
+		if node == null or seen.has(node) or not scene.has(node): continue
+		seen.append(node)
+		contexts.append({"label": str(node.name), "node": node})
+	return contexts
+
+
+## The pin of the first execution output of block [param id], or empty.
+func _exec_pin(id: int) -> Dictionary:
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty(): return {}
+	var outputs := blueprint.graph.ports(block, false)
+	for index: int in outputs.size():
+		if outputs[index][1] == XREBlueprintGraph.EXEC:
+			return {"type": XREBlueprintGraph.EXEC, "output": true, "port": index, "label": "%s ▸ %s · exec" % [XREBlueprintGraph.title(block), outputs[index][0]]}
+	return {}
+
+
+## The menu for a wire let go in empty space at [param point] (workspace): it
+## lists the blocks that can take the wire and joins the one chosen to it.
+func _open_menu_for_wire(point: Vector3) -> void:
+	var block := blueprint.graph.find_node(_pending_id)
+	if block.is_empty(): return
+	var spec: Array = blueprint.graph.ports(block, _pending_input)[_pending_port]
+	var pin := {"type": spec[1], "output": not _pending_input, "port": _pending_port, "label": "%s ▸ %s · %s" % [XREBlueprintGraph.title(block), spec[0], _type_name(spec[1])]}
+	var pin_context := {}
+	if spec[1] == XREBlueprintGraph.OBJECT and block["kind"] == "signal" and not _pending_input:
+		var arguments: Array = block.get("arguments", [])
+		if _pending_port - 1 >= 0 and _pending_port - 1 < arguments.size():
+			var argument: Dictionary = arguments[_pending_port - 1]
+			var cls := str(argument.get("class_name", ""))
+			pin_context = {"label": "%s · %s" % [argument["name"], cls if not cls.is_empty() else "Object"], "class": cls if not cls.is_empty() else "Node"}
+	_menu_card = _pending_id
+	_menu_wire = {"to": _pending_id, "to_port": _pending_port} if _pending_input else {"from": _pending_id, "from_port": _pending_port}
+	_menu_point = point
+	_menu_at_point = true
+	block_menu.open(_menu_contexts(_pending_id, pin_context), blueprint.get_host(), blueprint.graph, pin)
+	_request_menu_at(point)
+
+
+## The menu for a wire from the box of a variable let go in empty space at
+## [param point] (D-063): the blocks that take the variable's value; the one
+## chosen gets the box wired into its first input of that type.
+func _open_menu_for_box(point: Vector3) -> void:
+	var variable := blueprint.graph.find_variable(_link_box)
+	if variable.is_empty(): return
+	var type := XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(variable))
+	_menu_card = -1
+	_menu_wire = {"box": _link_box}
+	_menu_point = point
+	_menu_at_point = true
+	block_menu.open(_menu_contexts(-1), blueprint.get_host(), blueprint.graph, {"type": type, "output": true, "label": "%s · %s" % [_link_box, _type_name(type)]})
+	_request_menu_at(point)
+
+
+## The data input of block [param id] that the box of [param box] fits first, or -1.
+func _box_input(id: int, box: String) -> int:
+	var block := blueprint.graph.find_node(id)
+	var variable := blueprint.graph.find_variable(box)
+	if block.is_empty() or variable.is_empty(): return -1
+	var type := XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(variable))
+	var inputs := blueprint.graph.ports(block, true)
+	for exact: bool in [true, false]:
+		for index: int in inputs.size():
+			var port_type: int = inputs[index][1]
+			if port_type == XREBlueprintGraph.EXEC: continue
+			if port_type == type or (not exact and (port_type == XREBlueprintGraph.VALUE or type == XREBlueprintGraph.VALUE)): return index
+	return -1
+
+
+## Opens the block menu's window beside workspace point [param point], toward the head.
+func _request_menu_at(point: Vector3) -> void:
+	var world := canvas.global_transform * point
+	var head := _rig.camera.global_position
+	var away := (world - head).normalized()
+	var at := world + XREPanels.facing(world, head, _rig.global_basis.y).x * (XREPanels.WINDOW_SIZE.x * XREPanels.WINDOW_PIXEL_SIZE * 0.5 + 0.05) - away * PARAMETERS_LIFT
+	_request_window(XREBlueprintPaletteTab, Transform3D(XREPanels.facing(at, head, _rig.global_basis.y), at))
+
+
+static func _type_name(type: int) -> String:
+	return ["exec", "Variant", "bool", "int", "float", "String", "Vector2", "Vector3", "Object", "Color"][type]
+
+
+## The window that shows the block menu, or null while it is closed.
+func _menu_window() -> XREPanelSurface:
+	if not is_block_palette_shown() or not block_menu.is_inside_tree(): return null
+	return block_menu.get_viewport().get_parent() as XREPanelSurface
+
+
+## A row pulled out of the menu: its block follows the ray of the hand that pulls it ([method _update_drag]).
+func _drag_from_menu(action: Dictionary) -> void:
+	_drag_action = action
+	_drag_hand = _rig.right_hand if _rig.right_hand.trigger_held or not _rig.left_hand.trigger_held else _rig.left_hand
+	var window := block_menu.get_viewport().get_parent() as Node3D if block_menu.is_inside_tree() else null
+	_drag_distance = clampf(_drag_hand.global_position.distance_to(window.global_position) if window != null else 0.6, 0.3, 2.0)
+	if is_instance_valid(_ghost): _ghost.queue_free()
+	_ghost = Node3D.new()
+	_ghost.name = "DraggedBlock"
+	var quad := QuadMesh.new()
+	quad.size = Vector2(XREBlueprintCanvas.CARD_WIDTH, 0.08)
+	var face := XREBlueprintCanvas.material(Color(0.2, 0.25, 0.4, 0.7), true)
+	_ghost.add_child(XRERig.create_vr_mesh(quad, face))
+	var title := XREBlueprintCanvas.label(action["title"], 21)
+	title.position.z = 0.001
+	_ghost.add_child(title)
+	_workspace.add_child(_ghost)
+	_update_drag()
+
+
+## Moves the pulled row's stand-in along its hand's ray; letting the trigger go adds the block there.
+func _update_drag() -> void:
+	if _drag_action.is_empty(): return
+	if not is_instance_valid(_drag_hand) or not _drag_hand.get_has_tracking_data() or not _workspace.visible:
+		_end_drag(false)
+		return
+	var point := _drag_hand.global_position - _drag_hand.global_basis.z.normalized() * _drag_distance
+	_ghost.global_transform = Transform3D(XREPanels.facing(point, _rig.camera.global_position, Vector3.UP), point)
+	if not _drag_hand.trigger_held: _end_drag(true)
+
+
+func _end_drag(place: bool) -> void:
+	var action := _drag_action
+	_drag_action = {}
+	var point := canvas.to_local(_ghost.global_position) if is_instance_valid(_ghost) else Vector3.ZERO
+	if is_instance_valid(_ghost): _ghost.queue_free()
+	_ghost = null
+	if place: _add_from_menu(action, point)
 
 
 ## Selects a graph block without replacing the editor's scene selection. Its
@@ -486,7 +971,8 @@ func select_block(id: int, open_parameters: bool = true) -> void:
 	canvas.select_block(id)
 	parameters.select_block(id)
 	if id >= 0:
-		if open_parameters: _show_parameters(id)
+		if open_parameters and parameters_needed(id): _show_parameters(id)
+		elif open_parameters: _dismiss_window(XREBlueprintParametersTab, false)
 	else: _dismiss_window(XREBlueprintParametersTab, false)
 	changed.emit()
 
@@ -515,6 +1001,15 @@ func is_block_palette_shown() -> bool:
 ## graph asked: what was typed in it is kept, and the keyboard typing into it closes.
 func window_closed(type: GDScript) -> void:
 	_open_windows.erase(type)
+	if type == XREBlueprintVectorTab:
+		# Closed but by Done, the vector is as it was (D-063): the arrows go with it.
+		_end_vector(false)
+		return
+	if type == XREBlueprintPaletteTab:
+		# The menu of a wire let go closed without a block: the wire is taken back.
+		if _menu_at_point and (_pending_id >= 0 or not _link_box.is_empty()): cancel_connection()
+		_menu_wire = {}
+		_menu_at_point = false
 	if type != XREBlueprintParametersTab: return
 	_parameters_block = -1
 	if is_instance_valid(parameters) and parameters.is_inside_tree(): parameters.flush_parameters()
@@ -626,24 +1121,73 @@ func delete_block(id: int = -1) -> void:
 	cancel_connection()
 	if _target_pick == target: _target_pick = -1
 	var was_selected := target == _selected
-	blueprint.perform(blueprint.remove_blocks.bind([target] as Array[int]), &"vr_graph")
+	# As the document's remove_blocks, but the ports its wires fed get default tokens (D-059).
+	var state := blueprint.graph.snapshot()
+	state["nodes"] = (state["nodes"] as Array).filter(func(block: Dictionary) -> bool: return block["id"] != target)
+	state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return edge["from"] != target and edge["to"] != target)
+	_drop_orphan_inlines(state)
+	_fill_sockets(state)
+	blueprint.perform(blueprint.commit.bind("Delete Blocks", state), &"vr_graph")
 	if was_selected: select_block(-1)
+
+
+## Removes from [param state] the inline Get Variable blocks (D-061) whose
+## wire is gone: without it there is nothing of them to see or to take.
+func _drop_orphan_inlines(state: Dictionary) -> void:
+	var feeding: Dictionary[int, bool] = {}
+	for edge: Dictionary in state["edges"]: feeding[int(edge["from"])] = true
+	state["nodes"] = (state["nodes"] as Array).filter(func(block: Dictionary) -> bool: return not (canvas.is_inline(block) and not feeding.has(int(block["id"]))))
+
+
+## Gives every port of the blocks in [param state] that has neither a token
+## nor a wire its default token (D-059): no edit in the headset leaves a port
+## empty, so the graph builds and the token can be set again.
+func _fill_sockets(state: Dictionary) -> void:
+	for entry: Dictionary in state["nodes"]:
+		var params: Dictionary = entry["params"]
+		for key: String in blueprint.graph.socket_keys(entry):
+			if params.has(key): continue
+			var port := blueprint.graph.input_port(entry, key)
+			var wired := false
+			for edge: Dictionary in state["edges"]:
+				if edge["to"] == entry["id"] and edge["to_port"] == port: wired = true
+			if not wired: params[key] = _socket_default(entry, key)
+
+
+## The default token of port [param key] of [param block], of the type it expects.
+func _socket_default(block: Dictionary, key: String) -> Variant:
+	var type := XREBlueprintTokens.expected_type(blueprint.graph, block, key)
+	var fallback: Variant = XREBlueprintTokens.default_value(block, key)
+	if type != TYPE_NIL and typeof(fallback) != type and not (type == TYPE_FLOAT and typeof(fallback) == TYPE_INT): return XREBlueprintSchema.default_value(type)
+	return fallback
 
 
 ## Connected ports detach one wire as one undo step; empty ports start a click-click wire.
 ## [param edge] is the wire on the port to detach, the one lit under the ray
 ## ([method XREBlueprintCanvas.get_hit_edge]); -1 or another port's takes the port's last wire.
-func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int = -1) -> bool:
+## On Play Animation's output 0 with a Finished socket (D-052), [param finished]
+## is 1 for Finished and 0 for Then: the free one of the two takes the wire as
+## one edit of its wait.
+func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int = -1, finished: int = -1) -> bool:
 	if not canvas.has_port(id, port, input): return false
+	if not input and port == 0 and finished >= 0 and canvas.has_finished(id) and _pending_id < 0:
+		var wired := false
+		for wire: Dictionary in blueprint.graph.edges:
+			if wire["from"] == id and wire["from_port"] == 0: wired = true
+		if wired and canvas.is_waiting(id) != (finished == 1):
+			_message("Waits for the animation." if finished == 1 else "Goes on at once.")
+			return _set_token(id, "wait", finished == 1, "Wire Finished")
+		if not wired: _pending_finished = finished
 	if _pending_id == id and _pending_port == port and _pending_input == input:
 		# The same port again takes the wire back (D-043), as the trigger on nothing does.
 		cancel_connection()
 		_message("Wire cancelled.")
 		return true
 	if _pending_id < 0:
-		# A connected port lets go of its end of the last wire on it, as dragging a connected
-		# port does in GraphEdit (D-044): the wire stays on its other end and follows the ray,
-		# to go to another port, or away with the trigger on nothing. One undo puts it back.
+		# A connected port keeps its end of the wire picked on it and lets go of the
+		# other end, which follows the ray (D-058, after D-044 had it the other way
+		# round): to go to another port, or away with the trigger on nothing. One
+		# undo puts it back.
 		var detached := -1
 		for index: int in blueprint.graph.edges.size():
 			var wire_on: Dictionary = blueprint.graph.edges[index]
@@ -655,10 +1199,12 @@ func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int
 			var edges: Array = state["edges"]
 			var wire: Dictionary = edges[detached]
 			edges.remove_at(detached)
+			_drop_orphan_inlines(state)
+			_fill_sockets(state)
 			if not blueprint.perform(blueprint.commit.bind("Disconnect Ports", state), &"vr_graph"): return false
-			_pending_id = wire["from"] if input else wire["to"]
-			_pending_port = wire["from_port"] if input else wire["to_port"]
-			_pending_input = not input
+			_pending_id = id
+			_pending_port = port
+			_pending_input = input
 			_pending_hand = hand
 			canvas.highlight_ports(canvas.port_type(_pending_id, _pending_port, _pending_input), not _pending_input)
 			_message("Wire detached. Trigger on a port reconnects it; on empty space removes it.")
@@ -677,10 +1223,25 @@ func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int
 	var from_port := port if _pending_input else _pending_port
 	var to := _pending_id if _pending_input else id
 	var to_port := _pending_port if _pending_input else port
-	var success: bool = blueprint.perform(blueprint.connect_blocks.bind(from, from_port, to, to_port), &"vr_graph")
+	var wait := (finished if _pending_input else _pending_finished) if from_port == 0 and canvas.has_finished(from) else -1
+	var success: bool
+	if wait >= 0:
+		# Wired from Finished it waits, from Then it doesn't: the wire and the wait are one edit.
+		var state := blueprint.graph.snapshot()
+		(state["edges"] as Array).append({"from": from, "from_port": from_port, "to": to, "to_port": to_port})
+		for block: Dictionary in state["nodes"]:
+			if block["id"] == from: block["params"]["wait"] = wait == 1
+		success = blueprint.perform(blueprint.commit.bind("Connect Ports", state), &"vr_graph")
+	else:
+		success = blueprint.perform(blueprint.connect_blocks.bind(from, from_port, to, to_port), &"vr_graph")
 	if success: cancel_connection()
 	else: _message(blueprint.last_error)
 	return success
+
+
+## Whether [param hand] draws a wire: from a port, a Source, a box or a petal.
+func has_wire(hand: XREHand) -> bool:
+	return hand != null and (_pending_hand == hand or _link_hand == hand or _member_hand == hand)
 
 
 ## Discards only the pending connection preview.
@@ -689,7 +1250,19 @@ func cancel_connection() -> void:
 	_pending_port = -1
 	_pending_input = false
 	_pending_hand = null
+	_pending_finished = -1
+	_link_kind = -1
+	_link_block = -1
+	_link_box = ""
+	_link_hand = null
+	_member_link = {}
+	_member_hand = null
+	_choice.close()
+	if _petal_block >= 0 or _petal_dynamic: _petals.close()
+	_petal_block = -1
+	_petal_dynamic = false
 	canvas.hide_connection()
+	if is_inside_tree(): _update_selection_fan()
 
 
 ## Arms direct scene picking for the selected block's static Target.
@@ -750,6 +1323,9 @@ func _build_toolbar() -> void:
 	_button(second, "Choose host", func() -> void:
 		parameters.show_host_picker()
 		_show_parameters())
+	_button(second, "Tokens", func() -> void:
+		if XREBlueprintTokensTab in _open_windows: _dismiss_window(XREBlueprintTokensTab, true)
+		else: _request_window(XREBlueprintTokensTab, _tray_pose()))
 	_status_label = Label.new()
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(_status_label)
@@ -757,6 +1333,21 @@ func _build_toolbar() -> void:
 
 func _update_pointer(pointer: Pointer, delta: float) -> void:
 	var hand := pointer.hand
+	if pointer.swallow and not (hand.trigger_held and hand.get_has_tracking_data()):
+		pointer.swallow = false
+		if hand.get_claimant() == self: hand.unclaim(self)
+	if pointer.carried != null:
+		_update_carried(pointer)
+		return
+	if pointer.arrow_axis >= 0:
+		_update_arrow(pointer, delta)
+		return
+	if pointer.fan != null:
+		_update_fan_press(pointer)
+		return
+	if not pointer.token_key.is_empty() or not pointer.token_box.is_empty():
+		_update_turn(pointer, delta)
+		return
 	if pointer.held != null:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 		if not hand.get_has_tracking_data(): _finish_hold(pointer, false)
@@ -784,12 +1375,26 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			else:
 				var target := hand.global_transform * pointer.hold
 				if pointer.held == _keyboard: pointer.held.global_transform = target
+				# The arrows keep the scene's axes; the ring keeps facing as it was: only moved.
+				elif pointer.held == _token_editor: _token_editor.global_position = target.origin
 				else: pointer.held.global_transform = Transform3D(XREPanels.facing(target.origin, _rig.camera.global_position, Vector3.UP), target.origin)
 				if pointer.window != null: pointer.window.hover_handles(pointer.corner)
 			return
 	if not hand.is_free_for(self) or not hand.get_has_tracking_data():
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
-		if _pending_hand == hand: cancel_connection()
+		canvas.hover_socket(-1, -1, hand == _rig.right_hand)
+		var box_waits := _link_hand == hand and not _link_box.is_empty()
+		var menu_waits := (_pending_hand == hand or box_waits) and _menu_at_point and is_block_palette_shown() and hand.get_has_tracking_data()
+		if menu_waits:
+			# On the menu of a wire let go, the wire waits at the point it was let go (D-051).
+			if box_waits: canvas.show_link(_link_origin(), _menu_point)
+			else: _preview_connection(canvas.to_global(_menu_point))
+		elif has_wire(hand) and hand.get_has_tracking_data() and hand.get_claimant() is XREPanels:
+			# A window has the ray (D-058): the wire waits; a click on the window or its × lets it go.
+			if hand.trigger_pressed:
+				cancel_connection()
+				_message("Wire cancelled.")
+		elif has_wire(hand): cancel_connection()
 		_leave(pointer)
 		return
 	var origin := hand.global_position
@@ -804,6 +1409,8 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 			_start_hold(pointer, canvas, touched, _rig.hand_pose(hand, true).origin, true)
 			return
+	# The widget of a value is over everything: it takes the ray first (D-058).
+	if _workspace.visible and _point_at_editor(pointer, origin, direction): return
 	if pointer.surface != null and pointer.surface.is_pressed():
 		surface = pointer.surface
 		distance = surface.intersect_ray(origin, direction, INF, false)
@@ -827,9 +1434,10 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 					handle = window
 					distance = hit
 			if handle != null: surface = null
-		if canvas_hit >= 0 and canvas_hit < distance:
+		if canvas_hit >= 0 and canvas_hit < distance and not (surface != null and surface.is_on_top()):
 			surface = null
 			handle = null
+	if _workspace.visible and (hand.grip_pressed or hand.trigger_pressed) and _take_from_tray(pointer, origin, direction): return
 	if handle != null:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 		if _pending_hand == hand: _preview_connection(origin + direction * maxf(distance, 0.01))
@@ -842,6 +1450,8 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		return
 	if surface != null:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
+		# A click on one of the graph's windows lets a wire go, as on the panels' (D-058).
+		if hand.trigger_pressed and has_wire(hand) and surface != _menu_window(): cancel_connection()
 		if _pending_hand == hand: _preview_connection(origin + direction * maxf(distance, 0.01))
 		if pointer.surface != surface:
 			_leave(pointer)
@@ -872,33 +1482,65 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			if tilt != 0: surface.pointer_scroll(tilt * XREPanels.SCROLL_SPEED * delta)
 		return
 	_leave(pointer)
+	if _workspace.visible and _point_at_petals(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0, delta): return
+	if _workspace.visible and _point_at_stem(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0): return
 	if _workspace.visible:
 		var hit := canvas_hit
 		if _pending_hand == hand: _preview_connection(origin + direction * (hit if hit >= 0 else 0.8), canvas.get_hit_id() if hit >= 0 else -1, canvas.get_hit_port() if hit >= 0 else -1, canvas.get_hit_input())
+		if hit >= 0 and canvas.get_hit_box():
+			_point_at_box(pointer, origin, direction, hit)
+			return
 		if hit >= 0:
-			hand.claim(self)
-			hand.show_ray(hit, true, XREBlueprintCanvas.HIT_DOT_OFFSET)
-			var id := canvas.get_hit_id()
-			canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), hand == _rig.right_hand, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1)
-			if hand.grip_pressed: _start_hold(pointer, canvas, id, origin + direction * hit)
-			elif hand.trigger_pressed:
-				if canvas.get_hit_plus(): _show_block_palette(id)
-				elif canvas.get_hit_delete(): delete_block(id)
-				elif canvas.get_hit_port() >= 0: click_port(id, canvas.get_hit_port(), canvas.get_hit_input(), hand, canvas.get_hit_edge())
-				else: select_block(id)
-			if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE): delete_block()
+			_point_at_card(pointer, origin, direction, hit)
 			return
 	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
-	if _pending_scene_target():
+	canvas.hover_socket(-1, -1, hand == _rig.right_hand)
+	if _pending_scene_target() or (_link_kind == XREBlueprintCanvas.SOURCE and _link_hand == hand):
 		_update_scene_target_pointer(hand, origin, direction)
 		return
-	if _pending_hand == hand:
+	if not _member_link.is_empty() and _member_hand == hand:
+		_update_member_link(hand, origin, direction)
+		return
+	if _link_kind == XREBlueprintCanvas.VARIABLE and _link_hand == hand:
+		var box_menu := _menu_window() if not _link_box.is_empty() else null
+		if box_menu != null and box_menu.intersect_ray(origin, direction, distance) >= 0:
+			# As a port's wire (D-051): the menu's window takes the ray from the next frame.
+			canvas.show_link(_link_origin(), _menu_point)
+			_leave(pointer)
+			hand.unclaim(self)
+			return
 		hand.claim(self)
 		hand.show_ray(0.8, false)
-		# The trigger on nothing takes the wire back (D-043).
+		canvas.show_link(_link_origin(), canvas.to_local(origin + direction * 0.8))
 		if hand.trigger_pressed:
+			# From a box, a click in empty space opens the block menu for its value
+			# (D-063), as a port's wire does; a second click there takes the wire back.
+			if not _link_box.is_empty() and not (_menu_at_point and is_block_palette_shown()):
+				_open_menu_for_box(canvas.to_local(origin + direction * 0.8))
+				return
+			if _menu_at_point and is_block_palette_shown(): close_block_palette()
 			cancel_connection()
-			_message("Wire cancelled.")
+			_message("Variable wire cancelled.")
+		return
+	if _pending_hand == hand:
+		var menu := _menu_window()
+		if menu != null and menu.intersect_ray(origin, direction, distance) >= 0:
+			# The menu of a wire let go is the panels' window: they take the ray from the next frame.
+			_preview_connection(canvas.to_global(_menu_point))
+			_leave(pointer)
+			hand.unclaim(self)
+			return
+		hand.claim(self)
+		hand.show_ray(0.8, false)
+		# Let go in empty space, the wire opens the block menu for its pin (D-051);
+		# its own port or × of the menu takes it back, and so does a second click
+		# in empty space while that menu is open (D-058).
+		if hand.trigger_pressed:
+			if _menu_at_point and is_block_palette_shown():
+				close_block_palette()
+				cancel_connection()
+				_message("Wire cancelled.")
+			else: _open_menu_for_wire(canvas.to_local(origin + direction * 0.8))
 		return
 	if _target_pick >= 0:
 		if not blueprint.scene_context_active():
@@ -931,10 +1573,15 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				hand.show_ray(along, true)
 				if hand.trigger_pressed: open_graph(marker.path)
 				return
+	# A click away that closed an input goes on to the graph, but selects no
+	# scene object (D-063): the hand stays the graph's until it is let go.
+	if pointer.swallow and hand.is_free_for(self):
+		hand.claim(self)
+		hand.show_ray(0.8, false)
 
 
 func _preview_connection(point: Vector3, end_id: int = -1, end_port: int = -1, end_input: bool = false) -> void:
-	canvas.show_connection(_pending_id, _pending_port, _pending_input, canvas.to_local(point), end_id, end_port, end_input)
+	canvas.show_connection(_pending_id, _pending_port, _pending_input, canvas.to_local(point), end_id, end_port, end_input, _pending_finished)
 
 
 func _start_hold(pointer: Pointer, node: Node3D, block: int, point: Vector3 = Vector3.ZERO, touched: bool = false) -> void:
@@ -1034,7 +1681,14 @@ func touch_block(hand: XREHand) -> int:
 ## Earlier panel routing yields to nearby touch and to a closer keyboard surface.
 func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance: float) -> bool:
 	if _workspace.visible: canvas.face_user(_rig.camera.global_position)
+	# What is drawn over everything takes the ray however far it is (D-058).
+	if _workspace.visible and _token_editor.is_interactive() and not _token_editor.pick(origin, direction).is_empty(): return true
+	if _keyboard.is_shown() and _keyboard.intersect_ray(origin, direction, INF) >= 0: return true
 	if hand.grip_pressed and touch_block(hand) >= 0: return true
+	for pointer: Pointer in _pointers:
+		if pointer.hand == hand and (pointer.carried != null or not pointer.token_key.is_empty() or not pointer.token_box.is_empty()): return true
+	if _workspace.visible and (hand.grip_pressed or hand.trigger_pressed) and not _tray_cell(origin, direction).is_empty(): return true
+	if _workspace.visible and ((_petals.is_open() and _petals.intersect_ray(origin, direction, distance) >= 0) or (_choice.is_open() and _choice.intersect_ray(origin, direction, distance) >= 0)): return true
 	if _workspace.visible:
 		var card_hit := canvas.intersect_ray(origin, direction, distance)
 		if card_hit >= 0 and card_hit < distance: return true
@@ -1046,6 +1700,7 @@ func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance:
 
 
 func _selection_changed() -> void:
+	_update_selection_fan()
 	var nodes := _document.get_selection()
 	_badge_anchor = null
 	_badge_geometry.clear()
@@ -1054,6 +1709,7 @@ func _selection_changed() -> void:
 		_badge_anchor = _anchor(nodes[0])
 		if _badge_anchor != null: _collect_badge_geometry(_badge_anchor)
 		var host := related_host(nodes[0])
+		if is_block_palette_shown() and _workspace.visible: block_menu.set_contexts(_menu_contexts(_menu_card), blueprint.get_host(), blueprint.graph)
 		_badge_label.text = str(nodes[0].name) + (" · Blueprint" if host != null else " · Logic")
 		_badge_open.text = "Open Blueprint" if host != null else "Create Blueprint"
 		_badge_detach.visible = host != null
@@ -1100,8 +1756,10 @@ func _scene_changed() -> void:
 	_schedule_rebuild()
 
 
-func _scene_operation(operation: StringName, _source: XREDocument.Source, _nodes: Array[Node], _time_usec: int) -> void:
+func _scene_operation(operation: StringName, source: XREDocument.Source, _nodes: Array[Node], _time_usec: int) -> void:
 	if operation in [&"assign_blueprint", &"detach_blueprint", &"remove_nodes", &"add_node"]: _schedule_refresh()
+	# An object selected by pointing at it in the headset, not one added or picked on the desktop (D-063).
+	if operation == &"select" and source == XREDocument.Source.TOOL: _follow_selection.call_deferred()
 
 
 ## A switch of the node display (D-039) redraws the open cards at once; a held card is put down first.
@@ -1110,10 +1768,30 @@ func _feature_changed(key: StringName) -> void:
 	if key == XREFeatureSettings.WINDOW_SHAPE:
 		_update_window_shape()
 		return
+	if key == XREFeatureSettings.TOKEN_TRAY:
+		_update_tray()
+		return
+	if key == XREFeatureSettings.SCENE_CREATE:
+		_update_selection_fan()
+		return
+	if key in [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT, XREFeatureSettings.VARIABLE_INPUT]:
+		var features := _document.features
+		if not canvas.set_parameter_modes(features.get_value(XREFeatureSettings.VALUE_INPUT), features.get_value(XREFeatureSettings.TARGET_INPUT),
+				features.get_value(XREFeatureSettings.ANIMATION_WAIT), features.get_value(XREFeatureSettings.VARIABLE_INPUT)): return
+		_finish_holds()
+		for pointer: Pointer in _pointers: _drop_tokens(pointer)
+		cancel_connection()
+		_petals.close()
+		canvas.rebuild(blueprint.graph)
+		parameters.select_block(_selected)
+		_update_tray()
+		_schedule_rebuild()
+		return
 	var value := _document.features.get_value(key)
 	var switched := false
 	if key == XREFeatureSettings.NODE_DISPLAY: switched = canvas.set_display(value)
 	elif key == XREFeatureSettings.PORT_DISPLAY: switched = canvas.set_port_display(value)
+	elif key == XREFeatureSettings.CARD_PLUS: switched = canvas.set_plus_shown(value == XREFeatureSettings.SHOWN)
 	if not switched: return
 	_finish_holds()
 	cancel_connection()
@@ -1123,6 +1801,7 @@ func _feature_changed(key: StringName) -> void:
 
 func _graph_operation(operation: StringName, source: StringName, _time_usec: int) -> void:
 	if source == &"vr_graph" or source == &"vr_panel": _document.record_graph_operation(operation, XREDocument.Source.TOOL if source == &"vr_graph" else XREDocument.Source.PANEL)
+	if _unsaved_host != null and blueprint.path.is_empty(): _save_new_graph.call_deferred()
 
 
 func _schedule_refresh() -> void:
@@ -1154,6 +1833,8 @@ func _rebuild() -> void:
 	if _pending_id >= 0:
 		if not canvas.has_port(_pending_id, _pending_port, _pending_input): cancel_connection()
 		else: canvas.highlight_ports(canvas.port_type(_pending_id, _pending_port, _pending_input), not _pending_input)
+	# A rebuild shows the token as the graph has it: the vector being edited is shown again (D-063).
+	if _token_editor.mode == XREBlueprintTokenEditor.ARROWS and not _value_edit.is_empty(): _preview_value_edit(_value_edit["value"], str(_value_edit["expression"]))
 	_title.text = (blueprint.path.get_file() if not blueprint.path.is_empty() else "Untitled") + " · Host: " + str(blueprint.graph.host_path)
 	_status_label.text = status if blueprint.scene_context_active() else blueprint.scene_context_message()
 	changed.emit()
@@ -1235,19 +1916,15 @@ func _button(parent: Node, text: String, action: Callable) -> Button:
 	return button
 
 
-func _build_block_list(theme: Theme) -> void:
-	var scroll := ScrollContainer.new()
-	scroll.name = "BlockList"
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	if theme != null: scroll.theme = theme
-	var blocks := VBoxContainer.new()
-	blocks.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(blocks)
-	for kind: String in XREBlueprintGraph.BLOCKS:
-		_button(blocks, XREBlueprintGraph.BLOCKS[kind]["title"], add_block.bind(kind))
-	block_list = scroll
-	_forms_home.add_child(block_list)
+func _build_block_menu(theme: Theme) -> void:
+	block_menu = XREBlueprintActionMenu.new()
+	block_menu.set_large(true)
+	if theme != null: block_menu.theme = theme
+	block_menu.action_chosen.connect(_add_from_menu)
+	block_menu.action_dragged.connect(_drag_from_menu)
+	block_menu.pin_cleared.connect(func() -> void: _menu_wire = {})
+	block_menu.text_edit_requested.connect(_show_keyboard, CONNECT_DEFERRED)
+	_forms_home.add_child(block_menu)
 
 
 ## Bends the graph's windows as the setting [constant XREFeatureSettings.WINDOW_SHAPE] says (D-043).
@@ -1256,23 +1933,43 @@ func _update_window_shape() -> void:
 	for window: XREPanelSurface in _windows: window.set_curve_radius(XREPanels.CONCAVE_RADIUS if concave else 0.0)
 
 
-## Opens the block palette beside card [param id], whose plus was clicked,
-## and selects the card without opening its parameters (D-046); open ones
-## stay, and the palette goes on their other side.
+## Opens the block menu beside card [param id], whose plus was clicked, and
+## selects the card without opening its parameters (D-046); open ones stay,
+## and the menu goes on their other side. The menu lists what can follow the
+## card's first execution output and wires the block it adds to it (D-051).
 func _show_block_palette(id: int) -> void:
 	cancel_connection()
 	select_block(id, false)
+	_menu_card = id
+	_menu_at_point = false
+	var pin := _exec_pin(id)
+	_menu_wire = {"from": id, "from_port": pin["port"]} if not pin.is_empty() else {}
+	block_menu.open(_menu_contexts(id), blueprint.get_host(), blueprint.graph, pin)
 	_request_window(XREBlueprintPaletteTab, palette_pose(id))
 
 
-func _show_keyboard(field: LineEdit) -> void:
+## The keyboard for [param field]: in front of the user, or with [param at]
+## below that point and in front of it, as at a token being typed into (D-052).
+## With [param components] above 0 it is a keypad for a number or a vector of
+## that many components (D-057). [param lead] is how far toward the head it
+## comes from [param at], [param drop] how far below it; it is never nearer
+## the head than [constant KEYBOARD_NEAREST] (D-063).
+func _show_keyboard(field: LineEdit, at: Variant = null, components: int = 0, lead: float = KEYBOARD_LEAD, drop: float = KEYBOARD_DROP) -> void:
 	if not is_instance_valid(field) or not _workspace.visible: return
 	_keyboard_target = weakref(field)
 	var head := _rig.camera.global_position
 	var upright := XREPanels.facing(head - _rig.camera.global_basis.z, head, Vector3.UP)
 	var point := head - upright.z * 0.65 - Vector3.UP * 0.38
+	if at is Vector3:
+		# Below the token and well in front of the graph, toward the head, so that
+		# the tilted board, whose top leans back, stays clear of the cards (D-057).
+		upright = XREPanels.facing(at as Vector3, head, Vector3.UP)
+		point = (at as Vector3) - Vector3.UP * drop + upright.z * lead
+	var reach := point - head
+	if reach.length() < KEYBOARD_NEAREST: point = head + reach.normalized() * KEYBOARD_NEAREST
 	_keyboard.global_transform = Transform3D(upright * Basis(Vector3.RIGHT, -XREVirtualKeyboard.TILT), point)
-	_keyboard.open_text(field.text)
+	if components > 0: _keyboard.open_number(field.text, components)
+	else: _keyboard.open_text(field.text)
 
 
 func _apply_keyboard(text: String) -> void:
@@ -1287,7 +1984,7 @@ func _apply_keyboard(text: String) -> void:
 ## XR-only scene veil, [param alpha] opaque. Its far depth separates world
 ## geometry from logic overlays. The launcher of the panels dims the scene
 ## with one too ([XREPanels]).
-static func create_dimmer(alpha: float = 0.68) -> MeshInstance3D:
+static func create_dimmer(alpha: float = 0.68, priority: int = Material.RENDER_PRIORITY_MAX - 2) -> MeshInstance3D:
 	var shader := Shader.new()
 	shader.code = """
 shader_type spatial;
@@ -1303,7 +2000,7 @@ void fragment() {
 """
 	var material := ShaderMaterial.new()
 	material.shader = shader
-	material.render_priority = Material.RENDER_PRIORITY_MAX - 2
+	material.render_priority = priority
 	material.set_shader_parameter(&"alpha", alpha)
 	var quad := QuadMesh.new()
 	quad.size = Vector2(2, 2)
@@ -1324,12 +2021,19 @@ func _rebuild_target_wires() -> void:
 	for wire: TargetWire in _target_wires:
 		canvas.remove_child(wire.mesh)
 		wire.mesh.queue_free()
+		if wire.label != null:
+			wire.label.queue_free()
+			wire.stem.queue_free()
+			wire.dot.queue_free()
 	_target_wires.clear()
 	if not blueprint.scene_context_active(): return
+	var mode := _document.features.get_value(XREFeatureSettings.TARGET_INPUT)
+	var scene_mode := XREBlueprintTokens.targets_in_scene(mode)
 	for block: Dictionary in blueprint.graph.nodes:
 		var id: int = block["id"]
 		var port := XREBlueprintGraph.target_port(block)
-		if port < 0 or blueprint.target_is_connected(id): continue
+		var source: bool = scene_mode and block["kind"] == "signal"
+		if (port < 0 and not source) or blueprint.target_is_connected(id): continue
 		var target := blueprint.target_node(id)
 		if not is_instance_valid(target): continue
 		var anchor := _anchor(target)
@@ -1339,7 +2043,44 @@ func _rebuild_target_wires() -> void:
 		wire.port = port
 		wire.target = target
 		wire.anchor = anchor
+		wire.source = source
+		# The wire ends where its member was picked on the object (D-052), else at the object's origin.
+		if block.get("vr_anchor") is Vector3 and anchor == target: wire.point = block["vr_anchor"]
 		wire.mesh = canvas.create_scene_wire(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
+		wire.normal = wire.mesh.material_override
+		wire.lit_material = XREBlueprintCanvas.wire_material(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT], XREBlueprintCanvas.LIT_WIRE_GROW)
+		var member_key := XREBlueprintTokens.member_key(block)
+		if XREBlueprintTokens.member_on_stem(mode) and not member_key.is_empty():
+			# The member's petal, on a stem from the object, on the user's side of it;
+			# unset, it says what to pick, and the trigger on it opens the object's petals (D-057).
+			var member := str((block["params"] as Dictionary).get(member_key, ""))
+			wire.label = XREBlueprintPetals.make_pill(member + " ▸" if not member.is_empty() else XREBlueprintTokens.member_placeholder(block), 1.0 if not member.is_empty() else 0.7)
+			wire.width = float(wire.label.get_meta(&"width"))
+			wire.label.top_level = true
+			add_child(wire.label)
+			var stick := CylinderMesh.new()
+			# The stem is the wire's own tube from the object to its petal (D-058): same
+			# colour and thickness, so the petal reads as joined to the object.
+			stick.top_radius = 0.0022
+			stick.bottom_radius = 0.0022
+			stick.height = 1.0
+			stick.radial_segments = 8
+			var tube := XREBlueprintCanvas.wire_material(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
+			wire.stem = XRERig.create_vr_mesh(stick, tube)
+			wire.stem.top_level = true
+			add_child(wire.stem)
+			var sphere := SphereMesh.new()
+			sphere.radius = 0.007
+			sphere.height = 0.014
+			wire.dot = XRERig.create_vr_mesh(sphere, tube)
+			wire.dot.top_level = true
+			add_child(wire.dot)
+			# Petals of several wires to one object stand one above the other, not in one place.
+			var below := 0
+			for other: TargetWire in _target_wires:
+				if other.anchor == anchor and other.label != null: below += 1
+			wire.offset = Vector3(0.0, 0.03 + below * (XREBlueprintPetals.PILL_HEIGHT + 0.014), 0.0)
+			wire.bounds = XREPicker.get_local_bounds(anchor)
 		_target_wires.append(wire)
 	_update_target_wires()
 
@@ -1347,8 +2088,48 @@ func _rebuild_target_wires() -> void:
 func _update_target_wires() -> void:
 	for wire: TargetWire in _target_wires:
 		wire.mesh.visible = _workspace.visible and blueprint.scene_context_active() and is_instance_valid(wire.target) and wire.target.is_inside_tree() and is_instance_valid(wire.anchor) and wire.anchor.is_inside_tree()
-		if wire.mesh.visible:
-			canvas.update_scene_wire(wire.mesh, wire.id, wire.port, canvas.to_local(wire.anchor.global_position))
+		if wire.label != null:
+			wire.label.visible = wire.mesh.visible
+			wire.stem.visible = wire.mesh.visible
+			wire.dot.visible = wire.mesh.visible
+		if not wire.mesh.visible: continue
+		var material: Material = wire.lit_material if wire.lit or wire.hot else wire.normal
+		if wire.mesh.material_override != material: wire.mesh.material_override = material
+		var end := wire.anchor.global_transform * wire.point
+		if wire.label != null:
+			# The wire ends at the member's petal; the petal hangs on its stem from the
+			# point on the object, in a column above its front left corner as seen from
+			# the head, one petal over another, so that the fan (to the right,
+			# XREBlueprintPetals) never covers them. Farther than the fan's full-size
+			# distance they keep their size in view, as the fan does.
+			var head := _rig.camera.global_position
+			var box := wire.anchor.global_transform * wire.bounds
+			var base := box.get_center()
+			var toward := head - base
+			toward.y = 0.0
+			toward = toward.normalized() if not toward.is_zero_approx() else Vector3.BACK
+			var growth := clampf(base.distance_to(head) / XREBlueprintPetals.FULL_SIZE_DISTANCE, 1.0, XREBlueprintPetals.MAX_GROWTH)
+			var shown_size := growth * (1.1 if wire.hot else 1.0)
+			var left := toward.cross(Vector3.UP).normalized()
+			var reach := maxf(box.size.x, box.size.z) * 0.5
+			var pill := base + toward * reach + left * (reach + (0.02 + wire.width * 0.5) * growth) + Vector3.UP * (box.size.y * 0.5 + wire.offset.y * growth)
+			var facing := XREBlueprintPetals.face(pill, head, Vector3.UP)
+			wire.label.global_transform = Transform3D(facing * Basis.from_scale(Vector3.ONE * shown_size), pill)
+			wire.dot.global_position = end
+			var along := pill - end
+			wire.stem.global_transform = Transform3D(Basis(Quaternion(Vector3.UP, along.normalized())) * Basis.from_scale(Vector3(1.0, maxf(along.length(), 0.001), 1.0)), end + along * 0.5)
+			end = pill - facing.x * wire.width * 0.5 * growth
+		# With an adapter in the port (D-059) the wire leaves the adapter's far end.
+		var adapter_end: Variant = canvas.adapter_end(wire.id)
+		if adapter_end is Vector3: canvas.update_adapter_wire(wire.mesh, wire.id, adapter_end as Vector3, canvas.to_local(end))
+		elif wire.source: canvas.update_socket_wire(wire.mesh, wire.id, XREBlueprintCanvas.SOURCE, canvas.to_local(end))
+		else: canvas.update_scene_wire(wire.mesh, wire.id, wire.port, canvas.to_local(end))
+
+
+## The block a wire to the scene is drawn from: its Target port, or an event's Source.
+func _scene_link_block() -> int:
+	if _link_kind == XREBlueprintCanvas.SOURCE: return _link_block
+	return _pending_id
 
 
 func _pending_scene_target() -> bool:
@@ -1373,8 +2154,22 @@ func connect_scene_target(id: int, target: Node) -> bool:
 	if success:
 		cancel_connection()
 		_message("Target connected to scene object.")
+		_ask_member(id, target)
 	else: _message(blueprint.last_error)
 	return success
+
+
+## After the Target is wired to [param target], a block that uses a member
+## of it (a property, a signal, an animation) keeps the object's petals open
+## and says to pick one (D-057): a Set Property comes with "visible", which is
+## rarely the property wanted.
+func _ask_member(id: int, target: Node) -> void:
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty() or not target is Node3D or _member_role(block).is_empty(): return
+	if XREBlueprintTokens.member_key(block).is_empty(): return
+	var object := target as Node3D
+	_open_petals(id, object, object.global_transform * (block["vr_anchor"] as Vector3 if block.get("vr_anchor") is Vector3 else Vector3.ZERO))
+	_message("Now %s: point at a petal by %s and press trigger." % [XREBlueprintTokens.member_placeholder(block).trim_suffix(" ▸"), object.name])
 
 
 func _update_scene_target_pointer(hand: XREHand, origin: Vector3, direction: Vector3) -> void:
@@ -1383,6 +2178,7 @@ func _update_scene_target_pointer(hand: XREHand, origin: Vector3, direction: Vec
 		_message(blueprint.scene_context_message())
 		return
 	hand.claim(self)
+	var id := _scene_link_block()
 	var target: Node
 	var distance := 5.0
 	var end := origin + direction * distance
@@ -1392,9 +2188,1455 @@ func _update_scene_target_pointer(hand: XREHand, origin: Vector3, direction: Vec
 	elif is_instance_valid(_root) and _picker.cast_segment(_root, origin, end):
 		target = _picker.get_hit_node()
 		distance = _picker.get_hit_distance()
+	var point := origin + direction * distance
 	hand.show_ray(distance, target != null)
-	if _pending_hand == hand: _preview_connection(origin + direction * distance)
-	if hand.trigger_pressed and target != null: connect_scene_target(_pending_id, target)
-	elif hand.trigger_pressed and _pending_hand == hand:
+	if _pending_hand == hand: _preview_connection(point)
+	elif _link_kind == XREBlueprintCanvas.SOURCE: canvas.show_socket_link(id, XREBlueprintCanvas.SOURCE, canvas.to_local(point))
+	# With Targets on Scene the object under the ray shows the members this block can use (D-052).
+	var block := blueprint.graph.find_node(id)
+	if target is Node3D and XREBlueprintTokens.targets_in_scene(_document.features.get_value(XREFeatureSettings.TARGET_INPUT)) and not _member_role(block).is_empty():
+		if _petals.get_object() != target or _petal_block != id or _petal_dynamic:
+			_open_petals(id, target as Node3D, point)
+			_message("%s: point at a petal and press trigger to wire the member; the stick or a drag scrolls." % target.name)
+	if hand.trigger_pressed and target != null:
+		if _link_kind == XREBlueprintCanvas.SOURCE:
+			if blueprint.perform(blueprint.set_target_member.bind(id, target, "", "", null, "Wire Member"), &"vr_graph"):
+				cancel_connection()
+				_message("Source connected to scene object.")
+			else: _message(blueprint.last_error)
+		else: connect_scene_target(id, target)
+	elif hand.trigger_pressed and (_pending_hand == hand or _link_hand == hand):
 		cancel_connection()
 		_message("Wire cancelled.")
+
+
+# --- Parameters as objects of the graph (D-052) ---------------------------------------------
+
+
+## Whether parameter [param key] of [param block] is set in its parameters
+## window: what the parameter settings don't take into the graph (D-052).
+func shows_in_window(block: Dictionary, key: String) -> bool:
+	var features := _document.features
+	var values := features.get_value(XREFeatureSettings.VALUE_INPUT) == XREFeatureSettings.WINDOW
+	var targets := features.get_value(XREFeatureSettings.TARGET_INPUT) == XREFeatureSettings.WINDOW
+	if key == "target" or (key == XREBlueprintTokens.member_key(block) and not key.is_empty()): return targets
+	if key == "variable": return features.get_value(XREFeatureSettings.VARIABLE_INPUT) == XREFeatureSettings.WINDOW
+	if key == "wait" and XREBlueprintTokens.has_finished(block) and features.get_value(XREFeatureSettings.ANIMATION_WAIT) == XREFeatureSettings.FINISHED_PORT: return false
+	return values
+
+
+## Whether block [param id] has anything left for its parameters window.
+func parameters_needed(id: int) -> bool:
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty(): return false
+	for key: String in block["params"]:
+		if shows_in_window(block, key): return true
+	return false
+
+
+## Opens or closes the Tokens window as the settings say: with tokens and Token tray on.
+func _update_tray() -> void:
+	var wanted := _workspace.visible and _document.features.get_value(XREFeatureSettings.TOKEN_TRAY) == XREFeatureSettings.ON \
+			and _document.features.get_value(XREFeatureSettings.VALUE_INPUT) != XREFeatureSettings.WINDOW
+	if wanted and not XREBlueprintTokensTab in _open_windows: _request_window(XREBlueprintTokensTab, _tray_pose())
+	elif not wanted and XREBlueprintTokensTab in _open_windows: _dismiss_window(XREBlueprintTokensTab, true)
+
+
+## Where the Tokens window opens: left of the graph's toolbar, facing the head.
+func _tray_pose() -> Transform3D:
+	var point := _floating_ui.global_transform * Vector3(-0.75, -0.15, 0.05)
+	return Transform3D(XREPanels.facing(point, _rig.camera.global_position, _rig.global_basis.y), point)
+
+
+## The window that shows the token tray, or null while it is closed.
+func _tray_window() -> XREPanelSurface:
+	if not XREBlueprintTokensTab in _open_windows or not token_tray.is_inside_tree(): return null
+	return token_tray.get_viewport().get_parent() as XREPanelSurface
+
+
+## The tray's cell on the ray, [code]{"value", "key"}[/code], or empty.
+func _tray_cell(origin: Vector3, direction: Vector3) -> Dictionary:
+	var window := _tray_window()
+	if window == null or window.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) < 0: return {}
+	return token_tray.cell_at(window.get_hit_pixel())
+
+
+## The trigger or the grip on a cell of the tray takes a copy of its token,
+## held by that button until it is let go over a socket (D-055).
+func _take_from_tray(pointer: Pointer, origin: Vector3, direction: Vector3) -> bool:
+	var cell := _tray_cell(origin, direction)
+	if cell.is_empty(): return false
+	_leave(pointer)
+	_carry(pointer, cell["value"], cell["key"], -1, "", true, pointer.hand.trigger_pressed and not pointer.hand.grip_pressed)
+	return true
+
+
+## Hangs a solid token in front of each cell of the tray while its window is
+## open, as the Objects window has its miniatures (D-045, D-055): in the style
+## of the value setting, dim where it doesn't fit the socket under the ray,
+## hidden where the tray is scrolled away.
+func _update_tray_tokens() -> void:
+	var window := _tray_window()
+	if window == null or not window.is_shown():
+		if not _tray_tokens.is_empty():
+			for token: Node3D in _tray_tokens: token.queue_free()
+			_tray_tokens.clear()
+			_tray_dirty = true
+		return
+	var values := token_tray.get_values()
+	var plug := _value_mode() == XREFeatureSettings.PLUGS
+	if _tray_dirty or _tray_tokens.size() != values.size() or (not _tray_tokens.is_empty() and _tray_tokens[0].get_meta(&"plug", false) != plug):
+		for token: Node3D in _tray_tokens: token.queue_free()
+		_tray_tokens.clear()
+		for index: int in values.size():
+			var key := token_tray.get_key(index)
+			var width := XREBlueprintTokens.width(XREBlueprintTokens.text(values[index], key))
+			var token := XREBlueprintCanvas.make_token(values[index], key, width, plug, false, false)
+			token.top_level = true
+			token.set_meta(&"plug", plug)
+			token.set_meta(&"shift", (XREBlueprintCanvas.PLUG_GAP + width) * 0.5 if plug else 0.0)
+			token.set_meta(&"extent", XREBlueprintCanvas.PLUG_GAP + width + XREBlueprintCanvas.PORT_RADIUS if plug else width)
+			add_child(token)
+			_tray_tokens.append(token)
+		_tray_dirty = false
+	var basis := window.global_basis.orthonormalized()
+	# Each token as large as its cell lets it (D-058): most of its width, half its height.
+	var cell := token_tray.cell_rect(0).size * window.size_m.x / float(window.size_px.x) if not _tray_tokens.is_empty() else Vector2.ZERO
+	for index: int in _tray_tokens.size():
+		var token := _tray_tokens[index]
+		token.visible = token_tray.is_cell_shown(index)
+		if not token.visible: continue
+		var scale := minf(cell.x * 0.85 / maxf(float(token.get_meta(&"extent")), 0.001), cell.y * 0.6 / XREBlueprintTokens.HEIGHT)
+		var point := window.pixel_to_global(token_tray.cell_rect(index).get_center()) + basis.z * 0.01 + basis.x * float(token.get_meta(&"shift")) * scale
+		token.global_transform = Transform3D(basis * Basis.from_scale(Vector3.ONE * scale), point)
+		var fits := token_tray.cell_fits(index)
+		if token.get_meta(&"fits", true) != fits:
+			token.set_meta(&"fits", fits)
+			# A token that doesn't fit fades but keeps its dark front (D-063): faded
+			# whole, its front let its light sides through and hid its value.
+			for child: Node in token.get_children():
+				if child is Label3D: (child as Label3D).modulate.a = 1.0 if fits else 0.4
+				elif child is GeometryInstance3D and not child.has_meta(&"face"): (child as GeometryInstance3D).transparency = 0.0 if fits else 0.7
+
+
+## The ray on a card: its tokens, sockets, ports, plus and trash.
+func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: float) -> void:
+	var hand := pointer.hand
+	hand.claim(self)
+	hand.show_ray(hit, true, XREBlueprintCanvas.HIT_DOT_OFFSET)
+	var id := canvas.get_hit_id()
+	var socket := canvas.get_hit_socket()
+	var kind := canvas.get_hit_socket_kind()
+	var key := canvas.get_hit_socket_key()
+	var right := hand == _rig.right_hand
+	canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), right, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1)
+	canvas.hover_socket(id, socket, right)
+	# The wire to the scene object thickens under the ray on its Target port,
+	# its adapter or name, or the event's Source (D-061).
+	var on_target := kind in [XREBlueprintCanvas.MEMBER, XREBlueprintCanvas.SOURCE]
+	if not on_target and canvas.get_hit_port() >= 0 and canvas.get_hit_input():
+		on_target = canvas.get_hit_port() == XREBlueprintGraph.target_port(blueprint.graph.find_node(id))
+	if on_target:
+		for wire: TargetWire in _target_wires:
+			if wire.id == id: wire.lit = true
+	var token := kind in [XREBlueprintCanvas.TOKEN, XREBlueprintCanvas.SQUARE]
+	if token and canvas.token_value(id, key) != null and _token_editor.mode in [&"", XREBlueprintTokenEditor.HINT]:
+		_token_editor.show_hint(_token_pose(id, key, ""), XREBlueprintTokens.hint(XREBlueprintTokens.kind_of(canvas.token_value(id, key), key)) + "  ·  grip: move")
+		_hint_frame = Engine.get_process_frames()
+	elif kind == XREBlueprintCanvas.MEMBER and not key.is_empty() and _token_editor.mode in [&"", XREBlueprintTokenEditor.HINT]:
+		var at := canvas.to_global(canvas.socket_position(id, XREBlueprintCanvas.MEMBER))
+		_token_editor.show_hint(Transform3D(XREPanels.facing(at, _rig.camera.global_position, _rig.global_basis.y), at), MEMBER_HINT)
+		_hint_frame = Engine.get_process_frames()
+	_filter_tray(id, socket, key if token else "")
+	if not _member_link.is_empty() and _member_hand == hand:
+		canvas.show_link(canvas.to_local(_member_link["anchor_global"]), canvas.to_local(origin + direction * hit))
+		if hand.trigger_pressed: _connect_member_link(id)
+		return
+	if hand.grip_pressed:
+		if token and _value_mode() != XREFeatureSettings.WINDOW:
+			_carry(pointer, canvas.token_value(id, key), key, id, "", false)
+		else: _start_hold(pointer, canvas, id, origin + direction * hit)
+	elif hand.trigger_pressed:
+		if canvas.get_hit_plus(): _show_block_palette(id)
+		elif canvas.get_hit_delete(): delete_block(id)
+		elif token: _start_turn(pointer, id, key, "", origin + direction * hit)
+		elif kind == XREBlueprintCanvas.SOURCE: _start_link(id, XREBlueprintCanvas.SOURCE, hand)
+		elif kind == XREBlueprintCanvas.VARIABLE:
+			if _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty(): _wire_variable(id, _link_box)
+			else: _start_link(id, XREBlueprintCanvas.VARIABLE, hand)
+		elif kind == XREBlueprintCanvas.MEMBER: _open_member_petals(id, hand)
+		elif canvas.get_hit_port() >= 0 and canvas.get_hit_input() and _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty():
+			_wire_box_to_port(_link_box, id, canvas.get_hit_port())
+		elif canvas.get_hit_port() >= 0:
+			var finished := (1 if canvas.get_hit_finished() else 0) if canvas.get_hit_port() == 0 and not canvas.get_hit_input() and canvas.has_finished(id) else -1
+			click_port(id, canvas.get_hit_port(), canvas.get_hit_input(), hand, canvas.get_hit_edge(), finished)
+		else: select_block(id)
+	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
+		_delete_consumed = true
+		if token: _reset_token(id, key)
+		else: delete_block()
+
+
+## Dims the tray's tokens that don't fit the socket under a ray, once it changes; empty [param key] for none.
+func _filter_tray(id: int, socket: int, key: String) -> void:
+	var hovered := Vector2i(id, socket) if not key.is_empty() else Vector2i(-1, -1)
+	if hovered == _tray_socket: return
+	_tray_socket = hovered
+	if key.is_empty():
+		token_tray.set_filter(Callable())
+		return
+	var block := blueprint.graph.find_node(id)
+	token_tray.set_filter(func(value: Variant, token_key: String) -> bool:
+		return XREBlueprintTokens.accepts(blueprint.graph, block, key, value) and (token_key == "policy") == (key == "policy"))
+
+
+func _value_mode() -> StringName:
+	return _document.features.get_value(XREFeatureSettings.VALUE_INPUT)
+
+
+## Sets parameter [param key] of block [param id] to [param value] as one
+## edit called [param title] for the log ("Turn Token", "Dock Token"…).
+## Sets the token of [param key] on block [param id] to [param value] as one
+## edit; [param expression] is the text it was typed as, kept to show (D-063),
+## and any other way of setting it drops the one it had.
+func _set_token(id: int, key: String, value: Variant, title: String, expression: String = "") -> bool:
+	var state := blueprint.graph.snapshot()
+	var found := false
+	for block: Dictionary in state["nodes"]:
+		if block["id"] == id and (block["params"] as Dictionary).has(key):
+			block["params"][key] = value
+			var kept: Dictionary = (block.get("expressions", {}) as Dictionary).duplicate()
+			if expression.is_empty(): kept.erase(key)
+			else: kept[key] = expression
+			if kept.is_empty(): block.erase("expressions")
+			else: block["expressions"] = kept
+			found = true
+	if not found: return false
+	var success: bool = blueprint.perform(blueprint.commit.bind(title, state), &"vr_graph")
+	if success and key != "wait": token_tray.remember(value)
+	elif not success: _message(blueprint.last_error)
+	return success
+
+
+## A token taken out by A: a port's socket is left empty (D-054), the build
+## reports it until a token or a wire is back; a square socket gets its default.
+func _reset_token(id: int, key: String) -> void:
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty() or not (block["params"] as Dictionary).has(key): return
+	# A port always has a token or a wire (D-059): A gives back the default token.
+	if _set_token(id, key, _socket_default(block, key), "Reset Token"): _message("Back to the default value.")
+
+
+## The trigger on a token, met by the ray at [param point]: a turn of the
+## wrist edits a number or a choice while it is held, around a dial at the
+## token; moving the ray off the token drags it, as the grip does.
+func _start_turn(pointer: Pointer, id: int, key: String, box: String, point: Vector3) -> void:
+	var value: Variant = canvas.token_value(id, key) if box.is_empty() else canvas.get_shelf().box_value(box)
+	if value == null: return
+	_token_editor.close()
+	pointer.token_point = point
+	pointer.token_distance = pointer.hand.global_position.distance_to(point)
+	var pose := _token_pose(id, key, box)
+	match XREBlueprintTokens.kind_of(value, key):
+		XREBlueprintTokens.NUMBER: _token_editor.open_dial(pose, value, XREBlueprintTokens.minimum(blueprint.graph.find_node(id), key, value))
+		XREBlueprintTokens.CHOICE: _token_editor.open_choice(pose, XREBlueprintTokens.POLICIES, str(value))
+	pointer.token_block = id
+	pointer.token_key = key
+	pointer.token_box = box
+	pointer.token_value = value
+	pointer.token_start = value
+	pointer.token_basis = pointer.hand.global_basis
+	pointer.token_angle = 0.0
+	pointer.token_last = 0.0
+	pointer.token_steps = 0
+	pointer.token_recent = 0.0
+	pointer.token_usec = Time.get_ticks_usec()
+	pointer.token_stick = 0.0
+	pointer.token_ray = 0
+	pointer.token_line = false
+	pointer.token_moved = false
+	pointer.token_press_usec = Time.get_ticks_usec()
+	pointer.hand.claim(self)
+	pointer.hand.claim_stick(self)
+
+
+## Turns the token by the wrist's roll since the press (D-052): a step every
+## [constant XREBlueprintTokens.TURN_STEP], ten times as far when turned fast.
+## Letting go commits a turn as one edit; a click without a turn toggles, steps
+## a choice or opens the token's input.
+func _update_turn(pointer: Pointer, delta: float) -> void:
+	var hand := pointer.hand
+	if not hand.get_has_tracking_data():
+		_end_turn(pointer, false)
+		return
+	var key := pointer.token_key
+	var kind := XREBlueprintTokens.kind_of(pointer.token_value, key)
+	# The trigger never moves the token (D-061): the grip does. Held on a number
+	# it shows the number line (D-062): the ray along it sets the value, past
+	# its ends faster and faster; held on a choice, the ray on a value picks it.
+	# The wrist and the stick step both.
+	if kind in [XREBlueprintTokens.NUMBER, XREBlueprintTokens.CHOICE]:
+		var roll := (pointer.token_basis.inverse() * hand.global_basis).get_euler().z
+		var change := wrapf(roll - pointer.token_last, -PI, PI)
+		pointer.token_last = roll
+		pointer.token_angle += change
+		# Fast is by real time over a tenth of a second, not by one frame's jump.
+		var now := Time.get_ticks_usec()
+		pointer.token_recent = pointer.token_recent * exp(-float(now - pointer.token_usec) / 100000.0) + absf(change)
+		pointer.token_usec = now
+		var steps := int(-pointer.token_angle / XREBlueprintTokens.TURN_STEP)
+		# The thumbstick steps too, about six a second at full tilt: for those who don't turn the wrist.
+		pointer.token_stick += XREPanels._tilt(hand.get_vector2(&"primary").x) * 6.0 * delta
+		var pushed := int(pointer.token_stick)
+		pointer.token_stick -= pushed
+		if pushed != 0:
+			pointer.token_angle -= pushed * XREBlueprintTokens.TURN_STEP
+			steps += pushed
+		var value: Variant = pointer.token_value
+		if kind == XREBlueprintTokens.NUMBER:
+			if steps != pointer.token_steps:
+				value = _token_editor.nudge(steps - pointer.token_steps)
+				pointer.token_steps = steps
+			var across := _ray_across(pointer, hand)
+			if not is_nan(across) and absf(across) > LINE_START: pointer.token_line = true
+			if pointer.token_line and not is_nan(across): value = _token_editor.line_to(across, delta)
+		else:
+			var picked := _token_editor.choice_at(hand.global_position, -hand.global_basis.z.normalized())
+			if picked >= 0: value = XREBlueprintTokens.POLICIES[picked]
+			if steps != pointer.token_steps:
+				value = XREBlueprintTokens.turned(value, key, steps - pointer.token_steps, false)
+				pointer.token_steps = steps
+		# Zero is as far as a non-negative number goes, a step above it a positive one (D-063).
+		var least := XREBlueprintTokens.minimum(blueprint.graph.find_node(pointer.token_block), key, value)
+		if not is_nan(least) and (value is float or value is int) and float(value) < least: value = int(least) if value is int else least
+		if typeof(value) != typeof(pointer.token_value) or value != pointer.token_value:
+			pointer.token_moved = true
+			pointer.token_value = value
+			if pointer.token_box.is_empty(): canvas.preview_token(pointer.token_block, key, value)
+			else: canvas.get_shelf().preview_value(pointer.token_box, value)
+			if kind == XREBlueprintTokens.CHOICE: _token_editor.set_choice(str(value), XREBlueprintTokens.POLICIES)
+			_message("%s: %s" % [key.capitalize() if not key.is_empty() else pointer.token_box, XREBlueprintTokens.text(value, key)])
+	if not hand.trigger_held: _end_turn(pointer, true)
+
+
+## How far to the right, as seen from the head, the ray of [param hand] meets
+## the plane of the token turned by [param pointer], from the point it was
+## taken at, in meters; NAN off it: the number line's offset (D-062).
+func _ray_across(pointer: Pointer, hand: XREHand) -> float:
+	var origin := hand.global_position
+	var direction := -hand.global_basis.z.normalized()
+	var head := _rig.camera.global_position
+	var facing := XREPanels.facing(pointer.token_point, head, _rig.global_basis.y)
+	var normal := facing.z.normalized()
+	var toward := direction.dot(normal)
+	if absf(toward) < 0.0001: return NAN
+	var along := (pointer.token_point - origin).dot(normal) / toward
+	if along < 0.0: return NAN
+	return (origin + direction * along - pointer.token_point).dot(facing.x.normalized())
+
+
+func _end_turn(pointer: Pointer, commit: bool) -> void:
+	var id := pointer.token_block
+	var key := pointer.token_key
+	var box := pointer.token_box
+	var value: Variant = pointer.token_value
+	var start: Variant = pointer.token_start
+	var turned := pointer.token_moved
+	# Held, a number or a choice only shows its line or its values (D-063): a click types or steps.
+	var clicked := Time.get_ticks_usec() - pointer.token_press_usec <= CLICK_USEC and not pointer.token_line
+	pointer.token_key = ""
+	pointer.token_box = ""
+	pointer.token_block = -1
+	pointer.hand.unclaim(self)
+	pointer.hand.unclaim_stick(self)
+	if _token_editor.mode in [XREBlueprintTokenEditor.DIAL, XREBlueprintTokenEditor.CHOICE]: _token_editor.close()
+	if not commit:
+		if box.is_empty(): canvas.preview_token(id, key, start)
+		else: canvas.get_shelf().preview_value(box, start)
+		return
+	if turned:
+		if typeof(value) == typeof(start) and value == start: return
+		if box.is_empty(): _set_token(id, key, value, "Turn Token")
+		else: _set_box(box, value, "Turn Token")
+		return
+	if not clicked and XREBlueprintTokens.kind_of(value, key) in [XREBlueprintTokens.NUMBER, XREBlueprintTokens.CHOICE]: return
+	match XREBlueprintTokens.kind_of(value, key):
+		XREBlueprintTokens.TOGGLE:
+			if box.is_empty(): _set_token(id, key, not value, "Turn Token")
+			else: _set_box(box, not value, "Turn Token")
+		XREBlueprintTokens.CHOICE:
+			_set_token(id, key, XREBlueprintTokens.turned(value, key, 1, false), "Turn Token")
+		XREBlueprintTokens.COLOR:
+			_value_edit = {"block": id, "key": key, "box": box, "value": value}
+			_token_editor.open_ring(_token_pose(id, key, box), value)
+			_message("Pick a hue on the ring or a brightness on the bar. Grip moves it; × or the trigger elsewhere closes it.")
+		XREBlueprintTokens.VECTOR:
+			_open_vector(id, key, box, value)
+			_message("Pull an arrow's end; past its end it speeds up. The white arrow moves all. Grip moves them; × closes.")
+		_:
+			_open_token_keyboard(id, key, box, value)
+
+
+## Sets the start value of variable [param name] from its box, keeping its
+## type; [param expression] as for a token ([method _set_token]).
+func _set_box(box: String, value: Variant, _title: String, expression: String = "") -> bool:
+	var variable := blueprint.graph.find_variable(box)
+	var type := XREBlueprintGraph.variable_type(variable)
+	if variable.is_empty() or not XREBlueprintSchema.accepts(type, typeof(value)): return false
+	if type == TYPE_FLOAT: value = float(value)
+	var state := blueprint.graph.snapshot()
+	for entry: Dictionary in state["variables"]:
+		if entry["name"] != box: continue
+		entry["value"] = value
+		entry.erase("type")
+		if expression.is_empty(): entry.erase("expression")
+		else: entry["expression"] = expression
+	var success: bool = blueprint.perform(blueprint.commit.bind("Set Variable Default", state), &"vr_graph")
+	if not success: _message(blueprint.last_error)
+	return success
+
+
+## The keyboard for an exact value of a token (D-052).
+func _open_token_keyboard(id: int, key: String, box: String, value: Variant) -> void:
+	_token_edit = {"block": id, "key": key, "box": box, "value": value}
+	_token_field.text = str(value) if not value is Color else (value as Color).to_html(false)
+	if value is Vector2: _token_field.text = "%s, %s" % [(value as Vector2).x, (value as Vector2).y]
+	if value is Vector3: _token_field.text = "%s, %s, %s" % [(value as Vector3).x, (value as Vector3).y, (value as Vector3).z]
+	# Typed as an expression, it is edited as that (D-063).
+	var expression := _expression_of(id, key, box)
+	if not expression.is_empty(): _token_field.text = expression
+	var components := 0
+	match typeof(value):
+		TYPE_INT, TYPE_FLOAT: components = 1
+		TYPE_VECTOR2: components = 2
+		TYPE_VECTOR3: components = 3
+	_show_keyboard(_token_field, _token_pose(id, key, box).origin, components)
+
+
+## Text typed for a token, or the name of a new variable.
+func _token_text_submitted(text: String) -> void:
+	var edit := _token_edit
+	_token_edit = {}
+	if edit.get("new_variable", false):
+		_name_new_variable(text.strip_edges())
+		return
+	if edit.is_empty(): return
+	if edit.has("axis"):
+		# One component typed in the Vector window (D-062): the others stay, and
+		# so does what each was typed as (D-063). Done keeps it all.
+		var number: Variant = XREBlueprintTokens.parse_number(text)
+		if number == null:
+			_message("Not a number: " + text)
+			return
+		if _value_edit.is_empty(): return
+		var axis := int(edit["axis"])
+		var changed: Variant = _value_edit["value"]
+		changed[axis] = float(number)
+		_preview_value_edit(changed, _component_expression(axis, text.strip_edges()))
+		return
+	var parsed: Variant = _parse(text, edit["value"])
+	if parsed == null:
+		_message("Not a value of this type: " + text)
+		return
+	var like: Variant = edit["value"]
+	var expression := text.strip_edges() if (like is float or like is Vector2 or like is Vector3) and XREBlueprintTokens.is_expression(text) else ""
+	if str(edit["box"]).is_empty(): _set_token(edit["block"], edit["key"], parsed, "Type Token", expression)
+	else: _set_box(edit["box"], parsed, "Type Token", expression)
+
+
+## The expression the token of [param key] on block [param id], or the box of
+## [param box], was typed as and still gives, or empty (D-063).
+func _expression_of(id: int, key: String, box: String) -> String:
+	if not box.is_empty(): return XREBlueprintTokens.variable_expression(blueprint.graph.find_variable(box))
+	return XREBlueprintTokens.expression_of(blueprint.graph.find_node(id), key)
+
+
+## [param text] as a value of [param like]'s type, or null.
+static func _parse(text: String, like: Variant) -> Variant:
+	var clean := text.strip_edges()
+	match typeof(like):
+		TYPE_BOOL:
+			if clean.to_lower() in ["true", "1", "yes", "on"]: return true
+			if clean.to_lower() in ["false", "0", "no", "off"]: return false
+			return null
+		TYPE_INT:
+			if clean.is_valid_int(): return clean.to_int()
+			var number: Variant = XREBlueprintTokens.parse_number(clean)
+			return roundi(float(number)) if number != null else null
+		TYPE_FLOAT: return XREBlueprintTokens.parse_number(clean)
+		TYPE_COLOR: return Color.html(clean) if Color.html_is_valid(clean) else null
+		TYPE_VECTOR2, TYPE_VECTOR3:
+			var parts := clean.trim_prefix("(").trim_suffix(")").split(",", false)
+			var count := 2 if like is Vector2 else 3
+			if parts.size() != count: return null
+			var numbers: Array[float] = []
+			for part: String in parts:
+				var number: Variant = XREBlueprintTokens.parse_number(part)
+				if number == null: return null
+				numbers.append(float(number))
+			if count == 2: return Vector2(numbers[0], numbers[1])
+			return Vector3(numbers[0], numbers[1], numbers[2])
+	return clean
+
+
+## Where a token is, facing the head: on block [param id]'s card, or on the box of [param box].
+func _token_pose(id: int, key: String, box: String) -> Transform3D:
+	var at := canvas.token_transform(id, key).origin if box.is_empty() else canvas.get_shelf().token_transform(box).origin
+	return Transform3D(XREPanels.facing(at, _rig.camera.global_position, _rig.global_basis.y), at)
+
+
+## The ray on the ring of hues or on the arrows of a vector (D-052): they
+## light up; the trigger picks a hue or a brightness, or pulls an arrow. The
+## trigger elsewhere closes them and goes on to what it is on.
+func _point_at_editor(pointer: Pointer, origin: Vector3, direction: Vector3) -> bool:
+	if not _token_editor.mode in [XREBlueprintTokenEditor.RING, XREBlueprintTokenEditor.ARROWS] or _value_edit.is_empty(): return false
+	var hand := pointer.hand
+	var picked := _token_editor.pick(origin, direction)
+	# Lit once a frame for both hands ([method _process]): the other hand's ray
+	# off the widget must not put out what this one lights (D-059).
+	if pointer.hand == _rig.right_hand: _editor_right = picked
+	else: _editor_left = picked
+	if picked.is_empty():
+		# The keyboard typing one of the vector's components takes the click: the arrows stay (D-062).
+		if _keyboard.is_shown() and _keyboard.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0: return false
+		if hand.trigger_pressed:
+			var arrows := _token_editor.mode == XREBlueprintTokenEditor.ARROWS
+			_token_editor.close()
+			_value_edit = {}
+			if arrows: _dismiss_window(XREBlueprintVectorTab, true)
+		return false
+	_leave(pointer)
+	hand.claim(self)
+	hand.show_ray(float(picked["distance"]), true)
+	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
+	canvas.hover_socket(-1, -1, hand == _rig.right_hand)
+	# The grip anywhere on it moves it; its × closes it (D-058). The arrows
+	# move with their window: the grip on them takes the window (D-061).
+	if hand.grip_pressed:
+		var window := _vector_window() if _token_editor.mode == XREBlueprintTokenEditor.ARROWS else null
+		if window != null: _hold_window(pointer, window, -1, false)
+		else: _start_hold(pointer, _token_editor, -1)
+		return true
+	if not hand.trigger_pressed: return true
+	if picked.has("close"):
+		_token_editor.close()
+		_value_edit = {}
+		_message("Closed.")
+		return true
+	if picked.has("plate"): return true
+	var value: Variant = _value_edit["value"]
+	if picked.has("axis"):
+		pointer.arrow_axis = picked["axis"]
+		pointer.arrow_value = value
+		pointer.arrow_block = _value_edit["block"]
+		pointer.arrow_key = _value_edit["key"]
+		pointer.arrow_box = _value_edit["box"]
+		pointer.arrow_reach = 0.0
+		if pointer.arrow_axis == XREBlueprintTokenEditor.VECTOR_AXIS:
+			# The white arrow's tip goes with the hand, at the distance the ray met it.
+			pointer.arrow_distance = float(picked["distance"])
+			pointer.arrow_grab = origin + direction * pointer.arrow_distance
+			_token_editor.begin_pull(XREBlueprintTokenEditor.VECTOR_AXIS, pointer.arrow_grab)
+		else:
+			pointer.arrow_start = _token_editor.axis_offset(pointer.arrow_axis, origin, direction)
+			_token_editor.begin_pull(pointer.arrow_axis)
+		return true
+	var color := value as Color
+	var chosen := Color.from_hsv(float(picked["hue"]), maxf(color.s, 0.6), maxf(color.v, 0.35), color.a) if picked.has("hue") else Color.from_hsv(color.h, color.s, float(picked["value"]), color.a)
+	if _set_value_edit(chosen, "Set Token"):
+		_value_edit["value"] = chosen
+		# Where it stands now: it may have been moved off its token.
+		_token_editor.open_ring(_token_editor.global_transform, chosen)
+	return true
+
+
+## Pulls an arrow of a vector token by its end (D-060): the arrow grows or
+## shrinks with the ray along its axis and its component follows; held past its
+## longest or shortest the component goes on, faster and faster. The white
+## arrow's tip goes with the hand and changes every component. A click on an
+## axis arrow without a pull sets its component to 0. Let go: one edit.
+func _update_arrow(pointer: Pointer, delta: float) -> void:
+	var hand := pointer.hand
+	var origin := hand.global_position
+	var direction := -hand.global_basis.z.normalized()
+	var value: Variant
+	if pointer.arrow_axis == XREBlueprintTokenEditor.VECTOR_AXIS:
+		var point := origin + direction * pointer.arrow_distance
+		pointer.arrow_reach = maxf(pointer.arrow_reach, point.distance_to(pointer.arrow_grab))
+		value = _token_editor.move_to(point, delta)
+	else:
+		var pulled := _token_editor.axis_offset(pointer.arrow_axis, origin, direction) - pointer.arrow_start
+		pointer.arrow_reach = maxf(pointer.arrow_reach, absf(pulled))
+		value = _token_editor.pull_to(pointer.arrow_axis, pulled, delta)
+	hand.show_ray(origin.distance_to(_token_editor.global_position), true)
+	if pointer.arrow_box.is_empty(): canvas.preview_token(pointer.arrow_block, pointer.arrow_key, value)
+	else: canvas.get_shelf().preview_value(pointer.arrow_box, value)
+	_message("%s: %s" % [key_name(pointer.arrow_axis), XREBlueprintTokens.text(value, pointer.arrow_key)])
+	vector_panel.set_vector(value)
+	if hand.trigger_held and hand.get_has_tracking_data(): return
+	var axis := pointer.arrow_axis
+	pointer.arrow_axis = -1
+	hand.unclaim(self)
+	if axis != XREBlueprintTokenEditor.VECTOR_AXIS and pointer.arrow_reach <= 0.005: value = _token_editor.zero(axis)
+	# Kept only by Done (D-063): until then the token just shows it.
+	if not hand.get_has_tracking_data() or value == pointer.arrow_value:
+		_preview_value_edit(pointer.arrow_value, str(_value_edit.get("expression", "")))
+		return
+	_preview_value_edit(value, "")
+
+
+## What arrow [param axis] of a vector edits, for the status line.
+static func key_name(axis: int) -> String:
+	return "Vector" if axis == XREBlueprintTokenEditor.VECTOR_AXIS else ["X", "Y", "Z"][clampi(axis, 0, 2)]
+
+
+## Opens the Vector window (D-061) for the vector token of [param key] on
+## block [param id], or of the box of [param box]: in front of the token,
+## toward the head, with the arrows of [param value] in front of the window.
+func _open_vector(id: int, key: String, box: String, value: Variant) -> void:
+	var expression := _expression_of(id, key, box)
+	_value_edit = {"block": id, "key": key, "box": box, "value": value, "expression": expression, "start": value, "start_expression": expression}
+	var at := _token_pose(id, key, box).origin
+	var head := _rig.camera.global_position
+	var point := at + (head - at).normalized() * VECTOR_LEAD + _rig.global_basis.y * 0.05
+	var pose := Transform3D(XREPanels.facing(point, head, _rig.global_basis.y), point)
+	var block := blueprint.graph.find_node(id)
+	vector_panel.show_vector("%s · %s" % [box if not box.is_empty() else XREBlueprintGraph.title(block), key.capitalize() if box.is_empty() else "start value"], value, expression)
+	_request_window(XREBlueprintVectorTab, pose)
+	_token_editor.open_arrows(pose, 2 if value is Vector2 else 3, value)
+	_place_vector_arrows()
+
+
+## The Vector window, or null while it is closed.
+func _vector_window() -> XREPanelSurface:
+	if not XREBlueprintVectorTab in _open_windows or not vector_panel.is_inside_tree(): return null
+	return vector_panel.get_viewport().get_parent() as XREPanelSurface
+
+
+## Keeps the arrows in front of the Vector window wherever it is moved,
+## pinned or carried; without the window they close.
+func _place_vector_arrows() -> void:
+	if _token_editor.mode != XREBlueprintTokenEditor.ARROWS: return
+	var window := _vector_window()
+	if window == null:
+		if not XREBlueprintVectorTab in _open_windows:
+			_token_editor.close()
+			_value_edit = {}
+		return
+	var facing := window.global_basis.orthonormalized()
+	_token_editor.place(window.pixel_to_global(vector_panel.area_center()) + facing.z * 0.03, facing)
+
+
+## A trigger pressed with the ray off the input in use closes that input
+## (D-062): the Vector window and its arrows, the ring, the keyboard, the
+## petals of an adapter's member. The click then goes on to what it is on.
+func _close_on_click_away() -> void:
+	# Focused since the last frame: the click that opened an input doesn't close it.
+	if not _focused or not is_focused(): return
+	for hand: XREHand in [_rig.left_hand, _rig.right_hand]:
+		if not hand.trigger_pressed or not hand.get_has_tracking_data(): continue
+		var origin := hand.global_position
+		var direction := -hand.global_basis.z.normalized()
+		if _on_input(origin, direction): continue
+		_close_inputs()
+		for pointer: Pointer in _pointers:
+			if pointer.hand == hand: pointer.swallow = true
+		return
+
+
+## Whether the ray from [param origin] along [param direction] is on the input in use.
+func _on_input(origin: Vector3, direction: Vector3) -> bool:
+	if _keyboard.is_shown() and (_keyboard.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0 or _keyboard.intersect_handle(origin, direction, XREPanels.POINT_DISTANCE) >= 0): return true
+	if _token_editor.is_interactive() and not _token_editor.pick(origin, direction).is_empty(): return true
+	var window := _vector_window()
+	if window != null and (window.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0 or window.intersect_handle(origin, direction, XREPanels.POINT_DISTANCE) >= 0): return true
+	if _petals.is_open() and _petals.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0: return true
+	if _choice.is_open() and _choice.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0: return true
+	# The dial and the choice of a token live only while the trigger holds them.
+	return _token_editor.mode in [XREBlueprintTokenEditor.DIAL, XREBlueprintTokenEditor.CHOICE]
+
+
+## Closes the inputs in use: the arrows and their window, the ring, the
+## keyboard (its draft lost), a member's petals with no wire waiting on them.
+func _close_inputs() -> void:
+	if _token_editor.mode == XREBlueprintTokenEditor.ARROWS: _end_vector(false)
+	elif _token_editor.is_interactive():
+		_token_editor.close()
+		_value_edit = {}
+	if _keyboard.is_shown():
+		_keyboard.close()
+		_token_edit = {}
+	if _petals.is_open() and _petal_block >= 0 and _pending_id < 0 and _link_hand == null:
+		cancel_connection()
+		_petals.close()
+	elif _choice.is_open() and _member_link.is_empty():
+		_choice.close()
+
+
+## Whether an input has the user's attention (D-061): a value's widget, the
+## keyboard, or the petals of a member being picked, or a choice.
+func is_focused() -> bool:
+	if not _workspace.visible: return false
+	if _token_editor.mode in [XREBlueprintTokenEditor.DIAL, XREBlueprintTokenEditor.CHOICE, XREBlueprintTokenEditor.RING, XREBlueprintTokenEditor.ARROWS]: return true
+	if _keyboard.is_shown() or _choice.is_open(): return true
+	return _petals.is_open() and (_petal_block >= 0 or _petal_dynamic)
+
+
+## Darkens all but the input in use, and draws that input and the rays over the darkness.
+func _update_focus() -> void:
+	var focus := is_focused()
+	var window := _vector_window()
+	if window != null and window.is_on_top() != focus: window.set_on_top(focus)
+	if focus == _focused: return
+	_focused = focus
+	_focus_dimmer.visible = focus
+	_petals.set_on_top(focus and (_petal_block >= 0 or _petal_dynamic))
+	_choice.set_on_top(focus)
+	for hand: XREHand in [_rig.left_hand, _rig.right_hand]: hand.set_on_top(focus)
+
+
+## The keypad for one component [param axis] of the vector in the Vector
+## window (D-062), below the window: the rare exact value of one axis.
+func _type_component(axis: int) -> void:
+	if _value_edit.is_empty() or _token_editor.mode != XREBlueprintTokenEditor.ARROWS: return
+	var value: Variant = _value_edit["value"]
+	_token_edit = {"block": _value_edit["block"], "key": _value_edit["key"], "box": _value_edit["box"], "value": value, "axis": axis}
+	var typed := XREBlueprintTokens.component_expression(str(_value_edit.get("expression", "")), axis)
+	_token_field.text = typed if not typed.is_empty() else XREBlueprintTokens.text(float(value[axis]), "")
+	# Below the window, as far from the head as it (D-063): toward the head it came too near.
+	var window := _vector_window()
+	var at: Variant = window.pixel_to_global(Vector2(window.size_px.x * 0.5, window.size_px.y)) if window != null else null
+	_show_keyboard(_token_field, at, 1, 0.0, KEYBOARD_BELOW_WINDOW)
+	_message("Type %s; π, e, √, ^ and brackets work: 3π, π/2, √2." % ["X", "Y", "Z"][axis])
+
+
+## The small 0 by component [param axis] in the Vector window (D-063): that component is 0.
+func _zero_component(axis: int) -> void:
+	if _value_edit.is_empty() or _token_editor.mode != XREBlueprintTokenEditor.ARROWS: return
+	var changed: Variant = _value_edit["value"]
+	changed[axis] = 0.0
+	_preview_value_edit(changed, _component_expression(axis, "0"))
+	_message("%s is 0." % ["X", "Y", "Z"][axis])
+
+
+## The vector's expression with component [param axis] typed as [param text]
+## and the others as they were typed or are; empty when all are plain numbers.
+func _component_expression(axis: int, text: String) -> String:
+	var value: Variant = _value_edit["value"]
+	var before := str(_value_edit.get("expression", ""))
+	var parts: PackedStringArray = []
+	for index: int in (2 if value is Vector2 else 3):
+		var kept := XREBlueprintTokens.component_expression(before, index)
+		parts.append(kept if not kept.is_empty() else XREBlueprintTokens.plain(float(value[index])))
+	parts[axis] = text
+	var joined := ", ".join(parts)
+	return joined if XREBlueprintTokens.is_expression(joined) else ""
+
+
+## Shows [param value] (typed as [param expression], or empty) on the token
+## the Vector window edits, on its arrows and in its figures, without keeping
+## it: Done keeps it ([method _end_vector], D-063).
+func _preview_value_edit(value: Variant, expression: String) -> void:
+	if _value_edit.is_empty(): return
+	_value_edit["value"] = value
+	_value_edit["expression"] = expression
+	var shown := XREBlueprintTokens.shown(value, str(_value_edit["key"]), expression)
+	if str(_value_edit["box"]).is_empty(): canvas.preview_token(_value_edit["block"], _value_edit["key"], value, shown)
+	else: canvas.get_shelf().preview_value(_value_edit["box"], value, shown)
+	_token_editor.set_vector(value)
+	vector_panel.set_vector(value, expression)
+
+
+## Ends the Vector window's edit (D-063): Done keeps the vector as one edit,
+## the ×, a click away or the window closing put it back as it was.
+func _end_vector(commit: bool) -> void:
+	if _value_edit.is_empty() or _token_editor.mode != XREBlueprintTokenEditor.ARROWS:
+		if _token_editor.mode == XREBlueprintTokenEditor.ARROWS: _token_editor.close()
+		_dismiss_window(XREBlueprintVectorTab, true)
+		return
+	var edit := _value_edit
+	_value_edit = {}
+	_token_editor.close()
+	if _keyboard.is_shown() and _token_edit.has("axis"):
+		_keyboard.close()
+		_token_edit = {}
+	var value: Variant = edit["value"]
+	var expression := str(edit["expression"])
+	var changed: bool = value != edit["start"] or expression != str(edit["start_expression"])
+	if commit and changed:
+		if str(edit["box"]).is_empty(): _set_token(edit["block"], edit["key"], value, "Set Vector", expression)
+		else: _set_box(edit["box"], value, "Set Vector", expression)
+		_message("Kept %s." % XREBlueprintTokens.shown(value, str(edit["key"]), expression))
+	else:
+		var start: Variant = edit["start"]
+		var shown := XREBlueprintTokens.shown(start, str(edit["key"]), str(edit["start_expression"]))
+		if str(edit["box"]).is_empty(): canvas.preview_token(edit["block"], edit["key"], start, shown)
+		else: canvas.get_shelf().preview_value(edit["box"], start, shown)
+		if changed: _message("The vector is as it was.")
+	_dismiss_window(XREBlueprintVectorTab, true)
+
+
+## Zero or Normalize under the arrows: the whole vector at once, one edit.
+func _vector_action(normalize: bool) -> void:
+	if _value_edit.is_empty() or _token_editor.mode != XREBlueprintTokenEditor.ARROWS: return
+	var value: Variant = _value_edit["value"]
+	var changed: Variant = value * 0.0
+	if normalize:
+		var length := (value as Vector2).length() if value is Vector2 else (value as Vector3).length()
+		if length < 0.000001:
+			_message("A zero vector has no direction.")
+			return
+		changed = value / length
+		changed = Vector2(snappedf((changed as Vector2).x, 0.001), snappedf((changed as Vector2).y, 0.001)) if changed is Vector2 else Vector3(snappedf((changed as Vector3).x, 0.001), snappedf((changed as Vector3).y, 0.001), snappedf((changed as Vector3).z, 0.001))
+	_preview_value_edit(changed, "")
+	_message("Normalized." if normalize else "Zero.")
+
+
+## Commits [param value] to the token the ring or the arrows edit.
+func _set_value_edit(value: Variant, title: String) -> bool:
+	if _value_edit.is_empty(): return false
+	if str(_value_edit["box"]).is_empty(): return _set_token(_value_edit["block"], _value_edit["key"], value, title)
+	return _set_box(_value_edit["box"], value, title)
+
+
+## The grip carries a copy of a token: from a socket of block [param id] (it
+## moves; a second grip makes it a copy), from the box of variable
+## [param box], or from the tray with [param copy].
+## [param by_trigger]: the trigger holds it, dragged off its socket, not the grip.
+func _carry(pointer: Pointer, value: Variant, key: String, id: int, box: String, copy: bool, by_trigger: bool = false) -> void:
+	if value == null: return
+	var shown := XREBlueprintTokens.text(value, key)
+	pointer.carried = XREBlueprintCanvas.make_token(value, key, XREBlueprintTokens.width(shown), _value_mode() == XREFeatureSettings.PLUGS, false, false)
+	pointer.carried.top_level = true
+	add_child(pointer.carried)
+	pointer.carried_value = value
+	pointer.carried_key = key
+	pointer.carried_block = id
+	pointer.carried_box = box
+	pointer.carried_copy = copy
+	pointer.carried_trigger = by_trigger
+	pointer.hand.claim(self)
+	# The token itself is in the hand, not a copy of it: it leaves its socket or box
+	# at once (D-058). Let go anywhere but in another socket, the graph puts it back.
+	if id >= 0 and not copy: canvas.hide_token(id, key)
+	if not box.is_empty() and not copy: canvas.get_shelf().hide_token(box)
+	_update_carried(pointer)
+
+
+## Moves a carried token with its hand's ray; over a socket that takes it the
+## socket grows. A grip of the other hand makes it a copy. Letting go puts it
+## in that socket — and takes it from where it came from unless a copy — or,
+## in the air, drops it: a token from a socket leaves its default there.
+func _update_carried(pointer: Pointer) -> void:
+	var hand := pointer.hand
+	var origin := hand.global_position
+	var direction := -hand.global_basis.z.normalized()
+	var distance := 0.35
+	var hit := canvas.intersect_ray(origin, direction, 5.0) if _workspace.visible else -1.0
+	var target := _dock_target(hit)
+	if hit >= 0: distance = maxf(hit - 0.01, 0.05)
+	canvas.hover_socket(target.get("block", -1), canvas.get_hit_socket() if target.has("block") else -1, hand == _rig.right_hand)
+	var point := origin + direction * distance
+	pointer.carried.global_transform = Transform3D(XREPanels.facing(point, _rig.camera.global_position, Vector3.UP), point)
+	hand.show_ray(distance, not target.is_empty())
+	for other: Pointer in _pointers:
+		if other != pointer and other.hand.grip_pressed and not pointer.carried_copy:
+			pointer.carried_copy = true
+			_message("A copy: the token stays where it was.")
+	if hand.get_has_tracking_data() and (hand.trigger_held if pointer.carried_trigger else hand.grip_held): return
+	_drop_carried(pointer, target if hand.get_has_tracking_data() else {})
+
+
+## The socket a token dropped now would go to — [code]{"block", "key"}[/code]
+## or [code]{"box"}[/code] — from the last ray [param hit], or empty.
+func _dock_target(hit: float) -> Dictionary:
+	if hit < 0: return {}
+	if canvas.get_hit_box():
+		var shelf := canvas.get_shelf()
+		if shelf.get_hit_part() in [XREBlueprintShelf.TOKEN, XREBlueprintShelf.BODY] and not shelf.get_hit_name().is_empty(): return {"box": shelf.get_hit_name()}
+		return {}
+	var id := canvas.get_hit_id()
+	if canvas.get_hit_socket_kind() in [XREBlueprintCanvas.TOKEN, XREBlueprintCanvas.SQUARE]: return {"block": id, "key": canvas.get_hit_socket_key()}
+	if canvas.get_hit_port() >= 0 and canvas.get_hit_input():
+		var block := blueprint.graph.find_node(id)
+		var spec: Array = blueprint.graph.ports(block, true)[canvas.get_hit_port()]
+		if spec.size() > 2 and not str(spec[2]).is_empty() and spec[2] != "target": return {"block": id, "key": spec[2]}
+	return {}
+
+
+func _drop_carried(pointer: Pointer, target: Dictionary) -> void:
+	var value: Variant = pointer.carried_value
+	var source_block := pointer.carried_block
+	var source_key := pointer.carried_key
+	var source_box := pointer.carried_box
+	var copy := pointer.carried_copy
+	pointer.carried.queue_free()
+	pointer.carried = null
+	_show_carried_source(source_block, source_key, source_box, copy)
+	pointer.carried_block = -1
+	pointer.carried_box = ""
+	pointer.hand.unclaim(self)
+	pointer.hand.show_ray(XREHand.RAY_LENGTH, false)
+	var from_socket := source_block >= 0 and not copy
+	var from_box := not source_box.is_empty() and not copy
+	if (target.has("block") and target["block"] == source_block and target["key"] == source_key) or (target.has("box") and target["box"] == source_box):
+		_schedule_rebuild()
+		return
+	var state := blueprint.graph.snapshot()
+	if target.has("block"):
+		var block := blueprint.graph.find_node(target["block"])
+		if block.is_empty() or not XREBlueprintTokens.accepts(blueprint.graph, block, target["key"], value):
+			_message("This token doesn't fit there.")
+			_schedule_rebuild()
+			return
+		for entry: Dictionary in state["nodes"]:
+			if entry["id"] == target["block"]: entry["params"][target["key"]] = value
+	elif target.has("box"):
+		var variable := blueprint.graph.find_variable(target["box"])
+		if variable.is_empty() or not XREBlueprintSchema.accepts(XREBlueprintGraph.variable_type(variable), typeof(value)):
+			_message("This token doesn't fit there.")
+			_schedule_rebuild()
+			return
+		for entry: Dictionary in state["variables"]:
+			if entry["name"] == target["box"]:
+				entry["value"] = float(value) if XREBlueprintGraph.variable_type(variable) == TYPE_FLOAT else value
+				entry.erase("type")
+	elif not from_socket and not from_box:
+		# A copy or a token from the tray, let go in the air, just goes.
+		_schedule_rebuild()
+		return
+	# Taken out of its socket, the token leaves a port a default token unless a
+	# wire brings its value (D-059, after D-054 left it empty); a square socket
+	# gets its default back. A box is left empty (D-054).
+	if from_socket:
+		for entry: Dictionary in state["nodes"]:
+			if entry["id"] != source_block: continue
+			if source_key in blueprint.graph.socket_keys(entry): (entry["params"] as Dictionary).erase(source_key)
+			else: entry["params"][source_key] = XREBlueprintTokens.default_value(entry, source_key)
+		_fill_sockets(state)
+	if from_box:
+		for entry: Dictionary in state["variables"]:
+			if entry["name"] == source_box and entry.has("value"):
+				entry["type"] = typeof(entry["value"])
+				entry.erase("value")
+	var title := "Dock Token" if target.has("block") or target.has("box") else ("Take Token Out" if from_box else "Reset Token")
+	if blueprint.perform(blueprint.commit.bind(title, state), &"vr_graph"):
+		if title == "Dock Token": token_tray.remember(value)
+		_message("Token in %s." % str(target.get("key", target.get("box", ""))).capitalize() if title == "Dock Token" else ("Token taken out: the box is empty." if from_box else "Back to the default token."))
+	else: _message(blueprint.last_error)
+	_schedule_rebuild()
+
+
+## Lets go of what [param pointer] turns or carries, without an edit.
+func _drop_tokens(pointer: Pointer) -> void:
+	pointer.arrow_axis = -1
+	_token_editor.close()
+	if not pointer.token_key.is_empty() or not pointer.token_box.is_empty(): _end_turn(pointer, false)
+	if pointer.carried != null:
+		pointer.carried.queue_free()
+		pointer.carried = null
+		_show_carried_source(pointer.carried_block, pointer.carried_key, pointer.carried_box, pointer.carried_copy)
+		pointer.hand.unclaim(self)
+		_schedule_rebuild()
+
+
+## Shows again the token that a carry hid in its socket or box (D-058): a
+## drop that edits the graph rebuilds it anyway; one that doesn't (back in
+## its own socket, a default equal to it) must not leave it hidden.
+func _show_carried_source(block: int, key: String, box: String, copy: bool) -> void:
+	if copy: return
+	if block >= 0: canvas.hide_token(block, key, false)
+	if not box.is_empty(): canvas.get_shelf().hide_token(box, false)
+
+
+## The ray on the shelf's boxes (D-052): the trash deletes an unused variable,
+## the token sets its start value, the box takes a Variable wire, the plus adds a variable.
+func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: float) -> void:
+	var hand := pointer.hand
+	var shelf := canvas.get_shelf()
+	hand.claim(self)
+	hand.show_ray(hit, true)
+	canvas.hover_actions(-1, false, false, hand == _rig.right_hand, -1, false, -1, true)
+	shelf.hover(shelf.get_hit_index(), shelf.get_hit_part(), hand == _rig.right_hand)
+	var variable := shelf.get_hit_name()
+	var part := shelf.get_hit_part()
+	if _link_kind == XREBlueprintCanvas.VARIABLE and _link_hand == hand: canvas.show_link(_link_origin(), canvas.to_local(origin + direction * hit))
+	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and not variable.is_empty():
+		_delete_consumed = true
+		_remove_box(variable)
+		return
+	if hand.grip_pressed and part == XREBlueprintShelf.TOKEN and _value_mode() != XREFeatureSettings.WINDOW:
+		_carry(pointer, shelf.box_value(variable), "", -1, variable, false)
+		return
+	if not hand.trigger_pressed: return
+	match part:
+		XREBlueprintShelf.PLUS: _ask_new_variable()
+		XREBlueprintShelf.TRASH: _remove_box(variable)
+		XREBlueprintShelf.TOKEN:
+			if _value_mode() == XREFeatureSettings.WINDOW:
+				parameters.show_variables()
+				_show_parameters()
+			else: _start_turn(pointer, -1, "", variable, origin + direction * hit)
+		_:
+			if _pending_id >= 0 and _pending_input: _wire_box_to_port(variable, _pending_id, _pending_port)
+			elif _link_kind == XREBlueprintCanvas.VARIABLE and _link_block >= 0: _wire_variable(_link_block, variable)
+			else:
+				cancel_connection()
+				_link_kind = XREBlueprintCanvas.VARIABLE
+				_link_box = variable
+				_link_hand = hand
+				_message("Press trigger on the Variable of a Get or Set Variable.")
+
+
+## A Variable wire from block [param id]'s socket to the box of [param variable], as one edit.
+func _wire_variable(id: int, variable: String) -> void:
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty() or blueprint.graph.find_variable(variable).is_empty(): return
+	var state := blueprint.graph.snapshot()
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] != id: continue
+		entry["params"]["variable"] = variable
+		var found := blueprint.graph.find_variable(variable)
+		if entry["kind"] == "set_variable": entry["params"]["value"] = found.get("value", XREBlueprintSchema.default_value(XREBlueprintGraph.variable_type(found)))
+	if blueprint.perform(blueprint.commit.bind("Wire Variable", state), &"vr_graph"):
+		cancel_connection()
+		_message("%s uses %s." % [XREBlueprintGraph.title(block), variable])
+	else: _message(blueprint.last_error)
+
+
+## A wire between a box and a data input of block [param id] (D-055): a Get
+## Variable of the box goes in left of the card, wired to that input, as one edit.
+func _wire_box_to_port(variable: String, id: int, port: int) -> void:
+	var target := blueprint.graph.find_node(id)
+	if target.is_empty() or blueprint.graph.find_variable(variable).is_empty(): return
+	var getter := XREBlueprintGraph.make_node(0, "get_variable", Vector2.ZERO)
+	getter["params"]["variable"] = variable
+	# Inline (D-061): no card, the wire comes straight from the box; the 2D editor shows the node.
+	getter["vr_inline"] = true
+	getter["vr_depth"] = float(target.get("vr_depth", 0.0))
+	var position: Vector2 = target["position"] + Vector2(-300, 40 + 50 * port)
+	var added: int = blueprint.perform(blueprint.insert_block.bind(getter, position, {"to": id, "to_port": port}, null, "Wire Variable"), &"vr_graph")
+	cancel_connection()
+	if added < 0: _message(blueprint.last_error)
+	else: _message("%s reads %s." % [XREBlueprintGraph.title(target), variable])
+
+
+## Deletes the variable of a box; one in use stays, and the wires of its users flash.
+func _remove_box(variable: String) -> void:
+	if blueprint.perform(blueprint.remove_variable.bind(variable), &"vr_graph"):
+		_message("Variable %s removed." % variable)
+		return
+	_message(blueprint.last_error)
+	canvas.flash_variable(variable, true)
+	get_tree().create_timer(0.9).timeout.connect(func() -> void: if is_instance_valid(canvas): canvas.flash_variable(variable, false))
+
+
+## The plus of the shelf: the keyboard for a name, then a choice of its type.
+func _ask_new_variable() -> void:
+	cancel_connection()
+	_token_edit = {"new_variable": true}
+	_token_field.text = ""
+	_show_keyboard(_token_field)
+
+
+func _name_new_variable(variable: String) -> void:
+	if not variable.is_valid_identifier() or not blueprint.graph.find_variable(variable).is_empty():
+		_message("A variable needs a new name of letters, digits and _.")
+		return
+	_new_variable = variable
+	var items: Array[Dictionary] = []
+	for value: Variant in [false, 0, 0.0, "", Vector2.ZERO, Vector3.ZERO, Color.WHITE]:
+		items.append({"text": type_string(typeof(value)), "value": value, "enabled": true})
+	var plus := canvas.to_global(canvas.get_shelf().plus_position())
+	_choice_point = canvas.to_local(plus)
+	_choice.open(canvas, plus, _rig.camera.global_position, _rig.global_basis.y, [{"header": "Type of " + variable, "items": items}])
+	_message("Choose the type of %s." % variable)
+
+
+## The point a Source or Variable wire starts from, in the canvas's space.
+func _link_origin() -> Vector3:
+	if _link_block >= 0: return canvas.socket_position(_link_block, _link_kind)
+	if not _link_box.is_empty(): return canvas.get_shelf().box_point(_link_box)
+	return Vector3.ZERO
+
+
+## The trigger on an event's Source or a Variable: a wire from it, to a scene object or a box.
+func _start_link(id: int, kind: int, hand: XREHand) -> void:
+	cancel_connection()
+	_link_kind = kind
+	_link_block = id
+	_link_hand = hand
+	_message("Point at a scene object and press trigger." if kind == XREBlueprintCanvas.SOURCE else "Press trigger on a box of the shelf.")
+
+
+## What a member wire of [param block] picks on an object: "property",
+## "signal", "animation", "audio" for a sound player, or empty for none.
+func _member_role(block: Dictionary) -> String:
+	if block.is_empty(): return ""
+	var kind := XREBlueprintTokens.member_kind(block)
+	if not kind.is_empty(): return kind
+	for cls: Variant in XREBlueprintSchema.target_classes(block):
+		if str(cls).begins_with("AudioStreamPlayer"): return "audio"
+	return ""
+
+
+## Opens the petals of [param object] for block [param id], grown from [param point] on it.
+func _open_petals(id: int, object: Node3D, point: Vector3) -> void:
+	var block := blueprint.graph.find_node(id)
+	_petal_block = id
+	_petal_dynamic = false
+	_petals.open(object, point, _rig.camera.global_position, _rig.global_basis.y, _member_groups(object, _member_role(block), block))
+
+
+## The trigger on the member's name after Target or Source: its petals, at the
+## target object, or at the port for a target that comes by wire (D-052).
+func _open_member_petals(id: int, hand: XREHand) -> void:
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty(): return
+	if block["kind"] != "signal" and blueprint.target_is_connected(id):
+		var cls := _wired_class(id)
+		var items: Array[Dictionary] = []
+		if ClassDB.class_exists(cls):
+			for info: Dictionary in ClassDB.class_get_property_list(cls):
+				if int(info["usage"]) & PROPERTY_USAGE_EDITOR and int(info["type"]) in XREBlueprintSchema.LITERAL_TYPES:
+					items.append({"text": str(info["name"]), "member": str(info["name"]), "node": null, "kind": "property", "enabled": true})
+		cancel_connection()
+		_petal_block = id
+		_petal_dynamic = true
+		var at := canvas.to_global(canvas.port_position(id, XREBlueprintGraph.target_port(block), true))
+		_petals.open(canvas, at, _rig.camera.global_position, _rig.global_basis.y, [{"header": cls, "items": items}])
+		_message("Choose the member of the %s the wire brings." % cls)
+		return
+	# The adapter only picks the member (D-062): no wire comes off it to another
+	# object; the name on the card (Node) also lets the ray pick another object.
+	var adapter := XREBlueprintTokens.adapter(_document.features.get_value(XREFeatureSettings.TARGET_INPUT))
+	if adapter: cancel_connection()
+	elif block["kind"] == "signal": _start_link(id, XREBlueprintCanvas.SOURCE, hand)
+	else:
+		cancel_connection()
+		_pending_id = id
+		_pending_port = XREBlueprintGraph.target_port(block)
+		_pending_input = true
+		_pending_hand = hand
+	var target := blueprint.target_node(id) as Node3D
+	if target == null: target = _anchor(blueprint.target_node(id)) if blueprint.target_node(id) != null else null
+	if target != null: _open_petals(id, target, target.global_transform * (block["vr_anchor"] as Vector3 if block.get("vr_anchor") is Vector3 else Vector3.ZERO))
+	_message("Pick a member." if adapter else "Pick a member, or point at another object.")
+
+
+## The class of the object a wire brings to block [param id]'s Target: a signal argument's class.
+func _wired_class(id: int) -> String:
+	var block := blueprint.graph.find_node(id)
+	var port := XREBlueprintGraph.target_port(block)
+	for edge: Dictionary in blueprint.graph.edges:
+		if edge["to"] != id or edge["to_port"] != port: continue
+		var source := blueprint.graph.find_node(edge["from"])
+		if source["kind"] == "signal" and edge["from_port"] >= 1:
+			var arguments: Array = source.get("arguments", [])
+			if edge["from_port"] - 1 < arguments.size():
+				var cls := str((arguments[edge["from_port"] - 1] as Dictionary).get("class_name", ""))
+				if not cls.is_empty(): return cls
+	return "Node"
+
+
+## Members of [param object] for a wire of [param role], grouped: the
+## object's own, then the sound and animation players without geometry under
+## it, each in a group of its own (D-052).
+func _member_groups(object: Node, role: String, block: Dictionary) -> Array[Dictionary]:
+	var groups: Array[Dictionary] = []
+	var players := _hidden_children(object, "AnimationPlayer")
+	var sounds := _hidden_children(object, "AudioStreamPlayer")
+	if role in ["signal", "all"]:
+		groups.append({"header": "Signals · " + object.name if role == "all" else "", "items": _signal_items(object)})
+		if role == "signal":
+			for child: Node in players + sounds: groups.append({"header": "%s · %s" % [child.name, child.get_class()], "items": _signal_items(child)})
+	if role in ["animation", "all"]:
+		for player: Node in players:
+			var items: Array[Dictionary] = []
+			for clip: String in (player as AnimationMixer).get_animation_list():
+				items.append({"text": clip, "member": clip, "node": player, "kind": "animation", "enabled": true})
+			groups.append({"header": "%s · AnimationPlayer" % player.name, "items": items})
+	if role in ["audio", "all"]:
+		var items: Array[Dictionary] = []
+		for sound: Node in sounds: items.append({"text": "▶ " + str(sound.name), "member": "", "node": sound, "kind": "audio", "enabled": true})
+		groups.append({"header": "Sounds" if role == "all" else "", "items": items})
+	if role in ["property", "all"]:
+		var items: Array[Dictionary] = []
+		var names: Array[String] = []
+		if not block.is_empty(): names = XREBlueprintTokens.properties_for(block, object)
+		else:
+			for info: Dictionary in XREBlueprintSchema.properties(object): names.append(str(info["name"]))
+		var wired_type := _wired_value_type(block)
+		for property: String in names:
+			var info := XREBlueprintSchema.property_info(object, property)
+			var fits := wired_type == TYPE_NIL or XREBlueprintSchema.accepts(int(info.get("type", TYPE_NIL)), wired_type)
+			items.append({"text": property, "member": property, "node": object, "kind": "property", "enabled": fits})
+		items.sort_custom(func(first: Dictionary, second: Dictionary) -> bool: return first["enabled"] and not second["enabled"])
+		groups.append({"header": "Properties" if role == "all" else "", "items": items})
+	return groups
+
+
+## The type of the wire into a block's value input, TYPE_NIL for none or for a Variant.
+func _wired_value_type(block: Dictionary) -> int:
+	if block.is_empty(): return TYPE_NIL
+	var port := blueprint.graph.input_port(block, "value")
+	for edge: Dictionary in blueprint.graph.edges:
+		if edge["to"] == block["id"] and edge["to_port"] == port:
+			var source := blueprint.graph.find_node(edge["from"])
+			var type: int = blueprint.graph.ports(source, false)[edge["from_port"]][1]
+			return [TYPE_NIL, TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_OBJECT, TYPE_COLOR][type]
+	return TYPE_NIL
+
+
+## The signals of [param node], the ones a graph handles most first.
+static func _signal_items(node: Node) -> Array[Dictionary]:
+	var common: Array[String] = ["body_entered", "body_exited", "area_entered", "area_exited", "pressed", "toggled", "timeout", "animation_finished", "finished", "ready"]
+	var items: Array[Dictionary] = []
+	for info: Dictionary in node.get_signal_list():
+		items.append({"text": str(info["name"]), "member": str(info["name"]), "node": node, "kind": "signal", "enabled": true})
+	items.sort_custom(func(first: Dictionary, second: Dictionary) -> bool:
+		var a := common.find(first["member"])
+		var b := common.find(second["member"])
+		if a >= 0 and b >= 0: return a < b
+		if a >= 0 or b >= 0: return a >= 0
+		return str(first["member"]) < str(second["member"]))
+	return items
+
+
+## Nodes of class [param cls] (AnimationPlayer, or AudioStreamPlayer and its 2D and 3D kinds)
+## at [param object] or up to two levels under it: nodes the user doesn't see.
+static func _hidden_children(object: Node, cls: String) -> Array[Node]:
+	var found: Array[Node] = []
+	var pending: Array[Node] = [object]
+	var depth: Dictionary[Node, int] = {object: 0}
+	while not pending.is_empty():
+		var node: Node = pending.pop_front()
+		if node.is_class(cls) or (cls == "AudioStreamPlayer" and (node is AudioStreamPlayer2D or node is AudioStreamPlayer3D)): found.append(node)
+		if depth[node] >= 2: continue
+		for child: Node in node.get_children():
+			depth[child] = depth[node] + 1
+			pending.append(child)
+	return found
+
+
+## The ray on the petals of a member or on a choice: they light up, the trigger picks.
+## The ray on the petals of a member or on a choice: they light up, the wire
+## being drawn ends on the petal under the ray, the right thumbstick scrolls a
+## long list; the trigger picks, or, dragged up or down, scrolls ([method _update_fan_press]).
+func _point_at_petals(pointer: Pointer, origin: Vector3, direction: Vector3, limit: float, delta: float) -> bool:
+	if not _petals.is_open() and not _choice.is_open(): return false
+	var fan := _choice if _choice.is_open() and _choice.intersect_ray(origin, direction, limit) >= 0 else _petals
+	var hit := fan.intersect_ray(origin, direction, limit)
+	# Only the hand that lit a petal puts it out: the other hand's ray off the fan leaves it (D-059).
+	if hit >= 0 or pointer.fan_hover: fan.hover_hit()
+	pointer.fan_hover = hit >= 0
+	if hit < 0:
+		# Picking a member in focus (D-062), the right stick scrolls the list wherever the ray is.
+		if is_focused() and fan == _petals and pointer.hand == _rig.right_hand:
+			var off_tilt := XREPanels._tilt(pointer.hand.get_vector2(&"primary").y)
+			if off_tilt != 0.0:
+				pointer.hand.claim_stick(self)
+				pointer.fan_scroll -= off_tilt * XREPanels.SCROLL_SPEED * delta
+				var off_rows := int(pointer.fan_scroll)
+				if off_rows != 0:
+					pointer.fan_scroll -= off_rows
+					fan.scroll(off_rows)
+		return false
+	var hand := pointer.hand
+	var point := origin + direction * hit
+	hand.claim(self)
+	hand.claim_stick(self)
+	hand.show_ray(hit, true)
+	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
+	if _pending_hand == hand: _preview_connection(point)
+	elif _link_kind == XREBlueprintCanvas.SOURCE and _link_hand == hand: canvas.show_socket_link(_link_block, XREBlueprintCanvas.SOURCE, canvas.to_local(point))
+	elif not _member_link.is_empty() and _member_hand == hand: canvas.show_link(canvas.to_local(_member_link["anchor_global"]), canvas.to_local(point))
+	var tilt := XREPanels._tilt(hand.get_vector2(&"primary").y)
+	if tilt != 0.0:
+		pointer.fan_scroll -= tilt * XREPanels.SCROLL_SPEED * delta
+		var rows := int(pointer.fan_scroll)
+		if rows != 0:
+			pointer.fan_scroll -= rows
+			fan.scroll(rows)
+	if hand.trigger_pressed:
+		pointer.fan = fan
+		pointer.fan_item = fan.get_hit()
+		pointer.fan_height = fan.plane_height(origin, direction)
+		pointer.fan_rows = 0
+		pointer.fan_dragged = false
+	return true
+
+
+## The ray on a member's petal on its stem (D-057): it grows and says what the
+## trigger does, which opens the object's petals to pick another member — as the
+## member's name on the card does. Picked analytically, nearer than [param limit].
+func _point_at_stem(pointer: Pointer, origin: Vector3, direction: Vector3, limit: float) -> bool:
+	var hit := stem_at(origin, direction, limit)
+	if hit == null: return false
+	var hand := pointer.hand
+	hit.hot = true
+	hand.claim(self)
+	hand.show_ray(origin.distance_to(hit.label.global_position), true)
+	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
+	canvas.hover_socket(-1, -1, hand == _rig.right_hand)
+	if _token_editor.mode in [&"", XREBlueprintTokenEditor.HINT]:
+		var pose := hit.label.global_transform.orthonormalized()
+		_token_editor.show_hint(Transform3D(pose.basis, pose.origin + pose.basis.y * XREBlueprintPetals.PILL_HEIGHT * 0.5 * hit.label.global_basis.get_scale().y), MEMBER_HINT)
+		_hint_frame = Engine.get_process_frames()
+	if hand.trigger_pressed: _open_member_petals(hit.id, hand)
+	return true
+
+
+## The Target wire whose member's petal the ray from [param origin] along
+## [param direction] meets nearer than [param limit], or null.
+func stem_at(origin: Vector3, direction: Vector3, limit: float) -> TargetWire:
+	var found: TargetWire = null
+	var nearest := limit
+	for wire: TargetWire in _target_wires:
+		if wire.label == null or not wire.label.visible: continue
+		var inverse := wire.label.global_transform.affine_inverse()
+		var local_origin := inverse * origin
+		var local_direction := inverse.basis * direction
+		if absf(local_direction.z) < 0.000001: continue
+		var along := -local_origin.z / local_direction.z
+		if along < 0.0: continue
+		var point := local_origin + local_direction * along
+		if absf(point.x) > wire.width * 0.5 + 0.004 or absf(point.y) > XREBlueprintPetals.PILL_HEIGHT * 0.5 + 0.004: continue
+		var distance := origin.distance_to(wire.label.global_transform * point)
+		if distance < nearest:
+			nearest = distance
+			found = wire
+	return found
+
+
+## A trigger held on petals: dragged up or down it scrolls the list, a row per
+## petal's step; let go without a drag it picks the petal it was pressed on.
+func _update_fan_press(pointer: Pointer) -> void:
+	var hand := pointer.hand
+	var fan := pointer.fan
+	var origin := hand.global_position
+	var direction := -hand.global_basis.z.normalized()
+	var height := fan.plane_height(origin, direction)
+	if not is_nan(height) and not is_nan(pointer.fan_height):
+		var rows := int(roundf((height - pointer.fan_height) / XREBlueprintPetals.STEP))
+		if absf(height - pointer.fan_height) > XREBlueprintPetals.STEP * 0.5: pointer.fan_dragged = true
+		if rows != pointer.fan_rows:
+			fan.scroll(rows - pointer.fan_rows)
+			pointer.fan_rows = rows
+	var hit := fan.intersect_ray(origin, direction, 5.0)
+	fan.hover_hit()
+	hand.show_ray(hit if hit >= 0 else 0.6, hit >= 0)
+	if hand.trigger_held and hand.get_has_tracking_data(): return
+	pointer.fan = null
+	if not pointer.fan_dragged and hand.get_has_tracking_data() and fan.is_open(): _choose_petal(fan, pointer.fan_item, hand)
+
+
+func _choose_petal(fan: XREBlueprintPetals, item: Dictionary, hand: XREHand) -> void:
+	if item.is_empty() or not item.get("enabled", true): return
+	if item.has("scroll"):
+		fan.scroll(int(item["scroll"]))
+		return
+	if fan == _choice:
+		_choice.close()
+		if not _new_variable.is_empty():
+			var variable := _new_variable
+			_new_variable = ""
+			if blueprint.perform(blueprint.set_variable.bind(variable, item["value"]), &"vr_graph"): _message("Variable %s: %s." % [variable, item["text"]])
+			else: _message(blueprint.last_error)
+		else: _create_member_block(str(item["choice"]))
+		return
+	if _petal_block >= 0:
+		var id := _petal_block
+		var block := blueprint.graph.find_node(id)
+		var key := XREBlueprintTokens.member_key(block)
+		var success: bool
+		if _petal_dynamic: success = _set_token(id, key, item["member"], "Wire Member")
+		else:
+			var node: Node = item["node"]
+			var anchor: Variant = null
+			if node is Node3D and node == _petals.get_object(): anchor = (node as Node3D).global_transform.affine_inverse() * _petals.get_anchor()
+			success = blueprint.perform(blueprint.set_target_member.bind(id, node, key if not str(item["member"]).is_empty() else "", item["member"], anchor, "Wire Member"), &"vr_graph")
+		if success:
+			cancel_connection()
+			_petals.close()
+			_message("%s · %s" % [XREBlueprintGraph.title(block), item["member"] if not str(item["member"]).is_empty() else item["text"]])
+		else: _message(blueprint.last_error)
+		return
+	# The selected object's petals: a wire from the member, to a card or into the graph (Create from scene).
+	var node := item["node"] as Node
+	var anchor_global := _petals.get_anchor()
+	_member_link = item.duplicate()
+	_member_link["anchor_global"] = anchor_global
+	_member_link["anchor"] = (node as Node3D).global_transform.affine_inverse() * anchor_global if node is Node3D and node == _petals.get_object() else null
+	_member_hand = hand
+	_message("Point into the graph and press trigger to add the block, or at a card's Target.")
+
+
+## Opens the selected object's petals for Create from scene (D-052), or closes them.
+func _update_selection_fan() -> void:
+	if _petal_block >= 0 or _petal_dynamic or not _member_link.is_empty(): return
+	var selection := _document.get_selection()
+	var object := selection[0] as Node3D if selection.size() == 1 else null
+	if not _workspace.visible or object == null or _document.features.get_value(XREFeatureSettings.SCENE_CREATE) != XREFeatureSettings.ON or not blueprint.scene_context_active():
+		_petals.close()
+		return
+	var bounds := object.global_transform * XREPicker.get_local_bounds(object)
+	var head := _rig.camera.global_position
+	var toward := head - bounds.get_center()
+	toward.y = 0.0
+	var anchor := bounds.get_center() + (toward.normalized() * minf(bounds.size.x, bounds.size.z) * 0.5 if not toward.is_zero_approx() else Vector3.ZERO)
+	_petals.open(object, anchor, head, _rig.global_basis.y, _member_groups(object, "all", {}))
+
+
+## The wire from a petal over empty space: the trigger adds its block there, a
+## property first asks Get, Set or Tween.
+func _update_member_link(hand: XREHand, origin: Vector3, direction: Vector3) -> void:
+	hand.claim(self)
+	hand.show_ray(0.8, false)
+	var point := origin + direction * 0.8
+	canvas.show_link(canvas.to_local(_member_link["anchor_global"]), canvas.to_local(point))
+	if not hand.trigger_pressed: return
+	_choice_point = canvas.to_local(point)
+	if _member_link["kind"] == "property":
+		var items: Array[Dictionary] = []
+		for choice: Array in [["Get", "get_property"], ["Set", "set_property"], ["Tween", "tween"]]:
+			items.append({"text": choice[0] + " " + str(_member_link["member"]), "choice": choice[1], "enabled": true})
+		_choice.open(canvas, point, _rig.camera.global_position, _rig.global_basis.y, [{"header": "", "items": items}])
+		return
+	_create_member_block(str({"signal": "signal", "animation": "play_animation", "audio": "play_sound"}[_member_link["kind"]]))
+
+
+## Adds the block of kind or preset [param kind] for the member of the wire
+## from a petal, at the point it was let go, aimed at its object: one edit.
+func _create_member_block(kind: String) -> void:
+	var item := _member_link
+	if item.is_empty(): return
+	var block := XREBlueprintGraph.make_node(0, kind, Vector2.ZERO)
+	if block.is_empty(): return
+	var key := XREBlueprintTokens.member_key(block)
+	if not key.is_empty() and not str(item["member"]).is_empty(): block["params"][key] = item["member"]
+	if item.get("anchor") is Vector3: block["vr_anchor"] = item["anchor"]
+	block["vr_depth"] = _choice_point.z
+	var id: int = blueprint.perform(blueprint.insert_block.bind(block, canvas.block_position(_choice_point), {}, item["node"] as Node, "Create From Scene"), &"vr_graph")
+	cancel_connection()
+	if id < 0:
+		_message(blueprint.last_error)
+		return
+	select_block(id, false)
+	_message("Added %s for %s." % [XREBlueprintGraph.title(blueprint.graph.find_node(id)), item["text"]])
+
+
+## The wire from a petal let go on card [param id]: the card takes its object and member.
+func _connect_member_link(id: int) -> void:
+	var item := _member_link
+	var block := blueprint.graph.find_node(id)
+	var role := _member_role(block)
+	var fits := role == str(item["kind"]) or (role == "" and XREBlueprintGraph.has_target(block))
+	if not fits:
+		_message("This card can't use a %s." % item["kind"])
+		return
+	var key := XREBlueprintTokens.member_key(block)
+	if blueprint.perform(blueprint.set_target_member.bind(id, item["node"], key if not str(item["member"]).is_empty() else "", item["member"], item.get("anchor"), "Wire Member"), &"vr_graph"):
+		cancel_connection()
+		_message("%s · %s" % [XREBlueprintGraph.title(block), item["text"]])
+	else: _message(blueprint.last_error)

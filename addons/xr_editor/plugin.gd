@@ -83,6 +83,8 @@ func _enter_tree() -> void:
 		add_child((load(_TEST_INSPECTOR) as GDScript).new(document) as Node)
 	if "--xre-test-blueprint-vr" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://scripts/test_blueprint_vr.gd"):
 		add_child((load("res://scripts/test_blueprint_vr.gd") as GDScript).new(document) as Node)
+	if "--xre-shot-blueprint-vr" in OS.get_cmdline_user_args() and ResourceLoader.exists("res://scripts/shot_blueprint_vr.gd"):
+		add_child((load("res://scripts/shot_blueprint_vr.gd") as GDScript).new(document) as Node)
 
 
 ## The VR tools, under [param rig]: they draw in the headset.

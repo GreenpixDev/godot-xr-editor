@@ -39,6 +39,10 @@ height="28" rx="6"/><path d="M54 48C70 48 58 80 74 80"/></g>"""],
 	# Adding a block to the graph: a plus in the Blueprints' colors (D-044).
 	&"add_block": ["#4fd0e8", "#1f8fb5", """<path d="M64 34V94M34 64H94" stroke="#fff" stroke-width="10"
 stroke-linecap="round"/>"""],
+	# Ready values for a block's sockets (D-052): tokens in a tray.
+	&"tokens": ["#4fd0e8", "#1f8fb5", """<g fill="none" stroke="#fff" stroke-width="8"><rect x="22" y="30" width="38" height="24" rx="12"/>
+<rect x="68" y="30" width="38" height="24" rx="12"/><rect x="22" y="74" width="38" height="24" rx="12"/></g>
+<rect x="68" y="74" width="38" height="24" rx="12" fill="#fff"/>"""],
 	&"settings": ["#9aa3b2", "#5c6472", """<g fill="none" stroke="#fff" stroke-linecap="round">
 <circle cx="64" cy="64" r="24" stroke-width="8"/><circle cx="64" cy="64" r="8" stroke-width="7"/>
 <path stroke-width="11" d="M92 64H100M36 64H28M64 36V28M64 92V100M83.8 44.2L89.5 38.5M44.2 83.8L38.5 89.5

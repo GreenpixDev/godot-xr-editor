@@ -14,8 +14,11 @@ var _scene_refresh_pending := false
 func _enter_tree() -> void:
 	_document = XREBlueprintDocument.retain_editor_shared()
 	_view = XREBlueprintEditor.new()
+	_view.selected_nodes_provider = func() -> Array: return EditorInterface.get_selection().get_selected_nodes()
 	EditorInterface.get_editor_main_screen().add_child(_view)
 	_view.setup(_document)
+	EditorInterface.get_selection().selection_changed.connect(_view.refresh_menu)
+	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_scripts_changed)
 	_document.update_active_scene(EditorInterface.get_edited_scene_root())
 	scene_changed.connect(_scene_changed)
 	get_tree().tree_changed.connect(_schedule_scene_refresh)
@@ -39,7 +42,7 @@ func _enter_tree() -> void:
 		_document.clear_recovery()
 		_pending.call())
 	_view.add_child(_discard)
-	_view.show_status("Double-click a block to add it. Save → Build .gd → select a scene node → Attach to selected.")
+	_view.show_status("Add a block from the menu, or let a wire go on empty canvas. Save → Build .gd → select a scene node → Attach to selected.")
 	if _document.recover():
 		_view.show_status("Recovered an unnamed Blueprint. Use Save to choose its project file.")
 	if OS.get_cmdline_user_args().has("--xre-test-blueprint-editor"):
@@ -47,6 +50,10 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_view) and EditorInterface.get_selection().selection_changed.is_connected(_view.refresh_menu):
+		EditorInterface.get_selection().selection_changed.disconnect(_view.refresh_menu)
+	if EditorInterface.get_resource_filesystem().filesystem_changed.is_connected(_scripts_changed):
+		EditorInterface.get_resource_filesystem().filesystem_changed.disconnect(_scripts_changed)
 	if scene_changed.is_connected(_scene_changed): scene_changed.disconnect(_scene_changed)
 	if get_tree().tree_changed.is_connected(_schedule_scene_refresh): get_tree().tree_changed.disconnect(_schedule_scene_refresh)
 	if is_instance_valid(_view):
@@ -57,6 +64,12 @@ func _exit_tree() -> void:
 
 func _scene_changed(root: Node) -> void:
 	_document.update_active_scene(root)
+
+
+## Edited scripts may have new methods, static functions or tags for the add-block menu.
+func _scripts_changed() -> void:
+	XREBlueprintActions.shared().invalidate_scripts()
+	if is_instance_valid(_view): _view.refresh_menu()
 
 
 func _open_graph_scene() -> void:

@@ -169,7 +169,7 @@ func set_curve_radius(radius: float) -> void:
 
 func _process(delta: float) -> void:
 	super(delta)
-	_bar.set_shown(Time.get_ticks_usec() - _hovered_usec < BAR_LINGER_USEC or _bar.is_pressed())
+	_bar.set_shown(tab.has_control_bar() and (Time.get_ticks_usec() - _hovered_usec < BAR_LINGER_USEC or _bar.is_pressed()))
 
 
 ## A round icon button of the control bar, lit while the ray is on it.

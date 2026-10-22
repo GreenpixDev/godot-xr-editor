@@ -115,6 +115,14 @@ func is_dirty() -> bool:
 	return graph.snapshot() != _saved_state
 
 
+## Takes the graph as it is now for saved, its history starting here: a new
+## graph opened for a selected object in the headset is written only once it
+## is changed (D-063).
+func mark_saved() -> void:
+	history.clear_history()
+	_saved_state = graph.snapshot()
+
+
 ## Saves the source even when it is incomplete. Compilation is a separate operation.
 func save_graph(file_path: String) -> bool:
 	if not file_path.begins_with("res://") or file_path.get_extension() != "tres":
@@ -203,20 +211,134 @@ func build() -> bool:
 	return true
 
 
-## Adds one block through undo history.
+## Adds one block of a native kind or a preset ([constant XREBlueprintGraph.PRESETS]) through undo history.
 func add_block(kind: String, position: Vector2) -> void:
-	if not XREBlueprintGraph.BLOCKS.has(kind):
+	var block := XREBlueprintGraph.make_node(0, kind, position)
+	if block.is_empty():
 		return
-	var state := graph.snapshot()
+	insert_block(block, position)
+
+
+## The ID a new block gets.
+func next_id() -> int:
 	var id := 1
 	for block: Dictionary in graph.nodes:
 		id = maxi(id, block["id"] + 1)
-	var block := XREBlueprintGraph.make_node(id, kind, position)
-	if kind in ["get_variable", "set_variable"] and not graph.variables.is_empty():
-		block["params"]["variable"] = graph.variables[0]["name"]
-		if kind == "set_variable": block["params"]["value"] = graph.variables[0]["value"]
-	(state["nodes"] as Array).append(block)
-	commit("Add Block", state)
+	return id
+
+
+## Adds [param block] (a native block or a call, [XREBlueprintActions]) at
+## [param position] and, with [param wire], connects it as one undo step:
+## [code]{"from": id, "from_port": port}[/code] wires that output to the new
+## block's first compatible input, [code]{"to": id, "to_port": port}[/code]
+## its first compatible output to that input. A [param target] node of the
+## scene becomes its Target and is followed through renames. Returns the new
+## block's ID, or -1 if the edit was refused.
+func insert_block(block: Dictionary, position: Vector2, wire: Dictionary = {}, target: Node = null, title: String = "Add Block") -> int:
+	var state := graph.snapshot()
+	var id := next_id()
+	var added := block.duplicate(true)
+	added["id"] = id
+	added["position"] = position
+	# A variable block without its variable takes the first one.
+	if added["kind"] in ["get_variable", "set_variable"] and str((added["params"] as Dictionary).get("variable", "")).is_empty() and not graph.variables.is_empty():
+		added["params"]["variable"] = graph.variables[0]["name"]
+		if added["kind"] == "set_variable": added["params"]["value"] = graph.variables[0].get("value", XREBlueprintSchema.default_value(XREBlueprintGraph.variable_type(graph.variables[0])))
+	var host := get_host()
+	if target != null and host != null and XREBlueprintGraph.has_target(added):
+		added["params"]["target"] = str(host.get_path_to(target))
+	_reflect(added, host, true)
+	(state["nodes"] as Array).append(added)
+	if not wire.is_empty():
+		var edge := connection_for(state, added, wire)
+		if edge.is_empty(): return _fail_id("The new block has no free port for this wire.")
+		(state["edges"] as Array).append(edge)
+	if not commit(title, state): return -1
+	if target != null and target != host and host != null and XREBlueprintGraph.has_target(added):
+		_targets[id] = weakref(target)
+		_bound_paths[id] = str(host.get_path_to(target))
+	return id
+
+
+## The wire that joins [param block], a block of [param state], to the port
+## [param wire] names ([method insert_block]): the first of its inputs or
+## outputs that is free and of a compatible type; empty if none is. An object
+## prefers the Target, any type the same type.
+func connection_for(state: Dictionary, block: Dictionary, wire: Dictionary) -> Dictionary:
+	var candidate := XREBlueprintGraph.new()
+	candidate.restore(state)
+	var other := candidate.find_node(int(wire.get("from", wire.get("to", -1))))
+	if other.is_empty() or candidate.find_node(block["id"]).is_empty():
+		return {}
+	var output := wire.has("from")
+	var port: int = wire.get("from_port", wire.get("to_port", -1))
+	var others := candidate.ports(other, not output)
+	if port < 0 or port >= others.size(): return {}
+	var type: int = others[port][1]
+	var mine := candidate.ports(block, output)
+	var best := -1
+	for index: int in mine.size():
+		var spec: Array = mine[index]
+		var fits := XREBlueprintGraph.ports_compatible(type, spec[1]) if output else XREBlueprintGraph.ports_compatible(spec[1], type)
+		if not fits: continue
+		var edge := {"from": other["id"], "from_port": port, "to": block["id"], "to_port": index} if output else {"from": block["id"], "from_port": index, "to": other["id"], "to_port": port}
+		if _occupied(candidate, edge, type): continue
+		var exact: bool = spec[1] == type and (type != XREBlueprintGraph.OBJECT or not output or index == XREBlueprintGraph.target_port(block))
+		if exact: return edge
+		if best < 0: best = index
+	if best < 0: return {}
+	return {"from": other["id"], "from_port": port, "to": block["id"], "to_port": best} if output else {"from": block["id"], "from_port": best, "to": other["id"], "to_port": port}
+
+
+## Whether [param edge] would take an end that holds one wire only: an execution output or a data input.
+static func _occupied(candidate: XREBlueprintGraph, edge: Dictionary, type: int) -> bool:
+	for existing: Dictionary in candidate.edges:
+		if type == XREBlueprintGraph.EXEC and existing["from"] == edge["from"] and existing["from_port"] == edge["from_port"]: return true
+		if type != XREBlueprintGraph.EXEC and existing["to"] == edge["to"] and existing["to_port"] == edge["to_port"]: return true
+	return false
+
+
+## Shows or hides the advanced arguments of call block [param id]; they can't hide while wired.
+func set_advanced_shown(id: int, shown: bool) -> bool:
+	var block := graph.find_node(id)
+	if block.is_empty() or block["kind"] != "call": return false
+	var state := graph.snapshot()
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] == id: entry["function"]["advanced_shown"] = shown
+	if not shown:
+		var first := graph.ports(block, true).size() - _advanced_count(block)
+		for edge: Dictionary in graph.edges:
+			if edge["to"] == id and edge["to_port"] >= first: return _fail("Disconnect the advanced arguments first.")
+	return commit("Show Advanced" if shown else "Hide Advanced", state)
+
+
+## Sets how many extra arguments vararg call block [param id] takes; a wired one can't be removed.
+func set_extra_arguments(id: int, count: int) -> bool:
+	var block := graph.find_node(id)
+	if block.is_empty() or block["kind"] != "call" or not (block["function"] as Dictionary).get("vararg", false): return false
+	var current := int((block["function"] as Dictionary).get("extra", 0))
+	if count < 0 or count > XREBlueprintFunctions.MAX_EXTRA: return _fail("A call takes at most %d extra arguments." % XREBlueprintFunctions.MAX_EXTRA)
+	var state := graph.snapshot()
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] != id: continue
+		entry["function"]["extra"] = count
+		for index: int in range(current, count): entry["params"][XREBlueprintFunctions.extra_key(index)] = ""
+		for index: int in range(count, current):
+			var port := graph.input_port(block, XREBlueprintFunctions.extra_key(index))
+			for edge: Dictionary in graph.edges:
+				if edge["to"] == id and edge["to_port"] == port: return _fail("Disconnect the argument first.")
+			(entry["params"] as Dictionary).erase(XREBlueprintFunctions.extra_key(index))
+	return commit("Set Arguments", state)
+
+
+## How many ports a call block's shown advanced arguments add after its other inputs.
+static func _advanced_count(block: Dictionary) -> int:
+	var count := 0
+	var function: Dictionary = block["function"]
+	if not function.get("advanced_shown", false): return 0
+	for argument: Dictionary in function["args"]:
+		if argument.get("advanced", false) and not argument.get("literal", false) and not argument.get("fixed", false) and not argument.get("run", false): count += 1
+	return count
 
 
 ## Removes blocks and every incident connection as one operation.
@@ -247,11 +369,11 @@ func set_parameter(id: int, key: String, value: Variant) -> bool:
 	for block: Dictionary in state["nodes"]:
 		if block["id"] == id:
 			block["params"][key] = value
-			if key in ["target", "property", "signal"]:
+			if key in ["target", "property", "signal"] or key in _provider_keys(block):
 				_reflect(block, get_host(), true)
 			if key == "variable" and block["kind"] == "set_variable":
 				var variable := graph.find_variable(str(value))
-				if not variable.is_empty(): block["params"]["value"] = variable["value"]
+				if not variable.is_empty(): block["params"]["value"] = variable.get("value", XREBlueprintSchema.default_value(XREBlueprintGraph.variable_type(variable)))
 	return commit("Set %s" % key.capitalize(), state)
 
 
@@ -296,7 +418,8 @@ func _binding_snapshot(state: Dictionary) -> Dictionary:
 	for block: Dictionary in state["nodes"]:
 		var params: Dictionary = block["params"]
 		if not params.has("target"): continue
-		if str(params["target"]).strip_edges().is_empty(): continue
+		# "." is the host itself, whichever node hosts the script, as On Ready's is.
+		if str(params["target"]).strip_edges().is_empty() or params["target"] == ".": continue
 		var target := host.get_node_or_null(NodePath(params["target"]))
 		if target != null and (target == root or root.is_ancestor_of(target)): result[block["id"]] = weakref(target)
 	return result
@@ -442,7 +565,8 @@ func _select_graph_context(previous_root: Node) -> void:
 
 ## Scene nodes available to the host/target picker, in tree order.
 func scene_nodes() -> Array[Node]:
-	return _nodes_under(_owning_scene()) if scene_context_active() else []
+	if not scene_context_active(): return []
+	return _nodes_under(_owning_scene())
 
 
 func _nodes_under(root: Node) -> Array[Node]:
@@ -491,16 +615,45 @@ func set_host_node(node: Node) -> bool:
 	return true
 
 
+## Points block [param id] at scene node [param node] and sets its member
+## [param key] — a property, signal or animation — to [param member], as one
+## edit called [param title] (D-052): the wire from the Target to a petal of
+## the member. An empty key leaves the members as they are. [param anchor],
+## in [param node]'s space, is where the wire ends on it, for the headset.
+func set_target_member(id: int, node: Node, key: String, member: String, anchor: Variant = null, title: String = "Wire Member") -> bool:
+	var host := get_host()
+	if host == null: return _fail("Choose the script host first.")
+	if not scene_nodes().has(node): return _fail("The target is outside the edited scene.")
+	var block := graph.find_node(id)
+	if block.is_empty() or not XREBlueprintGraph.has_target(block): return _fail("This block has no target.")
+	var problem := XREBlueprintSchema.target_kind_problem(block, node)
+	if not problem.is_empty(): return _fail(problem)
+	var state := graph.snapshot()
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] != id: continue
+		entry["params"]["target"] = str(host.get_path_to(node))
+		if not key.is_empty(): entry["params"][key] = member
+		if anchor is Vector3: entry["vr_anchor"] = anchor
+		else: entry.erase("vr_anchor")
+		_reflect(entry, host, true)
+	if not commit(title, state): return false
+	if node != host:
+		_targets[id] = weakref(node)
+		_bound_paths[id] = str(host.get_path_to(node))
+	return true
+
+
 ## Selects a target from the scene tree. No edited scene node is mutated.
 func choose_target(id: int, node: Node) -> bool:
 	var host := get_host()
 	if host == null: return _fail("Choose the script host first.")
 	if not scene_nodes().has(node): return _fail("The target is outside the edited scene.")
-	var problem := XREBlueprintSchema.target_kind_problem(graph.find_node(id)["kind"], node)
+	var problem := XREBlueprintSchema.target_kind_problem(graph.find_node(id), node)
 	if not problem.is_empty(): return _fail(problem)
 	if not set_parameter(id, "target", str(host.get_path_to(node))): return false
-	_targets[id] = weakref(node)
-	_bound_paths[id] = str(host.get_path_to(node))
+	if node != host:
+		_targets[id] = weakref(node)
+		_bound_paths[id] = str(host.get_path_to(node))
 	return true
 
 
@@ -517,6 +670,11 @@ func refresh_bindings() -> void:
 		var params: Dictionary = block["params"]
 		if not params.has("target"): continue
 		if str(params["target"]).strip_edges().is_empty(): continue
+		if params["target"] == ".":
+			_targets.erase(block["id"])
+			_bound_paths.erase(block["id"])
+			_reflect(block, host)
+			continue
 		var ref: WeakRef = _targets.get(block["id"])
 		var target := ref.get_ref() as Node if ref != null else null
 		if target != null and _bound_paths.get(block["id"]) == params["target"] and (target == root or root.is_ancestor_of(target)):
@@ -584,8 +742,12 @@ func target_problem(id: int, target_path: String) -> String:
 	var block := graph.find_node(id)
 	if block.is_empty(): return "missing target"
 	if not scene_context_active(): return scene_context_message()
-	var problem := XREBlueprintSchema.target_problem(block, resolve_target(target_path))
+	if target_path.begins_with("/root/"): return _autoload_problem(block, target_path)
+	var target := resolve_target(target_path)
+	var problem := XREBlueprintSchema.target_problem(block, target)
 	if not problem.is_empty(): return problem
+	if block["kind"] == "signal" and (block["params"] as Dictionary).get("signal") == "ready" and target != get_host() and get_host().is_ancestor_of(target):
+		return "a child is ready before its host: give the child its own graph"
 	var candidate: Dictionary = block.duplicate(true)
 	candidate["params"]["target"] = target_path
 	_reflect(candidate, get_host(), true)
@@ -628,9 +790,30 @@ func set_variable(name: String, value: Variant) -> bool:
 	for variable: Dictionary in state["variables"]:
 		if variable["name"] == name:
 			variable["value"] = value
+			variable.erase("type")
 			found = true
 	if not found: (state["variables"] as Array).append({"name": name, "value": value})
 	return commit("Set Variable Default", state)
+
+
+## Takes the start value out of variable [param name], keeping its type
+## (D-054): the box is empty, and the build reports it until a value is back.
+func clear_variable_value(name: String) -> bool:
+	var state := graph.snapshot()
+	for variable: Dictionary in state["variables"]:
+		if variable["name"] == name and variable.has("value"):
+			variable["type"] = typeof(variable["value"])
+			variable.erase("value")
+	return commit("Take Token Out", state)
+
+
+## Takes the literal of parameter [param key] out of block [param id]: its
+## socket is empty, and the build reports it until a token or a wire is back (D-054).
+func clear_parameter(id: int, key: String) -> bool:
+	var state := graph.snapshot()
+	for block: Dictionary in state["nodes"]:
+		if block["id"] == id: (block["params"] as Dictionary).erase(key)
+	return commit("Take Token Out", state)
 
 
 ## Removes an unused variable; references must be removed first.
@@ -649,16 +832,62 @@ func _reflect(block: Dictionary, host: Node, adjust_default: bool = false) -> vo
 	var root := _root_ref.get_ref() as Node if _root_ref != null else null
 	if target == null or root == null or not (target == root or root.is_ancestor_of(target)): return
 	if block["kind"] == "signal" and target.has_signal(params["signal"]): block["arguments"] = XREBlueprintSchema.signal_arguments(target, params["signal"])
-	if params.has("property"):
-		var info := XREBlueprintSchema.property_info(target, params["property"])
-		if info.is_empty(): return
-		block["property_type"] = int(info["type"])
-		if adjust_default and params.has("value") and not XREBlueprintSchema.accepts(info["type"], typeof(params["value"])) and XREBlueprintGraph.is_literal(info["value"]): params["value"] = info["value"]
+	var property_key := "property" if block["kind"] in ["get_property", "set_property"] else _property_key(block)
+	if property_key.is_empty() or not params.has(property_key): return
+	var info := XREBlueprintSchema.property_info(target, params[property_key])
+	if info.is_empty(): return
+	block["property_type"] = int(info["type"])
+	var value_key := "value" if block["kind"] in ["get_property", "set_property"] else _typed_key(block, property_key)
+	if adjust_default and params.has(value_key) and not XREBlueprintSchema.accepts(info["type"], typeof(params[value_key])) and XREBlueprintGraph.is_literal(info["value"]): params[value_key] = info["value"]
+
+
+## Keys of a call's arguments whose names come from its target ([XREBlueprintFunctions]).
+static func _provider_keys(block: Dictionary) -> Array[String]:
+	var keys: Array[String] = []
+	if block.get("kind") != "call": return keys
+	for argument: Dictionary in (block["function"] as Dictionary)["args"]:
+		if not str(argument.get("provider", "")).is_empty(): keys.append(str(argument["key"]))
+	return keys
+
+
+## The key of a call's property argument, empty for none.
+static func _property_key(block: Dictionary) -> String:
+	if block.get("kind") != "call": return ""
+	for argument: Dictionary in (block["function"] as Dictionary)["args"]:
+		if argument.get("provider", "") == "property": return str(argument["key"])
+	return ""
+
+
+## The key of the argument whose port takes the type of property argument [param property_key].
+static func _typed_key(block: Dictionary, property_key: String) -> String:
+	for argument: Dictionary in (block["function"] as Dictionary)["args"]:
+		if argument.get("type_of", "") == property_key: return str(argument["key"])
+	return ""
+
+
+## Target of an autoload, [code]/root/Name[/code]: the autoload exists and, for a method, has it.
+func _autoload_problem(block: Dictionary, target_path: String) -> String:
+	var autoload := target_path.trim_prefix("/root/")
+	if not ProjectSettings.has_setting("autoload/" + autoload): return "missing target"
+	if block["kind"] != "call" or block["function"]["scope"] != "method": return ""
+	var script := load(str(ProjectSettings.get_setting("autoload/" + autoload)).trim_prefix("*")) as Script
+	var method := str(block["function"]["name"])
+	if script != null:
+		for info: Dictionary in script.get_script_method_list():
+			if str(info["name"]) == method: return ""
+	var base := str(block["function"]["class"])
+	if ClassDB.class_exists(base) and ClassDB.class_has_method(base, method): return ""
+	return "missing method: " + method
 
 
 func _fail(message: String) -> bool:
 	last_error = message
 	return false
+
+
+func _fail_id(message: String) -> int:
+	last_error = message
+	return -1
 
 
 func _record(operation: StringName) -> void:

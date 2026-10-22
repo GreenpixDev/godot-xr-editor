@@ -78,6 +78,12 @@ static func theme_icon(theme: Theme, icon_name: StringName) -> Texture2D:
 	return null
 
 
+## Whether the tab's window shows the Control Bar under it when the ray is on
+## it: its icon, its pin and its ×. A window of an input has its own × (D-062).
+func has_control_bar() -> bool:
+	return true
+
+
 ## Whether the tab waits for a controller button to be pressed
 ## ([constant XREFeatureSettings.BUTTONS]). [XREPanels] then gives it the next
 ## one ([method take_button]), and no tool acts on that press.

@@ -3,78 +3,60 @@ extends Node
 
 var _bp_var_requested_open: bool = false
 
-# Runtime helpers are copied into generated scripts; the game needs no addon.
+# Runtime helpers are copied into generated scripts. Runs and the block library
+# come from addons/blueprints/ (XREBlueprintRun, XREBlueprintLibrary, D-051).
 signal blueprint_error(block_id: int, message: String)
 
-class _BPRun extends RefCounted:
-	var event_id: int
-	var args: Array = []
-	var active := true
-	var tweens: Array[Tween] = []
-	var players: Array[AnimationPlayer] = []
-
-var _bp_runs: Array[_BPRun] = []
-var _bp_animation_owners: Dictionary = {}
+var _bp_runs: Array[XREBlueprintRun] = []
 
 
 func _exit_tree() -> void:
-	for run: _BPRun in _bp_runs:
-		_bp_cancel(run)
+	for run: XREBlueprintRun in _bp_runs:
+		run.cancel()
 	_bp_runs.clear()
-	_bp_animation_owners.clear()
 
 
-func _bp_start(event_id: int, args: Array, policy: String) -> _BPRun:
-	for previous: _BPRun in _bp_runs:
+func _bp_start(event_id: int, args: Array, policy: String) -> XREBlueprintRun:
+	for previous: XREBlueprintRun in _bp_runs:
 		if previous.active and previous.event_id == event_id:
 			if policy == "ignore":
 				return null
 			if policy == "restart":
-				_bp_cancel(previous)
-	var run := _BPRun.new()
+				previous.cancel()
+	var run := XREBlueprintRun.new()
 	run.event_id = event_id
 	run.args = args
+	run.host = self
 	_bp_runs.append(run)
 	return run
 
 
-func _bp_cancel(run: _BPRun) -> void:
-	run.active = false
-	for tween: Tween in run.tweens:
-		if tween.is_valid():
-			tween.kill()
-	for player: AnimationPlayer in run.players:
-		if is_instance_valid(player) and _bp_animation_owners.get(player.get_instance_id()) == run:
-			player.stop()
-			_bp_animation_owners.erase(player.get_instance_id())
-
-
-func _bp_end(run: _BPRun) -> void:
-	_bp_cancel(run)
+func _bp_end(run: XREBlueprintRun) -> void:
+	run.cancel()
 	_bp_runs.erase(run)
 
 
-func _bp_alive(run: _BPRun) -> bool:
+func _bp_alive(run: XREBlueprintRun) -> bool:
 	return run != null and run.active and is_inside_tree()
 
 
-func _bp_error(run: _BPRun, block_id: int, message: String) -> void:
+func _bp_error(run: XREBlueprintRun, block_id: int, message: String) -> void:
 	if run != null:
-		_bp_cancel(run)
+		run.cancel()
 	# An attached error handler can present or record the failure itself.
 	if not blueprint_error.has_connections():
 		push_error("Blueprints block #%d: %s" % [block_id, message])
 	blueprint_error.emit(block_id, message)
 
 
-func _bp_node(value: Variant, run: _BPRun, block_id: int) -> Node:
+func _bp_node(value: Variant, run: XREBlueprintRun, block_id: int) -> Node:
 	if not value is Object or not is_instance_valid(value) or not value is Node:
 		_bp_error(run, block_id, "Target is missing or is not a Node.")
 		return null
 	return value as Node
 
 
-func _bp_target(path: String, run: _BPRun, block_id: int) -> Node:
+func _bp_target(path: String, run: XREBlueprintRun, block_id: int) -> Node:
 	var target := get_node_or_null(NodePath(path))
 	if target == null:
 		_bp_error(run, block_id, "Missing node: " + path)
@@ -85,11 +67,47 @@ func _bp_accepts(expected: int, actual: int) -> bool:
 	return expected == TYPE_NIL or expected == actual or (expected == TYPE_FLOAT and actual == TYPE_INT) or (expected in [TYPE_STRING, TYPE_STRING_NAME] and actual in [TYPE_STRING, TYPE_STRING_NAME])
 
 
-func _bp_argument(run: _BPRun, event_id: int, index: int, block_id: int) -> Variant:
+func _bp_argument(run: XREBlueprintRun, event_id: int, index: int, block_id: int) -> Variant:
 	if run == null or run.event_id != event_id or index >= run.args.size():
 		_bp_error(run, block_id, "Signal argument is outside its event scope.")
 		return null
 	return run.args[index]
+
+
+# An argument of a call as its function's parameter type: text to a StringName or a NodePath, an integer to a float.
+func _bp_arg(value: Variant, type: int, cls: String, run: XREBlueprintRun, block_id: int) -> Variant:
+	if type == TYPE_NIL:
+		return value
+	if type == TYPE_OBJECT:
+		if value == null:
+			return null
+		if not value is Object or not is_instance_valid(value):
+			_bp_error(run, block_id, "Expected an object, got %s." % type_string(typeof(value)))
+			return null
+		if not cls.is_empty() and ClassDB.class_exists(cls) and not (value as Object).is_class(cls):
+			_bp_error(run, block_id, "Expected %s, got %s." % [cls, (value as Object).get_class()])
+			return null
+		return value
+	if type == TYPE_NODE_PATH and value is String:
+		return NodePath(value)
+	if type == TYPE_STRING_NAME and value is String:
+		return StringName(value)
+	if type == TYPE_STRING and value is StringName:
+		return String(value)
+	if not _bp_accepts(type, typeof(value)):
+		_bp_error(run, block_id, "Expected %s, got %s." % [type_string(type), type_string(typeof(value))])
+		return value
+	if type == TYPE_FLOAT and value is int:
+		return float(value)
+	return value
+
+
+# The result a call kept when it ran in this event's run.
+func _bp_result(run: XREBlueprintRun, block_id: int) -> Variant:
+	if run == null or not run.values.has(block_id):
+		_bp_error(run, block_id, "The result is read before the block has run.")
+		return null
+	return run.values[block_id]
 
 
 func _bp_equal(a: Variant, b: Variant) -> bool:
@@ -98,46 +116,17 @@ func _bp_equal(a: Variant, b: Variant) -> bool:
 	return a == b
 
 
-func _bp_check_value(value: Variant, expected: int, run: _BPRun, block_id: int) -> bool:
+func _bp_check_value(value: Variant, expected: int, run: XREBlueprintRun, block_id: int) -> bool:
 	if _bp_accepts(expected, typeof(value)):
 		return true
 	_bp_error(run, block_id, "Expected %s, got %s." % [type_string(expected), type_string(typeof(value))])
 	return false
 
 
-func _bp_property_info(object: Object, path: String) -> Dictionary:
-	var current: Variant = object
-	var info: Dictionary = {}
-	for part: String in path.split(":"):
-		info = {}
-		if current is Object and is_instance_valid(current):
-			for entry: Dictionary in (current as Object).get_property_list():
-				if str(entry["name"]) == part:
-					info = entry
-					break
-			if info.is_empty():
-				return {}
-			current = (current as Object).get(part)
-		elif current is Vector2 and part in ["x", "y"]:
-			current = (current as Vector2)[0 if part == "x" else 1]
-			info = {"type": TYPE_FLOAT}
-		elif current is Vector3 and part in ["x", "y", "z"]:
-			current = (current as Vector3)[["x", "y", "z"].find(part)]
-			info = {"type": TYPE_FLOAT}
-		elif current is Color and part in ["r", "g", "b", "a"]:
-			current = (current as Color)[["r", "g", "b", "a"].find(part)]
-			info = {"type": TYPE_FLOAT}
-		else:
-			return {}
-	info = info.duplicate()
-	info["value"] = current
-	return info
-
-
-func _bp_property(target: Node, property: String, expected: int, run: _BPRun, block_id: int) -> Dictionary:
+func _bp_property(target: Node, property: String, expected: int, run: XREBlueprintRun, block_id: int) -> Dictionary:
 	if target == null or not _bp_alive(run):
 		return {}
-	var info := _bp_property_info(target, property)
+	var info := XREBlueprintSchema.property_info(target, property)
 	if info.is_empty():
 		_bp_error(run, block_id, "Missing property: " + property)
 	elif expected != TYPE_NIL and not _bp_accepts(expected, info["type"]):
@@ -146,89 +135,18 @@ func _bp_property(target: Node, property: String, expected: int, run: _BPRun, bl
 	return info
 
 
-func _bp_read(target: Node, property: String, expected: int, run: _BPRun, block_id: int) -> Variant:
+func _bp_read(target: Node, property: String, expected: int, run: XREBlueprintRun, block_id: int) -> Variant:
 	var info := _bp_property(target, property, expected, run, block_id)
 	return info.get("value")
 
 
-func _bp_write(target: Node, property: String, value: Variant, expected: int, run: _BPRun, block_id: int) -> void:
+func _bp_write(target: Node, property: String, value: Variant, expected: int, run: XREBlueprintRun, block_id: int) -> void:
 	var info := _bp_property(target, property, expected, run, block_id)
 	if int(info.get("usage", 0)) & PROPERTY_USAGE_READ_ONLY:
 		_bp_error(run, block_id, "Property is read-only: " + property)
 		return
 	if not info.is_empty() and _bp_check_value(value, info["type"], run, block_id):
 		target.set_indexed(NodePath(property), value)
-
-
-func _bp_delay(run: _BPRun, seconds: float) -> void:
-	var timer := get_tree().create_timer(seconds)
-	while _bp_alive(run) and timer.time_left > 0.0:
-		await get_tree().process_frame
-
-
-func _bp_tween(target: Node, property: String, value: Variant, seconds: float, expected: int, run: _BPRun, block_id: int) -> void:
-	var info := _bp_property(target, property, expected, run, block_id)
-	if info.is_empty() or not _bp_check_value(value, info["type"], run, block_id):
-		return
-	if int(info.get("usage", 0)) & PROPERTY_USAGE_READ_ONLY:
-		_bp_error(run, block_id, "Property is read-only: " + property)
-		return
-	if not int(info["type"]) in [TYPE_INT, TYPE_FLOAT, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_COLOR]:
-		_bp_error(run, block_id, "This property cannot be tweened: " + property)
-		return
-	var tween := create_tween()
-	run.tweens.append(tween)
-	tween.tween_property(target, NodePath(property), value, seconds)
-	# A killed Tween never emits finished. Poll its lifetime and the run token.
-	while _bp_alive(run) and tween.is_valid():
-		if not is_instance_valid(target) or not target.is_inside_tree():
-			_bp_error(run, block_id, "Tween target left the scene.")
-			break
-		await get_tree().process_frame
-	run.tweens.erase(tween)
-	if tween.is_valid():
-		tween.kill()
-
-
-func _bp_animation(target: Node, animation: StringName, wait: bool, timeout: float, run: _BPRun, block_id: int) -> void:
-	var player := target as AnimationPlayer
-	if player == null or not player.has_animation(animation):
-		_bp_error(run, block_id, "AnimationPlayer or animation missing: " + animation)
-		return
-	if wait and player.get_animation(animation).loop_mode != Animation.LOOP_NONE:
-		_bp_error(run, block_id, "Cannot wait for a looping animation: " + animation)
-		return
-	var identity := player.get_instance_id()
-	if not wait:
-		_bp_animation_owners.erase(identity)
-		player.play(animation)
-		return
-	var finished: Array[bool] = [false]
-	var completed := func(name: StringName) -> void:
-		if name == animation:
-			finished[0] = true
-	player.animation_finished.connect(completed)
-	var player_slot := run.players.size()
-	run.players.append(player)
-	_bp_animation_owners[identity] = run
-	player.play(animation)
-	var deadline := Time.get_ticks_msec() + int(timeout * 1000.0)
-	while _bp_alive(run) and not finished[0]:
-		if not is_instance_valid(player) or not player.is_inside_tree():
-			_bp_error(run, block_id, "Animation target left the scene.")
-			break
-		if _bp_animation_owners.get(identity) != run or not player.is_playing() or player.current_animation != animation:
-			_bp_error(run, block_id, "Animation interrupted: " + animation)
-			break
-		if Time.get_ticks_msec() >= deadline:
-			_bp_error(run, block_id, "Animation wait timed out: " + animation)
-			break
-		await get_tree().process_frame
-	if is_instance_valid(player) and player.animation_finished.is_connected(completed):
-		player.animation_finished.disconnect(completed)
-	run.players.remove_at(player_slot)
-	if _bp_animation_owners.get(identity) == run:
-		_bp_animation_owners.erase(identity)
 
 
 func _bp_connect(path: String, signal_name: String, callback: Callable, argument_count: int, block_id: int) -> void:
@@ -242,7 +160,8 @@ func _bp_connect(path: String, signal_name: String, callback: Callable, argument
 				_bp_error(null, block_id, "Signal signature changed: " + signal_name)
 				return
 			var extra := arguments.size() - argument_count
-			target.connect(signal_name, callback.unbind(extra) if extra > 0 else callback)
+			# The engine emits ready right after _ready(), where this connects: On Ready runs once per _ready().
+			target.connect(signal_name, callback.unbind(extra) if extra > 0 else callback, CONNECT_ONE_SHOT if signal_name == "ready" else 0)
 			return
 	_bp_error(null, block_id, "Missing signal: " + signal_name)
 
@@ -256,83 +175,118 @@ func _bp_event1(arg0: Variant) -> void:
 	var run := _bp_start(1, [arg0], "restart")
 	if run == null:
 		return
-	await _bp_n1(run)
+	await _bp_execute(1, run)
 	_bp_end(run)
 
 
 # On Signal #1
-func _bp_n1(run: _BPRun) -> void:
+func _bp_n1(run: XREBlueprintRun) -> int:
 	if not _bp_alive(run):
-		return
-	await _bp_n2(run)
+		return -1
+	return 2
 
 
 # Set Variable #2
-func _bp_n2(run: _BPRun) -> void:
+func _bp_n2(run: XREBlueprintRun) -> int:
 	if not _bp_alive(run):
-		return
+		return -1
 	var value: Variant = _bp_argument(run, 1, 0, 2)
 	if not _bp_alive(run) or not _bp_check_value(value, 1, run, 2):
-		return
+		return -1
 	_bp_var_requested_open = value
-	await _bp_n3(run)
+	return 3
 
 
 # Branch #3
-func _bp_n3(run: _BPRun) -> void:
+func _bp_n3(run: XREBlueprintRun) -> int:
 	if not _bp_alive(run):
-		return
+		return -1
 	var condition: Variant = _bp_value4(run)
 	if not _bp_alive(run) or not _bp_check_value(condition, TYPE_BOOL, run, 3):
-		return
+		return -1
 	if condition:
-		await _bp_n5(run)
+		return 5
 	else:
-		await _bp_n7(run)
+		return 7
 
 
 # Get Variable #4
-func _bp_value4(run: _BPRun = null) -> Variant:
+func _bp_value4(run: XREBlueprintRun = null) -> Variant:
 	return _bp_var_requested_open
 
 
 # Play Animation #5
-func _bp_n5(run: _BPRun) -> void:
+func _bp_n5(run: XREBlueprintRun) -> int:
 	if not _bp_alive(run):
-		return
+		return -1
 	var target := _bp_target("AnimationPlayer", run, 5)
+	if target == null:
+		return -1
+	var a0: Variant = _bp_arg(&"open", 21, "", run, 5)
+	var a1: Variant = _bp_arg(true, 1, "", run, 5)
+	var a2: Variant = _bp_arg(5.0, 3, "", run, 5)
 	if not _bp_alive(run):
-		return
-	await _bp_animation(target, "open", true, 5.0, run, 5)
-	await _bp_n6(run)
+		return -1
+	run.block = 5
+	await XREBlueprintLibrary.play_animation(target, a0, a1, a2, run)
+	if not _bp_alive(run):
+		return -1
+	return 6
 
 
 # Set Property #6
-func _bp_n6(run: _BPRun) -> void:
+func _bp_n6(run: XREBlueprintRun) -> int:
 	if not _bp_alive(run):
-		return
+		return -1
 	var target := _bp_target("Status", run, 6)
 	var value: Variant = "OPEN"
 	_bp_write(target, "text", value, 4, run, 6)
-	pass
+	return -1
 
 
 # Play Animation #7
-func _bp_n7(run: _BPRun) -> void:
+func _bp_n7(run: XREBlueprintRun) -> int:
 	if not _bp_alive(run):
-		return
+		return -1
 	var target := _bp_target("AnimationPlayer", run, 7)
+	if target == null:
+		return -1
+	var a0: Variant = _bp_arg(&"close", 21, "", run, 7)
+	var a1: Variant = _bp_arg(true, 1, "", run, 7)
+	var a2: Variant = _bp_arg(5.0, 3, "", run, 7)
 	if not _bp_alive(run):
-		return
-	await _bp_animation(target, "close", true, 5.0, run, 7)
-	await _bp_n8(run)
+		return -1
+	run.block = 7
+	await XREBlueprintLibrary.play_animation(target, a0, a1, a2, run)
+	if not _bp_alive(run):
+		return -1
+	return 8
 
 
 # Set Property #8
-func _bp_n8(run: _BPRun) -> void:
+func _bp_n8(run: XREBlueprintRun) -> int:
 	if not _bp_alive(run):
-		return
+		return -1
 	var target := _bp_target("Status", run, 8)
 	var value: Variant = "CLOSED"
 	_bp_write(target, "text", value, 4, run, 8)
-	pass
+	return -1
+
+
+# Iterative execution permits back edges without recursive call-stack growth.
+func _bp_execute(block_id: int, run: XREBlueprintRun) -> void:
+	var steps := 0
+	while block_id >= 0 and _bp_alive(run):
+		match block_id:
+			1: block_id = await _bp_n1(run)
+			2: block_id = await _bp_n2(run)
+			3: block_id = await _bp_n3(run)
+			5: block_id = await _bp_n5(run)
+			6: block_id = await _bp_n6(run)
+			7: block_id = await _bp_n7(run)
+			8: block_id = await _bp_n8(run)
+			_: return
+		steps += 1
+		if steps >= 64 and block_id >= 0 and _bp_alive(run):
+			steps = 0
+			await get_tree().process_frame

@@ -48,6 +48,50 @@ const WINDOW_SHAPE := &"window_shape"
 ## Bent around the user: the edges come nearer, as the launcher's do.
 const CONCAVE := &"concave"
 
+## Parameters of logic graph blocks as objects of the graph (D-052): each of the
+## four settings takes one kind of parameter out of the parameters window.
+## Literal values — durations, conditions, values, an event's policy, wait.
+const VALUE_INPUT := &"value_input"
+## In the block's parameters window, as before.
+const WINDOW := &"window"
+## Tokens: pucks lying in slots on the card's rows.
+const PUCKS := &"pucks"
+## Tokens: plugs in the ports, sticking out to the left of the card.
+const PLUGS := &"plugs"
+## The target object and its member — a property, a signal, an animation.
+## Every value but Window wires the Target to the object in the scene; they
+## differ in where the member's name shows (D-057).
+const TARGET_INPUT := &"target_input"
+## The member's name on the card, after Target or Source; the wire ends at the object.
+const ON_NODE := &"node"
+## The member's name only on a petal on a stem from the object, where the wire ends.
+const SCENE := &"scene"
+## An adapter: a plug in the Target (or Source) port, like a token, with the
+## member's name on it, and the wire to the object leaves its far end (D-059).
+const ADAPTER := &"adapter"
+## Whether Play Animation waits for its animation.
+const ANIMATION_WAIT := &"animation_wait"
+## A wait flag, as before.
+const FLAG := &"flag"
+## Which output is wired: Then goes on at once, Finished after the animation.
+const FINISHED_PORT := &"finished_port"
+## The variable of Get and Set Variable.
+const VARIABLE_INPUT := &"variable_input"
+## A wire to the variable's box on a shelf beside the graph.
+const BOXES := &"boxes"
+## A window of ready tokens beside the graph, as Objects is for the scene; with tokens only.
+const TOKEN_TRAY := &"token_tray"
+## A wire from a petal of the selected object let go in the graph adds the block for that member.
+const SCENE_CREATE := &"scene_create"
+const OFF := &"off"
+const ON := &"on"
+## The plus on a card, which opens the block menu wired to its execution
+## output (D-058). Shown by default; hidden, a block is added only by a wire
+## let go in empty space (D-051) or from the Blueprints tab.
+const CARD_PLUS := &"card_plus"
+const SHOWN := &"shown"
+const HIDDEN := &"hidden"
+
 ## Every setting by key: its page, title, values (the first is the default),
 ## the values' titles and a line of explanation.
 const DEFINITIONS: Dictionary[StringName, Dictionary] = {
@@ -71,6 +115,55 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [FLAT, CONCAVE],
 		"labels": ["Flat", "Concave"],
 		"hint": "Flat: plane windows. Concave: windows bent around you, as the launcher is.",
+	},
+	VALUE_INPUT: {
+		"category": Category.FEATURES,
+		"title": "Values",
+		"values": [WINDOW, PUCKS, PLUGS],
+		"labels": ["Window", "Pucks", "Plugs"],
+		"hint": "Window: in the block's parameters. Pucks: tokens in slots on the card. Plugs: tokens plugged into the ports.",
+	},
+	TARGET_INPUT: {
+		"category": Category.FEATURES,
+		"title": "Targets",
+		"values": [WINDOW, ON_NODE, SCENE, ADAPTER],
+		"labels": ["Window", "Node", "Scene", "Adapter"],
+		"hint": "Window: in the parameters. Others wire the Target to the object; the member shows on the card (Node), on a petal at the object (Scene) or on a plug in the port the wire leaves (Adapter).",
+	},
+	ANIMATION_WAIT: {
+		"category": Category.FEATURES,
+		"title": "Animation wait",
+		"values": [FLAG, FINISHED_PORT],
+		"labels": ["Flag", "Finished port"],
+		"hint": "Flag: a wait setting. Finished port: wire Finished to wait for the animation, Then not to.",
+	},
+	VARIABLE_INPUT: {
+		"category": Category.FEATURES,
+		"title": "Variables",
+		"values": [WINDOW, BOXES],
+		"labels": ["Window", "Boxes"],
+		"hint": "Window: chosen in the parameters. Boxes: wire Get and Set Variable to a box on the shelf.",
+	},
+	TOKEN_TRAY: {
+		"category": Category.FEATURES,
+		"title": "Token tray",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: a Tokens window of ready values opens with the graph. Works with Values on Pucks or Plugs.",
+	},
+	SCENE_CREATE: {
+		"category": Category.FEATURES,
+		"title": "Create from scene",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: the selected object shows its members; a wire from one let go in the graph adds its block.",
+	},
+	CARD_PLUS: {
+		"category": Category.FEATURES,
+		"title": "Plus on cards",
+		"values": [SHOWN, HIDDEN],
+		"labels": ["Shown", "Hidden"],
+		"hint": "Shown: the plus on a card adds the next block. Hidden: add blocks by letting a wire go in empty space.",
 	},
 }
 
