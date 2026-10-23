@@ -1,0 +1,1025 @@
+<title>Параметры Blueprints в графе</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column (~68ch) with full-width figure bands; headset views are fixed-dark captures in both themes */
+:root{
+  --bg:#f3f4f7; --surface:#ffffff; --ink:#141820; --muted:#596173; --line:#d9dce4; --accent:#3559c7; --code:#e8eaf0;
+  --c:#9a5d14; --d:#6d45b5; --f:#137553;
+  --c-soft:#f5e8d6; --d-soft:#ece4fa; --f-soft:#dcf1e8;
+  --vr:#0d1017; --vr-line:#262c38;
+  --font-body:"Golos Text","Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1218; --surface:#161a22; --ink:#e6e8ee; --muted:#9aa1b1; --line:#272e3b; --accent:#89adff; --code:#202634;
+    --c:#e5b57b; --d:#b991eb; --f:#7be5b3;
+    --c-soft:#2a2117; --d-soft:#231b32; --f-soft:#12261e;
+    --vr:#0b0e14; --vr-line:#1f2530;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1218; --surface:#161a22; --ink:#e6e8ee; --muted:#9aa1b1; --line:#272e3b; --accent:#89adff; --code:#202634;
+  --c:#e5b57b; --d:#b991eb; --f:#7be5b3;
+  --c-soft:#2a2117; --d-soft:#231b32; --f-soft:#12261e;
+  --vr:#0b0e14; --vr-line:#1f2530;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--ink);font:400 15.5px/1.6 var(--font-body)}
+a{color:var(--accent)}
+.page{max-width:1200px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:44px 96px;display:flex;flex-direction:column;gap:64px}
+section{display:flex;flex-direction:column;gap:18px;min-width:0}
+.eyebrow{font:500 12px/1 var(--font-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(30px,4.4vw,46px)/1.08 var(--font-body);letter-spacing:-.015em;text-wrap:balance;margin:14px 0 16px}
+h2{font:650 clamp(22px,2.6vw,27px)/1.2 var(--font-body);letter-spacing:-.005em;text-wrap:balance;margin:0}
+h3{font:600 17px/1.3 var(--font-body);margin:8px 0 0;text-wrap:balance}
+p{margin:0}
+.lead{max-width:66ch;font-size:17.5px;color:var(--muted)}
+.prose{max-width:68ch;display:flex;flex-direction:column;gap:12px}
+.muted{color:var(--muted)}
+code{font:500 .86em var(--font-mono);background:var(--code);padding:1px 6px;border-radius:5px;white-space:nowrap}
+.trio{display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:22px;align-items:center}
+.trio span{display:inline-flex;align-items:center;gap:9px;font-size:15px}
+.trio a{font-weight:500}
+.chip{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;font:600 13px var(--font-mono);flex:none}
+.chip.c{background:var(--c-soft);color:var(--c)}
+.chip.d{background:var(--d-soft);color:var(--d)}
+.chip.f{background:var(--f-soft);color:var(--f)}
+.chip.n{background:var(--code);color:var(--muted)}
+.sec-head{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap}
+.sec-head .t{display:flex;align-items:center;gap:12px}
+.presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.presets small{font:500 12px var(--font-mono);color:var(--muted);margin-right:4px;letter-spacing:.04em}
+.presets button{font:500 14px var(--font-body);padding:7px 15px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.presets button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* headset settings window, Meta style: fixed dark */
+.hz{background:#1d2026;color:#f1f3f7;border-radius:26px;padding:20px 24px 22px;border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 44px rgba(10,14,22,.22)}
+.hz-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.hz-title{display:flex;align-items:center;gap:10px;font:600 17px var(--font-body)}
+.hz-tabs{display:flex;gap:3px;background:#2a2e36;border-radius:999px;padding:3px}
+.hz-tabs span{padding:5px 13px;border-radius:999px;font-size:13px;color:#b5bbc8}
+.hz-tabs span.on{background:#3b404b;color:#fff}
+.hz-existing{margin-top:12px;font-size:13px;color:#9aa1b0;display:flex;gap:4px 18px;flex-wrap:wrap}
+.hz-existing b{color:#d9dde6;font-weight:500}
+.hz-cols{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:8px 32px;margin-top:14px}
+@media (max-width:900px){.hz-cols{grid-template-columns:minmax(0,1fr)}}
+.hz-cap{font:600 11px var(--font-mono);letter-spacing:.09em;text-transform:uppercase;color:#868d9d;margin:6px 0 2px}
+.hz-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 0;border-top:1px solid rgba(255,255,255,.07);flex-wrap:wrap}
+.hz-row.off .hz-name,.hz-row.off .hz-hint{opacity:.5}
+.hz-txt{min-width:0;flex:1 1 220px}
+.hz-name{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:500}
+.hz-hint{font-size:12.5px;line-height:1.45;color:#9aa1b0;margin-top:2px}
+.ftag{width:19px;height:19px;border-radius:5px;font:600 11px/19px var(--font-mono);text-align:center;color:#14171d;flex:none}
+.ftag.c{background:#e5b57b}.ftag.d{background:#b991eb}.ftag.f{background:#7be5b3}
+.seg{display:inline-flex;background:#2a2e36;border-radius:999px;padding:3px;flex:none}
+.seg button{border:0;background:transparent;color:#c2c8d3;padding:6px 12px;border-radius:999px;font:500 13px var(--font-body);cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:#e9edf5;color:#14171d}
+.sw{position:relative;width:46px;height:27px;border-radius:14px;border:0;background:#3a3f49;cursor:pointer;flex:none;transition:background .15s}
+.sw span{position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#e9edf5;transition:transform .15s}
+.sw[aria-checked="true"]{background:#5b86f0}
+.sw[aria-checked="true"] span{transform:translateX(19px)}
+.sw:disabled{cursor:not-allowed;opacity:.45}
+.hz-bar{align-self:center;display:flex;align-items:center;gap:12px;background:#1d2026;color:#e6e9f0;border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:6px 16px;font-size:13px;margin-top:-6px}
+.hz-bar svg{display:block}
+
+.figure{background:var(--vr);border-radius:20px;border:1px solid var(--vr-line);overflow-x:auto}
+.figure svg{display:block;width:100%;min-width:780px;height:auto}
+#ov svg{min-width:920px}
+.stage .card{cursor:pointer}
+.status{font-size:15px;font-variant-numeric:tabular-nums}
+.status b{font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:8px 24px;list-style:none;padding:0;margin:0;color:var(--muted);font-size:14px}
+.legend li{display:flex;align-items:center;gap:9px}
+.legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}
+.legend i.box{width:14px;height:14px;border-radius:4px;border:2px solid #fff;background:#155947}
+
+svg .ct{font:600 12.5px var(--font-body);fill:#ffffff}
+svg .cl{font:500 11.5px var(--font-body);fill:rgba(255,255,255,.9)}
+svg .cmv{font:500 10.5px var(--font-mono);fill:#dcc8fa}
+svg .cm{font:500 10.5px var(--font-mono);fill:rgba(255,255,255,.62)}
+svg .tk{font:500 10.5px var(--font-mono);fill:#eef1f6}
+svg .tk-g{font:600 11px var(--font-mono)}
+svg .tg{font:500 10.5px var(--font-mono);fill:#f3ecff}
+svg .tg-g{font:600 10.5px var(--font-mono)}
+svg .an{font:400 10.5px var(--font-mono);fill:#98a1b5}
+svg .pt{font:600 11.5px var(--font-body);fill:#aab2c3;letter-spacing:.02em}
+svg .wt{font:600 14px var(--font-body);fill:#f1f3f7}
+svg .wm{font:400 11px var(--font-mono);fill:#9aa1b0}
+svg .wl{font:500 11px var(--font-body);fill:#a9b0bf}
+svg .wb{font:500 11.5px var(--font-body);fill:#e6e9f0}
+svg .wv{font:500 11px var(--font-mono);fill:#eef1f6}
+svg .kb{font:500 9px var(--font-mono);fill:#c8cdd8}
+
+.captions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 26px}
+.captions.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:800px){.captions,.captions.two{grid-template-columns:minmax(0,1fr)}}
+.captions h3{margin:0 0 6px;font-size:15.5px}
+.captions p{color:var(--muted);font-size:14.5px;line-height:1.55}
+.aside{border-left:3px solid var(--d);padding:4px 0 4px 16px;max-width:76ch;color:var(--muted);font-size:14.5px;display:flex;flex-direction:column;gap:8px}
+.aside b{color:var(--ink);font-weight:600}
+.aside ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.opinion{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;max-width:82ch;display:flex;flex-direction:column;gap:10px}
+.opinion .who{font:600 12px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:14px;line-height:1.5}
+th,td{padding:11px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font:600 11.5px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--bg)}
+td:first-child{white-space:nowrap}
+td .k{display:block;margin-top:3px}
+.vals{font:500 13px var(--font-body);white-space:nowrap}
+.vals em{font-style:normal;color:var(--muted)}
+.yes{color:var(--f);font-weight:600}.no{color:var(--muted);font-weight:600}
+ul.plain{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;max-width:72ch}
+ul.plain li::marker{color:var(--muted)}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px 40px}
+@media (max-width:860px){.split{grid-template-columns:minmax(0,1fr)}}
+.split > div{display:flex;flex-direction:column;gap:10px;min-width:0}
+@media (prefers-reduced-motion: reduce){.sw,.sw span{transition:none}}
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">Blueprints VR · концепт · 21.10.2026 · версия 2</div>
+    <h1>Параметры Blueprints в графе</h1>
+    <p class="lead">Как убрать окно Parameters у карточки. Литералы и режимы становятся фишками, объект и его члены задаются проводом в сцену, а ожидание и переменные — формой графа. Пример взят из задачи T2: триггер, три двери и лампа. Ничего из этого пока не реализовано.</p>
+    <div class="trio">
+      <span><span class="chip c">C</span>Фишки</span>
+      <span><span class="chip d">D</span>Сцена вместо имён</span>
+      <span><span class="chip f">F</span>Режимы как форма графа</span>
+      <a id="link3d" href="https://claude.ai/artifact/8a57biPbeJZ4XChhYjxd2B" target="_blank" rel="noopener">Трёхмерные макеты →</a>
+    </div>
+  </header>
+
+  <section id="view" aria-labelledby="view-h">
+    <div class="sec-head">
+      <h2 id="view-h">Вид из шлема</h2>
+      <div class="presets" role="group" aria-label="Наборы настроек">
+        <small>НАБОР</small>
+        <button type="button" id="p-now" aria-pressed="false">По умолчанию</button>
+        <button type="button" id="p-all" aria-pressed="true">C + D + F</button>
+      </div>
+    </div>
+    <p class="prose muted">Ниже — вкладка «Настройки» в шлеме с шестью новыми строками. Слева — варианты: одно значение из нескольких, их сравнивают на участниках. Справа — выключатели, которые дополняют любой вариант. Переключайте строки, и вид из шлема перестроится. Щелчок по карточке выделяет её: окно Parameters показывает только то, что у неё осталось вне графа. Порты Seconds и Timeout видны в любом наборе — это изменение модели, см. «Порт у каждого гнезда».</p>
+    <div class="hz" id="hz"></div>
+    <div class="hz-bar" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="none" stroke="#c8cdd8" stroke-width="1.4"/><circle cx="7" cy="7" r="1.8" fill="#c8cdd8"/></svg>
+      Настройки
+      <svg width="14" height="14" viewBox="0 0 14 14"><path d="M4 1.5h6l-1 4.5 2.5 2.5h-9L5 6z M7 8.5v4.5" fill="none" stroke="#c8cdd8" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="#c8cdd8" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </div>
+    <div class="figure stage" id="ov"></div>
+    <p class="status" id="ov-status" aria-live="polite"></p>
+    <ul class="legend">
+      <li><i class="box"></i>белая рамка — выделенная карточка</li>
+      <li><i style="background:#b991eb"></i>провод Target; при «Сцена» он кончается лепестком члена объекта</li>
+      <li><i style="background:#e5b57b"></i>фишки — литералы и режимы</li>
+      <li><i style="background:#e8879b"></i>провод к ящику — переменная</li>
+      <li><i class="box" style="background:transparent"></i>белая обводка объекта — его лепестки сейчас открыты</li>
+    </ul>
+  </section>
+
+  <section id="c" aria-labelledby="c-h">
+    <div class="sec-head"><div class="t"><span class="chip c">C</span><h2 id="c-h">Фишки: шайбы и детали</h2></div></div>
+    <div class="prose"><p>Значение становится предметом. Есть два вида на сравнение, это значения строки «Значения». <b>Шайба</b> лежит в прорези справа на карточке, сама карточка остаётся цельной. <b>Деталь</b> вставляется в сам порт слева, как штекер провода: порт принимает либо провод, либо деталь. Форма гнезда говорит, что в него входит. В круглый порт — провод или фишка, в квадратное гнездо — только фишка.</p></div>
+    <div class="figure" id="fig-c"></div>
+    <div class="captions">
+      <div><h3>Шайбы</h3><p>Круг слева — порт, в прорези справа — шайба с его значением по умолчанию. Квадрат — гнездо без порта: Wait решается при сборке, провода в него нет. Карточка не выходит за свои края, раскладка графа не меняется.</p></div>
+      <div><h3>Детали</h3><p>Деталь входит в порт слева: круглый хвост — в круглый порт, квадратный — в квадратное гнездо. Значения вынесены за край карточки, поэтому между карточками нужен зазор около 7 см. Подпись строки остаётся на месте.</p></div>
+      <div><h3>Провод вместо фишки</h3><p>Провод в порт прячет фишку: она бледнеет, а её значение остаётся в графе. Сняли провод — фишка снова действует. Так Seconds берёт задержку из переменной, а без провода остаётся 1,5 с. Деталь при проводе снимается с порта и возвращается так же.</p></div>
+    </div>
+  </section>
+
+  <section id="ports" aria-labelledby="ports-h">
+    <h2 id="ports-h">Порт у каждого гнезда?</h2>
+    <div class="opinion">
+      <div class="who">Моё мнение</div>
+      <p>Согласен для значений и против для параметров, которые задают форму кода. Правило простое. Если параметр — данные, которые можно посчитать в игре, у него порт, а фишка — значение по умолчанию. Если он решается при сборке (ждать ли, на что подписаться, что делать при повторе), порта нет и гнездо квадратное.</p>
+      <p class="muted">Для самих T1–T3 значения из переменных не нужны, задержки там постоянные. Довод за — одно правило для всех строк: «у строки есть круг — можно провод». Это проще объяснить участнику, чем строки, где провод почему-то нельзя. Цена небольшая, см. ниже.</p>
+    </div>
+    <div class="tbl"><table>
+      <thead><tr><th>Параметр</th><th>Порт</th><th>Почему</th></tr></thead>
+      <tbody>
+        <tr><td>value, condition, a, b, текст Print</td><td class="yes">уже есть</td><td>фишка становится значением по умолчанию этих портов</td></tr>
+        <tr><td>seconds (Delay, Tween), timeout</td><td class="yes">новый</td><td>число можно посчитать в игре; компилятор подставляет выражение вместо литерала, проверку «больше нуля» переносит в игру</td></tr>
+        <tr><td>wait (вариант «Флаг»)</td><td class="no">нет</td><td>меняет код: есть <code>await</code> или нет</td></tr>
+        <tr><td>policy</td><td class="no">нет</td><td>для parallel, ignore и restart код события разный</td></tr>
+        <tr><td>signal</td><td class="no">нет</td><td>подписка на сигнал создаётся при сборке</td></tr>
+        <tr><td>property, animation</td><td class="no">пока нет</td><td>имя из переменной лишает проверки при сборке («missing property», тип порта Value); для animation можно добавить позже</td></tr>
+        <tr><td>variable</td><td class="no">нет</td><td>это сама переменная, а не значение; при «Ящики» её задаёт провод к ящику</td></tr>
+      </tbody>
+    </table></div>
+    <p class="prose muted">Новые входы дописываются в конец списков портов, поэтому индексы старых проводов не сдвигаются. Это формат v3 с простой миграцией. Порты появятся и в плоском GraphEdit, так что сравнение в T2 остаётся честным.</p>
+  </section>
+
+  <section id="tray" aria-labelledby="tray-h">
+    <div class="sec-head"><div class="t"><span class="chip c">C</span><h2 id="tray-h">Лоток — это окно</h2></div></div>
+    <div class="prose"><p>Лоток предлагаю сделать обычным окном Tokens по образцу Objects (D-045). Это полупрозрачное окно с 3D-миниатюрами перед ячейками: grip или луч с grip вытаскивает миниатюру. Новых жестов не появляется, и окно умеет всё, что умеют окна: Control Bar, закрепление на руке, перенос за угловые ручки.</p></div>
+    <div class="figure" id="fig-tray"></div>
+    <div class="split">
+      <div>
+        <h3>Параметры окна</h3>
+        <ul class="plain">
+          <li><b>Открывается</b> кнопкой Tokens на панели инструментов графа и из лаунчера. При «Лоток фишек = Вкл» окно открывается вместе с графом слева от него.</li>
+          <li><b>Размер</b> как у окон вкладок: 480 × 600 точек, 43 × 54 см на расстоянии 0,7 м. Закреплённое на руке — 25 × 17 см.</li>
+          <li><b>Ячейки:</b> по 4 в ряд, 104 × 64 точки (9 × 6 см). Фишки мельче миниатюр объектов, поэтому ячейки меньше, чем в Objects (120 × 130).</li>
+          <li><b>Разделы</b> сверху вниз: Недавние (8 последних значений), Числа, Да/нет, Цвета (с цветами ламп сцены), Векторы, Режимы, Текст.</li>
+          <li><b>Прокрутка</b> перетаскиванием с инерцией, как в списках D-045.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Поведение</h3>
+        <ul class="plain">
+          <li>Пока гнездо под лучом или фишка в руке, неподходящие по типу ячейки гаснут.</li>
+          <li>Из лотка берётся копия, лоток не пустеет.</li>
+          <li>Фишка, отпущенная в воздухе, исчезает. Вынутая из гнезда и брошенная — тоже, а гнездо возвращается к значению по умолчанию.</li>
+          <li>Пустая текстовая фишка при вставке открывает клавиатуру.</li>
+          <li>Другие варианты — полка в рабочей области графа или постоянный лоток на руке. Если их захочется сравнить, строка «Лоток фишек» станет вариантом: Выкл / Окно / Полка.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="input" aria-labelledby="input-h">
+    <div class="sec-head"><div class="t"><span class="chip c">C</span><h2 id="input-h">Ввод значений по типам</h2></div></div>
+    <div class="prose"><p>Поворот кисти подходит только упорядоченным значениям: числам и режимам. Остальным типам нужен свой способ. Общее у всех одно: trigger по фишке начинает правку, вся правка — одна запись undo, а точный ввод с клавиатуры есть всегда.</p></div>
+    <div class="figure" id="fig-input"></div>
+    <div class="tbl"><table>
+      <thead><tr><th>Тип</th><th>Основной жест</th><th>Шаг</th><th>Точный ввод</th></tr></thead>
+      <tbody>
+        <tr><td><b>Число</b>, целое</td><td>trigger по фишке и поворот кисти вокруг оси контроллера, щелчок на каждые 15°</td><td>единица последнего показанного разряда (0,1 с, 1); быстрый поворот — шаг ×10</td><td>второй щелчок — цифры у фишки</td></tr>
+        <tr><td><b>Режим</b></td><td>тот же поворот — переключатель с фиксацией на каждом значении</td><td>одно значение</td><td>не нужен</td></tr>
+        <tr><td><b>Да / нет</b></td><td>щелчок trigger переключает</td><td>—</td><td>не нужен</td></tr>
+        <tr><td><b>Цвет</b></td><td>щелчок раскрывает вокруг фишки кольцо оттенков и полосу яркости, луч выбирает</td><td>свободно</td><td>HEX на клавиатуре</td></tr>
+        <tr><td><b>Вектор</b> (2 или 3)</td><td>щелчок раскрывает стрелки X, Y, Z; потянуть стрелку — меняется одна компонента; поворот кисти на стрелке — как у числа</td><td>шаг сетки, как у снапа (XRESnap)</td><td>цифры по компонентам</td></tr>
+        <tr><td><b>Текст</b></td><td>щелчок открывает клавиатуру у фишки, печать двумя руками (уже есть)</td><td>—</td><td>это и есть ввод</td></tr>
+      </tbody>
+    </table></div>
+    <p class="prose muted">Щелчки при повороте — хорошее место для хаптики, она уже стоит в карте функций.</p>
+  </section>
+
+  <section id="d" aria-labelledby="d-h">
+    <div class="sec-head"><div class="t"><span class="chip d">D</span><h2 id="d-h">Сцена вместо имён</h2></div></div>
+    <div class="prose"><p>Провод Target уже ведёт к объекту в сцене. Здесь он указывает ещё и член объекта: свойство, сигнал или анимацию. Пока тянешь провод, у объекта под лучом раскрывается веер <b>лепестков</b> — подписей его членов. Веер растёт из точки на самом объекте: от неё к вееру идёт ножка, веер стоит на стороне, обращённой к пользователю, а не в промежутке между объектами. Объект на это время обведён белым, как при выделении (D-020, D-028). После выбора веер сворачивается в один ярлык прямо на объекте, в точке, где кончается провод, а на карточке пишется «Target · light_color».</p></div>
+    <div class="figure" id="fig-d"></div>
+    <div class="captions">
+      <div><h3>Провод к свойству</h3><p>Лепестки фильтруются по типу. В Value лежит фишка Color, поэтому ярко горит только light_color. Частые свойства стоят сверху, остальные прячутся под «ещё 27» в списке, который прокручивается перетаскиванием.</p></div>
+      <div><h3>Невидимые дети объекта</h3><p>AnimationPlayer и звуки в сцене не видны. Их члены висят на ножке ближайшего 3D-предка, по группе на ноду, а сам предок обведён. Один провод к «open» задаёт и Target = Door_B/AnimationPlayer, и animation = open. Creak тусклый: Play Animation нужен AnimationPlayer.</p></div>
+      <div><h3>Динамический Target</h3><p>Когда в Target идёт провод данных, например body из On Signal, объект станет известен только в игре. Тип при этом известен: body — Node3D. Его члены раскрываются веером у самого порта Target, а выбор задаёт только имя: visible.</p></div>
+    </div>
+    <div class="aside">
+      <p><b>Что было не решено и как это решить.</b> Задача — «спрятать того, кто вошёл в триггер». On Signal отдаёт body, провод от него идёт в Target у Set Property. В сцене этого объекта нет: он появится только в игре. Значит, и лепестков, на которых можно выбрать visible, тоже нет. В окне такую задачу решал ввод имени. Варианты:</p>
+      <ol>
+        <li><b>Лепестки у порта</b> — по типу из сигнала (рисунок выше). Предлагаю его: выбор остаётся у карточки, а список не длиннее, чем у объекта в сцене.</li>
+        <li><b>По образцу</b> — провод к лепестку любого объекта того же типа в сцене, берётся только имя. Путает: провод ведёт к объекту, который целью не будет.</li>
+        <li><b>Окно для этого случая</b> — остаётся одна строка Property, остальное в графе.</li>
+      </ol>
+      <p>В T2 все цели постоянные, так что эксперимент это не задевает. Но тупика в интерфейсе быть не должно.</p>
+    </div>
+
+    <h3>Создание из сцены: зачем</h3>
+    <div class="prose muted"><p>Сейчас, чтобы сделать «игрок вошёл в триггер → …», работа начинается в графе: плюс, палитра, On Signal, затем Target к триггеру и выбор body_entered — три-четыре действия. Создание из сцены переворачивает порядок: начинаешь с объекта, который видишь, и одним движением получаешь привязанную карточку. Для RQ3 это важно: адресация начинается с самого объекта, а не с имени в списке.</p></div>
+    <div class="figure" id="fig-create"></div>
+    <div class="tbl"><table>
+      <thead><tr><th>Лепесток</th><th>Что создаётся при отпускании в пустоте</th></tr></thead>
+      <tbody>
+        <tr><td>сигнал</td><td>On Signal с готовым Source</td></tr>
+        <tr><td>анимация</td><td>Play Animation с Target и animation</td></tr>
+        <tr><td>звук (AudioStreamPlayer)</td><td>Play Sound с Target</td></tr>
+        <tr><td>свойство</td><td>маленький выбор у луча: Get Property, Set Property или Tween — свойство можно и читать, и писать</td></tr>
+        <tr><td>любой, отпущен на порте карточки</td><td>ничего нового: просто подключение к этой карточке</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="f" aria-labelledby="f-h">
+    <div class="sec-head"><div class="t"><span class="chip f">F</span><h2 id="f-h">Режимы как форма графа</h2></div></div>
+    <div class="prose"><p>Часть параметров исчезает совсем, если сделать их связями. Режим событий оставлен фишкой: его форма графа описывает хуже.</p></div>
+    <div class="figure" id="fig-f"></div>
+    <div class="captions">
+      <div><h3>Wait → выход Finished</h3><p>Провод из Finished — ждать конца анимации, из Then — не ждать. На первом этапе формат не меняется: провод с Finished записывает wait = true, и подключить оба выхода сразу нельзя. Оба сразу — следующий этап и тот же выход в GraphEdit.</p></div>
+      <div><h3>Переменные — ящики</h3><p>Переменные графа стоят ящиками на полке рядом с графом. Над ящиком — имя и тип, в гнезде на передней стенке — значение при запуске игры (сейчас его правят в окне переменных 2D-редактора). Set Variable меняет значение только в игре, фишка в гнезде остаётся прежней. Get и Set Variable соединяются с ящиком проводом цвета его типа. Ящик «+» создаёт переменную: имя вводится с клавиатуры, тип задаёт первая фишка в гнезде.</p></div>
+      <div><h3>Policy остаётся фишкой</h3><p>Policy решает, что делать, если сигнал пришёл, пока прежняя цепочка ещё идёт. Три выхода вместо одного Then читались бы хуже, поэтому это фишка в квадратном гнезде.</p></div>
+    </div>
+  </section>
+
+  <section id="delete" aria-labelledby="del-h">
+    <div class="sec-head"><div class="t"><span class="chip c">C</span><span class="chip f">F</span><h2 id="del-h">Удаление фишек и переменных</h2></div></div>
+    <div class="prose"><p>Гнездо пустым не бывает, поэтому фишку не удаляют, а сбрасывают к значению по умолчанию блока. Ящик удаляется, только когда переменная нигде не используется — так же, как сейчас в 2D-редакторе (<code>remove_variable</code> отвечает «Variable is used by block #N»). Документ у 2D и VR общий, правило одно. Каждое удаление — одна запись undo, её отменяет и клавиатура.</p></div>
+    <div class="figure" id="fig-del"></div>
+    <div class="captions">
+      <div><h3>Сбросить фишку лучом</h3><p>Луч на фишку и A — то же действие «Удалить выделенное», которым удаляется блок. В гнезде снова значение по умолчанию: у Delay это 1.0 s.</p></div>
+      <div><h3>Вынуть и бросить</h3><p>Grip вынимает фишку из гнезда; отпущенная в воздухе, она исчезает, и в гнезде появляется значение по умолчанию. Фишки в лотке удалять нечего: из лотка берётся копия, а ряд «Недавние» обновляется сам.</p></div>
+      <div><h3>Удалить переменную</h3><p>У ящика корзина, как у карточки (D-034), и A по лучу. Пока к ящику идут провода, корзина тусклая; при попытке появляется сообщение, а эти провода мигают. Сначала нужно убрать Get/Set Variable или переподключить их к другому ящику. Каскад «ящик вместе с блоками» не предлагаю: один жест сносил бы несколько карточек.</p></div>
+    </div>
+  </section>
+
+  <section id="settings" aria-labelledby="s-h">
+    <h2 id="s-h">Какие настройки добавить</h2>
+    <div class="prose"><p>Правило — инвариант 7. Взаимоисключающие варианты — значения одной настройки, независимое измерение — отдельная настройка. Первое значение — по умолчанию и сохраняет текущее поведение. Всё ниже — строки страницы «Функции» в <code>XREFeatureSettings.DEFINITIONS</code>.</p></div>
+
+    <h3>Варианты</h3>
+    <p class="prose muted">Каждая строка забирает из окна свой класс параметров. Шайбы и детали — значения той же строки «Значения»: они взаимоисключающие и без фишек не имеют смысла, поэтому отдельная строка «Вид фишек» не нужна. «Ожидание анимации» — тоже вариант: выход Finished не добавляется к флагу, а заменяет его.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Настройка</th><th>Значения</th><th>Какие параметры</th><th>Что сравниваем</th><th>Формат графа</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chip c">C</span> <b>Значения</b><code class="k">value_input</code></td><td class="vals">Окно <em>·</em> Шайбы <em>·</em> Детали</td><td>value, seconds, timeout, condition, a, b, текст Print, policy, wait (при «Флаг»)</td><td>время и число правок, точность чисел; шайбы против деталей</td><td>v2 для фишек; новые порты — v3</td></tr>
+        <tr><td><span class="chip d">D</span> <b>Цели</b><code class="k">target_input</code></td><td class="vals">Окно <em>·</em> Сцена</td><td>target, property, signal, animation</td><td>ошибки «не тот объект» (RQ3), время адресации</td><td>v2: провод записывает target и имя через документ Blueprints</td></tr>
+        <tr><td><span class="chip f">F</span> <b>Ожидание анимации</b><code class="k">animation_wait</code></td><td class="vals">Флаг <em>·</em> Выход Finished</td><td>wait у Play Animation</td><td>ошибки порядка («лампа зажглась раньше, чем открылась дверь»)</td><td>этап 1 — v2; этап 2 — оба выхода и выход в GraphEdit</td></tr>
+        <tr><td><span class="chip f">F</span> <b>Переменные</b><code class="k">variable_input</code></td><td class="vals">Окно <em>·</em> Ящики</td><td>variable у Get/Set Variable, значение по умолчанию</td><td>ошибки в имени и типе переменной</td><td>v2</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Выключатели</h3>
+    <p class="prose muted">Оба ничего не заменяют. С выключенным лотком фишки берутся из гнёзд и копируются второй рукой; с выключенным созданием из сцены карточки по-прежнему создаются плюсом. Поэтому это Выкл/Вкл, по умолчанию Выкл.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Настройка</th><th>Значения</th><th>Что добавляет</th><th>Зависит от</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chip c">C</span> <b>Лоток фишек</b><code class="k">token_tray</code></td><td class="vals">Выкл <em>·</em> Вкл</td><td>окно Tokens с готовыми фишками рядом с графом</td><td>только «Значения» = Шайбы или Детали, иначе строка неактивна</td></tr>
+        <tr><td><span class="chip d">D</span> <b>Создание из сцены</b><code class="k">scene_create</code></td><td class="vals">Выкл <em>·</em> Вкл</td><td>провод из лепестка, отпущенный в пустоте, создаёт карточку с готовыми Target и членом</td><td>работает при любых «Целях»: лепестки показываются у выделенного объекта в режиме Logic</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="split">
+      <div>
+        <h3>Не настройки — часть варианта</h3>
+        <ul class="plain">
+          <li>Цифры у числовой фишки и клавиатура у текстовой. Это запасной ввод, а не вариант для сравнения.</li>
+          <li>Фильтр лепестков по типу порта; несовместимые лепестки тусклые.</li>
+          <li>Невидимые дети (AnimationPlayer, AudioStreamPlayer) показываются в лепестках ближайшего 3D-предка.</li>
+          <li>Лепестки у порта для динамического Target.</li>
+          <li>Веер растёт из точки на объекте и связан с ним ножкой, объект обведён; после выбора на объекте остаётся один ярлык там, где кончается провод.</li>
+          <li>Фишку не удаляют, а сбрасывают к значению по умолчанию; занятую переменную удалить нельзя.</li>
+          <li>Окно Parameters показывает только параметры, у которых настройка стоит в «Окне».</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Как они сочетаются</h3>
+        <ul class="plain">
+          <li>Окно Parameters открывается у карточки, только если у неё остался параметр в «Окне». Когда в «Окне» нет ни одной строки, окна нет вовсе.</li>
+          <li>«Выход Finished» убирает Wait и из окна, и из фишек; Timeout остаётся там, куда его ставят «Значения».</li>
+          <li>«Ящики» при «Значения = Окно»: значение по умолчанию остаётся полем в окне, ящик показывает имя и тип.</li>
+          <li>Сочетаний 3 × 2⁵ = 96; различимых 80, потому что лоток без фишек ничего не меняет. Тесты по инварианту 7 — каждое значение каждой строки и зависимые пары: лоток × «Значения», «Ящики» × «Значения», «Ожидание анимации» × «Значения».</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="split">
+      <div>
+        <h3>Для эксперимента</h3>
+        <p class="muted">На участниках сравнивать два полных набора: «по умолчанию» и «C + D + F» с одним видом фишек. Какой вид фишек брать — шайбы или детали, — решить на пилоте. Отдельные строки нужны только пилоту: 80 сочетаний на одну выборку не разложить. Метрика уже собирается — доля операций через панели (инвариант 5). В логе понадобятся новые операции: <code>dock_token</code>, <code>turn_token</code>, <code>wire_member</code>, <code>wire_variable</code>, <code>create_from_scene</code>. Запись в <code>docs/decisions.md</code> называет варианты и что именно сравнивается.</p>
+      </div>
+      <div>
+        <h3>Ограничения реализации</h3>
+        <ul class="plain">
+          <li>Каждое действие — одна запись в истории графа через документ Blueprints, как провод Target сейчас.</li>
+          <li>Лепестки собираются при начале провода и при выборе объекта, а не каждый кадр (инвариант 4).</li>
+          <li>Попадание по фишке, детали и лепестку — тот же объёмный пикинг, что у портов (D-027): нужен новый случай в <code>test_blueprint_picking.gd</code>.</li>
+          <li>Детали выходят за край карточки: раскладка нового блока должна оставлять зазор около 7 см.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>С чего начать</h3>
+    <p class="prose muted">Первым — «Цели = Сцена». Он продолжает провод Target, который уже проверен в шлеме, и сразу касается ошибок адресации из T2. Затем «Значения» с шайбами, потом с деталями. F — последним, потому что у выхода Finished есть второй этап.</p>
+  </section>
+</div>
+
+<script>
+(function(){
+const C = {EXEC:'#eeeeee', VALUE:'#63c6ea', BOOL:'#e8879b', NUM:'#7be5b3', TEXT:'#e5b57b', VEC:'#89adff', OBJ:'#b991eb', COLOR:'#f2d878'};
+const FACE = {event:'#174479', prop:'#155947', flow:'#553478', value:'#323e73', audio:'#785016', anim:'#743351'};
+const TOKC = {num:C.NUM, bool:C.BOOL, color:C.COLOR, enum:C.VALUE, text:C.TEXT, vec:C.VEC};
+const AX = ['#ff6b6b', '#7be5b3', '#89adff'];
+const CW = 210, HEAD = 36, ROW = 27;
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const at = (k, v) => v == null ? '' : ` ${k}="${v}"`;
+
+/* ---------- primitives ---------- */
+function tokenW(t){ return Math.round(30 + t.text.length * 6.6); }
+function tokenIcon(t, x, y){
+  const c = TOKC[t.kind];
+  switch (t.kind){
+    case 'num': return `<circle cx="${x}" cy="${y}" r="4.6" fill="none" stroke="${c}" stroke-width="1.6"/><line x1="${x}" y1="${y}" x2="${x + 2.6}" y2="${y - 3.6}" stroke="${c}" stroke-width="1.6" stroke-linecap="round"/>`;
+    case 'bool': return t.on
+      ? `<rect x="${x - 6.5}" y="${y - 4}" width="13" height="8" rx="4" fill="${c}"/><circle cx="${x + 2.6}" cy="${y}" r="2.6" fill="#10141c"/>`
+      : `<rect x="${x - 6.5}" y="${y - 4}" width="13" height="8" rx="4" fill="none" stroke="${c}" stroke-width="1.3"/><circle cx="${x - 2.6}" cy="${y}" r="2.3" fill="${c}"/>`;
+    case 'color': return `<circle cx="${x}" cy="${y}" r="5.2" fill="${t.swatch}" stroke="rgba(255,255,255,.55)" stroke-width="1"/>`;
+    case 'vec': return `<path d="M${x - 4} ${y + 4}H${x + 4.5}M${x - 4} ${y + 4}V${y - 4.5}M${x - 4} ${y + 4}L${x + 1.5} ${y - 0.5}" stroke="${c}" stroke-width="1.5" fill="none" stroke-linecap="round"/>`;
+    case 'text': return `<text x="${x}" y="${y + 5}" class="tk-g" fill="${c}" text-anchor="middle">“</text>`;
+    default: return `<text x="${x}" y="${y + 4}" class="tk-g" fill="${c}" text-anchor="middle">${t.glyph || '•'}</text>`;
+  }
+}
+/* a puck: a pill in a slot on the card */
+function token(cx, cy, t, o = {}){
+  const w = tokenW(t), c = TOKC[t.kind], x = cx - w / 2;
+  let s = `<g${at('opacity', o.op)}>`;
+  if (o.slot !== false) s += `<rect x="${x - 3.5}" y="${cy - 13}" width="${w + 7}" height="26" rx="13" fill="#04060a" fill-opacity=".6" stroke="${o.hot ? '#ffffff' : 'rgba(255,255,255,.14)'}" stroke-width="${o.hot ? 1.6 : 1}"/>`;
+  s += `<rect x="${x}" y="${cy - 9.5}" width="${w}" height="19" rx="9.5" fill="#151a26" stroke="${c}" stroke-width="1.4"${o.ghost ? ' stroke-dasharray="3 3" fill-opacity=".35"' : ''}/>`;
+  s += tokenIcon(t, x + 12, cy) + `<text x="${x + 22}" y="${cy + 3.7}" class="tk">${esc(t.text)}</text>`;
+  return s + '</g>';
+}
+/* a piece: a block whose tail plugs into the port at (px, cy); the body sits left of the card edge */
+function piece(px, cy, t, o = {}){
+  const w = tokenW(t), c = TOKC[t.kind], bx = px - 14 - 8 - w;
+  let s = `<g${at('opacity', o.op)}>`;
+  s += `<rect x="${bx + w - 3}" y="${cy - 4}" width="${px - bx - w + 3}" height="8" rx="2" fill="${c}" fill-opacity=".85"/>`;
+  s += o.square ? `<rect x="${px - 6.5}" y="${cy - 6.5}" width="13" height="13" rx="2.5" fill="${c}" stroke="#ffffff" stroke-opacity=".7" stroke-width="1.2"/>` : `<circle cx="${px}" cy="${cy}" r="7.5" fill="${c}" stroke="#ffffff" stroke-opacity=".7" stroke-width="1.2"/>`;
+  s += pieceBody(bx, cy, t, o);
+  return s + '</g>';
+}
+function pieceBody(bx, cy, t, o = {}){
+  const w = tokenW(t), c = TOKC[t.kind];
+  let s = `<rect x="${bx}" y="${cy - 10.5}" width="${w}" height="21" rx="5" fill="#151a26" stroke="${o.hot ? '#ffffff' : c}" stroke-width="1.6"${o.ghost ? ' stroke-dasharray="3 3" fill-opacity=".35"' : ''}/>`;
+  s += `<path d="M${bx + 5} ${cy - 5}v10M${bx + 8} ${cy - 5}v10" stroke="${c}" stroke-opacity=".6" stroke-width="1"/>`;
+  return s + tokenIcon(t, bx + 18, cy) + `<text x="${bx + 27}" y="${cy + 3.7}" class="tk">${esc(t.text)}</text>`;
+}
+/* a loose piece (tray, hand): body centred on cx, tail to the right */
+function pieceFree(cx, cy, t, o = {}){
+  const w = tokenW(t), c = TOKC[t.kind], bx = cx - w / 2;
+  return `<g${at('opacity', o.op)}><rect x="${bx + w - 3}" y="${cy - 4}" width="14" height="8" rx="2" fill="${c}" fill-opacity=".85"/>` + (o.square ? `<rect x="${bx + w + 8}" y="${cy - 5}" width="10" height="10" rx="2" fill="${c}"/>` : `<circle cx="${bx + w + 12}" cy="${cy}" r="5" fill="${c}"/>`) + pieceBody(bx, cy, t, o) + '</g>';
+}
+/* a loose token in the current style */
+function loose(cx, cy, t, style, o = {}){ return style === 'pieces' ? pieceFree(cx - 8, cy, t, o) : token(cx, cy, t, Object.assign({slot: false}, o)); }
+function looseW(t, style){ return tokenW(t) + (style === 'pieces' ? 18 : 0); }
+
+function trash(x, y){ return `<path d="M${x - 4.5} ${y - 3.5}h9M${x - 1.8} ${y - 5.4}h3.6M${x - 3.6} ${y - 3.5}l.8 9h5.6l.8-9" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`; }
+function plus(x, y){ return `<path d="M${x - 5} ${y}h10M${x} ${y - 5}v10" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>`; }
+function vis(it, st){ return !!it && (!it.show || it.show(st)); }
+
+function left(it, x, cy, st, a){
+  const sq = it.k === 'slot', style = st.values;
+  const showTok = !!it.token && style !== 'window' && !it.wired;
+  let s = '';
+  if (showTok && style === 'pieces'){
+    s += piece(x + 14, cy, it.token, Object.assign({square: sq}, it.tok || {}));
+  } else if (sq){
+    s += `<rect x="${x + 8.5}" y="${cy - 5.5}" width="11" height="11" rx="2.5" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.3"/>`;
+  } else {
+    s += `<circle cx="${x + 14}" cy="${cy}" r="6.5" fill="${it.type}" stroke="rgba(0,0,0,.35)"/>`;
+  }
+  if (!sq) a[it.id] = {x: x + 14, y: cy};
+  const m = it.member && st.targets === 'scene';
+  s += `<text x="${x + 27}" y="${cy + 4}" class="cl">${esc(it.label)}${m ? `<tspan class="cmv" dx="5">· ${esc(it.member)}</tspan>` : ''}</text>`;
+  if (it.note) s += `<text x="${x + CW - 14}" y="${cy + 4}" class="cm" text-anchor="end">${esc(it.note)}</text>`;
+  if (showTok && style === 'pucks'){
+    const w = tokenW(it.token);
+    s += token(x + CW - 17.5 - w / 2, cy, it.token, it.tok || {});
+  } else if (it.wired && it.token && style === 'pucks'){
+    // a wire hides the token: its value stays in the graph and comes back when the wire is removed
+    const w = tokenW(it.token);
+    s += token(x + CW - 17.5 - w / 2, cy, it.token, {ghost: true, op: .45});
+  } else if (it.empty){
+    const w = it.empty + 7;
+    s += `<rect x="${x + CW - 14 - w}" y="${cy - 13}" width="${w}" height="26" rx="13" fill="#04060a" fill-opacity=".6" stroke="#ffffff" stroke-width="1.6"/>`;
+    a[it.id + '_slot'] = {x: x + CW - 14 - w / 2, y: cy};
+  }
+  return s;
+}
+function right(it, x, cy, a){
+  a[it.id] = {x: x + CW - 14, y: cy};
+  return `<circle cx="${x + CW - 14}" cy="${cy}" r="6.5" fill="${it.type}" stroke="rgba(0,0,0,.35)"/><text x="${x + CW - 27}" y="${cy + 4}" class="cl" text-anchor="end">${esc(it.label)}</text>`;
+}
+function card(c, st, o = {}){
+  const rows = c.rows.filter(r => vis(r.l, st) || vis(r.r, st));
+  const h = HEAD + rows.length * ROW + 8, x = c.x, y = c.y, a = {};
+  let s = `<g class="card" data-card="${c.id}"${at('opacity', o.op)}>`;
+  s += `<rect x="${x}" y="${y}" width="${CW}" height="${h}" rx="12" fill="${c.face}" stroke="${o.selected ? '#ffffff' : 'rgba(255,255,255,.22)'}" stroke-width="${o.selected ? 2.4 : 1}"${o.ghost ? ' stroke-dasharray="6 5"' : ''}/>`;
+  s += `<text x="${x + CW / 2}" y="${y + 23}" class="ct" text-anchor="middle">${esc(c.title)}${c.id ? ' · ' + c.id : ''}</text>`;
+  s += trash(x + 17, y + 18) + plus(x + CW - 17, y + 18);
+  let after = '';
+  rows.forEach((r, i) => {
+    const cy = y + HEAD + i * ROW + ROW / 2;
+    // pieces stick out of the card: draw them after the body so the next row stays readable
+    if (vis(r.l, st)){ const part = left(r.l, x, cy, st, a); if (st.values === 'pieces') after += part; else s += part; }
+    if (vis(r.r, st)) s += right(r.r, x, cy, a);
+  });
+  return {svg: s + after + '</g>', a, h};
+}
+function curve(p, c1, c2, q, col, o = {}){
+  return `<path d="M${p.x} ${p.y}C${c1.x} ${c1.y} ${c2.x} ${c2.y} ${q.x} ${q.y}" fill="none" stroke="${col}" stroke-width="${o.w || 2.3}" stroke-linecap="round"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${at('opacity', o.op)}${o.marker ? ` marker-end="url(#${o.marker})"` : ''}/>`;
+}
+function flow(p, q, col = C.EXEC, o = {}){ const dx = Math.max(36, Math.abs(q.x - p.x) * 0.5); return curve(p, {x: p.x + dx, y: p.y}, {x: q.x - dx, y: q.y}, q, col, Object.assign({w: 2.6}, o)); }
+function up(p, q, col, o = {}){ return curve(p, {x: p.x - (o.lead || 40), y: p.y}, {x: q.x, y: q.y + (o.rise || 120)}, q, col, o); }
+function side(p, q, col, o = {}){ return curve(p, {x: p.x - (o.lead || 40), y: p.y}, {x: q.x - (o.run || 60), y: q.y}, q, col, o); }
+function tag(cx, cy, text, o = {}){
+  const w = Math.round(18 + text.length * 6.6 + (o.glyph ? 12 : 0));
+  if (o.left != null) cx = o.left + w / 2;
+  const x = cx - w / 2, col = o.col || C.OBJ;
+  let s = `<g${at('opacity', o.op)}><rect x="${x}" y="${cy - 10}" width="${w}" height="20" rx="10" fill="${o.hot ? '#5a4384' : '#1e1630'}" fill-opacity=".92" stroke="${o.hot ? '#ffffff' : col}" stroke-width="${o.hot ? 1.6 : 1.2}"/>`;
+  let tx = x + 9;
+  if (o.glyph){ s += `<text x="${tx + 3}" y="${cy + 4}" class="tg-g" fill="${col}" text-anchor="middle">${o.glyph}</text>`; tx += 12; }
+  s += `<text x="${tx}" y="${cy + 3.8}" class="tg">${esc(text)}</text></g>`;
+  return {svg: s, w, l: {x, y: cy}, r: {x: x + w, y: cy}, b: {x: cx, y: cy + 10}, t: {x: cx, y: cy - 10}};
+}
+function leader(x1, y1, x2, y2, op = .55){ return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${C.OBJ}" stroke-opacity="${op}" stroke-width="1.2"/>`; }
+function note(x, y, lines, o = {}){
+  return `<text x="${x}" y="${y}" class="an"${o.anchor ? ` text-anchor="${o.anchor}"` : ''}>` + lines.map((l, i) => `<tspan x="${x}" dy="${i ? 15 : 0}">${esc(l)}</tspan>`).join('') + '</text>';
+}
+function ctrl(x, y, rot = 0){
+  return `<g transform="translate(${x} ${y}) rotate(${rot})"><ellipse cx="0" cy="0" rx="14" ry="8" fill="none" stroke="#c8cdd8" stroke-width="3"/><rect x="-6.5" y="5" width="13" height="36" rx="6.5" fill="#2a2e37" stroke="#c8cdd8" stroke-width="1.4"/><circle cx="0" cy="13" r="2.4" fill="#c8cdd8"/></g>`;
+}
+function ray(p, q){ return `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="#ffffff" stroke-opacity=".8" stroke-width="2.2" stroke-linecap="round"/><circle cx="${q.x}" cy="${q.y}" r="3.4" fill="#ffffff"/>`; }
+function door(x, y, w = 72, h = 150){
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="#4b3b29" stroke="#6e5739" stroke-width="2"/><rect x="${x + 10}" y="${y + 12}" width="${w - 20}" height="${h * 0.34}" rx="2" fill="none" stroke="#5e4a32"/><rect x="${x + 10}" y="${y + h * 0.5}" width="${w - 20}" height="${h * 0.4}" rx="2" fill="none" stroke="#5e4a32"/><circle cx="${x + w - 11}" cy="${y + h * 0.52}" r="3.2" fill="#c9a76b"/>`;
+}
+function lamp(p, x, y, r = 60){ return `<circle cx="${x}" cy="${y}" r="${r}" fill="url(#${p}g)"/><circle cx="${x}" cy="${y}" r="16" fill="none" stroke="#f2d878" stroke-opacity=".35"/><circle cx="${x}" cy="${y}" r="11" fill="#f2d878"/>`; }
+function defs(p){
+  return `<defs><linearGradient id="${p}s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c2232"/><stop offset="1" stop-color="#121722"/></linearGradient><linearGradient id="${p}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b202b"/><stop offset="1" stop-color="#0b0e14"/></linearGradient><radialGradient id="${p}g"><stop offset="0" stop-color="#f2d878" stop-opacity=".55"/><stop offset="1" stop-color="#f2d878" stop-opacity="0"/></radialGradient><linearGradient id="${p}v" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#000000"/></linearGradient><marker id="${p}a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#c8cdd8"/></marker><marker id="${p}w" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" fill="#eeeeee"/></marker></defs>`;
+}
+/* a variable box: name and type above, trash on the front, the start value in a slot on the front;
+   style 'window' shows the start value as text, since it is edited in the window */
+function vbox(cx, cy, name, col, t, type, style, o = {}){
+  const fw = 108, x0 = cx - fw / 2, top = cy - 10, my = top + 17;
+  let s = `<polygon points="${x0},${top} ${x0 + 8},${top - 9} ${x0 + fw + 8},${top - 9} ${x0 + fw},${top}" fill="${col}" fill-opacity=".3" stroke="${col}" stroke-opacity=".7"/>`;
+  s += `<polygon points="${x0 + fw},${top} ${x0 + fw + 8},${top - 9} ${x0 + fw + 8},${top + 25} ${x0 + fw},${top + 34}" fill="${col}" fill-opacity=".14" stroke="${col}" stroke-opacity=".5"/>`;
+  s += `<rect x="${x0}" y="${top}" width="${fw}" height="34" fill="${col}" fill-opacity=".18" stroke="${o.hot ? '#ffffff' : col}" stroke-opacity=".9" stroke-width="${o.hot ? 2 : 1}"/>`;
+  s += `<text x="${cx + 4}" y="${top - 14}" class="tg" text-anchor="middle">${esc(name)}<tspan class="cm" dx="4">${esc(type)}</tspan></text>`;
+  s += `<g opacity="${o.trashOp || 1}">${trash(x0 + 13, my)}</g>`;
+  if (style === 'window') s += `<text x="${cx + 16}" y="${my + 4}" class="cm" text-anchor="middle">= ${esc(t.text)}</text>`;
+  else if (style === 'pieces') s += pieceFree(cx + 4, my, t);
+  else s += token(cx + 14, my, t);
+  return s;
+}
+function plusBox(cx, cy){ return `<rect x="${cx - 14}" y="${cy - 14}" width="28" height="28" rx="6" fill="none" stroke="#7d8597" stroke-dasharray="4 3"/><path d="M${cx - 5} ${cy}h10M${cx} ${cy - 5}v10" stroke="#c8cdd8" stroke-width="1.8" stroke-linecap="round"/>`; }
+function looseRow(x0, y, items, style, gap = 8, o = {}){ let s = '', x = x0; for (const t of items){ const w = looseW(t, style); s += loose(x + tokenW(t) / 2, y, t, style, o); x += w + gap; } return s; }
+function winPanel(x, y, w, h, title, sub, o = {}){
+  let s = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="18" fill="#1d2026" fill-opacity="${o.see ? .62 : 1}" stroke="rgba(255,255,255,.16)"/>`;
+  s += `<text x="${x + 18}" y="${y + 28}" class="wt">${esc(title)}</text>`;
+  if (sub) s += `<text x="${x + 18}" y="${y + 45}" class="wm">${esc(sub)}</text>`;
+  return s;
+}
+function bar(px, y, title){
+  return `<rect x="${px - 84}" y="${y}" width="168" height="28" rx="14" fill="#1d2026" stroke="rgba(255,255,255,.14)"/><rect x="${px - 70}" y="${y + 8}" width="12" height="12" rx="3" fill="none" stroke="#c8cdd8" stroke-width="1.3"/><text x="${px - 52}" y="${y + 18.5}" class="wb">${esc(title)}</text>` +
+    `<path d="M${px + 39} ${y + 8}h6l-1 4 2.5 2.5h-9l2.5-2.5z M${px + 42} ${y + 14.5}v5" fill="none" stroke="#c8cdd8" stroke-width="1.3" stroke-linejoin="round"/><path d="M${px + 62} ${y + 9.5}l9 9M${px + 71} ${y + 9.5}l-9 9" stroke="#c8cdd8" stroke-width="1.5" stroke-linecap="round"/>`;
+}
+
+/* ---------- state ---------- */
+const PRESETS = {
+  now: {values: 'window', targets: 'window', wait: 'flag', variables: 'window', tray: false, create: false},
+  all: {values: 'pucks', targets: 'scene', wait: 'finished', variables: 'boxes', tray: true, create: true},
+};
+const st = Object.assign({}, PRESETS.all);
+let selected = 4;
+const tok = s => s.values !== 'window', scene = s => s.targets === 'scene', fin = s => s.wait === 'finished', boxes = s => s.variables === 'boxes';
+const winV = s => s.values === 'window', winT = s => s.targets === 'window';
+
+const VARIANTS = [
+  {key: 'values', title: 'Значения', tag: 'C', opts: [['window', 'Окно'], ['pucks', 'Шайбы'], ['pieces', 'Детали']], hint: 'Окно: поля в окне Parameters. Шайбы: фишка в прорези справа. Детали: фишка вставляется в сам порт.'},
+  {key: 'targets', title: 'Цели', tag: 'D', opts: [['window', 'Окно'], ['scene', 'Сцена']], hint: 'Окно: поля объекта и имени. Сцена: провод к свойству, сигналу или анимации объекта.'},
+  {key: 'wait', title: 'Ожидание анимации', tag: 'F', opts: [['flag', 'Флаг'], ['finished', 'Выход Finished']], hint: 'Флаг: значение Wait. Выход Finished: чтобы ждать, провод ведут из него.'},
+  {key: 'variables', title: 'Переменные', tag: 'F', opts: [['window', 'Окно'], ['boxes', 'Ящики']], hint: 'Окно: выбор по имени. Ящики: провод к ящику на полке.'},
+];
+const TOGGLES = [
+  {key: 'tray', title: 'Лоток фишек', tag: 'C', hint: 'Окно Tokens с готовыми фишками рядом с графом.', needs: tok, needsText: 'Нужны «Значения»: Шайбы или Детали.'},
+  {key: 'create', title: 'Создание из сцены', tag: 'D', hint: 'Вытянуть из объекта сигнал, свойство или анимацию — получится карточка.'},
+];
+
+const OV = [
+  {id: 1, title: 'On Signal', face: FACE.event, x: 80, y: 380, rows: [
+    {r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {r: {id: 'body', label: 'body', type: C.OBJ}},
+    {l: {id: 'source', label: 'Source', member: 'body_entered', type: C.OBJ, show: scene}},
+    {l: {k: 'slot', id: 'policy', label: 'Policy', token: {kind: 'enum', text: 'ignore', glyph: '⊘'}, show: tok}},
+  ]},
+  {id: 2, title: 'Play Sound', face: FACE.audio, x: 376, y: 380, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'target', label: 'Target', member: 'Creak', type: C.OBJ}},
+  ]},
+  {id: 3, title: 'Play Animation', face: FACE.anim, x: 672, y: 380, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'target', label: 'Target', member: 'open', type: C.OBJ}, r: {id: 'finished', label: 'Finished', type: C.EXEC, show: fin}},
+    {l: {k: 'slot', id: 'wait', label: 'Wait', token: {kind: 'bool', text: 'true', on: true}, show: s => tok(s) && !fin(s)}},
+    {l: {id: 'timeout', label: 'Timeout', type: C.NUM, token: {kind: 'num', text: '30 s'}}},
+  ]},
+  {id: 4, title: 'Set Property', face: FACE.prop, x: 968, y: 380, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'value', label: 'Value', type: C.COLOR, token: {kind: 'color', text: 'green', swatch: '#7be5b3'}}},
+    {l: {id: 'target', label: 'Target', member: 'light_color', type: C.OBJ}},
+  ]},
+  {id: 5, title: 'Set Variable', face: FACE.value, x: 1040, y: 590, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'value', label: 'Value', type: C.BOOL, token: {kind: 'bool', text: 'true', on: true}}},
+    {l: {id: 'var', label: 'Variable', note: 'door_open', type: C.BOOL, show: boxes}},
+  ]},
+];
+/* rows of the Parameters window: [label, value, still in the window?] */
+const WIN = {
+  1: [['Target', 'TriggerZone', winT], ['Signal', 'body_entered', winT], ['Policy', 'ignore', winV]],
+  2: [['Target', 'Door_B/Creak', winT]],
+  3: [['Target', 'Door_B/AnimationPlayer', winT], ['Animation', 'open', winT], ['Wait', 'on', s => winV(s) && !fin(s)], ['Timeout', '30', winV]],
+  4: [['Target', 'Lamp', winT], ['Property', 'light_color', winT], ['Value', '#7be5b3', winV]],
+  5: [['Variable', 'door_open', s => !boxes(s)], ['Value', 'true', winV]],
+};
+const TRAY_ROWS = [
+  ['Recent', [{kind: 'num', text: '1.5 s'}, {kind: 'color', text: 'green', swatch: '#7be5b3'}, {kind: 'bool', text: 'true', on: true}]],
+  ['Number', [{kind: 'num', text: '0.5 s'}, {kind: 'num', text: '1 s'}, {kind: 'num', text: '2 s'}, {kind: 'num', text: '5 s'}]],
+  ['Bool', [{kind: 'bool', text: 'true', on: true}, {kind: 'bool', text: 'false', on: false}]],
+  ['Color', [{kind: 'color', text: 'green', swatch: '#7be5b3'}, {kind: 'color', text: 'red', swatch: '#e8879b'}, {kind: 'color', text: 'warm', swatch: '#f2d878'}]],
+  ['Mode', [{kind: 'enum', text: 'parallel', glyph: '∥'}, {kind: 'enum', text: 'ignore', glyph: '⊘'}, {kind: 'enum', text: 'restart', glyph: '↻'}]],
+];
+
+/* ---------- overview ---------- */
+function sceneOv(){
+  let s = `<rect width="1280" height="800" fill="url(#ovs)"/><rect y="300" width="1280" height="500" fill="url(#ovf)"/>`;
+  for (let i = -9; i <= 9; i++) s += `<line x1="${640 + i * 44}" y1="300" x2="${640 + i * 250}" y2="800" stroke="#ffffff" stroke-opacity=".045"/>`;
+  for (const y of [316, 338, 368, 410, 470, 556, 680]) s += `<line x1="0" y1="${y}" x2="1280" y2="${y}" stroke="#ffffff" stroke-opacity=".045"/>`;
+  s += `<rect x="300" y="96" width="600" height="204" fill="#242a39"/><rect x="300" y="96" width="600" height="4" fill="#2f3648"/><rect x="300" y="292" width="600" height="8" fill="#1d2230"/>`;
+  s += door(350, 150) + door(564, 150) + door(778, 150);
+  s += `<polygon points="530,312 670,312 694,346 506,346" fill="#7be5b3" fill-opacity=".12" stroke="#7be5b3" stroke-opacity=".8" stroke-dasharray="5 4"/>`;
+  s += `<line x1="950" y1="0" x2="950" y2="64" stroke="#4a5060" stroke-width="2"/>` + lamp('ov', 950, 76, 70);
+  return s;
+}
+function sceneNames(){
+  return note(386, 142, ['Door_A'], {anchor: 'middle'}) + note(600, 142, ['Door_B'], {anchor: 'middle'}) + note(814, 142, ['Door_C'], {anchor: 'middle'}) + note(702, 334, ['TriggerZone']) + note(928, 80, ['Lamp'], {anchor: 'end'});
+}
+function paramsWindow(){
+  const c = OV.find(k => k.id === selected);
+  const rows = WIN[selected].filter(r => r[2](st));
+  const x = 1010, y = 18, w = 252;
+  if (!rows.length) return `<rect x="${x}" y="${y}" width="${w}" height="62" rx="16" fill="#0d1017" fill-opacity=".5" stroke="#5d6680" stroke-dasharray="5 4"/>` + note(x + w / 2, y + 27, ['Parameters не открывается:', `у ${c.title} всё в графе`], {anchor: 'middle'});
+  const h = 56 + rows.length * 44 + 4;
+  let s = winPanel(x, y, w, h, 'Parameters', `${c.title} · ${c.id}`);
+  rows.forEach((r, i) => {
+    const ry = y + 56 + i * 44, sw = r[1].startsWith('#');
+    s += `<text x="${x + 18}" y="${ry + 12}" class="wl">${esc(r[0])}</text><rect x="${x + 18}" y="${ry + 18}" width="${w - 36}" height="22" rx="7" fill="#2b2f38"/>`;
+    if (sw) s += `<rect x="${x + 26}" y="${ry + 23}" width="12" height="12" rx="3" fill="${r[1]}"/>`;
+    s += `<text x="${x + (sw ? 44 : 26)}" y="${ry + 33}" class="wv">${esc(r[1])}</text>`;
+  });
+  return s + bar(x + w / 2, y + h + 10, 'Parameters');
+}
+function trayWindow(x, y, w, style, dimKind, rowH = 32){
+  const h = 52 + TRAY_ROWS.length * rowH + 6;
+  let s = winPanel(x, y, w, h, 'Tokens', null, {see: true});
+  TRAY_ROWS.forEach(([name, items], i) => {
+    const ry = y + 62 + i * rowH;
+    s += `<text x="${x + 18}" y="${ry + 4}" class="wl">${name}</text>`;
+    let cx = x + 84;
+    for (const t of items){
+      const tw = looseW(t, style), dim = dimKind && t.kind !== dimKind && name !== 'Recent';
+      s += `<rect x="${cx - 5}" y="${ry - 14}" width="${tw + 10}" height="28" rx="8" fill="#ffffff" fill-opacity=".06"/>`;
+      s += loose(cx + tokenW(t) / 2, ry, t, style, {op: dim ? .3 : null});
+      cx += tw + 16;
+    }
+  });
+  return {svg: s, h};
+}
+function overviewSvg(){
+  const A = {};
+  let cards = '';
+  for (const c of OV){ const r = card(c, st, {selected: c.id === selected}); A[c.id] = r.a; cards += r.svg; }
+  let s = `<svg viewBox="0 0 1280 800" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Вид из шлема: сцена с тремя дверями, триггером и лампой, перед ней граф из пяти карточек">` + defs('ov') + sceneOv();
+  s += `<rect width="1280" height="800" fill="#04060a" opacity=".42"/>` + sceneNames();
+  let wires = '', tags = '', extra = '';
+  if (scene(st)){
+    // a chosen member is a tag on the object itself, where its wire ends
+    const tb = tag(600, 329, 'body_entered', {glyph: '»'});
+    const tc = tag(600, 196, 'Creak', {glyph: '♪'});
+    const to = tag(600, 224, 'open', {glyph: '▸'});
+    const tl = tag(950, 101, 'light_color');
+    tags += tb.svg + tc.svg + to.svg + tl.svg;
+    wires += side(A[1].source, tb.l, C.OBJ, {lead: 50, run: 220});
+    wires += side(A[2].target, tc.l, C.OBJ, {lead: 40, run: 80});
+    wires += side(A[3].target, to.r, C.OBJ, {lead: 40, run: -80});
+    wires += up(A[4].target, tl.b, C.OBJ, {rise: 140});
+  } else {
+    const d = {x: 600, y: 250}, l = {x: 950, y: 88};
+    wires += up(A[2].target, d, C.OBJ) + up(A[3].target, d, C.OBJ) + up(A[4].target, l, C.OBJ, {rise: 140});
+    tags += `<circle cx="600" cy="250" r="4" fill="${C.OBJ}"/><circle cx="950" cy="88" r="4" fill="${C.OBJ}"/>`;
+  }
+  if (st.create){
+    const fo = tag(300, 190, 'open', {glyph: '▸', op: .55});
+    const fc = tag(300, 216, 'close', {glyph: '▸', hot: true});
+    // the open fan grows from a point on Door_A, which is outlined meanwhile
+    tags += `<rect x="347" y="147" width="78" height="156" rx="3" fill="none" stroke="#ffffff" stroke-width="2"/>`;
+    tags += note(300, 172, ['AnimationPlayer'], {anchor: 'middle'}) + fo.svg + fc.svg;
+    tags += leader(fo.r.x, 190, 340, 190, .8) + leader(fc.r.x, 216, 340, 216, .8) + leader(340, 190, 340, 216, .8) + leader(340, 203, 372, 203, .8) + `<circle cx="372" cy="203" r="3.5" fill="#ffffff"/>`;
+    const g = card({id: 'new', title: 'Play Animation', face: FACE.anim, x: 24, y: 48, rows: [{l: {id: 'target', label: 'Target', member: 'close', type: C.OBJ}}]}, {targets: 'scene', values: 'window'}, {op: .85, ghost: true});
+    wires += side(g.a.target, fc.l, C.OBJ, {lead: 30, run: -110, dash: '6 5'});
+    extra += g.svg + note(24, 34, ['Создание из сцены: провод из лепестка, отпущенный в пустоте, — новая карточка']);
+    extra += ray({x: 262, y: 84}, {x: 214, y: 80}) + ctrl(268, 86, -95);
+  }
+  if (boxes(st)){
+    extra += `<rect x="630" y="636" width="330" height="100" rx="16" fill="#151925" fill-opacity=".94" stroke="rgba(255,255,255,.12)"/><text x="646" y="658" class="wl">Variables</text>`;
+    // door_open is used by Set Variable, so its trash is dim
+    extra += plusBox(660, 707) + vbox(742, 700, 'visits', C.NUM, {kind: 'num', text: '0'}, 'int', st.values) + vbox(866, 700, 'door_open', C.BOOL, {kind: 'bool', text: 'false', on: false}, 'bool', st.values, {trashOp: .35});
+    const p = A[5].var, q = {x: 928, y: 707};
+    wires += curve(p, {x: p.x - 40, y: p.y}, {x: 975, y: 707}, q, C.BOOL);
+  }
+  if (tok(st) && st.tray){
+    const t = trayWindow(40, 548, 560, st.values, null, 30);
+    extra += t.svg + bar(320, 548 + t.h + 6, 'Tokens');
+  }
+  wires += flow(A[1].then, A[2].in) + flow(A[2].then, A[3].in) + flow(fin(st) ? A[3].finished : A[3].then, A[4].in) + flow(A[4].then, A[5].in);
+  s += wires + tags + cards + paramsWindow() + extra;
+  return s + '</svg>';
+}
+function statusHtml(){
+  const c = OV.find(k => k.id === selected);
+  let inWin = 0, total = 0;
+  for (const id in WIN) for (const r of WIN[id]){ if (r[0] === 'Wait' && fin(st)) continue; total++; if (r[2](st)) inWin++; }
+  const mine = WIN[selected].filter(r => r[2](st)).map(r => r[0]);
+  const sel = mine.length ? `У выбранной «${esc(c.title)}» в окне: ${mine.join(', ')}.` : `У выбранной «${esc(c.title)}» в окне ничего нет, окно не открывается.`;
+  return `Параметров в окне: <b>${inWin}</b> из ${total}, в графе: <b>${total - inWin}</b>. ${sel}`;
+}
+
+/* ---------- settings window ---------- */
+const gear = `<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5" fill="none" stroke="#c8cdd8" stroke-width="1.6" stroke-dasharray="3 1.6"/><circle cx="10" cy="10" r="2.6" fill="#c8cdd8"/></svg>`;
+function buildHz(){
+  const row = (d, control) => `<div class="hz-row" id="row-${d.key}"><div class="hz-txt"><div class="hz-name"><span class="ftag ${d.tag.toLowerCase()}">${d.tag}</span>${d.title}</div><div class="hz-hint" id="h-${d.key}">${d.hint}</div></div>${control}</div>`;
+  const v = VARIANTS.map(d => row(d, `<div class="seg" role="group" aria-label="${d.title}">` + d.opts.map(([val, lab]) => `<button type="button" id="b-${d.key}-${val}" data-k="${d.key}" data-v="${val}" aria-pressed="false">${lab}</button>`).join('') + '</div>')).join('');
+  const t = TOGGLES.map(d => row(d, `<button type="button" class="sw" role="switch" id="sw-${d.key}" data-k="${d.key}" aria-checked="false" aria-label="${d.title}"><span></span></button>`)).join('');
+  document.getElementById('hz').innerHTML = `<div class="hz-top"><div class="hz-title">${gear} Настройки</div><div class="hz-tabs"><span class="on">Функции</span><span>Управление</span></div></div>
+    <div class="hz-existing"><span>Вид карточек <b>К голове</b></span><span>Порты <b>Плоские</b></span><span>Форма окон <b>Плоская</b></span></div>
+    <div class="hz-cols"><div><p class="hz-cap">Варианты · одно из нескольких</p>${v}</div><div><p class="hz-cap">Дополнения · выкл / вкл</p>${t}</div></div>`;
+}
+function syncHz(){
+  for (const d of VARIANTS) for (const [val] of d.opts) document.getElementById(`b-${d.key}-${val}`).setAttribute('aria-pressed', String(st[d.key] === val));
+  for (const d of TOGGLES){
+    const ok = !d.needs || d.needs(st), b = document.getElementById(`sw-${d.key}`);
+    b.setAttribute('aria-checked', String(!!st[d.key] && ok));
+    b.disabled = !ok;
+    document.getElementById(`row-${d.key}`).classList.toggle('off', !ok);
+    document.getElementById(`h-${d.key}`).textContent = ok ? d.hint : d.needsText;
+  }
+  for (const [id, key] of [['p-now', 'now'], ['p-all', 'all']]){
+    const p = PRESETS[key];
+    document.getElementById(id).setAttribute('aria-pressed', String(Object.keys(p).every(k => p[k] === st[k])));
+  }
+}
+function update(){
+  document.getElementById('ov').innerHTML = overviewSvg();
+  document.getElementById('ov-status').innerHTML = statusHtml();
+  syncHz();
+}
+
+/* ---------- detail figures ---------- */
+function frame(p, titles, label, h = 380, cols = 3, rows = 1){
+  const pw = 900 / cols, ph = h / rows;
+  let s = `<svg viewBox="0 0 900 ${h}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(label)}">${defs(p)}<rect width="900" height="${h}" fill="#0d1017"/>`;
+  for (let i = 1; i < cols; i++) s += `<line x1="${i * pw}" y1="14" x2="${i * pw}" y2="${h - 14}" stroke="#ffffff" stroke-opacity=".08"/>`;
+  for (let j = 1; j < rows; j++) s += `<line x1="14" y1="${j * ph}" x2="886" y2="${j * ph}" stroke="#ffffff" stroke-opacity=".08"/>`;
+  titles.forEach((t, i) => s += `<text x="${(i % cols) * pw + 20}" y="${Math.floor(i / cols) * ph + 28}" class="pt">${esc(t)}</text>`);
+  return s;
+}
+const SP = {values: 'pucks', targets: 'scene'}, SQ = {values: 'pieces', targets: 'scene'};
+const PA_ROWS = [
+  {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+  {l: {id: 'target', label: 'Target', member: 'open', type: C.OBJ}},
+  {l: {k: 'slot', id: 'wait', label: 'Wait', token: {kind: 'bool', text: 'true', on: true}}},
+  {l: {id: 'timeout', label: 'Timeout', type: C.NUM, token: {kind: 'num', text: '30 s'}}},
+];
+function glyphNotes(x, y, items){
+  let s = '';
+  items.forEach(([g, lines], i) => {
+    const yy = y + i * 40;
+    if (g === 'c') s += `<circle cx="${x + 5}" cy="${yy - 4}" r="5.5" fill="${C.NUM}"/>`;
+    if (g === 's') s += `<rect x="${x}" y="${yy - 9.5}" width="11" height="11" rx="2.5" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.3"/>`;
+    s += note(x + 20, yy, lines);
+  });
+  return s;
+}
+function figC(){
+  let s = frame('fc', ['Шайбы', 'Детали', 'Провод вместо фишки'], 'Фишки: шайбы в прорези, детали в порту, провод вместо фишки');
+  s += card({id: 3, title: 'Play Animation', face: FACE.anim, x: 45, y: 46, rows: PA_ROWS}, SP).svg;
+  s += glyphNotes(24, 238, [['c', ['порт: провод или фишка;', 'шайба лежит в прорези справа']], ['s', ['квадратное гнездо: только', 'фишка, провода нет']]]);
+  s += note(24, 330, ['карточка не выходит за края']);
+  s += card({id: 3, title: 'Play Animation', face: FACE.anim, x: 376, y: 46, rows: PA_ROWS}, SQ).svg;
+  s += glyphNotes(324, 238, [['c', ['деталь входит в сам порт,', 'как штекер провода']], ['s', ['квадратный хвост — только', 'в квадратное гнездо']]]);
+  s += note(324, 330, ['значения выступают за край на 7 см']);
+  const gv = card({id: 8, title: 'Get Variable', face: FACE.value, x: 612, y: 40, rows: [
+    {r: {id: 'v', label: 'Value', type: C.NUM}},
+    {l: {id: 'var', label: 'Variable', note: 'level_delay', type: C.NUM}},
+  ]}, SP);
+  const dl = card({id: 7, title: 'Delay', face: FACE.flow, x: 672, y: 196, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'fin', label: 'Finished', type: C.EXEC}},
+    {l: {id: 'sec', label: 'Seconds', type: C.NUM, token: {kind: 'num', text: '1.5 s'}, wired: true}},
+  ]}, SP);
+  s += flow(gv.a.v, dl.a.sec, C.NUM) + gv.svg + dl.svg;
+  s += note(612, 324, ['провод прячет фишку: она бледнеет,', 'а 1.5 s остаётся в графе;', 'снял провод — фишка снова действует']);
+  return s + '</svg>';
+}
+function figTray(){
+  let s = `<svg viewBox="0 0 900 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Окно лотка Tokens с разделами фишек и перенос фишки в гнездо">${defs('ft')}<rect width="900" height="400" fill="#0d1017"/>`;
+  s += `<line x1="540" y1="14" x2="540" y2="386" stroke="#ffffff" stroke-opacity=".08"/>`;
+  s += `<text x="20" y="28" class="pt">Окно Tokens</text><text x="560" y="28" class="pt">Взять и вставить</text>`;
+  const t = trayWindow(28, 44, 492, 'pucks', 'num');
+  s += t.svg + note(46, 44 + 45, ['гнездо под лучом: Delay · Seconds — числа']) + bar(274, 44 + t.h + 10, 'Tokens');
+  s += `<rect x="504" y="104" width="4" height="120" rx="2" fill="#ffffff" fill-opacity=".25"/>`;
+  const dl = card({id: 7, title: 'Delay', face: FACE.flow, x: 660, y: 56, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'fin', label: 'Finished', type: C.EXEC}},
+    {l: {id: 'sec', label: 'Seconds', type: C.NUM, empty: 64}},
+  ]}, SP);
+  s += dl.svg;
+  s += `<path d="M612 214Q700 210 ${dl.a.sec_slot.x} ${dl.a.sec_slot.y + 16}" fill="none" stroke="#c8cdd8" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#fta)"/>`;
+  s += ctrl(590, 246, -10) + token(590, 222, {kind: 'num', text: '2 s'}, {slot: false});
+  s += note(560, 316, ['grip по ячейке — копия фишки в руке;', 'отпустил у гнезда — она в нём,', 'отпустил в воздухе — исчезла']);
+  return s + '</svg>';
+}
+function figInput(){
+  let s = frame('fi', ['Число', 'Режим', 'Да / нет', 'Цвет', 'Вектор', 'Текст'], 'Ввод значений: число поворотом, режим поворотом, да/нет щелчком, цвет кольцом, вектор стрелками, текст клавиатурой', 560, 3, 2);
+  // number
+  for (let i = -6; i <= 6; i++){
+    const a = (-90 + i * 15) * Math.PI / 180, r1 = 76, r2 = i % 2 ? 82 : 88;
+    s += `<line x1="${150 + r1 * Math.cos(a)}" y1="${118 + r1 * Math.sin(a)}" x2="${150 + r2 * Math.cos(a)}" y2="${118 + r2 * Math.sin(a)}" stroke="${i === 2 ? '#ffffff' : '#7d8597'}" stroke-width="${i === 2 ? 2.4 : 1.4}"/>`;
+  }
+  s += `<path d="M${150 + 70 * Math.cos(-1.31)} ${118 + 70 * Math.sin(-1.31)}A70 70 0 0 1 ${150 + 70 * Math.cos(-1.05)} ${118 + 70 * Math.sin(-1.05)}" fill="none" stroke="#ffffff" stroke-width="2" marker-end="url(#fia)"/>`;
+  s += `<g transform="translate(150 118) scale(1.7)">${token(0, 0, {kind: 'num', text: '2.0 s'}, {hot: true})}</g>` + ctrl(150, 200, 22);
+  s += note(150, 258, ['15° = 0,1 с; быстро — ×10'], {anchor: 'middle'});
+  // mode
+  s += `<circle cx="450" cy="120" r="30" fill="#151a26" stroke="${C.VALUE}" stroke-width="1.6"/><line x1="450" y1="120" x2="450" y2="96" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>`;
+  [['parallel', -150], ['ignore', -90], ['restart', -30]].forEach(([t, d]) => {
+    const a = d * Math.PI / 180, x = 450 + 62 * Math.cos(a), y = 120 + 62 * Math.sin(a);
+    s += `<circle cx="${450 + 36 * Math.cos(a)}" cy="${120 + 36 * Math.sin(a)}" r="2.4" fill="${t === 'ignore' ? '#ffffff' : '#7d8597'}"/>`;
+    s += `<text x="${x}" y="${y + 4}" class="tk" text-anchor="middle"${t === 'ignore' ? '' : ' opacity=".5"'}>${t}</text>`;
+  });
+  s += token(450, 196, {kind: 'enum', text: 'ignore', glyph: '⊘'}, {slot: false}) + note(450, 258, ['поворот: щелчок на значение'], {anchor: 'middle'});
+  // bool
+  s += token(690, 120, {kind: 'bool', text: 'false', on: false}, {op: .45}) + `<path d="M726 120H770" stroke="#c8cdd8" stroke-width="1.5" marker-end="url(#fia)"/>` + token(812, 120, {kind: 'bool', text: 'true', on: true}, {hot: true});
+  s += ray({x: 812, y: 196}, {x: 812, y: 132}) + ctrl(812, 202, 0) + note(750, 258, ['щелчок trigger — переключить'], {anchor: 'middle'});
+  // color
+  for (let i = 0; i < 24; i++){
+    const a0 = i * 15 * Math.PI / 180, a1 = (i + 1) * 15 * Math.PI / 180, r = 64;
+    s += `<path d="M${150 + r * Math.cos(a0)} ${388 + r * Math.sin(a0)}A${r} ${r} 0 0 1 ${150 + r * Math.cos(a1)} ${388 + r * Math.sin(a1)}" fill="none" stroke="hsl(${i * 15},75%,62%)" stroke-width="12"/>`;
+  }
+  s += `<rect x="236" y="330" width="10" height="116" rx="5" fill="url(#fiv)"/><rect x="232" y="362" width="18" height="5" rx="2" fill="#ffffff"/>`;
+  s += `<g transform="translate(150 388) scale(1.15)">${token(0, 0, {kind: 'color', text: 'green', swatch: '#7be5b3'}, {hot: true})}</g>`;
+  s += ray({x: 50, y: 462}, {x: 150 + 64 * Math.cos(2.4), y: 388 + 64 * Math.sin(2.4)}) + ctrl(46, 468, -40);
+  s += note(150, 528, ['щелчок — кольцо оттенков и яркость'], {anchor: 'middle'});
+  // vector
+  const vx = 430, vy = 400;
+  s += `<line x1="${vx}" y1="${vy}" x2="${vx + 84}" y2="${vy}" stroke="${AX[0]}" stroke-width="3" marker-end="url(#fia)"/><line x1="${vx}" y1="${vy}" x2="${vx}" y2="${vy - 92}" stroke="${AX[1]}" stroke-width="4.5" marker-end="url(#fia)"/><line x1="${vx}" y1="${vy}" x2="${vx - 52}" y2="${vy + 44}" stroke="${AX[2]}" stroke-width="3" marker-end="url(#fia)"/>`;
+  s += `<text x="${vx + 94}" y="${vy + 4}" class="tk" fill="${AX[0]}">X</text><text x="${vx - 4}" y="${vy - 100}" class="tk">Y</text><text x="${vx - 66}" y="${vy + 56}" class="tk">Z</text>`;
+  s += token(vx + 14, vy + 24, {kind: 'vec', text: '0, 2.1, 0'}, {slot: false}) + ctrl(vx + 34, vy - 88, -70) + `<path d="M${vx + 16} ${vy - 54}V${vy - 30}" stroke="#ffffff" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#fia)"/>`;
+  s += note(450, 506, ['тянуть стрелку — одна компонента,', 'шаг сетки; поворот — как число'], {anchor: 'middle'});
+  // text
+  s += token(750, 330, {kind: 'text', text: 'Door opened|'}, {hot: true});
+  const keys = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
+  keys.forEach((row, j) => { for (let i = 0; i < row.length; i++){ const kx = 646 + j * 9 + i * 21; s += `<rect x="${kx}" y="${366 + j * 24}" width="18" height="20" rx="4" fill="#2b2f38"/><text x="${kx + 9}" y="${380 + j * 24}" class="kb" text-anchor="middle">${row[i]}</text>`; } });
+  s += `<rect x="700" y="438" width="100" height="18" rx="4" fill="#2b2f38"/>` + ray({x: 640, y: 492}, {x: 718, y: 384}) + ctrl(636, 498, -30) + ray({x: 864, y: 492}, {x: 790, y: 408}) + ctrl(868, 498, 30);
+  s += note(750, 528, ['щелчок — клавиатура у фишки'], {anchor: 'middle'});
+  return s + '</svg>';
+}
+function figD(){
+  let s = frame('fd', ['Провод к свойству', 'Невидимые дети объекта', 'Динамический Target'], 'Сцена вместо имён: провод к свойству лампы, анимация двери через её AnimationPlayer, выбор члена у порта для динамической цели');
+  s += lamp('fd', 236, 70, 46) + `<circle cx="236" cy="70" r="17" fill="none" stroke="#ffffff" stroke-width="2"/>` + note(74, 40, ['Lamp · по типу Value: Color']);
+  const pills = [['light_color', {hot: true}], ['light_energy', {op: .4}], ['visible', {op: .4}], ['shadow_enabled', {op: .4}], ['ещё 27 ▾', {op: .4}]];
+  pills.forEach(([t, o], i) => { const g = tag(0, 64 + i * 26, t, Object.assign({left: 74}, o)); s += g.svg + leader(g.r.x, 64 + i * 26, 196, 64 + i * 26, .7); });
+  s += leader(196, 64, 196, 168, .7) + leader(196, 70, 219, 70, .8);
+  const sp = card({id: 4, title: 'Set Property', face: FACE.prop, x: 24, y: 222, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'value', label: 'Value', type: C.COLOR, token: {kind: 'color', text: 'green', swatch: '#7be5b3'}}},
+    {l: {id: 'target', label: 'Target', type: C.OBJ}},
+  ]}, SP);
+  s += curve(sp.a.target, {x: 6, y: sp.a.target.y}, {x: 50, y: 130}, {x: 96, y: 74}, C.OBJ, {dash: '6 5'}) + sp.svg;
+  s += ray({x: 254, y: 238}, {x: 96, y: 74}) + ctrl(258, 244, -42);
+
+  s += door(512, 66, 64, 140) + `<rect x="509" y="63" width="70" height="146" rx="3" fill="none" stroke="#ffffff" stroke-width="2"/>` + note(544, 56, ['Door_B'], {anchor: 'middle'});
+  s += note(440, 60, ['AnimationPlayer'], {anchor: 'middle'}) + note(440, 162, ['AudioStreamPlayer3D'], {anchor: 'middle'});
+  const op = tag(440, 80, 'open', {glyph: '▸', hot: true});
+  s += op.svg + tag(440, 106, 'close', {glyph: '▸', op: .55}).svg + tag(440, 132, 'knock', {glyph: '▸', op: .55}).svg + tag(440, 182, 'Creak', {glyph: '♪', op: .3}).svg;
+  s += leader(494, 80, 494, 182, .7) + leader(op.r.x, 80, 494, 80, .8) + [106, 132, 182].map(y => leader(474, y, 494, y, .5)).join('') + leader(494, 130, 530, 130, .8) + `<circle cx="530" cy="130" r="3.5" fill="#ffffff"/>`;
+  const pa = card({id: 3, title: 'Play Animation', face: FACE.anim, x: 324, y: 236, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'target', label: 'Target', member: 'open', type: C.OBJ}},
+  ]}, SP);
+  s += side(pa.a.target, op.l, C.OBJ, {lead: 32, run: 60}) + pa.svg;
+  s += note(324, 354, ['один провод задаёт оба: Target =', 'Door_B/AnimationPlayer и animation = open']);
+
+  s += note(612, 56, ['из On Signal по проводу приходит body']);
+  const src = tag(0, 80, 'body: Node3D', {left: 612, glyph: '»'});
+  const sv = card({id: 4, title: 'Set Property', face: FACE.prop, x: 676, y: 116, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'value', label: 'Value', type: C.BOOL, token: {kind: 'bool', text: 'false', on: false}}},
+    {l: {id: 'target', label: 'Target', member: 'visible', type: C.OBJ}},
+  ]}, SP);
+  s += curve(src.b, {x: src.b.x, y: 190}, {x: 628, y: sv.a.target.y}, sv.a.target, C.OBJ) + src.svg + sv.svg;
+  s += leader(sv.a.target.x - 4, sv.a.target.y + 6, 644, 268, .5);
+  let px = 612;
+  [['visible', {hot: true}], ['position', {op: .55}], ['rotation', {op: .55}], ['scale', {op: .55}]].forEach(([t, o]) => { const g = tag(0, 278, t, Object.assign({left: px}, o)); s += g.svg; px += g.w + 5; });
+  s += note(612, 316, ['члены типа Node3D — у самого порта;', 'выбор задаёт только имя: visible']);
+  return s + '</svg>';
+}
+function figCreate(){
+  let s = frame('fk', ['1 · Выделить объект', '2 · Тянуть лепесток', '3 · Отпустить в пустоте'], 'Создание из сцены по шагам: выделить триггер, вытянуть лепесток body_entered, отпустить — готовая карточка On Signal', 320);
+  const zone = (ox, sel) => `<polygon points="${ox + 40},${150} ${ox + 170},${150} ${ox + 192},${184} ${ox + 18},${184}" fill="#7be5b3" fill-opacity=".12" stroke="${sel ? '#ffffff' : '#7be5b3'}" stroke-opacity="${sel ? 1 : .8}" stroke-width="${sel ? 2 : 1}"${sel ? '' : ' stroke-dasharray="5 4"'}/>` + note(ox + 105, 204, ['TriggerZone'], {anchor: 'middle'});
+  s += zone(0, true) + note(150, 50, ['Signals'], {anchor: 'middle'});
+  const dot = (x, y) => `<circle cx="${x}" cy="${y}" r="3.5" fill="#ffffff"/>`;
+  s += tag(150, 70, 'body_entered', {glyph: '»'}).svg + tag(150, 96, 'body_exited', {glyph: '»'}).svg + note(232, 128, ['Properties'], {anchor: 'middle'}) + tag(232, 146, 'monitoring', {op: .6}).svg;
+  s += leader(150, 106, 130, 167, .8) + leader(190, 146, 130, 167, .6) + dot(130, 167);
+  s += note(20, 248, ['режим Logic: у выделенного', 'объекта — лепестки его сигналов,', 'свойств и анимаций']);
+  s += zone(300, false);
+  const b2 = tag(520, 70, 'body_entered', {glyph: '»', hot: true});
+  s += b2.svg + leader(500, 80, 430, 167, .8) + dot(430, 167);
+  const g = card({id: 'new', title: 'On Signal', face: FACE.event, x: 330, y: 214, rows: [{r: {id: 'then', label: 'Then', type: C.EXEC}}, {l: {id: 'source', label: 'Source', member: 'body_entered', type: C.OBJ}}]}, SP, {op: .55, ghost: true});
+  s += side(g.a.source, b2.l, C.OBJ, {lead: 26, run: 70, dash: '6 5'}) + g.svg + ray({x: 572, y: 200}, {x: 524, y: 222}) + ctrl(578, 206, 60);
+  s += note(320, 54, ['trigger по лепестку']);
+  s += zone(600, false);
+  const b3 = tag(820, 70, 'body_entered', {glyph: '»'});
+  const os = card({id: 1, title: 'On Signal', face: FACE.event, x: 630, y: 214, rows: [{r: {id: 'then', label: 'Then', type: C.EXEC}}, {l: {id: 'source', label: 'Source', member: 'body_entered', type: C.OBJ}}]}, SP);
+  s += b3.svg + leader(800, 80, 730, 167, .8) + dot(730, 167) + side(os.a.source, b3.l, C.OBJ, {lead: 26, run: 70}) + os.svg;
+  s += note(620, 54, ['одна запись undo']);
+  return s + '</svg>';
+}
+function figF(){
+  let s = frame('ff', ['Wait → выход Finished', 'Переменные — ящики', 'Policy остаётся фишкой'], 'Форма графа: выход Finished вместо флага Wait, переменные-ящики, режим события фишкой');
+  s += note(24, 48, ['Ожидание анимации: Флаг']);
+  const a = card({id: 3, title: 'Play Animation', face: FACE.anim, x: 24, y: 56, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'target', label: 'Target', member: 'open', type: C.OBJ}},
+    {l: {k: 'slot', id: 'wait', label: 'Wait', token: {kind: 'bool', text: 'true', on: true}}},
+  ]}, SP);
+  s += a.svg + `<path d="M${a.a.then.x} ${a.a.then.y}H282" stroke="#eeeeee" stroke-width="2.6" marker-end="url(#ffw)"/>`;
+  s += note(24, 212, ['Ожидание анимации: Выход Finished']);
+  const b = card({id: 3, title: 'Play Animation', face: FACE.anim, x: 24, y: 220, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'target', label: 'Target', member: 'open', type: C.OBJ}, r: {id: 'fin', label: 'Finished', type: C.EXEC}},
+  ]}, SP);
+  s += b.svg + `<path d="M${b.a.fin.x} ${b.a.fin.y}H282" stroke="#eeeeee" stroke-width="2.6" marker-end="url(#ffw)"/>`;
+  s += note(24, 346, ['этап 1: подключён один из выходов', 'этап 2: оба сразу']);
+
+  const sv = card({id: 5, title: 'Set Variable', face: FACE.value, x: 345, y: 46, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'value', label: 'Value', type: C.BOOL, token: {kind: 'bool', text: 'true', on: true}}},
+    {l: {id: 'var', label: 'Variable', note: 'door_open', type: C.BOOL}},
+  ]}, SP);
+  s += `<rect x="312" y="258" width="282" height="108" rx="14" fill="#151925" stroke="rgba(255,255,255,.12)"/><text x="326" y="278" class="wl">Variables</text>`;
+  s += vbox(378, 336, 'door_open', C.BOOL, {kind: 'bool', text: 'false', on: false}, 'bool', 'pucks', {trashOp: .35}) + vbox(500, 336, 'visits', C.NUM, {kind: 'num', text: '0'}, 'int', 'pucks') + plusBox(578, 343);
+  s += curve(sv.a.var, {x: 322, y: sv.a.var.y}, {x: 300, y: 343}, {x: 324, y: 343}, C.BOOL) + sv.svg;
+  s += note(330, 196, ['«+» — новый ящик: имя с клавиатуры,', 'тип — по первой фишке в гнезде;', 'в гнезде — значение при запуске']);
+
+  s += card({id: 1, title: 'On Signal', face: FACE.event, x: 645, y: 40, rows: [
+    {r: {id: 'then', label: 'Then', type: C.EXEC}},
+    {l: {id: 'source', label: 'Source', member: 'body_entered', type: C.OBJ}},
+    {l: {k: 'slot', id: 'policy', label: 'Policy', token: {kind: 'enum', text: 'ignore', glyph: '⊘'}, tok: {hot: true}}},
+  ]}, SP).svg;
+  const U = 52, X0 = 700;
+  const barr = (x1, x2, y) => `<rect x="${x1}" y="${y}" width="${x2 - x1}" height="7" rx="3.5" fill="${C.VALUE}" fill-opacity=".75"/>`;
+  const ev = (x, y) => `<path d="M${x - 4.5} ${y - 16}h9l-4.5 6z" fill="#ffffff"/>`;
+  [['∥ parallel', 204], ['⊘ ignore', 254], ['↻ restart', 304]].forEach(([t, y], i) => {
+    s += note(616, y + 4, [t]) + ev(X0, y) + (i === 1 ? `<path d="M${X0 + U - 4} ${y - 17}l8 8M${X0 + U + 4} ${y - 17}l-8 8" stroke="${C.BOOL}" stroke-width="1.8" stroke-linecap="round"/>` : ev(X0 + U, y));
+    if (i === 0) s += barr(X0, X0 + 2.2 * U, y - 6) + barr(X0 + U, X0 + 3.2 * U, y + 3);
+    if (i === 1) s += barr(X0, X0 + 2.2 * U, y - 3);
+    if (i === 2) s += barr(X0, X0 + U, y - 6) + `<line x1="${X0 + U}" y1="${y - 9}" x2="${X0 + U}" y2="${y + 4}" stroke="#ffffff" stroke-width="1.5"/>` + barr(X0 + U, X0 + 3.2 * U, y + 3);
+  });
+  s += note(616, 346, ['▼ сигнал   ▬ цепочка после него']) + note(616, 364, ['три выхода читались бы хуже фишки']);
+  return s + '</svg>';
+}
+
+function figDelete(){
+  let s = frame('fx', ['Сбросить фишку лучом', 'Вынуть и бросить', 'Удалить переменную'], 'Удаление: фишка возвращается к значению по умолчанию, свободный ящик удаляется корзиной, занятый — нет', 340);
+  const btn = (x, y, t) => `<circle cx="${x}" cy="${y}" r="9" fill="#2a2e37" stroke="#c8cdd8" stroke-width="1.4"/><text x="${x}" y="${y + 3.8}" class="tk" text-anchor="middle">${t}</text>`;
+  const delay = (x, t, tokOpt) => card({id: 7, title: 'Delay', face: FACE.flow, x, y: 50, rows: [
+    {l: {id: 'in', label: 'In', type: C.EXEC}, r: {id: 'fin', label: 'Finished', type: C.EXEC}},
+    {l: {id: 'sec', label: 'Seconds', type: C.NUM, token: {kind: 'num', text: t}, tok: tokOpt}},
+  ]}, SP);
+  s += delay(45, '2.0 s', {hot: true}).svg;
+  s += ray({x: 236, y: 222}, {x: 214, y: 134}) + ctrl(240, 228, -14) + btn(276, 232, 'A');
+  s += note(24, 296, ['луч на фишку и A — в гнезде снова', 'значение по умолчанию: 1.0 s']);
+  s += delay(345, '1.0 s', {op: .6}).svg;
+  s += `<path d="M506 140Q505 176 486 196" fill="none" stroke="#c8cdd8" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#fxa)"/>`;
+  s += token(470, 212, {kind: 'num', text: '2.0 s'}, {slot: false, ghost: true, op: .55}) + ctrl(470, 236, 8);
+  s += note(324, 296, ['grip вынул, отпустил в воздухе —', 'фишка исчезла, в гнезде 1.0 s']);
+  s += note(612, 52, ['свободный ящик — корзина или A;', 'занятый — корзина тусклая,', 'провода к нему мигают']);
+  s += `<path d="M874 104V214" fill="none" stroke="${C.BOOL}" stroke-width="8" stroke-opacity=".25"/><path d="M874 104V214" fill="none" stroke="${C.BOOL}" stroke-width="2.3"/>`;
+  s += note(888, 98, ['из Set Variable · 5'], {anchor: 'end'});
+  s += `<rect x="640" y="112" width="176" height="22" rx="11" fill="#2a1c22" stroke="${C.BOOL}"/><text x="728" y="127" class="tk" text-anchor="middle">Variable is used by block #5</text>`;
+  s += `<rect x="612" y="160" width="276" height="104" rx="14" fill="#151925" stroke="rgba(255,255,255,.12)"/><text x="626" y="180" class="wl">Variables</text>`;
+  s += vbox(690, 232, 'visits', C.NUM, {kind: 'num', text: '0'}, 'int', 'pucks', {hot: true}) + vbox(820, 232, 'door_open', C.BOOL, {kind: 'bool', text: 'false', on: false}, 'bool', 'pucks', {trashOp: .35});
+  s += ray({x: 662, y: 300}, {x: 649, y: 245}) + ctrl(664, 306, -10);
+  return s + '</svg>';
+}
+
+/* ---------- boot ---------- */
+buildHz();
+document.getElementById('hz').addEventListener('click', e => {
+  const b = e.target.closest('button[data-k]');
+  if (!b || b.disabled) return;
+  const k = b.dataset.k;
+  if (b.dataset.v) st[k] = b.dataset.v; else st[k] = !st[k];
+  update();
+});
+document.getElementById('p-now').addEventListener('click', () => { Object.assign(st, PRESETS.now); update(); });
+document.getElementById('p-all').addEventListener('click', () => { Object.assign(st, PRESETS.all); update(); });
+document.getElementById('ov').addEventListener('click', e => {
+  const g = e.target.closest('[data-card]');
+  const id = g ? parseInt(g.getAttribute('data-card'), 10) : NaN;
+  if (!isNaN(id) && WIN[id]){ selected = id; update(); }
+});
+document.getElementById('fig-c').innerHTML = figC();
+document.getElementById('fig-tray').innerHTML = figTray();
+document.getElementById('fig-input').innerHTML = figInput();
+document.getElementById('fig-d').innerHTML = figD();
+document.getElementById('fig-create').innerHTML = figCreate();
+document.getElementById('fig-f').innerHTML = figF();
+document.getElementById('fig-del').innerHTML = figDelete();
+update();
+})();
+</script>
