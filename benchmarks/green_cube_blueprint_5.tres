@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://b1nakf4hkcgfb"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_t2227"]
+
+[resource]
+script = ExtResource("1_t2227")
+nodes = Array[Dictionary]([{
+"arguments": Array[Dictionary]([]),
+"id": 1,
+"kind": "signal",
+"params": {
+"policy": "parallel",
+"signal": "ready",
+"target": "."
+},
+"position": Vector2(80, 100)
+}])
+host_path = NodePath("GreenCube")
+scene_path = "res://benchmarks/play_check.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.9621112, 0, -0.27265745, 0, 1, 0, 0.27265745, 0, 0.9621112, 0.32677135, 0.9963567, -0.9531117)
+vr_center = Vector2(80, 100)

@@ -13,51 +13,8 @@ nodes = Array[Dictionary]([{
 "signal": "ready",
 "target": "."
 },
-"position": Vector2(80, 100)
-}, {
-"function": {
-"advanced_shown": false,
-"args": Array[Dictionary]([{
-"class_name": "Node3D",
-"key": "target",
-"label": "Target",
-"name": "target",
-"self": true,
-"target": true,
-"type": 24
-}, {
-"class_name": "",
-"key": "angle",
-"label": "Angle",
-"name": "angle",
-"type": 3
-}]),
-"awaits": false,
-"category": "Node3D",
-"class": "Node3D",
-"description": "",
-"extra": 0,
-"keywords": "",
-"name": "rotate_x",
-"pure": false,
-"return": 0,
-"return_class": "",
-"returns": false,
-"scope": "method",
-"script": "",
-"targets": ["Node3D"],
-"then": "Then",
-"title": "Rotate X",
-"vararg": false
-},
-"id": 2,
-"kind": "call",
-"params": {
-"angle": 0.0,
-"target": "."
-},
-"position": Vector2(624.2445, 12.621841),
-"vr_depth": 0.030601844
+"position": Vector2(80, 100),
+"vr_anchor": Vector3(0, 0, 0)
 }, {
 "function": {
 "advanced_shown": false,
@@ -101,110 +58,162 @@ nodes = Array[Dictionary]([{
 "params": {
 "seconds": 0.01
 },
-"position": Vector2(976.49884, 12.538795),
-"vr_depth": 0.18541647
+"position": Vector2(218.87749, 385.4375),
+"vr_depth": 0.3768568
 }, {
-"expressions": {
-"value": "1.4, √2, 0.5"
-},
 "function": {
 "advanced_shown": false,
 "args": Array[Dictionary]([{
-"class_name": "Node",
+"class_name": "Node3D",
 "key": "target",
 "label": "Target",
 "name": "target",
+"self": true,
 "target": true,
 "type": 24
 }, {
 "class_name": "",
-"default": "position",
-"key": "property",
-"label": "Property",
-"literal": true,
-"name": "property",
-"provider": "property",
-"type": 4
-}, {
-"class_name": "",
-"default": Vector2(400, 240),
-"key": "value",
-"label": "Value",
-"name": "value",
-"type": 0,
-"type_of": "property"
-}, {
-"class_name": "",
-"default": 1.0,
-"key": "seconds",
-"label": "Seconds",
-"name": "seconds",
-"non_negative": true,
+"key": "angle",
+"label": "Angle",
+"name": "angle",
 "type": 3
-}, {
-"class_name": "XREBlueprintRun",
-"default": null,
-"key": "",
-"label": "Run",
-"name": "run",
-"run": true,
-"type": 24
 }]),
-"awaits": true,
-"category": "Motion",
-"class": "XREBlueprintLibrary",
-"description": "Changes [param property] of [param target] smoothly to [param value] over [param seconds], then continues. Cancelling the run kills the Tween; what has changed stays.",
+"awaits": false,
+"category": "Node3D",
+"class": "Node3D",
+"description": "",
 "extra": 0,
-"keywords": "move animate interpolate slide fade",
-"name": "tween_property",
+"keywords": "",
+"name": "rotate_x",
 "pure": false,
 "return": 0,
 "return_class": "",
 "returns": false,
-"scope": "static",
-"script": "res://addons/blueprints/library.gd",
-"targets": ["Node"],
-"then": "Finished",
-"title": "Tween Property",
+"scope": "method",
+"script": "",
+"targets": ["Node3D"],
+"then": "Then",
+"title": "Rotate X",
 "vararg": false
 },
 "id": 4,
 "kind": "call",
 "params": {
-"property": "rotation",
-"seconds": 0.0,
-"target": ".",
-"value": Vector3(1.4, 1.4142135, 0.5)
+"angle": 0.0,
+"target": "."
 },
-"position": Vector2(462.76718, 116.21776),
-"property_type": 9,
-"vr_anchor": Vector3(0, 0, 0),
-"vr_depth": 0.68125486
+"position": Vector2(549.3554, 190.4107),
+"vr_depth": 0.16443695
 }, {
 "id": 5,
 "kind": "get_variable",
 "params": {
 "variable": "test"
 },
-"position": Vector2(324.2445, 152.62184),
-"vr_depth": 0.030601844,
+"position": Vector2(214.84705, 288.206),
+"vr_depth": 0.2524506,
 "vr_inline": true
 }, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "Node3D",
+"key": "target",
+"label": "Target",
+"name": "target",
+"self": true,
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"key": "angle",
+"label": "Angle",
+"name": "angle",
+"type": 3
+}]),
+"awaits": false,
+"category": "Node3D",
+"class": "Node3D",
+"description": "",
+"extra": 0,
+"keywords": "turn spin",
+"name": "rotate_y",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "method",
+"script": "",
+"targets": ["Node3D"],
+"then": "Then",
+"title": "Rotate Y",
+"vararg": false
+},
 "id": 6,
+"kind": "call",
+"params": {
+"angle": 0.1,
+"target": "."
+},
+"position": Vector2(700.1491, 324.1491),
+"vr_depth": 0.5666662
+}, {
+"id": 7,
 "kind": "set_variable",
 "params": {
-"value": Color(1, 0.39999998, 0.5246705, 1),
-"variable": "c"
+"value": 0.0,
+"variable": "test"
 },
-"position": Vector2(-21.402298, 292.1585),
-"vr_depth": 0.5906555
+"position": Vector2(431.14447, 202.28223),
+"vr_depth": 1.4339049
+}, {
+"id": 8,
+"kind": "operator",
+"params": {
+"a": 0.0,
+"b": 0.001,
+"op": "add"
+},
+"position": Vector2(379.77747, 589.24506),
+"vr_depth": 0.71145284
+}, {
+"id": 9,
+"kind": "get_variable",
+"params": {
+"variable": "test"
+},
+"position": Vector2(189.78009, 487.2842),
+"vr_depth": 0.46795428,
+"vr_inline": true
+}, {
+"id": 10,
+"kind": "branch",
+"params": {
+"condition": true
+},
+"position": Vector2(743.74927, 80.93446),
+"vr_depth": 1.0692149
+}, {
+"id": 11,
+"kind": "operator",
+"params": {
+"a": 0.2,
+"b": 0.0,
+"op": "greater"
+},
+"position": Vector2(604.58844, 315.68085),
+"vr_depth": 0.85105735
+}, {
+"id": 12,
+"kind": "get_variable",
+"params": {
+"variable": "test"
+},
+"position": Vector2(304.58844, 405.68085),
+"vr_depth": 0.85105735,
+"vr_inline": true
 }])
 edges = Array[Dictionary]([{
-"from": 2,
-"from_port": 0,
-"to": 3,
-"to_port": 0
-}, {
 "from": 1,
 "from_port": 0,
 "to": 4,
@@ -212,15 +221,62 @@ edges = Array[Dictionary]([{
 }, {
 "from": 5,
 "from_port": 0,
-"to": 2,
+"to": 4,
 "to_port": 2
+}, {
+"from": 4,
+"from_port": 0,
+"to": 6,
+"to_port": 0
+}, {
+"from": 8,
+"from_port": 0,
+"to": 7,
+"to_port": 1
+}, {
+"from": 9,
+"from_port": 0,
+"to": 8,
+"to_port": 0
+}, {
+"from": 3,
+"from_port": 0,
+"to": 4,
+"to_port": 0
+}, {
+"from": 6,
+"from_port": 0,
+"to": 10,
+"to_port": 0
+}, {
+"from": 11,
+"from_port": 0,
+"to": 10,
+"to_port": 1
+}, {
+"from": 12,
+"from_port": 0,
+"to": 11,
+"to_port": 1
+}, {
+"from": 10,
+"from_port": 0,
+"to": 7,
+"to_port": 0
+}, {
+"from": 7,
+"from_port": 0,
+"to": 3,
+"to_port": 0
+}, {
+"from": 10,
+"from_port": 1,
+"to": 3,
+"to_port": 0
 }])
 variables = Array[Dictionary]([{
 "name": "test",
 "value": 0.0
-}, {
-"name": "c",
-"value": Color(1, 1, 1, 1)
 }])
 host_path = NodePath("GreenCube")
 scene_path = "res://benchmarks/play_check.tscn"
