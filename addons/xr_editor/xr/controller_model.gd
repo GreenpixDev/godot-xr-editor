@@ -89,6 +89,8 @@ var _model_name := ""
 var _model: Node3D
 ## The components of the shown model by the tracker inputs that drive them.
 var _components: Dictionary[String, _Component] = {}
+## Whether the model is drawn: a tool held instead of the controller hides it.
+var _model_shown := true
 
 
 func _init(node_name: String, tracker_name: StringName, hand: XRPositionalTracker.TrackerHand) -> void:
@@ -120,6 +122,18 @@ func _exit_tree() -> void:
 ## The subfolder of [constant MODELS_DIR] whose model is shown.
 func get_model_name() -> String:
 	return _model_name
+
+
+## Draws the controller's model or hides it, as while the hand holds a tool
+## in its place: the pipette of a color (D-065). The pose still follows the hand.
+func set_model_shown(shown: bool) -> void:
+	_model_shown = shown
+	if _model != null: _model.visible = shown
+
+
+## Whether the controller's model is drawn ([method set_model_shown]).
+func is_model_shown() -> bool:
+	return _model_shown
 
 
 func _on_tracker_added(tracker_name: StringName, _type: int) -> void:
@@ -184,6 +198,7 @@ func _show_model(model_name: String) -> void:
 		geometry.layers = XRERig.VR_LAYER
 		geometry.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		geometry.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	_model.visible = _model_shown
 	add_child(_model)
 	_model_name = model_name
 	_find_parts(folder.path_join("profile.json"))

@@ -159,6 +159,15 @@ func _run() -> void:
 	var vector_block := -1
 	for block: Dictionary in _service.blueprint.graph.nodes:
 		if (block["params"] as Dictionary).get("value") is Vector3: vector_block = block["id"]
+	if vector_block < 0:
+		# A graph without one gets a Set position, undone with the rest before the editor quits.
+		_service.add_block("set_property")
+		await _frames(3)
+		vector_block = _service.blueprint.graph.nodes.back()["id"]
+		_service.blueprint.choose_target(vector_block, host)
+		_service.call("_set_token", vector_block, "property", "position", "Set Token")
+		_service.call("_set_token", vector_block, "value", Vector3(1, 0.5, 0), "Set Token")
+		await _frames(3)
 	if vector_block >= 0:
 		_look(head, host.global_position)
 		await _frames()
@@ -174,7 +183,7 @@ func _run() -> void:
 			await _shot("12b_vector_pulled")
 			_look(head, at)
 			await _shot("12c_vector_dimmed")
-			# The keypad of one axis, below the window (D-063).
+			# The keypad of one axis, low on the window, square to the eyes (D-067).
 			_service.vector_panel.get_component_button(1).pressed.emit()
 			await _frames(4)
 			_look(head, (_service.get("_keyboard") as Node3D).global_position.lerp(at, 0.5))
@@ -189,6 +198,10 @@ func _run() -> void:
 	editor.line_to(0.05, 0.0)
 	_look(token + front * 0.5 + Vector3(0, 0.05, 0), token)
 	await _shot("16_number_line")
+	# A Delay's line begins at zero (D-064).
+	editor.open_dial(number_pose, 0.0, 0.0)
+	editor.line_to(0.05, 0.0)
+	await _shot("16b_number_line_zero")
 	editor.close()
 	# The block menu: the chips, the row of sections, the search (D-063).
 	_service.open_block_menu()
@@ -198,6 +211,76 @@ func _run() -> void:
 		_look(menu_window.global_position + menu_window.global_basis.z * 0.7, menu_window.global_position)
 		await _shot("17_block_menu")
 	_service.close_block_palette()
+	await _frames(3)
+	# The Color window (D-064): the 2D picker, then the globe of colors; the user's setting back.
+	var colors := _document.features.get_value(XREFeatureSettings.COLOR_INPUT)
+	_look(head, host.global_position)
+	_service.add_block("equals")
+	await _frames(4)
+	var equal: int = _service.blueprint.graph.nodes.back()["id"]
+	_service.call("_set_token", equal, "a", Color("3399e6"), "Set Token")
+	await _frames(4)
+	for mode: StringName in [XREFeatureSettings.PICKER, XREFeatureSettings.GLOBE]:
+		_document.features.set_value(XREFeatureSettings.COLOR_INPUT, mode)
+		_look(head, host.global_position)
+		await _frames()
+		_service.call("_open_color", equal, "a", "", Color("3399e6"))
+		await _frames(6)
+		var color_window := panels.find_window(XREBlueprintColorTab)
+		if color_window == null: continue
+		var at := color_window.global_position
+		_look(head, at)
+		await _shot("18_color_%s" % mode)
+		if mode == XREFeatureSettings.GLOBE:
+			editor.turn_globe(0.9, 0.35)
+			_look(at + color_window.global_basis.z * 0.45 + Vector3(0.05, 0.05, 0), at)
+			await _shot("18b_color_globe_turned")
+			# The pipette in the right hand instead of its controller (D-065), aimed at the cards.
+			_look(head, at)
+			var hand_at := head + (at - head) * 0.75 + _rig.camera.global_basis.x * 0.14
+			var aim_basis := Basis.looking_at(host.global_position - hand_at, Vector3.UP)
+			_right.set_pose(&"aim", Transform3D(aim_basis, hand_at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+			_right.set_pose(&"grip", Transform3D(aim_basis, hand_at + aim_basis.z * 0.05), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+			_service.color_panel.get_pipette_button().toggled.emit(true)
+			await _frames(4)
+			_look(head, hand_at)
+			await _shot("18c_pipette")
+			print("shot_blueprint_vr: Color window pixel ", color_window.color_at_pixel(Vector2(20, color_window.size_px.y * 0.5)), " right controller shown ", _rig.right_controller.is_model_shown())
+			_service.color_panel.get_pipette_button().toggled.emit(false)
+			_right.set_pose(&"aim", Transform3D(Basis.IDENTITY, Vector3(-50, 0, 0)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		panels.call("_close_window", color_window)
+		await _frames(3)
+	_document.features.set_value(XREFeatureSettings.COLOR_INPUT, colors)
+	# Operators as Unreal draws them (D-065), beside Equal: an integer into Add, a vector scaled, a comparison, logic.
+	var values := _document.features.get_value(XREFeatureSettings.VALUE_INPUT)
+	_document.features.set_value(XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.PUCKS)
+	var graph := _service.blueprint.graph
+	var corner: Vector2 = graph.find_node(equal)["position"]
+	var count := _service.blueprint.insert_block(XREBlueprintGraph.make_node(0, "value", Vector2.ZERO), corner + Vector2(-320, 170))
+	_service.blueprint.set_parameter(count, "value", 4)
+	var sum := _service.blueprint.insert_block(XREBlueprintGraph.make_operator(0, "add", Vector2.ZERO), corner + Vector2(0, 170))
+	_service.blueprint.connect_blocks(count, 0, sum, 0)
+	var scaled := _service.blueprint.insert_block(XREBlueprintGraph.make_operator(0, "multiply", Vector2.ZERO), corner + Vector2(0, 330))
+	_service.blueprint.set_parameter(scaled, "a", Vector3(1, 2, 3))
+	_service.blueprint.set_parameter(scaled, "b", 2.0)
+	_service.blueprint.insert_block(XREBlueprintGraph.make_operator(0, "less_equal", Vector2.ZERO), corner + Vector2(260, 170))
+	_service.blueprint.insert_block(XREBlueprintGraph.make_operator(0, "and", Vector2.ZERO), corner + Vector2(260, 330))
+	_service.blueprint.insert_block(XREBlueprintGraph.make_operator(0, "not", Vector2.ZERO), corner + Vector2(500, 330))
+	await _frames(6)
+	var middle := _service.canvas.to_global(_service.canvas.get_block_position(sum))
+	_look(middle + _service.canvas.global_basis.z * 0.55 + Vector3(0.12, 0.05, 0), middle + Vector3(0.12, -0.05, 0))
+	await _shot("19_operators")
+	# A variable's start value is a puck, with plugs too.
+	var variables := _document.features.get_value(XREFeatureSettings.VARIABLE_INPUT)
+	_document.features.set_value(XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.PLUGS)
+	_document.features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
+	await _frames(6)
+	if not graph.variables.is_empty():
+		var box := _service.canvas.to_global(_service.canvas.get_shelf().box_point(str(graph.variables[0]["name"])))
+		_look(box + _service.canvas.global_basis.z * 0.35 + Vector3(0.05, 0.08, 0), box)
+		await _shot("20_variable_box")
+	_document.features.set_value(XREFeatureSettings.VALUE_INPUT, values)
+	_document.features.set_value(XREFeatureSettings.VARIABLE_INPUT, variables)
 	await _frames(3)
 	var tray := panels.find_window(XREBlueprintTokensTab)
 	if tray != null:

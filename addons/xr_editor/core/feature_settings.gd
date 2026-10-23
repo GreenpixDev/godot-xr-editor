@@ -91,6 +91,18 @@ const ON := &"on"
 const CARD_PLUS := &"card_plus"
 const SHOWN := &"shown"
 const HIDDEN := &"hidden"
+## How a color token is edited (D-064): in the Color window, near the head.
+const COLOR_INPUT := &"color_input"
+## Godot's color picker: a square, sliders and the hex code.
+const PICKER := &"picker"
+## A globe of colors to turn and click, its depth the saturation, R, G, B and hex typed.
+const GLOBE := &"globe"
+## How the scale of a number's line and of a vector's arrows changes (D-069).
+const AXIS_SCALE := &"axis_scale"
+## By itself: held past an end the value speeds on, held by 0 it goes toward zero (D-060, D-067, D-068).
+const AUTO := &"auto"
+## By the stick, up finer and down coarser, the value kept; nothing speeds on.
+const STICK := &"stick"
 
 ## Every setting by key: its page, title, values (the first is the default),
 ## the values' titles and a line of explanation.
@@ -164,6 +176,20 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [SHOWN, HIDDEN],
 		"labels": ["Shown", "Hidden"],
 		"hint": "Shown: the plus on a card adds the next block. Hidden: add blocks by letting a wire go in empty space.",
+	},
+	COLOR_INPUT: {
+		"category": Category.FEATURES,
+		"title": "Color input",
+		"values": [PICKER, GLOBE],
+		"labels": ["2D", "3D"],
+		"hint": "2D: a color picker with the hex code. 3D: a globe of colors to turn and click, R, G, B typed. Both have a pipette.",
+	},
+	AXIS_SCALE: {
+		"category": Category.FEATURES,
+		"title": "Axis scale",
+		"values": [AUTO, STICK],
+		"labels": ["Auto", "Stick"],
+		"hint": "For a number's line and a vector's arrows. Auto: past an end the value speeds up, held by 0 it goes toward 0. Stick: the stick up makes the scale finer, down coarser; nothing speeds up.",
 	},
 }
 

@@ -382,6 +382,8 @@ func commit(title: String, state: Dictionary) -> bool:
 	last_error = ""
 	var candidate := XREBlueprintGraph.new()
 	candidate.restore(state)
+	# A wire into an operator's operand: the other's literal takes its type (D-065).
+	if candidate.adopt_operands(graph.edges): state = candidate.snapshot()
 	var errors := candidate.validate()
 	if not errors.is_empty():
 		return _fail("\n".join(errors))

@@ -24,9 +24,13 @@ addons/xr_editor/          плагин (всё, что поставляется
   bin/                     собранные библиотеки (не в git, собирает scripts/build_gdextension.sh [android])
 addons/blueprints/         отдельный аддон Blueprints 2D (D-021): ресурс графа, компилятор GDScript, документ и плоский редактор; не зависит от XR.
                            С D-051: сигнатуры вызовов (XREBlueprintFunctions), глобальные функции (XREBlueprintGlobals), библиотека (XREBlueprintLibrary),
-                           токен запуска (XREBlueprintRun), база действий (XREBlueprintActions) и меню добавления (XREBlueprintActionMenu)
+                           токен запуска (XREBlueprintRun), база действий (XREBlueprintActions) и меню добавления (XREBlueprintActionMenu);
+                           операторы блока Operator — типы и вычисление (XREBlueprintOperators, D-065)
 addons/xr_editor/logic_graph/ пространственные карточки и XR-адаптер общего документа Blueprints (D-025); окна Параметры, меню Add block и Tokens — вкладки окон панелей (XREBlueprintFormTab, D-044, D-051);
-                           параметры в графе (D-052): фишки (XREBlueprintTokens, XREBlueprintTokenTray, XREBlueprintValuePanel), лепестки членов (XREBlueprintPetals), полка ящиков переменных (XREBlueprintShelf); окно Vector с 3D-стрелками (XREBlueprintVectorTab, XREBlueprintVectorPanel, D-061)
+                           параметры в графе (D-052): фишки (XREBlueprintTokens, XREBlueprintTokenTray, XREBlueprintValuePanel), лепестки членов (XREBlueprintPetals), полка ящиков переменных (XREBlueprintShelf); окно Vector с 3D-стрелками (XREBlueprintVectorTab, XREBlueprintVectorPanel, D-061);
+                           окно Color — 2D-пикер или глобус цветов (XREBlueprintColorTab, XREBlueprintColorPanel, D-064), пипетка — цвет материала (XREBlueprintColorSampler)
+                           и её модель в руке вместо контроллера (XREBlueprintPipette, D-065);
+                           прозрачность того, что заслоняет ввод (XREBlueprintFade, D-066)
 gdextension/               C++ (GDExtension): src/, godot-cpp/ (сабмодуль), thirdparty/openxr/
 benchmarks/                эталонные сцены (empty, xr_view_check, xr_game_check — контрольная XR-игра, xr_handoff_game — игра для замера передачи,
                            manipulation_check — ручная проверка манипуляции в шлеме, play_check — ручная проверка play-mode),

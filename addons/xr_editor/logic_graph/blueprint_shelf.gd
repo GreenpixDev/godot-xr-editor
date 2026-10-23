@@ -7,7 +7,9 @@ extends Node3D
 ## starts the game with, a token as on the cards. A Get or Set Variable card
 ## wires its Variable socket to its box ([XREBlueprintCanvas]). The last box is
 ## a plus: a new variable. Lives in the canvas's space, built only on
-## document changes; picked analytically, as the cards are.
+## document changes; picked analytically, as the cards are. The start value
+## is a puck even with plugs (D-065): it goes into no port, and the trigger
+## takes it anywhere on it.
 
 const BOX_SIZE := Vector3(0.11, 0.045, 0.05)
 ## Centers of neighbouring boxes are this far apart; the shelf is this far below the lowest card.
@@ -41,6 +43,8 @@ class Box:
 	var token_text: Label3D
 	var token_point := Vector3.ZERO
 	var token_size := Vector3.ZERO
+	## It covers an input in use and is see-through (D-066).
+	var faded := false
 
 var _boxes: Array[Box] = []
 var _hit := -1
@@ -132,9 +136,9 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 		box.token_size = Vector3(XREBlueprintTokens.width(shown) * 0.8, XREBlueprintTokens.HEIGHT, 0.01)
 	else:
 		var width := XREBlueprintTokens.width(shown) * 0.85
-		box.token = XREBlueprintCanvas.make_token(value, "", width, style == XREFeatureSettings.PLUGS, false, false, -1, shown)
+		box.token = XREBlueprintCanvas.make_token(value, "", width, false, false, false, -1, shown)
 		box.token.scale = Vector3.ONE * 0.85
-		box.token_point = Vector3(0.012 + (width * 0.5 if style == XREFeatureSettings.PLUGS else 0.0), 0, front)
+		box.token_point = Vector3(0.012, 0, front)
 		box.token.position = box.token_point
 		box.node.add_child(box.token)
 		box.token_text = box.token.get_meta(&"text") as Label3D
@@ -144,12 +148,24 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 
 ## Nearest box part on the ray, in the canvas's space; -1 if none. The hit is
 ## kept for [method get_hit_name] and [method get_hit_part].
+## Makes the boxes that cover an input in use see-through, as the cards (D-066, [method XREBlueprintCanvas.fade_covering]).
+func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> void:
+	for box: Box in _boxes:
+		if box.node == null: continue
+		var faded := count > 0 and visible and XREBlueprintFade.covers(eye, targets, count, box.node.global_transform * AABB(-BOX_SIZE * 0.5, BOX_SIZE))
+		if faded == box.faded: continue
+		box.faded = faded
+		XREBlueprintFade.set_faded(box.node, faded)
+
+
 func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float:
 	_hit = -1
 	_hit_part = BODY
 	var nearest := maximum
 	for index: int in _boxes.size():
 		var box := _boxes[index]
+		# See-through over an input in use, a box doesn't take the ray (D-067).
+		if box.faded: continue
 		var local_origin := origin - box.node.position
 		var body := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(-BOX_SIZE * 0.5, BOX_SIZE), nearest)
 		if body < 0: continue
@@ -164,6 +180,16 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		elif token >= 0 and token <= nearest + BOX_SIZE.z:
 			_hit_part = TOKEN
 	return nearest if _hit >= 0 else -1.0
+
+
+## The color of the box part the last ray hit, for the pipette (D-065): its
+## start value if it is a color and the ray is on it, else the box's own; null for none.
+func get_hit_color() -> Variant:
+	if _hit < 0: return null
+	var box := _boxes[_hit]
+	if box.name.is_empty(): return Color.WHITE
+	if _hit_part == TOKEN and box.value is Color: return box.value
+	return XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)]
 
 
 ## The variable of the box the last ray hit, empty for the plus or none.

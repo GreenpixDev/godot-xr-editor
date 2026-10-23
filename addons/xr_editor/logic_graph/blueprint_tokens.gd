@@ -140,6 +140,7 @@ static func default_value(block: Dictionary, key: String) -> Variant:
 		for argument: Dictionary in function["args"]:
 			if str(argument.get("key", "")) == key: return XREBlueprintFunctions.initial_value(argument)
 		return ""
+	if block["kind"] == "operator": return XREBlueprintOperators.default_params(XREBlueprintGraph.operator_of(block)).get(key, 0.0)
 	var defaults: Dictionary = XREBlueprintGraph.BLOCKS[block["kind"]]["params"]
 	return defaults.get(key, "")
 
@@ -149,6 +150,11 @@ static func expected_type(graph: XREBlueprintGraph, block: Dictionary, key: Stri
 	if key == "policy": return TYPE_STRING
 	match block["kind"]:
 		"branch": return TYPE_BOOL
+		"operator":
+			# Logic takes booleans, order numbers, the others any value (D-065).
+			match XREBlueprintOperators.group_of(XREBlueprintGraph.operator_of(block)):
+				XREBlueprintOperators.LOGIC: return TYPE_BOOL
+				XREBlueprintOperators.ORDER: return TYPE_FLOAT
 		"set_property": return int(block.get("property_type", TYPE_NIL))
 		"set_variable":
 			var variable := graph.find_variable(str((block["params"] as Dictionary).get("variable", "")))
@@ -187,7 +193,7 @@ static func hint(kind: StringName) -> String:
 		NUMBER: return "hold trigger: number line, move the ray ← →  ·  click: type"
 		CHOICE: return "hold trigger: point at a value  ·  click: next"
 		TOGGLE: return "click: switch"
-		COLOR: return "click: ring of hues"
+		COLOR: return "click: Color window"
 		VECTOR: return "click: axis arrows"
 	return "click: keyboard"
 
@@ -328,7 +334,10 @@ static func text(value: Variant, key: String) -> String:
 
 ## A number with at most two decimals, without trailing zeros.
 static func _number(value: float) -> String:
-	var shown := "%.2f" % value
+	# As many decimals as six figures need, at most six (D-071): 1.503, 0.000025, 0.33333.
+	var decimals := 2
+	if absf(value) > 0.0: decimals = clampi(5 - floori(log(absf(value)) / log(10.0)), 0, 6)
+	var shown := String.num(value, decimals)
 	shown = shown.rstrip("0").rstrip(".") if shown.contains(".") else shown
 	return shown if shown != "-0" else "0"
 

@@ -45,6 +45,10 @@ static func compile(source: XREBlueprintGraph) -> Dictionary:
 				"value": code += "\treturn %s\n" % var_to_str(params["value"])
 				"get_variable": code += "\treturn _bp_var_%s\n" % params["variable"]
 				"equals": code += "\treturn _bp_equal(%s, %s)\n" % [_input(graph, block, "a"), _input(graph, block, "b")]
+				"operator":
+					var op := XREBlueprintGraph.operator_of(block)
+					var second := "null" if XREBlueprintOperators.is_unary(op) else _input(graph, block, "b")
+					code += "\treturn _bp_operate(%s, %s, %s, run, %d)\n" % [var_to_str(op), _input(graph, block, "a"), second, id]
 				"get_property": code += "\treturn _bp_read(%s, %s, %d, run, %d)\n" % [_target(graph, block), var_to_str(params["property"]), block.get("property_type", TYPE_NIL), id]
 				"call":
 					if XREBlueprintGraph.is_pure(block): code += _call(graph, block, true)
@@ -223,6 +227,8 @@ static func _validate_program(graph: XREBlueprintGraph) -> PackedStringArray:
 			if not XREBlueprintSchema.accepts(expected, typeof(params["value"])): errors.append("Block #%d: expected %s, got %s." % [id, XREBlueprintSchema.type_name(expected), type_string(typeof(params["value"]))])
 		if block["kind"] == "call":
 			errors.append_array(_validate_arguments(graph, block))
+		if block["kind"] == "operator":
+			errors.append_array(_validate_operator(graph, block))
 		if XREBlueprintGraph.is_pure(block): continue
 		var dependencies: Array[int] = [id]
 		var seen: Array[int] = []
@@ -237,6 +243,20 @@ static func _validate_program(graph: XREBlueprintGraph) -> PackedStringArray:
 					for origin: int in origins.get(id, []):
 						if origin != source["id"]: errors.append("Block #%d uses arguments of Signal #%d but also runs from event #%d." % [id, source["id"], origin])
 				elif XREBlueprintGraph.is_pure(source): dependencies.append(source["id"])
+	return errors
+
+
+## The operands of an operator, as far as they are known before the game
+## runs (D-065): types it takes, no integer division by a literal zero.
+static func _validate_operator(graph: XREBlueprintGraph, block: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var op := XREBlueprintGraph.operator_of(block)
+	var a := graph.operand_type(block, "a")
+	var b := TYPE_NIL if XREBlueprintOperators.is_unary(op) else graph.operand_type(block, "b")
+	if XREBlueprintOperators.result_type(op, a, b) == XREBlueprintOperators.INVALID:
+		errors.append("Block #%d: %s" % [block["id"], XREBlueprintOperators.describe(op, a, b)])
+	elif op in ["divide", "modulo"] and a == TYPE_INT and not _connected(graph, block["id"], 1) and (block["params"] as Dictionary).get("b") is int and int(block["params"]["b"]) == 0:
+		errors.append("Block #%d: division by zero." % block["id"])
 	return errors
 
 

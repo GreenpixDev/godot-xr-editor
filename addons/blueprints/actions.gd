@@ -124,6 +124,8 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 			result.append(_section(group, categories[group], context))
 	if chip in [NATIVE, ALL]:
 		result.append(_section("Native", _native_actions(graph, host), context))
+		for title: String in ["Math", "Comparison", "Logic"]:
+			result.append(_section(title, _operator_actions(title, graph, host), context))
 	result = result.filter(func(section: Dictionary) -> bool: return not (section["actions"] as Array).is_empty() or section.get("count", 0) > 0)
 	if str(context.get("query", "")).strip_edges().is_empty() and not recent.is_empty():
 		var found: Array[Dictionary] = []
@@ -205,7 +207,8 @@ func _bind(actions: Array, node: Node, dynamic: bool, graph: XREBlueprintGraph, 
 ## Port types of [param block] in [param graph]'s context: inputs, then outputs.
 static func _ports(block: Dictionary, graph: XREBlueprintGraph) -> Array:
 	var probe := block.duplicate(true)
-	probe["id"] = 1
+	# No block of a graph has ID 0: no wire of the graph comes into the probe.
+	probe["id"] = 0
 	probe["position"] = Vector2.ZERO
 	var types: Array = [[], []]
 	for side: int in 2:
@@ -434,10 +437,25 @@ static func _preset_action(name: String) -> Dictionary:
 			"keywords": "preset " + name, "category": "Presets", "block": block, "target": null, "disabled": ""}
 
 
-## Branch, Value, Equal, properties, events and the graph's variables.
+## The operators of menu section [param title] (D-065): Math, Comparison —
+## Equal first — or Logic.
+func _operator_actions(title: String, graph: XREBlueprintGraph, host: Node) -> Array[Dictionary]:
+	var actions: Array[Dictionary] = []
+	if title == "Comparison":
+		actions.append({"id": "native:equals", "title": "Equal", "subtitle": "operator =", "kind": "pure", "keywords": "compare == same",
+				"category": title, "block": XREBlueprintGraph.make_node(0, "equals", Vector2.ZERO), "target": null, "disabled": ""})
+	for op: String in XREBlueprintOperators.OPERATORS:
+		var info: Dictionary = XREBlueprintOperators.OPERATORS[op]
+		if XREBlueprintOperators.SECTIONS[info["group"]] != title: continue
+		actions.append({"id": "operator:" + op, "title": info["title"], "subtitle": "operator " + str(info["symbol"]), "kind": "pure", "keywords": "operator " + str(info["keywords"]),
+				"category": title, "block": XREBlueprintGraph.make_operator(0, op, Vector2.ZERO), "target": null, "disabled": ""})
+	return _bind(actions, host, false, graph)
+
+
+## Branch, Value, properties, events and the graph's variables.
 func _native_actions(graph: XREBlueprintGraph, host: Node) -> Array[Dictionary]:
 	var actions: Array[Dictionary] = []
-	var natives := [["branch", "Branch", "if condition", "native"], ["value", "Value", "literal constant", "native"], ["equals", "Equal", "compare ==", "pure"],
+	var natives := [["branch", "Branch", "if condition", "native"], ["value", "Value", "literal constant", "native"],
 			["get_property", "Get Property", "read", "pure"], ["set_property", "Set Property", "write", "property"], ["signal", "On Signal", "event", "event"]]
 	for entry: Array in natives:
 		actions.append({"id": "native:" + entry[0], "title": entry[1], "subtitle": "native · " + entry[2], "kind": entry[3], "keywords": entry[2],

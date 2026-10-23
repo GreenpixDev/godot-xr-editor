@@ -287,6 +287,23 @@ func get_hit_pixel() -> Vector2:
 	return _hit_pixel
 
 
+## The color the panel draws at interface pixel [param pixel], read back from
+## its viewport (D-065): as drawn, before any dimming over it. Slow — it waits
+## for the GPU — so only for a click. Null where nothing is drawn, or without
+## a picture of the panel, as in a headless run.
+func color_at_pixel(pixel: Vector2) -> Variant:
+	# The dummy renderer of a headless run keeps no pictures.
+	if DisplayServer.get_name() == "headless": return null
+	var texture := _viewport.get_texture()
+	var image := texture.get_image() if texture != null else null
+	if image == null or image.is_empty(): return null
+	var at := Vector2i((pixel * Vector2(image.get_size()) / size_px).floor()).clamp(Vector2i.ZERO, image.get_size() - Vector2i.ONE)
+	var color := image.get_pixelv(at)
+	if color.a <= 0.01: return null
+	# Drawn over a clear viewport, a see-through color is kept multiplied by its alpha.
+	return Color(minf(color.r / color.a, 1.0), minf(color.g / color.a, 1.0), minf(color.b / color.a, 1.0))
+
+
 ## Gives the panel corner handles: it becomes a window, which a ray moves by
 ## its corners (D-040). Called once, before the panel is used.
 func add_corner_handles() -> void:

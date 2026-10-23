@@ -278,6 +278,7 @@ func set_blueprints(service: XREBlueprints) -> void:
 	_disconnect_blueprints()
 	_blueprints = service
 	if service != null:
+		service.panels = self
 		service.changed.connect(_update_overlay)
 		service.window_requested.connect(_on_graph_window_requested)
 		service.window_dismissed.connect(_on_graph_window_dismissed)
@@ -289,6 +290,7 @@ func set_blueprints(service: XREBlueprints) -> void:
 
 func _disconnect_blueprints() -> void:
 	if not is_instance_valid(_blueprints): return
+	if _blueprints.panels == self: _blueprints.panels = null
 	if _blueprints.changed.is_connected(_update_overlay): _blueprints.changed.disconnect(_update_overlay)
 	if _blueprints.window_requested.is_connected(_on_graph_window_requested): _blueprints.window_requested.disconnect(_on_graph_window_requested)
 	if _blueprints.window_dismissed.is_connected(_on_graph_window_dismissed): _blueprints.window_dismissed.disconnect(_on_graph_window_dismissed)
@@ -323,6 +325,11 @@ func _on_graph_window_dismissed(type: GDScript, always: bool) -> void:
 func _update_overlay() -> void:
 	var enabled := _blueprints != null and _blueprints.is_open()
 	for window: XREPanelWindow in _windows: window.set_overlay(enabled)
+
+
+## The hand whose click a window's control is handling now, or null between clicks.
+func get_clicking_hand() -> XREHand:
+	return _clicking
 
 
 ## The open windows, in the order they were opened, pinned ones too.
@@ -558,6 +565,9 @@ func _window_for(type: Script) -> XREPanelWindow:
 	# Not deferred: the hand that clicked is known only while the click is handled.
 	window.pin_requested.connect(_on_pin_requested.bind(window))
 	window.unpin_requested.connect(pin_window.bind(window, XREPanelWindow.Pin.WINDOW), CONNECT_DEFERRED)
+	# The graph's windows stand by its cards, in the world: flying or turning by
+	# the sticks leaves them there (D-066), as the cards; the tabs' go with the user.
+	if tab is XREBlueprintFormTab: window.top_level = true
 	add_child(window)
 	_windows.append(window)
 	window.set_overlay(_blueprints != null and _blueprints.is_open())

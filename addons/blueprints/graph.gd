@@ -5,11 +5,13 @@ extends Resource
 ##
 ## Format 3 (D-051) keeps only the blocks a function call can't express:
 ## events ([code]signal[/code]), [code]call[/code], [code]branch[/code],
-## [code]value[/code], variables, properties and [code]equals[/code]. On
-## Ready, Boolean, Print, Delay, Tween, Play Sound and Play Animation are
-## presets ([constant PRESETS]): an event, a value or a call of a function of
-## the Blueprint library ([XREBlueprintLibrary]) or of @GlobalScope. Version
-## 2 graphs migrate in memory ([method upgrade]).
+## [code]value[/code], variables, properties, [code]equals[/code] and
+## [code]operator[/code] (D-065: arithmetic, comparison and logic,
+## [XREBlueprintOperators]). On Ready, Boolean, Print, Delay, Tween, Play
+## Sound and Play Animation are presets ([constant PRESETS]): an event, a
+## value or a call of a function of the Blueprint library
+## ([XREBlueprintLibrary]) or of @GlobalScope. Version 2 graphs migrate in
+## memory ([method upgrade]).
 
 const FORMAT_VERSION := 3
 const MAX_NODES := 256
@@ -34,6 +36,8 @@ const BLOCKS := {
 	"get_property": {"title": "Get Property", "in": [["Target", OBJECT, "target"]], "out": [["Value", VALUE, ""]], "params": {"target": ".", "property": "visible"}},
 	"set_property": {"title": "Set Property", "in": [["In", EXEC, ""], ["Value", VALUE, "value"], ["Target", OBJECT, "target"]], "out": [["Then", EXEC, ""]], "params": {"target": ".", "property": "visible", "value": true}},
 	"equals": {"title": "Equal", "in": [["A", VALUE, "a"], ["B", VALUE, "b"]], "out": [["Result", BOOLEAN, ""]], "params": {"a": 1.0, "b": 1.0}},
+	# Its ports follow its operator ([method ports]); a unary one has no B.
+	"operator": {"title": "Operator", "in": [["A", VALUE, "a"], ["B", VALUE, "b"]], "out": [["Result", VALUE, ""]], "params": {"op": "add", "a": 0.0, "b": 0.0}},
 	"get_variable": {"title": "Get Variable", "in": [], "out": [["Value", VALUE, ""]], "params": {"variable": ""}},
 	"set_variable": {"title": "Set Variable", "in": [["In", EXEC, ""], ["Value", VALUE, "value"]], "out": [["Then", EXEC, ""]], "params": {"variable": "", "value": false}},
 }
@@ -65,6 +69,8 @@ const _V2_INPUTS := {"print": ["", "value"], "tween": ["", "value", "target"], "
 @export var vr_placed := false
 @export var vr_workspace := Transform3D.IDENTITY
 @export var vr_center := Vector2.ZERO
+## How deep [method operand_type] follows wires back through operators, against a cycle that validation reports.
+var _resolving := 0
 
 
 ## Independent snapshot for undo and dirty-state comparison.
@@ -145,6 +151,9 @@ static func title(block: Dictionary) -> String:
 			return "On Ready" if params.get("signal") == "ready" and params.get("target") == "." else "On Signal"
 		"value":
 			return "Boolean" if params.get("value") is bool else "Value"
+		"operator":
+			var op := str(params.get("op", ""))
+			return str((XREBlueprintOperators.OPERATORS[op] as Dictionary)["title"]) if XREBlueprintOperators.OPERATORS.has(op) else "Operator"
 	return str(BLOCKS[kind]["title"]) if BLOCKS.has(kind) else kind
 
 
@@ -159,7 +168,7 @@ func upgrade() -> void:
 			# Settings missing from older files get their defaults; an empty socket stays empty (D-054).
 			var sockets := socket_keys(block)
 			for key: String in BLOCKS[block["kind"]]["params"]:
-				if not (block["params"] as Dictionary).has(key) and not key in sockets: block["params"][key] = BLOCKS[block["kind"]]["params"][key]
+				if not (block["params"] as Dictionary).has(key) and not key in sockets and not is_unused(block, key): block["params"][key] = BLOCKS[block["kind"]]["params"][key]
 		elif PRESETS.has(block.get("kind")) and block.get("params") is Dictionary:
 			(block["params"] as Dictionary).merge(_legacy_params(str(block["kind"])), false)
 	# Calls made before property and variable were free argument keys kept them as arg_property and arg_variable.
@@ -246,6 +255,7 @@ func ports(block: Dictionary, input: bool) -> Array:
 		var function: Variant = block.get("function")
 		if not function is Dictionary or not (function as Dictionary).get("args") is Array: return []
 		return (XREBlueprintFunctions.ports(function, int(block.get("property_type", TYPE_NIL)))[0 if input else 1] as Array).duplicate(true)
+	if kind == "operator": return _operator_ports(block, input)
 	var result: Array = (BLOCKS[kind]["in" if input else "out"] as Array).duplicate(true)
 	var params: Dictionary = block["params"]
 	if not input and kind == "signal":
@@ -261,6 +271,124 @@ func ports(block: Dictionary, input: bool) -> Array:
 		if not variable.is_empty() and ((input and kind == "set_variable") or (not input and kind == "get_variable")):
 			result[1 if input else 0][1] = port_type(variable_type(variable))
 	return result
+
+
+## An operator's ports (D-065): A and B, or A alone, of the type its group
+## takes — booleans for logic, numbers to order, any value else — and its
+## Result, of the type its operands give ([method operand_type]).
+func _operator_ports(block: Dictionary, input: bool) -> Array:
+	var op := str((block["params"] as Dictionary).get("op", ""))
+	var group := XREBlueprintOperators.group_of(op)
+	if input:
+		var operand := BOOLEAN if group == XREBlueprintOperators.LOGIC else NUMBER if group == XREBlueprintOperators.ORDER else VALUE
+		var inputs: Array = [["A", operand, "a"]]
+		if not XREBlueprintOperators.is_unary(op): inputs.append(["B", operand, "b"])
+		return inputs
+	return [["Result", port_type(XREBlueprintOperators.result_type(op, operand_type(block, "a"), operand_type(block, "b"))), ""]]
+
+
+## The Variant type of operand [param key] (A or B) of an operator or Equal
+## block: of the output its wire comes from, else of its literal; TYPE_NIL
+## when it can't be known before the game runs.
+func operand_type(block: Dictionary, key: String) -> int:
+	var port := 0 if key == "a" else 1
+	for edge: Dictionary in edges:
+		if edge.get("to") != block.get("id") or edge.get("to_port") != port or not edge.get("from_port") is int: continue
+		var source := find_node(int(edge.get("from", -1)))
+		if source.is_empty() or _resolving > 64: return TYPE_NIL
+		_resolving += 1
+		var outputs := ports(source, false)
+		_resolving -= 1
+		var index: int = edge["from_port"]
+		return variant_type(outputs[index][1]) if index >= 0 and index < outputs.size() else TYPE_NIL
+	var params: Dictionary = block.get("params", {})
+	return typeof(params[key]) if params.has(key) else TYPE_NIL
+
+
+## Whether operand [param key] of [param block] has a wire into it.
+func _operand_wired(block: Dictionary, key: String) -> bool:
+	var port := 0 if key == "a" else 1
+	for edge: Dictionary in edges:
+		if edge.get("to") == block.get("id") and edge.get("to_port") == port: return true
+	return false
+
+
+## Whether [param block] draws as an operator (D-065): an Operator, or Equal, which is one.
+static func is_operator(block: Dictionary) -> bool:
+	return block.get("kind") in ["operator", "equals"]
+
+
+## The operator of an operator block: its [code]op[/code], [code]equal[/code] for Equal.
+static func operator_of(block: Dictionary) -> String:
+	if block.get("kind") == "equals": return "equal"
+	return str((block.get("params", {}) as Dictionary).get("op", ""))
+
+
+## The symbol an operator block shows between its inputs and its result.
+static func symbol(block: Dictionary) -> String:
+	var op := operator_of(block)
+	if op == "equal": return "="
+	return str((XREBlueprintOperators.OPERATORS[op] as Dictionary)["symbol"]) if XREBlueprintOperators.OPERATORS.has(op) else "?"
+
+
+## Whether parameter [param key] of [param block] is unused: B of a unary operator.
+static func is_unused(block: Dictionary, key: String) -> bool:
+	return block.get("kind") == "operator" and key == "b" and XREBlueprintOperators.is_unary(operator_of(block))
+
+
+## A new wire into an operand of an arithmetic or equality operator (D-065):
+## the other operand's literal takes the wire's type, as Unreal's wildcard pins
+## do — a number stays by a vector it multiplies, or divides. [param before]
+## are the edges before the edit; true if a literal changed.
+func adopt_operands(before: Array) -> bool:
+	var changed := false
+	for edge: Dictionary in edges:
+		if before.has(edge) or not edge.get("to") is int or not edge.get("to_port") in [0, 1]: continue
+		var block := find_node(edge["to"])
+		if not is_operator(block) or not block.get("params") is Dictionary: continue
+		var op := operator_of(block)
+		if not (op == "equal" or XREBlueprintOperators.group_of(op) == XREBlueprintOperators.MATH): continue
+		var key := "a" if edge["to_port"] == 0 else "b"
+		var other := "b" if key == "a" else "a"
+		var params: Dictionary = block["params"]
+		if not params.has(other) or is_unused(block, other) or _operand_wired(block, other): continue
+		var wired := operand_type(block, key)
+		var literal: Variant = params[other]
+		if wired in [TYPE_NIL, TYPE_OBJECT] or typeof(literal) == wired: continue
+		var scales := op == "multiply" or (op == "divide" and key == "a")
+		if scales and wired in XREBlueprintOperators.VECTORS and typeof(literal) in XREBlueprintOperators.NUMBERS: continue
+		var adopted: Variant = convert_literal(literal, wired)
+		if adopted == null: continue
+		params[other] = adopted
+		changed = true
+	return changed
+
+
+## [param value] as a literal of Variant type [param type]: a number keeps its
+## value, as a whole number or a real, and fills a vector; anything else is the
+## type's default. Null for a type no literal has.
+static func convert_literal(value: Variant, type: int) -> Variant:
+	if typeof(value) in XREBlueprintOperators.NUMBERS:
+		match type:
+			TYPE_INT: return roundi(float(value))
+			TYPE_FLOAT: return float(value)
+			TYPE_VECTOR2: return Vector2.ONE * float(value)
+			TYPE_VECTOR3: return Vector3.ONE * float(value)
+	return XREBlueprintSchema.default_value(type)
+
+
+## The Variant type of values of port category [param category]; TYPE_NIL for any value.
+static func variant_type(category: int) -> int:
+	match category:
+		BOOLEAN: return TYPE_BOOL
+		INTEGER: return TYPE_INT
+		NUMBER: return TYPE_FLOAT
+		TEXT: return TYPE_STRING
+		VECTOR2: return TYPE_VECTOR2
+		VECTOR3: return TYPE_VECTOR3
+		OBJECT: return TYPE_OBJECT
+		COLOR: return TYPE_COLOR
+	return TYPE_NIL
 
 
 ## Index of the input of [param block] whose unconnected value is parameter
@@ -308,7 +436,7 @@ static func has_target(block: Dictionary) -> bool:
 ## Whether a block computes data on demand, without execution ports.
 static func is_pure(block: Dictionary) -> bool:
 	match block.get("kind"):
-		"value", "get_property", "equals", "get_variable": return true
+		"value", "get_property", "equals", "operator", "get_variable": return true
 		"call":
 			var function: Variant = block.get("function")
 			return function is Dictionary and bool((function as Dictionary).get("pure", false))
@@ -340,6 +468,11 @@ static func make_node(id: int, kind: String, position: Vector2) -> Dictionary:
 		block = {"id": id, "kind": preset["kind"], "position": position, "params": (BLOCKS[preset["kind"]]["params"] as Dictionary).duplicate(true)}
 	(block["params"] as Dictionary).merge((preset["params"] as Dictionary).duplicate(true), true)
 	return block
+
+
+## Creates an Operator block of operator [param op] ([XREBlueprintOperators]).
+static func make_operator(id: int, op: String, position: Vector2) -> Dictionary:
+	return {"id": id, "kind": "operator", "position": position, "params": XREBlueprintOperators.default_params(op)}
 
 
 ## Creates a call block of function [param signature] ([XREBlueprintFunctions]).
@@ -407,7 +540,7 @@ func validate() -> PackedStringArray:
 		var sockets := socket_keys(block) if kind != "call" else ([] as Array[String])
 		for key: String in defaults:
 			# A port's value may be taken out: the build reports the empty socket (D-054).
-			if not params.has(key) and key in sockets: continue
+			if not params.has(key) and key in sockets or is_unused(block, key): continue
 			if not params.has(key) or not is_literal(params[key]):
 				errors.append("Block #%s: invalid %s." % [id, key])
 				continue
@@ -418,6 +551,8 @@ func validate() -> PackedStringArray:
 				errors.append("Block #%s: expected a boolean." % id)
 			if key == "policy" and not params[key] in ["parallel", "ignore", "restart"]:
 				errors.append("Block #%s: unknown event policy." % id)
+			if key == "op" and not XREBlueprintOperators.OPERATORS.has(params[key]):
+				errors.append("Block #%s: unknown operator." % id)
 			if key == "variable" and not params[key] is String:
 				errors.append("Block #%s: variable must be an identifier." % id)
 		if block.has("property_type") and (not block["property_type"] is int or block["property_type"] < TYPE_NIL or block["property_type"] >= TYPE_MAX):

@@ -4,19 +4,19 @@ extends Node3D
 ## The input of a token, around the token itself (D-052), as the concept
 ## draws it: a number turned by the wrist shows a dial of ticks, one per step,
 ## the current one white, and its value large above; a choice turned so shows
-## its values on an arc, the current one white; a color shows a ring of hues
-## and a bar of brightness that the ray picks; a vector shows arrows along
-## X, Y and Z, each pulled along its axis to change one component. Built when
-## an edit starts, moved and lit while it lasts; picked analytically.
+## its values on an arc, the current one white; a color in 3D shows a globe of
+## colors, turned by a drag and picked by a click (D-064); a vector shows
+## arrows along X, Y and Z, each pulled along its axis to change one component.
+## Built when an edit starts, moved and lit while it lasts; picked analytically.
 ##
 ## It is drawn over everything — scene, cards, windows — with no depth test
-## (D-058). The ring and the arrows stand on a dark plate with a × at its
-## corner: the grip on the plate moves them, the × or the trigger anywhere
-## else closes them, so that what they cover is never out of reach.
+## (D-058); what stands nearer the head and covers it is see-through (D-066,
+## [method focus_sphere]). The globe and the arrows hang in front of their
+## windows, which move and close them ([XREBlueprintColorTab], [XREBlueprintVectorTab]).
 
 const DIAL := &"dial"
 const CHOICE := &"choice"
-const RING := &"ring"
+const GLOBE := &"globe"
 const ARROWS := &"arrows"
 ## A line of help over a token under the ray: how it is edited.
 const HINT := &"hint"
@@ -33,51 +33,94 @@ const LINE_SPEED := 20.0
 const LINE_DETENT := 0.04
 ## How near a value on the arc of a choice the ray picks it.
 const CHOICE_PICK := 0.035
-## The hue ring: segments, radius and the band the ray picks in; the brightness bar's size.
-const SEGMENTS := 24
-const RING_RADIUS := 0.085
-const RING_BAND := 0.016
-const BAR_SIZE := Vector2(0.014, 0.15)
-const SHADES := 10
+## The globe of colors (D-064): its radius at full saturation, the part of
+## that it shrinks to at none, and how far it tilts toward the user at most.
+## Its longitude is the hue, its latitude the lightness, black at the bottom
+## pole and white at the top, its depth the saturation.
+const GLOBE_RADIUS := 0.075
+const GLOBE_CORE := 0.45
+const GLOBE_TILT := 1.3
 ## The arrows are drawn to one scale (D-061): an axis arrow is its component
 ## long, the white one is the vector, so that they change together. The
 ## largest component is [constant ARROW_LENGTH] long when the arrows open
 ## (one unit at most that); an arrow is drawn at least [constant ARROW_STUB]
 ## long to be taken; past [constant ARROW_MAX] (the white arrow: past
 ## [constant VECTOR_MAX]) the scale shrinks instead. The ray picks an arrow
-## [constant ARROW_PICK] from its axis.
-const ARROW_LENGTH := 0.12
-const ARROW_STUB := 0.015
-const ARROW_MAX := 0.2
-const VECTOR_MAX := 0.24
-const ARROW_PICK := 0.022
-## The white arrow of the whole vector: its index among the arrows.
+## [constant ARROW_PICK] from its axis. Small enough that a seated user pulls
+## them by the wrist and the forearm, not the whole arm (D-064). A vector
+## under 1 is drawn finer, by tenths (D-066): its largest component's decade,
+## down to [constant FINEST], is [constant ARROW_LENGTH] long, so that 0.1 and
+## 0.01 are pulled as 1 and 0.1 are. An arrow is taken only by its end, the
+## last [constant TIP_REACH] of it and its head.
+const ARROW_LENGTH := 0.07
+const FINEST := 0.1
+const TIP_REACH := 0.025
+const ARROW_STUB := 0.01
+const ARROW_MAX := 0.12
+const VECTOR_MAX := 0.14
+const ARROW_PICK := 0.02
+## The length of an arrow's head.
+const HEAD_LENGTH := 0.016
+## The white arrow of the whole vector: its index among the arrows. It and
+## the vector over it are a little see-through (D-067): the sum is read from
+## the axis arrows through it.
 const VECTOR_AXIS := 3
+const VECTOR_COLOR := Color(1.0, 1.0, 1.0, 0.5)
+const VECTOR_TEXT_ALPHA := 0.75
 ## Pulled past its longest, an arrow goes on growing its value: this many
 ## units a second per meter beyond, times the value's size once past 1, and
 ## faster the longer it is held there, by this much a second (D-060).
 const OVER_SPEED := 40.0
 const OVER_ACCEL := 1.5
+## Pulled near its foot an arrow goes toward zero (D-067), as past its end it
+## goes on: within [constant NEAR_ZONE] of the foot its component shrinks, by a
+## tenth a second at the inner edge and faster the longer it is held, to
+## [constant SMALLEST] at least, the scale growing so that the arrow stays
+## [constant NEAR_ZONE] long. Within [constant ZERO_ZONE] it is 0. The finest a
+## value or a step goes is a millionth (D-071; a hundredth before).
+const NEAR_ZONE := 0.016
+const ZERO_ZONE := 0.004
+const UNDER_SPEED := 2.3
+const SMALLEST := 0.000001
+## With Axis scale on Stick (D-069) none of that: the stick tilted all the way
+## makes the scale this many times finer or coarser a second (natural log: 20
+## times, D-070), the value kept. Held past an end the axis slides on at an
+## even speed, [constant PAN_SPEED] meters of it a second per meter beyond, as
+## it is drawn now: faster only by a coarser scale, never by time (D-070).
+const ZOOM_SPEED := 3.0
+const PAN_SPEED := 5.0
 ## The scale along a pulled arrow: a tick at every step of a 1-2-5 series,
-## at least [constant GRID_GAP] apart, longer every tenth tick and at zero.
-const GRID_GAP := 0.012
+## at least [constant GRID_GAP] apart, longer every tenth tick and at zero. A
+## pulled component goes by those steps, with no stop at whole numbers: one
+## kept 0.1 out of reach (D-066).
+const GRID_GAP := 0.007
 const GRID_TICKS := 24
+const SERIES: Array[float] = [1.0, 2.0, 5.0]
 ## How much a pulled arrow changes its component, per meter of pull: a tenth per 2 cm.
 const ARROW_GAIN := 5.0
 ## A pulled component this near a whole number stops at it, so that 0 and 1 are easy to hit.
 const DETENT := 0.15
-## Arrows stand this far in front of their token, towards the head, clear of the card.
-const ARROW_LIFT := 0.14
 const AXIS_COLORS: Array[Color] = [Color("ff6b6b"), Color("7be5b3"), Color("89adff")]
 const IDLE := Color("7d8597")
 ## Sorted as if this much nearer than it is: drawn after everything else that
 ## is transparent, after a window drawn over everything too (its offset is 100).
 const ON_TOP_OFFSET := 150.0
-const PLATE_COLOR := Color(0.07, 0.09, 0.12, 0.82)
-## The radius of the × at the plate's corner and how far the ray picks it.
-const CLOSE_RADIUS := 0.014
 
 var mode := &""
+## How the scale of the line and of the arrows changes, a value of
+## [constant XREFeatureSettings.AXIS_SCALE] (D-069): set before they open.
+var scale_mode := XREFeatureSettings.AUTO
+## The arrow being pulled, or -1; how far, and where the hand is, at the last pull: a zoom keeps the value under them.
+var _pull_axis := -1
+var _last_pulled := 0.0
+var _last_point := Vector3.ZERO
+## Where each arrow begins, on Stick (D-071): 0, or a value its axis was moved
+## on to, as a number line slides, when it would be longer than it can be.
+## Written by the arrow's foot ("from 1.5"). Always 0 on Auto.
+var _bases := Vector3.ZERO
+var _base_labels: Array[Label3D] = []
+## The scale shown (D-071): "step 0.01" by the line's right end or under the arrows.
+var _step_label: Label3D
 var _ticks: Array[MeshInstance3D] = []
 var _figures: Array[Label3D] = []
 var _marker: MeshInstance3D
@@ -89,25 +132,32 @@ var _line_value := 0.0
 var _line_integer := false
 ## The least value the line goes to, or NAN (D-063): zero for a Delay.
 var _line_minimum := NAN
+## Where the line begins, in meters right of the token (D-064): -[constant LINE_HALF],
+## or nearer when its least value would fall inside, so that the line starts there.
+var _line_left := -LINE_HALF
+## How long the marker has been held near the 0 tick (D-068).
+var _under_time := 0.0
 var _value: Label3D
 var _choices: Array[Label3D] = []
-var _segments: Array[MeshInstance3D] = []
-var _shades: Array[MeshInstance3D] = []
 var _arrows: Array[Node3D] = []
 var _axes: Array[Vector3] = []
 var _lit := -1
 var _idle_material: Material
 var _hot_material: Material
 var _lit_white: StandardMaterial3D
-## The plate of the ring or the arrows, its size, and its ×; null without one.
-var _plate: MeshInstance3D
-var _plate_size := Vector2.ZERO
-var _close: Node3D
-var _close_disc: MeshInstance3D
-var _close_idle: StandardMaterial3D
-var _close_hot: StandardMaterial3D
-## The value the arrows make, large over their plate, followed while one is pulled (D-059).
-var _readout: Label3D
+## The globe (D-064): its turn, the sphere scaled to its saturation, the
+## mark of its color, which turns with it, and the ring under the ray.
+var _pivot: Node3D
+var _globe: MeshInstance3D
+var _globe_material: ShaderMaterial
+var _mark: MeshInstance3D
+var _hover: MeshInstance3D
+var _globe_yaw := 0.0
+var _globe_pitch := 0.0
+## The color it shows: hue, saturation and lightness, the hue kept through grays; and its alpha.
+var _hsl := Vector3(0.0, 1.0, 0.5)
+var _alpha := 1.0
+static var _globe_shader: Shader
 ## Each arrow's own material, given back when it is no longer lit.
 var _arrow_materials: Array[Material] = []
 ## The vector the arrows edit, each arrow's shaft, head and number, its length,
@@ -169,15 +219,13 @@ func _clear() -> void:
 	_figures.clear()
 	_marker = null
 	_choices.clear()
-	_segments.clear()
-	_shades.clear()
 	_arrows.clear()
 	_axes.clear()
 	_value = null
-	_plate = null
-	_close = null
-	_close_disc = null
-	_readout = null
+	_pivot = null
+	_globe = null
+	_mark = null
+	_hover = null
 	_arrow_materials.clear()
 	_shafts.clear()
 	_heads.clear()
@@ -185,8 +233,9 @@ func _clear() -> void:
 	_lengths.clear()
 	_grid.clear()
 	_grid_axis = -1
-	_plate_size = Vector2.ZERO
 	_lit = -1
+	_base_labels.clear()
+	_step_label = null
 
 
 ## Draws every part over everything: no depth test, sorted last (D-058).
@@ -198,38 +247,10 @@ func _raise(node: Node) -> void:
 			var material := (child as MeshInstance3D).material_override as BaseMaterial3D
 			if material != null: material.no_depth_test = true
 		_raise(child)
-	# The plate under the rest of the widget, the rest still over everything else.
-	if node == self and _plate != null: _plate.sorting_offset = ON_TOP_OFFSET - 1.0
-
-
-## A dark plate of [param size] behind the widget, in the plane of [param basis]
-## (global) at the widget's origin, with a × at its top right corner.
-func _add_plate(size: Vector2, basis: Basis) -> void:
-	var quad := QuadMesh.new()
-	quad.size = size
-	_plate = XRERig.create_vr_mesh(quad, XREBlueprintCanvas.material(PLATE_COLOR, true))
-	add_child(_plate)
-	_plate.global_basis = basis.orthonormalized()
-	_plate.position = _plate.basis.z * -0.004
-	_plate_size = size
-	_close = Node3D.new()
-	add_child(_close)
-	_close.global_basis = basis.orthonormalized()
-	_close.position = _close.basis * Vector3(size.x * 0.5 - CLOSE_RADIUS * 1.4, size.y * 0.5 - CLOSE_RADIUS * 1.4, 0.002)
-	var disc := CylinderMesh.new()
-	disc.top_radius = CLOSE_RADIUS
-	disc.bottom_radius = CLOSE_RADIUS
-	disc.height = 0.002
-	_close_idle = XREBlueprintCanvas.material(Color("39414f"), true)
-	_close_hot = XREBlueprintCanvas.material(Color("e8879b"), true)
-	_close_idle.no_depth_test = true
-	_close_hot.no_depth_test = true
-	_close_disc = XRERig.create_vr_mesh(disc, _close_idle)
-	_close_disc.rotation.x = PI * 0.5
-	_close.add_child(_close_disc)
-	var cross := XREBlueprintCanvas.label("×", 30)
-	cross.position.z = 0.002
-	_close.add_child(cross)
+	# The mark of the color over the globe it lies on.
+	if node == self and _mark != null:
+		_mark.sorting_offset = ON_TOP_OFFSET + 1.0
+		_hover.sorting_offset = ON_TOP_OFFSET + 1.0
 
 
 ## The number line of a number held by the trigger (D-062, after D-052's dial):
@@ -239,7 +260,10 @@ func _add_plate(size: Vector2, basis: Basis) -> void:
 ## marker and the value ([method line_to]); held past an end the value goes
 ## on, faster and faster, the ruler sliding under the marker. The wrist and
 ## the stick step it too ([method nudge]). The value goes no lower than
-## [param minimum] (NAN: no bound): the line stops there (D-063).
+## [param minimum] (NAN: no bound): the line stops there (D-063) and begins
+## there, as long as the line is, when it would reach below (D-064). Held
+## near the 0 tick a fraction goes toward zero, as an arrow near its foot
+## does (D-068, [constant NEAR_ZONE]): the ruler grows finer about its 0.
 func open_dial(pose: Transform3D, value: Variant, minimum: float = NAN) -> void:
 	_clear()
 	mode = DIAL
@@ -252,10 +276,13 @@ func open_dial(pose: Transform3D, value: Variant, minimum: float = NAN) -> void:
 	_line_shown = 0.0
 	_line_value = float(value)
 	_over_time = 0.0
+	_under_time = 0.0
+	_line_left = -LINE_HALF
+	if not is_nan(minimum): _line_left = clampf((minimum - _line_center) * _line_scale, -LINE_HALF, 0.0)
 	var line := BoxMesh.new()
 	line.size = Vector3(LINE_HALF * 2.0, 0.002, 0.002)
 	var bar := XRERig.create_vr_mesh(line, _idle_material)
-	bar.position = Vector3(0, LINE_LIFT, 0.01)
+	bar.position = Vector3(_line_left + LINE_HALF, LINE_LIFT, 0.01)
 	add_child(bar)
 	var minor := BoxMesh.new()
 	minor.size = Vector3(0.0015, 0.008, 0.0015)
@@ -278,10 +305,15 @@ func open_dial(pose: Transform3D, value: Variant, minimum: float = NAN) -> void:
 	add_child(_marker)
 	_value = XREBlueprintCanvas.label("", 30)
 	add_child(_value)
-	var hint := XREBlueprintCanvas.label("move the ray ← → along the line  ·  past its end it speeds up  ·  or the wrist, the stick  ·  let go to keep", 14)
+	var help := "move the ray ← → along the line  ·  past its end it speeds up, held by 0 it goes to 0  ·  or the wrist, the stick  ·  let go to keep"
+	if scale_mode == XREFeatureSettings.STICK: help = "move the ray ← → along the line, past its end it slides on  ·  stick ↑ finer, ↓ coarser  ·  wrist or stick ← → a step  ·  let go to keep"
+	var hint := XREBlueprintCanvas.label(help, 14)
 	hint.modulate = Color("a9b0bf")
-	hint.position = Vector3(0, LINE_LIFT - 0.035, 0.01)
+	hint.position = Vector3(_line_left + LINE_HALF, LINE_LIFT - 0.035, 0.01)
 	add_child(hint)
+	_step_label = _make_step_label()
+	_step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_step_label.position = Vector3(_line_left + LINE_HALF * 2.0 + 0.02, LINE_LIFT, 0.01)
 	_show_line()
 	_raise(self)
 	visible = true
@@ -291,15 +323,43 @@ func open_dial(pose: Transform3D, value: Variant, minimum: float = NAN) -> void:
 ## trigger took the token, [param delta] seconds after the last move; returns
 ## the value. Past an end the marker stays there and the value goes on, this
 ## many units a second per meter beyond, times its size once past 1, faster the
-## longer it is held there.
+## longer it is held there. Held within [constant NEAR_ZONE] of the 0 tick, a
+## fraction goes toward zero (D-068): the ruler grows finer about its 0, the
+## 0 tick staying where it is, so that the value under the marker shrinks, to
+## [constant SMALLEST] at least; within [constant ZERO_ZONE] it is 0.
 func line_to(offset: float, delta: float) -> Variant:
-	var over := absf(offset) - LINE_HALF
-	if over > 0.0:
+	var right := _line_left + LINE_HALF * 2.0
+	var over := maxf(offset - right, _line_left - offset)
+	var auto := scale_mode != XREFeatureSettings.STICK
+	if over > 0.0 and not auto:
+		# On Stick the ruler slides on evenly under the marker (D-070): a line, not a segment.
+		_line_center += signf(offset - _line_left - LINE_HALF) * over * PAN_SPEED / _line_scale * delta
+	elif over > 0.0:
 		_over_time += delta
-		_line_center += signf(offset) * over * LINE_SPEED * maxf(absf(_line_center), 1.0) * (1.0 + _over_time * OVER_ACCEL) * delta
+		_line_center += signf(offset - _line_left - LINE_HALF) * over * LINE_SPEED * maxf(absf(_line_center), 1.0) * (1.0 + _over_time * OVER_ACCEL) * delta
 	else: _over_time = 0.0
-	_line_shown = clampf(offset, -LINE_HALF, LINE_HALF)
+	var zero := -_line_center * _line_scale
+	var from_zero := offset - zero
+	if auto and over <= 0.0 and not _line_integer and zero >= _line_left - 0.0001 and zero <= right + 0.0001 and absf(from_zero) < NEAR_ZONE and absf(from_zero) > ZERO_ZONE:
+		_under_time += delta
+		var depth := (NEAR_ZONE - absf(from_zero)) / (NEAR_ZONE - ZERO_ZONE)
+		var finer := _line_scale * exp(UNDER_SPEED * depth * (1.0 + _under_time * OVER_ACCEL) * delta)
+		_line_scale = maxf(_line_scale, minf(finer, absf(from_zero) / SMALLEST))
+		_line_center = -zero / _line_scale
+		_line_step = _fine_step()
+	else: _under_time = 0.0
+	_line_shown = clampf(offset, _line_left, right)
 	return _line_settle(over <= 0.0)
+
+
+## The line's step at its scale (D-068): the smallest of 0.000001… 0.01, 0.02,
+## 0.05, 0.1… whose ticks are at least [constant LINE_STEP_GAP] apart (D-071).
+func _fine_step() -> float:
+	for exponent: int in range(-6, 12):
+		for factor: float in SERIES:
+			var step := factor * pow(10.0, exponent)
+			if step * _line_scale >= LINE_STEP_GAP - 0.000001: return step
+	return pow(10.0, 12)
 
 
 ## Steps the value by [param steps] of the line, the marker where it is: the wrist's and the stick's steps.
@@ -315,8 +375,12 @@ func _line_settle(detent: bool) -> Variant:
 	var value := _line_center + _line_shown / _line_scale
 	if _line_integer: value = roundf(value)
 	else:
-		value = snappedf(value, _line_step)
-		if detent and absf(value - roundf(value)) <= LINE_DETENT: value = roundf(value)
+		# Going toward zero by the 0 tick (D-068) it is shown to the hundredth, never
+		# 0, though its ticks are coarser: snapped to them, 0.04 would be 0.
+		if _under_time > 0.0: value = signf(value) * maxf(snappedf(absf(value), SMALLEST), SMALLEST)
+		else: value = snappedf(value, _line_step)
+		# Not on a finer ruler (D-068): 0.01 to 0.04 would stop at 0.
+		if detent and _under_time <= 0.0 and _line_step >= 0.1 and absf(value - roundf(value)) <= LINE_DETENT: value = roundf(value)
 	if not is_nan(_line_minimum): value = maxf(value, _line_minimum)
 	_line_value = value
 	_show_line()
@@ -328,16 +392,16 @@ func get_line_value() -> Variant:
 	return int(_line_value) if _line_integer else _line_value
 
 
-## The ruler under the marker: a tick at every step of the value around the
-## line's middle, long ones every ten steps with their figures.
+## The ruler under the marker: a tick at every step of the value along the
+## line, long ones every ten steps with their figures; none below its least value.
 func _show_line() -> void:
-	var first := ceilf((_line_center - LINE_HALF / _line_scale) / _line_step)
+	var first := ceilf((_line_center + _line_left / _line_scale) / _line_step - 0.0001)
 	var figure := 0
 	for index: int in _ticks.size():
 		var tick := _ticks[index]
 		var at := (first + index) * _line_step
 		var x := (at - _line_center) * _line_scale
-		tick.visible = absf(x) <= LINE_HALF + 0.0001
+		tick.visible = x >= _line_left - 0.0001 and x <= _line_left + LINE_HALF * 2.0 + 0.0001 and (is_nan(_line_minimum) or at >= _line_minimum - _line_step * 0.01)
 		if not tick.visible: continue
 		var whole := absi(roundi(first + index)) % 10 == 0
 		tick.mesh = tick.get_meta(&"major") if whole else tick.get_meta(&"minor")
@@ -349,8 +413,22 @@ func _show_line() -> void:
 			figure += 1
 	for index: int in range(figure, _figures.size()): _figures[index].visible = false
 	_marker.position = Vector3(_line_shown, LINE_LIFT, 0.012)
+	if _step_label != null: _step_label.text = "step " + XREBlueprintTokens.plain(_line_step)
 	_value.text = XREBlueprintTokens.text(int(_line_value) if _line_integer else _line_value, "")
 	_value.position = Vector3(_line_shown, LINE_LIFT + 0.04, 0.012)
+
+
+## The scale of the line or of the arrows in words (D-071): "step 0.01", what one tick is.
+func _make_step_label() -> Label3D:
+	var label := XREBlueprintCanvas.label("", 14)
+	label.modulate = Color("c8cedb")
+	add_child(label)
+	return label
+
+
+## The step the line or the arrows show now (D-071).
+func get_shown_step() -> String:
+	return _step_label.text if _step_label != null else ""
 
 
 ## A line of help [param text] over the token at [param pose], for a token under the ray.
@@ -416,40 +494,204 @@ func choice_at(origin: Vector3, direction: Vector3) -> int:
 	return best
 
 
-## The ring of hues around the token at [param pose] and the bar of brightness beside it.
-func open_ring(pose: Transform3D, color: Color) -> void:
+## The globe of colors (D-064) at [param pose], facing as it does, showing
+## [param color]: hue round it, lightness up it, black at the bottom pole and
+## white at the top, its saturation in its size and in the colors on it. A
+## mark lies where the color is. A drag turns it ([method turn_globe]), a
+## click picks a color on it ([method globe_at]).
+func open_globe(pose: Transform3D, color: Color) -> void:
 	_clear()
-	mode = RING
-	global_transform = pose
-	for index: int in SEGMENTS:
-		var angle := TAU * index / SEGMENTS
-		var segment := BoxMesh.new()
-		segment.size = Vector3(TAU * RING_RADIUS / SEGMENTS + 0.001, RING_BAND, 0.003)
-		var mesh := XRERig.create_vr_mesh(segment, XREBlueprintCanvas.material(Color.from_hsv(float(index) / SEGMENTS, 0.75, 0.95), true))
-		mesh.position = Vector3(cos(angle), sin(angle), 0) * RING_RADIUS
-		mesh.rotation.z = angle + PI * 0.5
-		add_child(mesh)
-		_segments.append(mesh)
-	for index: int in SHADES:
-		var shade := QuadMesh.new()
-		shade.size = Vector2(BAR_SIZE.x, BAR_SIZE.y / SHADES)
-		var value := 1.0 - float(index) / (SHADES - 1)
-		var mesh := XRERig.create_vr_mesh(shade, XREBlueprintCanvas.material(Color.from_hsv(color.h, color.s, value), true))
-		mesh.position = Vector3(RING_RADIUS + 0.04, BAR_SIZE.y * 0.5 - (index + 0.5) * BAR_SIZE.y / SHADES, 0)
-		add_child(mesh)
-		_shades.append(mesh)
-	var plate := Vector2(RING_RADIUS * 2.0 + 0.1, RING_RADIUS * 2.0 + 0.07)
-	_add_plate(plate, pose.basis)
-	_plate.position += _plate.basis.x * 0.02
-	_close.position += _close.basis.x * 0.02
+	mode = GLOBE
+	global_transform = Transform3D(pose.basis.orthonormalized(), pose.origin)
+	_pivot = Node3D.new()
+	add_child(_pivot)
+	var sphere := SphereMesh.new()
+	sphere.radius = 1.0
+	sphere.height = 2.0
+	sphere.radial_segments = 48
+	sphere.rings = 24
+	_globe_material = _make_globe_material()
+	_globe = XRERig.create_vr_mesh(sphere, _globe_material)
+	_pivot.add_child(_globe)
+	var ring := TorusMesh.new()
+	ring.inner_radius = 0.0045
+	ring.outer_radius = 0.0075
+	_mark = XRERig.create_vr_mesh(ring, _hot_material)
+	_pivot.add_child(_mark)
+	_hover = XRERig.create_vr_mesh(ring, _lit_white)
+	_hover.visible = false
+	add_child(_hover)
+	_globe_yaw = 0.0
+	_globe_pitch = 0.0
+	_hsl = Vector3(0.0, 1.0, 0.5)
+	set_globe_color(color)
+	face_globe_color()
 	_raise(self)
 	visible = true
+
+
+static func _make_globe_material() -> ShaderMaterial:
+	if _globe_shader == null:
+		_globe_shader = Shader.new()
+		# The colors are sRGB, as a Color is; the renderer works in linear, so they are
+		# decoded here. ALPHA keeps the globe in the transparent pass, after the dimmer;
+		# without a depth test it is drawn over everything, and being convex, culled
+		# back faces keep it whole.
+		_globe_shader.code = """
+shader_type spatial;
+render_mode unshaded, depth_test_disabled, cull_back, fog_disabled;
+uniform float saturation = 1.0;
+varying vec3 direction;
+void vertex() { direction = VERTEX; }
+vec3 hsl(float h, float s, float l) {
+	vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+	return l + s * (k - 0.5) * (1.0 - abs(2.0 * l - 1.0));
+}
+void fragment() {
+	vec3 d = normalize(direction);
+	vec3 c = hsl(fract(atan(d.x, d.z) / TAU), saturation, 0.5 + asin(clamp(d.y, -1.0, 1.0)) / PI);
+	ALBEDO = mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThan(c, vec3(0.04045))));
+	ALPHA = 1.0;
+}
+"""
+	var material := ShaderMaterial.new()
+	material.shader = _globe_shader
+	material.render_priority = Material.RENDER_PRIORITY_MAX
+	return material
+
+
+## Shows [param color] on the globe: its saturation and its mark. A gray keeps
+## the hue it had, black and white the saturation too, so that the globe
+## doesn't turn gray with them.
+func set_globe_color(color: Color) -> void:
+	var picked := to_hsl(color)
+	if picked.y > 0.0005 and picked.z > 0.0005 and picked.z < 0.9995: _hsl.x = picked.x
+	if picked.z > 0.0005 and picked.z < 0.9995: _hsl.y = picked.y
+	_hsl.z = picked.z
+	_alpha = color.a
+	_show_globe()
+
+
+## Sets the globe's saturation to [param saturation]; returns the color it makes.
+func set_globe_saturation(saturation: float) -> Color:
+	_hsl.y = clampf(saturation, 0.0, 1.0)
+	_show_globe()
+	return get_globe_color()
+
+
+## The color the globe shows.
+func get_globe_color() -> Color:
+	return hsl(_hsl.x, _hsl.y, _hsl.z, _alpha)
+
+
+## The color of [param hue] and [param lightness] at the globe's saturation.
+func globe_color(hue: float, lightness: float) -> Color:
+	return hsl(hue, _hsl.y, lightness, _alpha)
+
+
+## The globe's saturation.
+func get_globe_saturation() -> float:
+	return _hsl.y
+
+
+## The globe's radius now, smaller the less saturated it is.
+func globe_radius() -> float:
+	return GLOBE_RADIUS * (GLOBE_CORE + (1.0 - GLOBE_CORE) * _hsl.y)
+
+
+## Turns the globe to [param yaw] about its own axis and [param pitch] toward
+## the user, as a globe on its stand is turned; the tilt stops short of the poles.
+func turn_globe(yaw: float, pitch: float) -> void:
+	_globe_yaw = wrapf(yaw, -PI, PI)
+	_globe_pitch = clampf(pitch, -GLOBE_TILT, GLOBE_TILT)
+	_show_globe()
+
+
+## Turns the globe so that its color faces the user, as far as its tilt goes.
+func face_globe_color() -> void:
+	turn_globe(-_hsl.x * TAU, (clampf(_hsl.z, 0.0, 1.0) - 0.5) * PI)
+
+
+## The globe's turn: yaw and pitch.
+func get_globe_turn() -> Vector2:
+	return Vector2(_globe_yaw, _globe_pitch)
+
+
+## The direction from the globe's center, unturned, of [param hue] and [param lightness].
+static func globe_direction(hue: float, lightness: float) -> Vector3:
+	var latitude := (clampf(lightness, 0.0, 1.0) - 0.5) * PI
+	return Vector3(cos(latitude) * sin(hue * TAU), sin(latitude), cos(latitude) * cos(hue * TAU))
+
+
+func _show_globe() -> void:
+	if _globe == null: return
+	var radius := globe_radius()
+	_pivot.basis = Basis(Vector3.RIGHT, _globe_pitch) * Basis(Vector3.UP, _globe_yaw)
+	_globe.scale = Vector3.ONE * radius
+	_globe_material.set_shader_parameter(&"saturation", _hsl.y)
+	var direction := globe_direction(_hsl.x, _hsl.z)
+	_mark.basis = _along(direction)
+	_mark.position = direction * (radius + 0.002)
+	# Only on the side toward the user: drawn over everything, it would show through.
+	_mark.visible = (_pivot.basis * direction).z > 0.15
+
+
+## Where the ray from [param origin] along [param direction] meets the globe:
+## [code]{"globe": Vector2(hue, lightness), "local", "distance"}[/code], or empty.
+func globe_at(origin: Vector3, direction: Vector3) -> Dictionary:
+	if mode != GLOBE: return {}
+	var inverse := global_transform.affine_inverse()
+	var start := inverse * origin
+	var along := (inverse.basis * direction).normalized()
+	var radius := globe_radius()
+	var middle := -start.dot(along)
+	var gap := start.length_squared() - middle * middle
+	if gap > radius * radius: return {}
+	var distance := middle - sqrt(radius * radius - gap)
+	if distance < 0.0: return {}
+	var point := start + along * distance
+	var unturned := _pivot.basis.inverse() * point.normalized()
+	var hue := fposmod(atan2(unturned.x, unturned.z) / TAU, 1.0)
+	var lightness := 0.5 + asin(clampf(unturned.y, -1.0, 1.0)) / PI
+	return {"globe": Vector2(hue, lightness), "local": point, "distance": distance}
+
+
+## Where the ray from [param origin] along [param direction] meets the plane
+## through the globe's center facing the user, in meters right and up of the
+## center; NAN off it. A drag turns the globe by it.
+func globe_plane_point(origin: Vector3, direction: Vector3) -> Vector2:
+	var at := _on_plane(global_transform, origin, direction)
+	if at.is_empty(): return Vector2(NAN, NAN)
+	var point: Vector3 = at["point"]
+	return Vector2(point.x, point.y)
+
+
+## The color with [param hue], [param saturation] and [param lightness] (HSL), and [param alpha].
+static func hsl(hue: float, saturation: float, lightness: float, alpha: float = 1.0) -> Color:
+	var chroma := (1.0 - absf(2.0 * lightness - 1.0)) * saturation
+	var channels := Vector3.ZERO
+	var offsets := Vector3(0.0, 4.0, 2.0)
+	for index: int in 3:
+		var k := clampf(absf(fposmod(hue * 6.0 + offsets[index], 6.0) - 3.0) - 1.0, 0.0, 1.0)
+		channels[index] = lightness + chroma * (k - 0.5)
+	return Color(channels.x, channels.y, channels.z, alpha)
+
+
+## Hue, saturation and lightness (HSL) of [param color].
+static func to_hsl(color: Color) -> Vector3:
+	var high := maxf(color.r, maxf(color.g, color.b))
+	var low := minf(color.r, minf(color.g, color.b))
+	var lightness := (high + low) * 0.5
+	var spread := high - low
+	if spread < 0.000001: return Vector3(0.0, 0.0, lightness)
+	return Vector3(color.h, spread / (1.0 - absf(2.0 * lightness - 1.0)), lightness)
 
 
 ## The arrows of a vector token [param value] (D-060, D-061), at
 ## [param pose]'s origin, facing it: X, Y and, for a Vector3, Z, each its
 ## component long in one scale and its number at its tip, and a white arrow of
-## the whole vector, the three arrows added up. They hang in front of the
+## the whole vector, the three arrows added up, the vector at its tip (D-066:
+## no longer over the plate, D-059). They hang in front of the
 ## Vector window ([XREBlueprintVectorTab]), which moves and closes them. Pulled
 ## by its end an axis arrow grows or shrinks, or flips through zero; held past
 ## its longest the value goes on, faster and faster, the scale shrinking along
@@ -460,15 +702,15 @@ func open_arrows(pose: Transform3D, axes: int, value: Variant = Vector3.ZERO) ->
 	mode = ARROWS
 	global_transform = Transform3D(Basis.IDENTITY, pose.origin)
 	_vector = value
+	_bases = Vector3.ZERO
 	var facing := pose.basis.orthonormalized()
 	_frame = facing
-	_readout = XREBlueprintCanvas.label(XREBlueprintTokens.text(value, ""), 30)
-	add_child(_readout)
-	_readout.global_basis = facing
-	_readout.position = facing * Vector3(0.0, ARROW_MAX + 0.05, 0.002)
+	_step_label = _make_step_label()
+	_step_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	for axis: int in 3: _add_arrow(AXIS_COLORS[axis], axis_direction(axis))
 	_arrows[2].visible = axes == 3
-	_add_arrow(Color.WHITE, Vector3.UP)
+	_add_arrow(VECTOR_COLOR, Vector3.UP)
+	_numbers[VECTOR_AXIS].modulate.a = VECTOR_TEXT_ALPHA
 	var unit := XREBlueprintCanvas.material(Color(1, 1, 1, 0.75), true)
 	var minor := BoxMesh.new()
 	minor.size = Vector3(0.012, 0.0015, 0.0015)
@@ -487,16 +729,17 @@ func open_arrows(pose: Transform3D, axes: int, value: Variant = Vector3.ZERO) ->
 	visible = true
 
 
-## Moves the arrows to [param origin], their axes those of a window facing as
-## [param facing]: the Vector window carries them, and turns them with it.
+## Moves the arrows or the globe to [param origin], their axes those of a
+## window facing as [param facing]: the Vector or the Color window carries
+## them, and turns them with it.
 func place(origin: Vector3, facing: Basis) -> void:
+	if mode == GLOBE:
+		global_transform = Transform3D(facing, origin)
+		return
 	global_position = origin
 	if not facing.is_equal_approx(_frame):
 		_frame = facing
 		_show()
-	if _readout != null:
-		_readout.global_basis = facing
-		_readout.global_position = origin + facing * Vector3(0.0, ARROW_MAX + 0.05, 0.002)
 
 
 ## One arrow along [param direction] in [param color]: a shaft of unit length
@@ -504,23 +747,31 @@ func place(origin: Vector3, facing: Basis) -> void:
 func _add_arrow(color: Color, direction: Vector3) -> void:
 	var arrow := Node3D.new()
 	var shaft := CylinderMesh.new()
-	shaft.top_radius = 0.0025
-	shaft.bottom_radius = 0.0025
+	shaft.top_radius = 0.002
+	shaft.bottom_radius = 0.002
 	shaft.height = 1.0
 	var head := CylinderMesh.new()
 	head.top_radius = 0.0
-	head.bottom_radius = 0.009
-	head.height = 0.022
+	head.bottom_radius = 0.007
+	head.height = HEAD_LENGTH
 	var material := XREBlueprintCanvas.material(color, true)
 	_arrow_materials.append(material)
 	var shaft_mesh := XRERig.create_vr_mesh(shaft, material)
 	arrow.add_child(shaft_mesh)
 	var head_mesh := XRERig.create_vr_mesh(head, material)
 	arrow.add_child(head_mesh)
-	var number := XREBlueprintCanvas.label("", 18)
+	var number := XREBlueprintCanvas.label("", 16)
 	number.modulate = color
 	number.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	arrow.add_child(number)
+	# Behind the foot: the value the arrow begins at, when not 0 (D-071).
+	var base := XREBlueprintCanvas.label("", 13)
+	base.modulate = Color(color, 0.8)
+	base.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	base.position = Vector3(0, -0.014, 0)
+	base.visible = false
+	arrow.add_child(base)
+	_base_labels.append(base)
 	arrow.basis = _along(direction)
 	add_child(arrow)
 	_arrows.append(arrow)
@@ -546,31 +797,42 @@ func _set_arrow(index: int, direction: Vector3, length: float) -> void:
 	_lengths[index] = shown
 	_shafts[index].scale = Vector3(1.0, shown, 1.0)
 	_shafts[index].position = Vector3(0, shown * 0.5, 0)
-	_heads[index].position = Vector3(0, shown + 0.011, 0)
-	_numbers[index].position = Vector3(0, shown + 0.04, 0)
+	_heads[index].position = Vector3(0, shown + HEAD_LENGTH * 0.5, 0)
+	_numbers[index].position = Vector3(0, shown + HEAD_LENGTH + 0.014, 0)
 
 
-## The scale at which the largest component is [constant ARROW_LENGTH] long, one unit at most that.
+## The scale at which the largest component is [constant ARROW_LENGTH] long,
+## one unit at most that; under 1, its decade is (D-066): 0.1 for 0.05 or 0.1,
+## down to [constant FINEST]. A zero vector is drawn by units.
 func _fit() -> void:
+	_bases = Vector3.ZERO
 	var largest := 0.0
 	for axis: int in _axis_count(): largest = maxf(largest, absf(float(_vector[axis])))
-	_scale = ARROW_LENGTH / maxf(largest, 1.0)
+	var unit := 1.0
+	if largest > 0.0 and largest < 1.0: unit = maxf(pow(10.0, ceilf(log(largest) / log(10.0) - 0.000001)), FINEST)
+	_scale = ARROW_LENGTH / maxf(largest, unit)
 
 
 ## Every arrow as the vector and the scale are: each axis arrow its component
-## long, pointing the way its sign says, the white one the vector, numbers at
-## their tips, the readout above.
+## long — from where it begins, on Stick (D-071) — pointing the way its sign
+## says, the white one their sum, numbers at their tips, the step under them.
 func _show() -> void:
 	var sum := Vector3.ZERO
 	for axis: int in _axis_count():
 		var component := float(_vector[axis])
-		var direction := axis_direction(axis) * (-1.0 if component < 0.0 else 1.0)
-		_set_arrow(axis, direction, absf(component) * _scale)
+		var drawn := component - _bases[axis]
+		var direction := axis_direction(axis) * (-1.0 if drawn < 0.0 else 1.0)
+		_set_arrow(axis, direction, absf(drawn) * _scale)
 		_numbers[axis].text = "%s %s" % [["X", "Y", "Z"][axis], XREBlueprintTokens.text(component, "")]
-		sum += axis_direction(axis) * component * _scale
+		_base_labels[axis].visible = _bases[axis] != 0.0
+		if _bases[axis] != 0.0: _base_labels[axis].text = "from " + XREBlueprintTokens.text(_bases[axis], "")
+		sum += axis_direction(axis) * drawn * _scale
+	if _step_label != null:
+		_step_label.text = "step " + XREBlueprintTokens.plain(get_step())
+		_step_label.position = _frame * Vector3(-0.035, -0.03, 0.0)
 	_set_arrow(VECTOR_AXIS, sum if sum.length() > 0.000001 else Vector3(1, 1, 1 if _axis_count() == 3 else 0), sum.length())
-	_numbers[VECTOR_AXIS].text = ""
-	if _readout != null: _readout.text = XREBlueprintTokens.text(_vector, "")
+	# Every component over the white arrow, as each axis's over its own (D-066).
+	_numbers[VECTOR_AXIS].text = XREBlueprintTokens.text(_vector, "")
 
 
 func _axis_count() -> int:
@@ -599,8 +861,16 @@ func get_arrow_scale() -> float:
 ## Shows [param value] as the vector the arrows edit, refitting the scale if
 ## the arrows would be too long or too short to read.
 func set_vector(value: Variant) -> void:
+	var same: bool = mode == ARROWS and typeof(value) == typeof(_vector) and value == _vector
 	_vector = value
 	if mode != ARROWS: return
+	# Shown again as it is, a pull let go: on Stick the scale and where the arrows
+	# begin stay as the stick and the pull left them (D-071).
+	if same and scale_mode == XREFeatureSettings.STICK:
+		_show()
+		_hide_grid()
+		return
+	_bases = Vector3.ZERO
 	var longest := 0.0
 	for axis: int in _axis_count(): longest = maxf(longest, absf(float(_vector[axis])) * _scale)
 	if longest > ARROW_MAX or longest < ARROW_LENGTH * 0.25: _fit()
@@ -625,37 +895,62 @@ func _axes_basis() -> Basis:
 func begin_pull(axis: int, grab: Vector3 = Vector3.ZERO) -> void:
 	_scale_start = _scale
 	_over_time = 0.0
+	_pull_axis = axis
+	_last_pulled = 0.0
+	_last_point = grab
 	if axis == VECTOR_AXIS:
 		_grab = grab
-		_tip_start = _axes_basis() * (_as_vector3(_vector) * _scale)
+		_tip_start = _axes_basis() * ((_as_vector3(_vector) - _bases) * _scale)
 		_vector_start = _vector
 		_reach = 0.0
 	elif axis >= 0 and axis < _axis_count():
-		_start_length = float(_vector[axis]) * _scale
+		_start_length = (float(_vector[axis]) - _bases[axis]) * _scale
 
 
 ## Pulls axis arrow [param axis] by [param pulled] meters along its axis,
 ## [param delta] seconds after the last pull; returns the vector it makes.
-## Within its longest the component follows the arrow, stopping at whole
-## numbers, through zero to the other side; held past its longest the
+## Within its longest the component follows the arrow by the scale's steps
+## ([method get_step]), through zero to the other side; held past its longest the
 ## component grows on, faster the longer it is held, and the scale shrinks so
-## that the arrow stays at its longest and the others shrink with it.
+## that the arrow stays at its longest and the others shrink with it. Held
+## near its foot the component goes toward zero the same way, the scale
+## growing; at the foot it is 0 (D-067).
 func pull_to(axis: int, pulled: float, delta: float) -> Variant:
 	if axis < 0 or axis >= _axis_count(): return _vector
+	_last_pulled = pulled
 	var length := _start_length + pulled
 	var component: float
-	if absf(length) > ARROW_MAX:
+	var now := float(_vector[axis])
+	var stick := scale_mode == XREFeatureSettings.STICK
+	if stick:
+		# The stick scales (D-069): no going toward zero by itself. Past the arrow's
+		# longest its axis slides on evenly (D-070), as a number line, the arrow
+		# staying there and beginning further on, the scale kept (D-071).
+		if absf(length) > ARROW_MAX: _bases[axis] += signf(length) * (absf(length) - ARROW_MAX) * PAN_SPEED / _scale * delta
+		component = snappedf(_bases[axis] + clampf(length, -ARROW_MAX, ARROW_MAX) / _scale, get_step())
+	elif absf(length) > ARROW_MAX:
 		_over_time += delta
-		var reached := maxf(absf(float(_vector[axis])), ARROW_MAX / _scale_start)
+		var reached := maxf(absf(now), ARROW_MAX / _scale)
 		var over := absf(length) - ARROW_MAX
 		reached += over * OVER_SPEED * maxf(reached, 1.0) * (1.0 + _over_time * OVER_ACCEL) * delta
 		component = signf(length) * reached
-		_scale = minf(_scale_start, ARROW_MAX / absf(component))
-		component = snappedf(component, _step() * 0.5)
+		_scale = minf(_scale, ARROW_MAX / absf(component))
+		component = snappedf(component, get_step() * 0.5)
+	elif absf(length) < ZERO_ZONE:
+		_over_time = 0.0
+		component = 0.0
+	elif absf(length) < NEAR_ZONE:
+		# From the value at the zone's edge, or what it came down to on this side.
+		_over_time += delta
+		var edge := NEAR_ZONE / _scale
+		var reached := minf(absf(now), edge) if now != 0.0 and signf(now) == signf(length) else edge
+		var depth := (NEAR_ZONE - absf(length)) / (NEAR_ZONE - ZERO_ZONE)
+		reached = maxf(reached * exp(-UNDER_SPEED * depth * (1.0 + _over_time * OVER_ACCEL) * delta), SMALLEST)
+		_scale = maxf(_scale, NEAR_ZONE / reached)
+		component = signf(length) * maxf(snappedf(reached, get_step()), SMALLEST)
 	else:
 		_over_time = 0.0
-		component = snappedf(length / _scale, 0.1 if _scale > 0.05 else _step())
-		if absf(component - roundf(component)) <= DETENT: component = roundf(component)
+		component = snappedf(length / _scale, get_step())
 	var value: Variant = _vector
 	value[axis] = component
 	_vector = value
@@ -675,42 +970,95 @@ func move_to(point: Vector3, delta: float) -> Variant:
 		# In the window's plane: what the hand does along Z doesn't count.
 		var flat := to_components * tip
 		tip = _axes_basis() * Vector3(flat.x, flat.y, 0.0)
+	_last_point = point
 	var value: Vector3
-	if tip.length() > VECTOR_MAX:
-		# The tip stays at the end; how far it reaches grows on, at the scale the pull began.
+	if scale_mode == XREFeatureSettings.STICK:
+		# Past the end the axes slide on along the white arrow, the scale kept (D-071).
+		_reach = 0.0
+		if tip.length() > VECTOR_MAX:
+			_bases += to_components * (tip.normalized() * (tip.length() - VECTOR_MAX) * PAN_SPEED * delta) / _scale
+			tip = tip.limit_length(VECTOR_MAX)
+		value = _bases + to_components * tip / _scale
+	elif tip.length() > VECTOR_MAX:
+		# The tip stays at the end; how far it reaches grows on, at the scale the pull
+		# began: on Stick evenly, as the axis is drawn now (D-070).
 		_over_time += delta
 		_reach = maxf(_reach, VECTOR_MAX)
 		var over := tip.length() - VECTOR_MAX
-		_reach += over * OVER_SPEED * _scale_start * maxf(_reach / _scale_start, 1.0) * (1.0 + _over_time * OVER_ACCEL) * delta
+		if scale_mode == XREFeatureSettings.STICK: _reach += over * PAN_SPEED * _scale_start / _scale * delta
+		else: _reach += over * OVER_SPEED * _scale_start * maxf(_reach / _scale_start, 1.0) * (1.0 + _over_time * OVER_ACCEL) * delta
 		value = to_components * (tip.normalized() * _reach) / _scale_start
 		_scale = _scale_start * VECTOR_MAX / _reach
 	else:
 		_over_time = 0.0
 		_reach = 0.0
 		value = to_components * tip / _scale
-	var grain := 0.1 if _scale > 0.05 else _step() * 0.5
+	var grain := get_step() if _reach == 0.0 else get_step() * 0.5
 	_vector = _from_vector3(Vector3(snappedf(value.x, grain), snappedf(value.y, grain), snappedf(value.z, grain)))
 	_show()
 	_update_grid(_axes[VECTOR_AXIS], VECTOR_MAX)
 	return _vector
 
 
-## The step of the scale: the smallest of 0.1, 0.2, 0.5, 1, 2, 5… units at least [constant GRID_GAP] apart.
-func _step() -> float:
-	var step := 0.1
-	var series := [1.0, 2.0, 5.0]
-	var index := 0
-	while step * _scale < GRID_GAP:
-		index += 1
-		step = pow(10.0, floorf(index / 3.0) - 1.0) * float(series[index % 3])
-	return step
+## Makes the scale of the line or of the arrows finer (positive [param tilt],
+## the stick up) or coarser for [param delta] seconds (D-069, Axis scale on
+## Stick): the value stays. The line scales about its marker; a pulled arrow
+## gets longer or shorter and goes on from there with the ray, its value kept;
+## the ticks follow. An arrow that would grow longer than it can be begins
+## further on its axis instead (D-071, [method _rebase]), so that the scale
+## goes on getting finer. No finer than a step of [constant SMALLEST]; a whole
+## number's line no finer than a step of 1.
+func zoom(tilt: float, delta: float) -> void:
+	if is_zero_approx(tilt): return
+	var factor := exp(tilt * ZOOM_SPEED * delta)
+	if mode == DIAL:
+		var value := _line_center + _line_shown / _line_scale
+		_line_scale = clampf(_line_scale * factor, LINE_STEP_GAP / 1000000.0, LINE_STEP_GAP / (1.0 if _line_integer else SMALLEST))
+		_line_center = value - _line_shown / _line_scale
+		_line_step = maxf(_fine_step(), 1.0) if _line_integer else _fine_step()
+		_show_line()
+		return
+	if mode != ARROWS: return
+	var before := _scale
+	_scale = clampf(_scale * factor, ARROW_LENGTH / 1000000.0, GRID_GAP / SMALLEST)
+	if scale_mode == XREFeatureSettings.STICK: _rebase(before)
+	if _pull_axis == VECTOR_AXIS: _tip_start = _axes_basis() * ((_as_vector3(_vector) - _bases) * _scale) - (_last_point - _grab)
+	elif _pull_axis >= 0 and _pull_axis < _axis_count(): _start_length = (float(_vector[_pull_axis]) - _bases[_pull_axis]) * _scale - _last_pulled
+	_show()
+	if _pull_axis >= 0: _update_grid(_axes[_pull_axis], VECTOR_MAX if _pull_axis == VECTOR_AXIS else ARROW_MAX)
+
+
+## Where each arrow begins after the scale went from [param before] to now
+## (D-071): from 0 when the whole arrow fits; at its longest, further on its
+## axis, when it no longer would; else as long as it was drawn.
+func _rebase(before: float) -> void:
+	for axis: int in _axis_count():
+		var component := float(_vector[axis])
+		if absf(component) * _scale <= ARROW_MAX: _bases[axis] = 0.0
+		elif _bases[axis] == 0.0: _bases[axis] = component - signf(component) * ARROW_MAX / _scale
+		else: _bases[axis] = component - (component - _bases[axis]) * before / _scale
+
+
+## Where each arrow begins (D-071): 0 but on Stick, its axis moved on.
+func get_bases() -> Vector3:
+	return _bases
+
+
+## The step of the scale: the smallest of 0.000001, 0.000002… 0.1… units at
+## least [constant GRID_GAP] apart — 0.1 by units, 0.01 by tenths (D-066, D-071).
+func get_step() -> float:
+	for exponent: int in range(-6, 12):
+		for factor: float in SERIES:
+			var step := factor * pow(10.0, exponent)
+			if step * _scale >= GRID_GAP - 0.000001: return step
+	return pow(10.0, 12)
 
 
 ## The ticks of the scale along [param direction] from the foot of the
 ## arrows to [param reach]: one per step, longer every ten steps; they slide
 ## and close up as the scale shrinks.
 func _update_grid(direction: Vector3, reach: float) -> void:
-	var step := _step()
+	var step := get_step()
 	var across := _along(direction).x
 	for index: int in _grid.size():
 		var tick := _grid[index]
@@ -738,25 +1086,20 @@ func zero(axis: int) -> Variant:
 
 ## Ends a pull: the arrows show the vector at a scale that reads, the ticks go.
 func end_pull() -> void:
-	if mode == ARROWS: set_vector(_vector)
+	_pull_axis = -1
+	if mode != ARROWS: return
+	# The scale the stick chose stays (D-069).
+	if scale_mode == XREFeatureSettings.STICK:
+		_show()
+		_hide_grid()
+	else: set_vector(_vector)
 
 
-## What the ray picks: [code]{"hue"}[/code] on the ring, [code]{"value"}[/code]
-## on the bar, [code]{"axis"}[/code] on an arrow, [code]{"close"}[/code] on the
-## ×, [code]{"plate"}[/code] elsewhere on the plate, or empty; with the distance to it.
+## What the ray picks: [code]{"globe"}[/code] on the globe ([method globe_at]),
+## [code]{"axis"}[/code] on an arrow, or empty; with the distance to it.
 func pick(origin: Vector3, direction: Vector3) -> Dictionary:
 	if not is_open(): return {}
-	var picked := _pick_part(origin, direction)
-	if not picked.is_empty(): return picked
-	if _close != null:
-		var at := _on_plane(_close.global_transform, origin, direction)
-		if not at.is_empty() and Vector2((at["point"] as Vector3).x, (at["point"] as Vector3).y).length() <= CLOSE_RADIUS * 1.3:
-			return {"close": true, "distance": at["distance"]}
-	if _plate != null and mode != ARROWS:
-		var at := _on_plane(_plate.global_transform, origin, direction)
-		if not at.is_empty() and absf((at["point"] as Vector3).x) <= _plate_size.x * 0.5 and absf((at["point"] as Vector3).y) <= _plate_size.y * 0.5:
-			return {"plate": true, "distance": at["distance"]}
-	return {}
+	return _pick_part(origin, direction)
 
 
 ## Where the ray meets the plane of [param frame]: the local point and the distance, or empty.
@@ -770,39 +1113,23 @@ static func _on_plane(frame: Transform3D, origin: Vector3, direction: Vector3) -
 	return {"point": local_origin + local_direction * distance, "distance": distance}
 
 
-## Whether the widget has a plate to be held by and closed from: the ring.
-func has_plate() -> bool:
-	return _plate != null
-
-
-## Whether the widget takes the ray: the ring or the arrows (D-058, D-061).
+## Whether the widget takes the ray: the globe or the arrows (D-061, D-064).
 func is_interactive() -> bool:
-	return mode in [RING, ARROWS]
+	return mode in [GLOBE, ARROWS]
 
 
 func _pick_part(origin: Vector3, direction: Vector3) -> Dictionary:
 	match mode:
-		RING:
-			var inverse := global_transform.affine_inverse()
-			var local_origin := inverse * origin
-			var local_direction := inverse.basis * direction
-			if absf(local_direction.z) < 0.000001: return {}
-			var distance := -local_origin.z / local_direction.z
-			if distance < 0.0: return {}
-			var point := local_origin + local_direction * distance
-			var radius := Vector2(point.x, point.y).length()
-			if absf(radius - RING_RADIUS) <= RING_BAND:
-				return {"hue": fposmod(atan2(point.y, point.x), TAU) / TAU, "distance": distance}
-			var bar := Vector2(point.x - (RING_RADIUS + 0.04), point.y)
-			if absf(bar.x) <= BAR_SIZE.x and absf(bar.y) <= BAR_SIZE.y * 0.5:
-				return {"value": clampf(0.5 + bar.y / BAR_SIZE.y, 0.0, 1.0), "distance": distance}
+		GLOBE: return globe_at(origin, direction)
 		ARROWS:
 			var best := -1
 			var best_distance := INF
 			var best_gap := INF
 			for axis: int in _axes.size():
 				if not _arrows[axis].visible: continue
-				var closest := Geometry3D.get_closest_points_between_segments(origin, origin + direction * 5.0, global_position, global_position + _axes[axis] * (_lengths[axis] + 0.022))
+				# Only the end of an arrow takes it, its head and a little before (D-066).
+				var from := global_position + _axes[axis] * maxf(_lengths[axis] - TIP_REACH, 0.0)
+				var closest := Geometry3D.get_closest_points_between_segments(origin, origin + direction * 5.0, from, global_position + _axes[axis] * (_lengths[axis] + HEAD_LENGTH))
 				# Along an axis the white arrow lies on that axis's arrow: the axis's wins there.
 				var gap := closest[0].distance_to(closest[1]) + (0.008 if axis == VECTOR_AXIS else 0.0)
 				if gap <= ARROW_PICK and gap < best_gap:
@@ -813,9 +1140,31 @@ func _pick_part(origin: Vector3, direction: Vector3) -> Dictionary:
 	return {}
 
 
-## Shows [param text], the value the arrows make, over their plate.
-func set_readout(text: String) -> void:
-	if _readout != null: _readout.text = text
+## Where the head of arrow [param axis] is, global (D-066): the ray that pulls it ends there.
+func tip_position(axis: int) -> Vector3:
+	if axis < 0 or axis >= _axes.size(): return global_position
+	return global_position + _axes[axis] * (_lengths[axis] + HEAD_LENGTH * 0.5)
+
+
+## The input as a sphere, its center and its radius in [code]w[/code], for
+## what covers it to become see-through (D-066); a zero radius while there is
+## none that takes the eye: closed, or a line of help.
+func focus_sphere() -> Vector4:
+	var center := global_position
+	var radius := 0.0
+	match mode:
+		DIAL:
+			center = global_transform * Vector3(_line_left + LINE_HALF, LINE_LIFT + 0.01, 0.01)
+			radius = LINE_HALF + 0.02
+		CHOICE:
+			center = global_transform * Vector3(0.0, 0.04, 0.01)
+			radius = 0.1
+		GLOBE: radius = globe_radius() + 0.01
+		ARROWS:
+			# The arrows reach out of the window and toward the user; their numbers beyond.
+			center = global_position + _frame.z.normalized() * ARROW_MAX * 0.3
+			radius = ARROW_MAX + 0.03
+	return Vector4(center.x, center.y, center.z, radius if visible else 0.0)
 
 
 ## [param value] pulled by [param meters] along its arrow: a tenth per 2 cm, stopping at whole numbers.
@@ -833,19 +1182,20 @@ func axis_offset(axis: int, origin: Vector3, direction: Vector3) -> float:
 	return (closest[0] - global_position).dot(line)
 
 
-## Lights what [param picked] ([method pick]) names: a ring segment, a shade or an arrow.
+## Lights what [param picked] ([method pick]) names: an arrow, or the point
+## of the globe under the ray, ringed.
 func light(picked: Dictionary) -> void:
+	if _hover != null:
+		_hover.visible = picked.has("local")
+		if _hover.visible:
+			var point: Vector3 = picked["local"]
+			_hover.basis = _along(point)
+			_hover.position = point * (1.0 + 0.004 / maxf(point.length(), 0.001))
 	var lit := -1
-	if picked.has("hue"): lit = int(floorf(float(picked["hue"]) * SEGMENTS)) % SEGMENTS
-	elif picked.has("value"): lit = 100 + clampi(int((1.0 - float(picked["value"])) * SHADES), 0, SHADES - 1)
-	elif picked.has("axis"): lit = 200 + int(picked["axis"])
-	elif picked.has("close"): lit = 300
+	if picked.has("axis"): lit = 200 + int(picked["axis"])
 	if lit == _lit: return
 	_lit = lit
-	for index: int in _segments.size(): _segments[index].scale = Vector3.ONE * (1.6 if index == lit else 1.0)
-	for index: int in _shades.size(): _shades[index].scale = Vector3.ONE * (1.4 if 100 + index == lit else 1.0)
-	# The arrow under the ray grows and turns white; the × grows and turns red (D-059).
-	# Lit, an axis arrow turns white and thickens; the white one turns yellow.
+	# Lit, an axis arrow turns white and thickens; the white one turns yellow (D-059).
 	for index: int in _arrows.size():
 		var hot := 200 + index == lit
 		_arrows[index].scale = Vector3(1.6, 1.0, 1.6) if hot else Vector3.ONE
@@ -854,6 +1204,3 @@ func light(picked: Dictionary) -> void:
 		if hot: shown = _lit_white if index == VECTOR_AXIS else _hot_material
 		_shafts[index].material_override = shown
 		_heads[index].material_override = shown
-	if _close != null:
-		_close.scale = Vector3.ONE * (1.4 if lit == 300 else 1.0)
-		_close_disc.material_override = _close_hot if lit == 300 else _close_idle

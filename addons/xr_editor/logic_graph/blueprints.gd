@@ -31,8 +31,13 @@ const BADGE_DISTANCE := 1.2
 const LINE_START := 0.008
 const KEYBOARD_DROP := 0.2
 const KEYBOARD_LEAD := 0.26
-## How far in front of a vector token, toward the head, its Vector window opens (D-061).
-const VECTOR_LEAD := 0.3
+## The Vector and Color windows open toward their token from the head, this
+## far from it, between these angles below the eyes, in radians (12° and
+## 35°), and face the head as a tablet held in the hands does (D-064): within
+## the reach of a seated user's hands, seen square on.
+const NEAR_DISTANCE := 0.5
+const NEAR_DOWN_LEAST := 0.21
+const NEAR_DOWN_MOST := 0.61
 ## How dark all but the input in use goes (D-061).
 const FOCUS_DIM := 0.87
 ## A trigger let go sooner than this, the value unchanged, is a click on a
@@ -40,9 +45,24 @@ const FOCUS_DIM := 0.87
 const CLICK_USEC := 350000
 ## The keyboard is never nearer the head than this, in meters (D-063).
 const KEYBOARD_NEAREST := 0.45
-## How far below the Vector window's bottom edge the keypad of one axis
-## stands, in meters: its tilted top clear of the window's buttons (D-063).
-const KEYBOARD_BELOW_WINDOW := 0.3
+## How far the ray may move across the globe of colors, in meters, and the
+## press still be a click that picks a color, not a turn (D-064).
+const GLOBE_CLICK := 0.008
+## What the pipette's ray is on (D-065): nothing, a window, the graph, an object of the scene.
+const PIPETTE_NOTHING := 0
+const PIPETTE_WINDOW := 1
+const PIPETTE_GRAPH := 2
+const PIPETTE_SCENE := 3
+## How far below the Vector or Color window's bottom edge the keypad of one
+## value stands, in meters: its tilted top clear of the window's buttons (D-063).
+const KEYBOARD_BELOW_WINDOW := 0.25
+## The keypad of a figure of the Vector or the Color window (D-067): its top
+## edge this far down the window (a part of its height), the buttons under the
+## figures covered, and this much nearer the head than the window.
+const KEYPAD_TOP := 0.6
+const KEYPAD_LEAD := 0.03
+## Petals scrolled by the right stick tilted all the way, in rows a second (D-067: smoothly).
+const FAN_SPEED := 8.0
 ## What the trigger on a member's name does, shown over it under the ray (D-057).
 const MEMBER_HINT := "click: pick on the object's petals"
 ## Gap between a block and its parameters or palette window beside it, in
@@ -115,17 +135,22 @@ class Pointer:
 	## The white arrow (D-060): how far along the ray it was taken, and the point taken.
 	var arrow_distance := 0.0
 	var arrow_grab := Vector3.ZERO
+	## The trigger on the globe of colors (D-064): where on its plane it took
+	## it, its turn then, the hue and lightness there, and whether it turned since.
+	var globe_drag := false
+	var globe_start := Vector2.ZERO
+	var globe_turn := Vector2.ZERO
+	var globe_pick := Vector2.ZERO
+	var globe_moved := false
 	## A trigger pressed on petals: the fan, the item under it, the height it
 	## was pressed at, the rows scrolled since and whether it dragged (D-052).
 	var fan: XREBlueprintPetals
 	var fan_item: Dictionary = {}
 	var fan_height := 0.0
-	var fan_rows := 0
+	var fan_rows := 0.0
 	var fan_dragged := false
 	## This hand's ray lit a petal of the fan last frame.
 	var fan_hover := false
-	## Thumbstick scrolling of petals, in rows not yet scrolled.
-	var fan_scroll := 0.0
 	## A token the grip carries: its mesh, value and parameter, the socket or
 	## box it came from (none from the tray), and whether it is a copy.
 	var carried: Node3D
@@ -171,6 +196,10 @@ var blueprint: XREBlueprintDocument
 var canvas: XREBlueprintCanvas
 ## The form of the Vector window (D-061).
 var vector_panel: XREBlueprintVectorPanel
+## The form of the Color window (D-064).
+var color_panel: XREBlueprintColorPanel
+## The panels the graph's windows open in ([method XREPanels.set_blueprints]); null for the graph alone, as in a test.
+var panels: XREPanels
 var parameters: XREBlueprintEditor
 var status := "Select an object, then Create Blueprint or Open Blueprint."
 var logic_mode := false
@@ -232,10 +261,27 @@ var _pending_finished := -1
 var _token_field: LineEdit
 var _token_edit: Dictionary = {}
 var _new_variable := ""
-## The input around a token, as in the concept: a dial, a choice, a ring of hues, arrows (D-052).
+## The input around a token, as in the concept: a dial, a choice, a globe of colors (D-064), arrows (D-052).
 var _token_editor: XREBlueprintTokenEditor
-## The token the ring or the arrows edit: [code]{"block", "key", "box", "value"}[/code].
+## What covers an input in use becomes see-through (D-066): the scene's objects
+## through it, the graph's through the canvas; the inputs as spheres, reused.
+var _fade := XREBlueprintFade.new()
+var _focus_targets := PackedVector4Array()
+## The token the Vector or the Color window edits: [code]{"block", "key", "box", "value", "start"}[/code],
+## and [code]"color"[/code] for a color.
 var _value_edit: Dictionary = {}
+## The hand that holds the Color window's pipette, or null (D-065): its clicks take colors.
+var _pipette_hand: XREHand
+## The pipette's model, in that hand instead of its controller.
+var _pipette: XREBlueprintPipette
+## What the pipette's ray met this frame ([method _pipette_hit]): one of the
+## PIPETTE_ constants, how far, and where — a window and its pixel, or a scene object and the point on it.
+var _pipette_on := PIPETTE_NOTHING
+var _pipette_distance := 0.0
+var _pipette_window: XREPanelSurface
+var _pipette_pixel := Vector2.ZERO
+var _pipette_node: Node
+var _pipette_point := Vector3.ZERO
 ## The delete button acted on a token or a box this frame: the selected block stays.
 var _delete_consumed := false
 ## What each hand's ray picks on the value widget this frame, lit together in [method _process].
@@ -348,6 +394,19 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	vector_panel.done_pressed.connect(_end_vector.bind(true))
 	vector_panel.close_pressed.connect(_close_inputs)
 	_forms_home.add_child(vector_panel)
+	color_panel = XREBlueprintColorPanel.new()
+	if theme != null: color_panel.theme = theme
+	color_panel.color_picked.connect(_preview_color)
+	color_panel.saturation_changed.connect(_saturate)
+	color_panel.channel_pressed.connect(_type_channel)
+	color_panel.hex_pressed.connect(_type_hex)
+	color_panel.pipette_toggled.connect(_set_pipette)
+	color_panel.text_edit_requested.connect(_type_in_picker, CONNECT_DEFERRED)
+	color_panel.done_pressed.connect(_end_color.bind(true))
+	color_panel.close_pressed.connect(_close_inputs)
+	_forms_home.add_child(color_panel)
+	_pipette = XREBlueprintPipette.new()
+	add_child(_pipette)
 	token_tray = XREBlueprintTokenTray.new()
 	if theme != null: token_tray.theme = theme
 	token_tray.cells_changed.connect(func() -> void: _tray_dirty = true)
@@ -358,6 +417,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_forms_home.add_child(_token_field)
 	_token_editor = XREBlueprintTokenEditor.new()
 	add_child(_token_editor)
+	_focus_targets.resize(XREBlueprintFade.MOST)
 	_windows = [_toolbar, _keyboard]
 	for window: XREPanelSurface in _windows: window.add_corner_handles()
 	_update_window_shape()
@@ -405,7 +465,10 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	# The controller the pipette was held instead of comes back.
+	if _pipette_hand != null: _controller(_pipette_hand).set_model_shown(true)
 	_set_ui_overlay(false)
+	_fade.release()
 	if is_instance_valid(_dimmer): _dimmer.queue_free()
 	if is_instance_valid(_focus_dimmer): _focus_dimmer.queue_free()
 	cancel_connection()
@@ -452,8 +515,9 @@ func _process(delta: float) -> void:
 		_update_pointer(pointer, delta)
 		_keyboard.poll_trigger(pointer.hand, pointer.surface == _keyboard and _keyboard.is_shown())
 	if _token_editor.is_interactive(): _token_editor.light(_editor_right if not _editor_right.is_empty() else _editor_left)
-	_place_vector_arrows()
+	_place_window_widgets()
 	_update_focus()
+	_update_fade()
 	_editor_right = {}
 	_editor_left = {}
 	_update_target_wires()
@@ -665,6 +729,8 @@ func close_graph() -> void:
 	for pointer: Pointer in _pointers: _leave(pointer)
 	cancel_connection()
 	_target_pick = -1
+	# The Vector and Color windows put their values back; a pipette goes back for its controller (D-065).
+	_close_inputs()
 	_keyboard.close()
 	close_block_palette()
 	close_parameters()
@@ -1005,6 +1071,10 @@ func window_closed(type: GDScript) -> void:
 		# Closed but by Done, the vector is as it was (D-063): the arrows go with it.
 		_end_vector(false)
 		return
+	if type == XREBlueprintColorTab:
+		# So is the color (D-064): the globe goes with it.
+		_end_color(false)
+		return
 	if type == XREBlueprintPaletteTab:
 		# The menu of a wire let go closed without a block: the wire is taken back.
 		if _menu_at_point and (_pending_id >= 0 or not _link_box.is_empty()): cancel_connection()
@@ -1234,9 +1304,21 @@ func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int
 		success = blueprint.perform(blueprint.commit.bind("Connect Ports", state), &"vr_graph")
 	else:
 		success = blueprint.perform(blueprint.connect_blocks.bind(from, from_port, to, to_port), &"vr_graph")
-	if success: cancel_connection()
+	if success:
+		cancel_connection()
+		_close_wire_menu()
 	else: _message(blueprint.last_error)
 	return success
+
+
+## The block menu of a wire let go in empty space (D-051) closes once the
+## wire ends on a port or a box instead (D-067): the menu was for that wire.
+## Pinned to a hand, it stays.
+func _close_wire_menu() -> void:
+	if not _menu_at_point: return
+	_menu_at_point = false
+	_menu_wire = {}
+	_dismiss_window(XREBlueprintPaletteTab, false)
 
 
 ## Whether [param hand] draws a wire: from a port, a Source, a box or a petal.
@@ -1342,6 +1424,9 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	if pointer.arrow_axis >= 0:
 		_update_arrow(pointer, delta)
 		return
+	if pointer.globe_drag:
+		_update_globe(pointer)
+		return
 	if pointer.fan != null:
 		_update_fan_press(pointer)
 		return
@@ -1375,8 +1460,6 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			else:
 				var target := hand.global_transform * pointer.hold
 				if pointer.held == _keyboard: pointer.held.global_transform = target
-				# The arrows keep the scene's axes; the ring keeps facing as it was: only moved.
-				elif pointer.held == _token_editor: _token_editor.global_position = target.origin
 				else: pointer.held.global_transform = Transform3D(XREPanels.facing(target.origin, _rig.camera.global_position, Vector3.UP), target.origin)
 				if pointer.window != null: pointer.window.hover_handles(pointer.corner)
 			return
@@ -1411,6 +1494,19 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			return
 	# The widget of a value is over everything: it takes the ray first (D-058).
 	if _workspace.visible and _point_at_editor(pointer, origin, direction): return
+	if _workspace.visible and hand == _pipette_hand:
+		var color_window := _color_window()
+		if color_window != null and (color_window.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0 or color_window.intersect_handle(origin, direction, XREPanels.POINT_DISTANCE) >= 0):
+			# The window's own buttons — Put back, Done — are the panels' from the next frame.
+			_leave(pointer)
+			hand.unclaim(self)
+			return
+		_point_pipette(pointer, origin, direction)
+		return
+	# Petals picked in focus are the input in use (D-066): over the cards and the
+	# windows, which covered them and took the ray, they take it first.
+	var fan_first := _workspace.visible and is_focused() and (_choice.is_open() or (_petals.is_open() and (_petal_block >= 0 or _petal_dynamic)))
+	if fan_first and _point_at_petals(pointer, origin, direction, 5.0, delta): return
 	if pointer.surface != null and pointer.surface.is_pressed():
 		surface = pointer.surface
 		distance = surface.intersect_ray(origin, direction, INF, false)
@@ -1482,7 +1578,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			if tilt != 0: surface.pointer_scroll(tilt * XREPanels.SCROLL_SPEED * delta)
 		return
 	_leave(pointer)
-	if _workspace.visible and _point_at_petals(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0, delta): return
+	if _workspace.visible and not fan_first and _point_at_petals(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0, delta): return
 	if _workspace.visible and _point_at_stem(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0): return
 	if _workspace.visible:
 		var hit := canvas_hit
@@ -1774,6 +1870,10 @@ func _feature_changed(key: StringName) -> void:
 	if key == XREFeatureSettings.SCENE_CREATE:
 		_update_selection_fan()
 		return
+	if key == XREFeatureSettings.COLOR_INPUT:
+		# The next color opens in the other mode; one open now is put back.
+		if _editing_color(): _end_color(false)
+		return
 	if key in [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT, XREFeatureSettings.VARIABLE_INPUT]:
 		var features := _document.features
 		if not canvas.set_parameter_modes(features.get_value(XREFeatureSettings.VALUE_INPUT), features.get_value(XREFeatureSettings.TARGET_INPUT),
@@ -1953,10 +2053,19 @@ func _show_block_palette(id: int) -> void:
 ## With [param components] above 0 it is a keypad for a number or a vector of
 ## that many components (D-057). [param lead] is how far toward the head it
 ## comes from [param at], [param drop] how far below it; it is never nearer
-## the head than [constant KEYBOARD_NEAREST] (D-063).
+## the head than [constant KEYBOARD_NEAREST] (D-063). [param at] may be a
+## [Transform3D] too, or a [Callable] that makes one once the board has its
+## size: the keyboard's pose itself ([method _keypad_below]).
 func _show_keyboard(field: LineEdit, at: Variant = null, components: int = 0, lead: float = KEYBOARD_LEAD, drop: float = KEYBOARD_DROP) -> void:
 	if not is_instance_valid(field) or not _workspace.visible: return
 	_keyboard_target = weakref(field)
+	# Opened first: the keypad is smaller than the letters (D-066), and the pose may take its size.
+	if components > 0: _keyboard.open_number(field.text, components)
+	else: _keyboard.open_text(field.text)
+	if at is Callable: at = (at as Callable).call()
+	if at is Transform3D:
+		_keyboard.global_transform = at
+		return
 	var head := _rig.camera.global_position
 	var upright := XREPanels.facing(head - _rig.camera.global_basis.z, head, Vector3.UP)
 	var point := head - upright.z * 0.65 - Vector3.UP * 0.38
@@ -1968,8 +2077,6 @@ func _show_keyboard(field: LineEdit, at: Variant = null, components: int = 0, le
 	var reach := point - head
 	if reach.length() < KEYBOARD_NEAREST: point = head + reach.normalized() * KEYBOARD_NEAREST
 	_keyboard.global_transform = Transform3D(upright * Basis(Vector3.RIGHT, -XREVirtualKeyboard.TILT), point)
-	if components > 0: _keyboard.open_number(field.text, components)
-	else: _keyboard.open_text(field.text)
 
 
 func _apply_keyboard(text: String) -> void:
@@ -2437,6 +2544,7 @@ func _start_turn(pointer: Pointer, id: int, key: String, box: String, point: Vec
 	pointer.token_point = point
 	pointer.token_distance = pointer.hand.global_position.distance_to(point)
 	var pose := _token_pose(id, key, box)
+	_token_editor.scale_mode = _document.features.get_value(XREFeatureSettings.AXIS_SCALE)
 	match XREBlueprintTokens.kind_of(value, key):
 		XREBlueprintTokens.NUMBER: _token_editor.open_dial(pose, value, XREBlueprintTokens.minimum(blueprint.graph.find_node(id), key, value))
 		XREBlueprintTokens.CHOICE: _token_editor.open_choice(pose, XREBlueprintTokens.POLICIES, str(value))
@@ -2494,6 +2602,8 @@ func _update_turn(pointer: Pointer, delta: float) -> void:
 			steps += pushed
 		var value: Variant = pointer.token_value
 		if kind == XREBlueprintTokens.NUMBER:
+			# Axis scale on Stick (D-069): the stick up and down makes the line finer or coarser.
+			if _token_editor.scale_mode == XREFeatureSettings.STICK: _token_editor.zoom(XREPanels._tilt(hand.get_vector2(&"primary").y), delta)
 			if steps != pointer.token_steps:
 				value = _token_editor.nudge(steps - pointer.token_steps)
 				pointer.token_steps = steps
@@ -2567,12 +2677,10 @@ func _end_turn(pointer: Pointer, commit: bool) -> void:
 		XREBlueprintTokens.CHOICE:
 			_set_token(id, key, XREBlueprintTokens.turned(value, key, 1, false), "Turn Token")
 		XREBlueprintTokens.COLOR:
-			_value_edit = {"block": id, "key": key, "box": box, "value": value}
-			_token_editor.open_ring(_token_pose(id, key, box), value)
-			_message("Pick a hue on the ring or a brightness on the bar. Grip moves it; × or the trigger elsewhere closes it.")
+			_open_color(id, key, box, value)
 		XREBlueprintTokens.VECTOR:
 			_open_vector(id, key, box, value)
-			_message("Pull an arrow's end; past its end it speeds up. The white arrow moves all. Grip moves them; × closes.")
+			_message("Pull an arrow's end; stick ↑ finer, ↓ coarser. The white arrow moves all. Grip moves them; × closes." if _document.features.get_value(XREFeatureSettings.AXIS_SCALE) == XREFeatureSettings.STICK else "Pull an arrow's end; past its end it speeds up, held by its foot it goes to 0. The white arrow moves all. Grip moves them; × closes.")
 		_:
 			_open_token_keyboard(id, key, box, value)
 
@@ -2621,6 +2729,9 @@ func _token_text_submitted(text: String) -> void:
 		_name_new_variable(text.strip_edges())
 		return
 	if edit.is_empty(): return
+	if edit.has("channel") or edit.has("hex"):
+		_typed_color(edit, text)
+		return
 	if edit.has("axis"):
 		# One component typed in the Vector window (D-062): the others stay, and
 		# so does what each was typed as (D-063). Done keeps it all.
@@ -2685,11 +2796,12 @@ func _token_pose(id: int, key: String, box: String) -> Transform3D:
 	return Transform3D(XREPanels.facing(at, _rig.camera.global_position, _rig.global_basis.y), at)
 
 
-## The ray on the ring of hues or on the arrows of a vector (D-052): they
-## light up; the trigger picks a hue or a brightness, or pulls an arrow. The
-## trigger elsewhere closes them and goes on to what it is on.
+## The ray on the globe of colors or on the arrows of a vector (D-061,
+## D-064): they light up; the trigger turns the globe or picks a color on it,
+## or pulls an arrow. The trigger elsewhere closes them and goes on to what it
+## is on, but not the hand that holds the pipette: it takes a color there (D-065).
 func _point_at_editor(pointer: Pointer, origin: Vector3, direction: Vector3) -> bool:
-	if not _token_editor.mode in [XREBlueprintTokenEditor.RING, XREBlueprintTokenEditor.ARROWS] or _value_edit.is_empty(): return false
+	if not _token_editor.mode in [XREBlueprintTokenEditor.GLOBE, XREBlueprintTokenEditor.ARROWS] or _value_edit.is_empty(): return false
 	var hand := pointer.hand
 	var picked := _token_editor.pick(origin, direction)
 	# Lit once a frame for both hands ([method _process]): the other hand's ray
@@ -2699,31 +2811,31 @@ func _point_at_editor(pointer: Pointer, origin: Vector3, direction: Vector3) -> 
 	if picked.is_empty():
 		# The keyboard typing one of the vector's components takes the click: the arrows stay (D-062).
 		if _keyboard.is_shown() and _keyboard.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0: return false
-		if hand.trigger_pressed:
-			var arrows := _token_editor.mode == XREBlueprintTokenEditor.ARROWS
-			_token_editor.close()
-			_value_edit = {}
-			if arrows: _dismiss_window(XREBlueprintVectorTab, true)
+		if hand.trigger_pressed and hand != _pipette_hand:
+			if _token_editor.mode == XREBlueprintTokenEditor.ARROWS:
+				_token_editor.close()
+				_value_edit = {}
+				_dismiss_window(XREBlueprintVectorTab, true)
+			else: _end_color(false)
 		return false
 	_leave(pointer)
 	hand.claim(self)
 	hand.show_ray(float(picked["distance"]), true)
 	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 	canvas.hover_socket(-1, -1, hand == _rig.right_hand)
-	# The grip anywhere on it moves it; its × closes it (D-058). The arrows
-	# move with their window: the grip on them takes the window (D-061).
+	# They move with their window: the grip on them takes the window (D-061).
 	if hand.grip_pressed:
-		var window := _vector_window() if _token_editor.mode == XREBlueprintTokenEditor.ARROWS else null
+		var window := _vector_window() if _token_editor.mode == XREBlueprintTokenEditor.ARROWS else _color_window()
 		if window != null: _hold_window(pointer, window, -1, false)
-		else: _start_hold(pointer, _token_editor, -1)
 		return true
 	if not hand.trigger_pressed: return true
-	if picked.has("close"):
-		_token_editor.close()
-		_value_edit = {}
-		_message("Closed.")
+	if picked.has("globe"):
+		pointer.globe_drag = true
+		pointer.globe_moved = false
+		pointer.globe_pick = picked["globe"]
+		pointer.globe_start = _token_editor.globe_plane_point(origin, direction)
+		pointer.globe_turn = _token_editor.get_globe_turn()
 		return true
-	if picked.has("plate"): return true
 	var value: Variant = _value_edit["value"]
 	if picked.has("axis"):
 		pointer.arrow_axis = picked["axis"]
@@ -2732,6 +2844,8 @@ func _point_at_editor(pointer: Pointer, origin: Vector3, direction: Vector3) -> 
 		pointer.arrow_key = _value_edit["key"]
 		pointer.arrow_box = _value_edit["box"]
 		pointer.arrow_reach = 0.0
+		# The stick is the pull's while it lasts: it scales the arrows, not turns the user (D-069).
+		hand.claim_stick(self)
 		if pointer.arrow_axis == XREBlueprintTokenEditor.VECTOR_AXIS:
 			# The white arrow's tip goes with the hand, at the distance the ray met it.
 			pointer.arrow_distance = float(picked["distance"])
@@ -2740,14 +2854,32 @@ func _point_at_editor(pointer: Pointer, origin: Vector3, direction: Vector3) -> 
 		else:
 			pointer.arrow_start = _token_editor.axis_offset(pointer.arrow_axis, origin, direction)
 			_token_editor.begin_pull(pointer.arrow_axis)
-		return true
-	var color := value as Color
-	var chosen := Color.from_hsv(float(picked["hue"]), maxf(color.s, 0.6), maxf(color.v, 0.35), color.a) if picked.has("hue") else Color.from_hsv(color.h, color.s, float(picked["value"]), color.a)
-	if _set_value_edit(chosen, "Set Token"):
-		_value_edit["value"] = chosen
-		# Where it stands now: it may have been moved off its token.
-		_token_editor.open_ring(_token_editor.global_transform, chosen)
 	return true
+
+
+## The trigger held on the globe (D-064): the ray moved across it turns it, as
+## a ball rolled by its surface — about its axis left and right, toward the
+## user up and down. Let go without a turn, it is a click: the color where the
+## ray took the globe.
+func _update_globe(pointer: Pointer) -> void:
+	var hand := pointer.hand
+	var origin := hand.global_position
+	var direction := -hand.global_basis.z.normalized()
+	var at := _token_editor.globe_plane_point(origin, direction)
+	if not is_nan(at.x) and not is_nan(pointer.globe_start.x):
+		var moved := at - pointer.globe_start
+		if moved.length() > GLOBE_CLICK: pointer.globe_moved = true
+		if pointer.globe_moved:
+			var radius := _token_editor.globe_radius()
+			_token_editor.turn_globe(pointer.globe_turn.x + moved.x / radius, pointer.globe_turn.y - moved.y / radius)
+	# On the globe's face toward the hand, not at its center (D-066).
+	hand.show_ray(maxf(origin.distance_to(_token_editor.global_position) - _token_editor.globe_radius(), 0.01), true)
+	if hand.trigger_held and hand.get_has_tracking_data(): return
+	pointer.globe_drag = false
+	hand.unclaim(self)
+	if pointer.globe_moved or not hand.get_has_tracking_data() or _value_edit.is_empty(): return
+	_preview_color(_token_editor.globe_color(pointer.globe_pick.x, pointer.globe_pick.y))
+	_message("Picked %s. Done keeps it." % _color_text(_value_edit["value"] as Color))
 
 
 ## Pulls an arrow of a vector token by its end (D-060): the arrow grows or
@@ -2760,6 +2892,8 @@ func _update_arrow(pointer: Pointer, delta: float) -> void:
 	var origin := hand.global_position
 	var direction := -hand.global_basis.z.normalized()
 	var value: Variant
+	# Axis scale on Stick (D-069): the stick up and down makes the arrows' scale finer or coarser.
+	if _token_editor.scale_mode == XREFeatureSettings.STICK: _token_editor.zoom(XREPanels._tilt(hand.get_vector2(&"primary").y), delta)
 	if pointer.arrow_axis == XREBlueprintTokenEditor.VECTOR_AXIS:
 		var point := origin + direction * pointer.arrow_distance
 		pointer.arrow_reach = maxf(pointer.arrow_reach, point.distance_to(pointer.arrow_grab))
@@ -2768,7 +2902,8 @@ func _update_arrow(pointer: Pointer, delta: float) -> void:
 		var pulled := _token_editor.axis_offset(pointer.arrow_axis, origin, direction) - pointer.arrow_start
 		pointer.arrow_reach = maxf(pointer.arrow_reach, absf(pulled))
 		value = _token_editor.pull_to(pointer.arrow_axis, pulled, delta)
-	hand.show_ray(origin.distance_to(_token_editor.global_position), true)
+	# The ray ends on the end of the arrow it pulls (D-066), not at the arrows' foot or past them.
+	hand.show_ray(maxf((_token_editor.tip_position(pointer.arrow_axis) - origin).dot(direction), 0.01), true)
 	if pointer.arrow_box.is_empty(): canvas.preview_token(pointer.arrow_block, pointer.arrow_key, value)
 	else: canvas.get_shelf().preview_value(pointer.arrow_box, value)
 	_message("%s: %s" % [key_name(pointer.arrow_axis), XREBlueprintTokens.text(value, pointer.arrow_key)])
@@ -2777,6 +2912,7 @@ func _update_arrow(pointer: Pointer, delta: float) -> void:
 	var axis := pointer.arrow_axis
 	pointer.arrow_axis = -1
 	hand.unclaim(self)
+	hand.unclaim_stick(self)
 	if axis != XREBlueprintTokenEditor.VECTOR_AXIS and pointer.arrow_reach <= 0.005: value = _token_editor.zero(axis)
 	# Kept only by Done (D-063): until then the token just shows it.
 	if not hand.get_has_tracking_data() or value == pointer.arrow_value:
@@ -2796,15 +2932,30 @@ static func key_name(axis: int) -> String:
 func _open_vector(id: int, key: String, box: String, value: Variant) -> void:
 	var expression := _expression_of(id, key, box)
 	_value_edit = {"block": id, "key": key, "box": box, "value": value, "expression": expression, "start": value, "start_expression": expression}
-	var at := _token_pose(id, key, box).origin
-	var head := _rig.camera.global_position
-	var point := at + (head - at).normalized() * VECTOR_LEAD + _rig.global_basis.y * 0.05
-	var pose := Transform3D(XREPanels.facing(point, head, _rig.global_basis.y), point)
+	var pose := _near_pose(_token_pose(id, key, box).origin)
 	var block := blueprint.graph.find_node(id)
 	vector_panel.show_vector("%s · %s" % [box if not box.is_empty() else XREBlueprintGraph.title(block), key.capitalize() if box.is_empty() else "start value"], value, expression)
 	_request_window(XREBlueprintVectorTab, pose)
+	_token_editor.scale_mode = _document.features.get_value(XREFeatureSettings.AXIS_SCALE)
 	_token_editor.open_arrows(pose, 2 if value is Vector2 else 3, value)
-	_place_vector_arrows()
+	_place_window_widgets()
+
+
+## Where the Vector or the Color window opens for a token at [param at]
+## (D-064): [constant NEAR_DISTANCE] from the head toward it, at least
+## [constant NEAR_DOWN_LEAST] and at most [constant NEAR_DOWN_MOST] below the
+## eyes, tilted to face the head.
+func _near_pose(at: Vector3) -> Transform3D:
+	var head := _rig.camera.global_position
+	var up := _rig.global_basis.y.normalized()
+	var toward := at - head
+	var flat := toward - up * toward.dot(up)
+	if flat.length() < 0.001:
+		flat = -_rig.camera.global_basis.z
+		flat -= up * flat.dot(up)
+	var down := clampf(atan2(-toward.dot(up), flat.length()), NEAR_DOWN_LEAST, NEAR_DOWN_MOST)
+	var point := head + (flat.normalized() * cos(down) - up * sin(down)) * NEAR_DISTANCE
+	return Transform3D(Basis.looking_at(point - head, up), point)
 
 
 ## The Vector window, or null while it is closed.
@@ -2813,28 +2964,38 @@ func _vector_window() -> XREPanelSurface:
 	return vector_panel.get_viewport().get_parent() as XREPanelSurface
 
 
-## Keeps the arrows in front of the Vector window wherever it is moved,
-## pinned or carried; without the window they close.
-func _place_vector_arrows() -> void:
-	if _token_editor.mode != XREBlueprintTokenEditor.ARROWS: return
-	var window := _vector_window()
+## Keeps the arrows in front of the Vector window, the globe in front of the
+## Color window, wherever it is moved, pinned or carried; without the window they close.
+func _place_window_widgets() -> void:
+	if not _token_editor.mode in [XREBlueprintTokenEditor.ARROWS, XREBlueprintTokenEditor.GLOBE]: return
+	var arrows := _token_editor.mode == XREBlueprintTokenEditor.ARROWS
+	var window := _vector_window() if arrows else _color_window()
 	if window == null:
-		if not XREBlueprintVectorTab in _open_windows:
+		if not (XREBlueprintVectorTab if arrows else XREBlueprintColorTab) in _open_windows:
 			_token_editor.close()
 			_value_edit = {}
 		return
 	var facing := window.global_basis.orthonormalized()
-	_token_editor.place(window.pixel_to_global(vector_panel.area_center()) + facing.z * 0.03, facing)
+	var center := window.pixel_to_global((vector_panel if arrows else color_panel).area_center())
+	if arrows:
+		_token_editor.place(center + facing.z * 0.03, facing)
+		return
+	# The window stands upright, below the eyes; the globe faces the head itself,
+	# so that its front, where its color is turned to, is the middle of what is seen.
+	var at := center + facing.z * _token_editor.globe_radius() * 0.5
+	var toward := _rig.camera.global_position - at
+	_token_editor.place(at, Basis.looking_at(-toward, _rig.global_basis.y) if toward.length() > 0.001 else facing)
 
 
 ## A trigger pressed with the ray off the input in use closes that input
-## (D-062): the Vector window and its arrows, the ring, the keyboard, the
+## (D-062): the Vector window and its arrows, the Color window, the keyboard, the
 ## petals of an adapter's member. The click then goes on to what it is on.
 func _close_on_click_away() -> void:
 	# Focused since the last frame: the click that opened an input doesn't close it.
 	if not _focused or not is_focused(): return
 	for hand: XREHand in [_rig.left_hand, _rig.right_hand]:
-		if not hand.trigger_pressed or not hand.get_has_tracking_data(): continue
+		# The pipette's clicks take colors anywhere (D-065).
+		if not hand.trigger_pressed or not hand.get_has_tracking_data() or hand == _pipette_hand: continue
 		var origin := hand.global_position
 		var direction := -hand.global_basis.z.normalized()
 		if _on_input(origin, direction): continue
@@ -2848,18 +3009,20 @@ func _close_on_click_away() -> void:
 func _on_input(origin: Vector3, direction: Vector3) -> bool:
 	if _keyboard.is_shown() and (_keyboard.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0 or _keyboard.intersect_handle(origin, direction, XREPanels.POINT_DISTANCE) >= 0): return true
 	if _token_editor.is_interactive() and not _token_editor.pick(origin, direction).is_empty(): return true
-	var window := _vector_window()
-	if window != null and (window.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0 or window.intersect_handle(origin, direction, XREPanels.POINT_DISTANCE) >= 0): return true
+	for window: XREPanelSurface in [_vector_window(), _color_window()]:
+		if window != null and (window.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0 or window.intersect_handle(origin, direction, XREPanels.POINT_DISTANCE) >= 0): return true
 	if _petals.is_open() and _petals.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0: return true
 	if _choice.is_open() and _choice.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) >= 0: return true
 	# The dial and the choice of a token live only while the trigger holds them.
 	return _token_editor.mode in [XREBlueprintTokenEditor.DIAL, XREBlueprintTokenEditor.CHOICE]
 
 
-## Closes the inputs in use: the arrows and their window, the ring, the
-## keyboard (its draft lost), a member's petals with no wire waiting on them.
+## Closes the inputs in use: the arrows and their window, the Color window
+## and its globe, the keyboard (its draft lost), a member's petals with no
+## wire waiting on them.
 func _close_inputs() -> void:
-	if _token_editor.mode == XREBlueprintTokenEditor.ARROWS: _end_vector(false)
+	if _editing_color(): _end_color(false)
+	elif _token_editor.mode == XREBlueprintTokenEditor.ARROWS: _end_vector(false)
 	elif _token_editor.is_interactive():
 		_token_editor.close()
 		_value_edit = {}
@@ -2877,7 +3040,8 @@ func _close_inputs() -> void:
 ## keyboard, or the petals of a member being picked, or a choice.
 func is_focused() -> bool:
 	if not _workspace.visible: return false
-	if _token_editor.mode in [XREBlueprintTokenEditor.DIAL, XREBlueprintTokenEditor.CHOICE, XREBlueprintTokenEditor.RING, XREBlueprintTokenEditor.ARROWS]: return true
+	if _token_editor.mode in [XREBlueprintTokenEditor.DIAL, XREBlueprintTokenEditor.CHOICE, XREBlueprintTokenEditor.GLOBE, XREBlueprintTokenEditor.ARROWS]: return true
+	if _editing_color(): return true
 	if _keyboard.is_shown() or _choice.is_open(): return true
 	return _petals.is_open() and (_petal_block >= 0 or _petal_dynamic)
 
@@ -2885,14 +3049,54 @@ func is_focused() -> bool:
 ## Darkens all but the input in use, and draws that input and the rays over the darkness.
 func _update_focus() -> void:
 	var focus := is_focused()
-	var window := _vector_window()
-	if window != null and window.is_on_top() != focus: window.set_on_top(focus)
+	var vector_window := _vector_window()
+	if vector_window != null and vector_window.is_on_top() != focus: vector_window.set_on_top(focus)
+	var color_window := _color_window()
+	if color_window != null and color_window.is_on_top() != focus: color_window.set_on_top(focus)
 	if focus == _focused: return
 	_focused = focus
+	# The scene's objects that may cover the input are gathered once, as it opens (D-066).
+	if focus: _fade.gather(_root)
+	else:
+		_fade.release()
+		canvas.fade_covering(_rig.camera.global_position, _focus_targets, 0)
 	_focus_dimmer.visible = focus
 	_petals.set_on_top(focus and (_petal_block >= 0 or _petal_dynamic))
 	_choice.set_on_top(focus)
 	for hand: XREHand in [_rig.left_hand, _rig.right_hand]: hand.set_on_top(focus)
+
+
+## Makes what covers the input in use see-through (D-066), every frame while
+## one is in focus: the scene's objects, cards, wires and boxes nearer the head
+## than the input and in front of it. Only what changes is touched.
+func _update_fade() -> void:
+	if not _focused: return
+	var count := _add_target(0, _token_editor.focus_sphere())
+	if _petal_block >= 0 or _petal_dynamic: count = _add_target(count, _petals.focus_sphere())
+	count = _add_target(count, _choice.focus_sphere())
+	count = _add_window(count, _keyboard)
+	count = _add_window(count, _vector_window())
+	count = _add_window(count, _color_window())
+	var eye := _rig.camera.global_position
+	canvas.fade_covering(eye, _focus_targets, count)
+	_fade.update(eye, _focus_targets, count)
+
+
+func _add_window(count: int, surface: XREPanelSurface) -> int:
+	if surface == null or not surface.is_shown() or not surface.is_on_top(): return count
+	var center := surface.global_position
+	return _add_target(count, Vector4(center.x, center.y, center.z, surface.size_m.length() * 0.5))
+
+
+func _add_target(count: int, sphere: Vector4) -> int:
+	if sphere.w <= 0.0 or count >= _focus_targets.size(): return count
+	_focus_targets[count] = sphere
+	return count + 1
+
+
+## The scene's fading of what covers an input (D-066), for the tests.
+func get_fade() -> XREBlueprintFade:
+	return _fade
 
 
 ## The keypad for one component [param axis] of the vector in the Vector
@@ -2903,11 +3107,36 @@ func _type_component(axis: int) -> void:
 	_token_edit = {"block": _value_edit["block"], "key": _value_edit["key"], "box": _value_edit["box"], "value": value, "axis": axis}
 	var typed := XREBlueprintTokens.component_expression(str(_value_edit.get("expression", "")), axis)
 	_token_field.text = typed if not typed.is_empty() else XREBlueprintTokens.text(float(value[axis]), "")
-	# Below the window, as far from the head as it (D-063): toward the head it came too near.
-	var window := _vector_window()
-	var at: Variant = window.pixel_to_global(Vector2(window.size_px.x * 0.5, window.size_px.y)) if window != null else null
-	_show_keyboard(_token_field, at, 1, 0.0, KEYBOARD_BELOW_WINDOW)
+	_show_keyboard(_token_field, _keypad_at(_vector_window()), 1)
 	_message("Type %s; π, e, √, ^ and brackets work: 3π, π/2, √2." % ["X", "Y", "Z"][axis])
+
+
+## Where the keypad for a figure of [param window] goes ([method _keypad_below]); null without the window.
+func _keypad_at(window: XREPanelSurface) -> Variant:
+	return _keypad_below.bind(window) if window != null else null
+
+
+## The keypad of a figure of [param window] (D-067, after D-066 put it beside):
+## low on the window, over the buttons under the figures, its top edge
+## [constant KEYPAD_TOP] down it, just nearer the head than the window, and
+## square to the line of sight, neither tilted back nor turned to a hand. Below
+## the window (D-063) the head bent far down; beside it the keys were aslant to the eyes.
+func _keypad_below(window: XREPanelSurface) -> Transform3D:
+	var head := _rig.camera.global_position
+	var up := _rig.global_basis.y.normalized()
+	var distance := maxf(head.distance_to(window.global_position) - KEYPAD_LEAD, KEYBOARD_NEAREST)
+	var top := window.pixel_to_global(Vector2(window.size_px.x * 0.5, window.size_px.y * KEYPAD_TOP))
+	top = head + (top - head).normalized() * distance
+	var center := top - _square(top, head, up).y * _keyboard.size_m.y * 0.5
+	center = head + (center - head).normalized() * distance
+	return Transform3D(_square(center, head, up), center)
+
+
+## A basis at [param point] whose front (+Z) looks straight at [param head], upright along [param up].
+static func _square(point: Vector3, head: Vector3, up: Vector3) -> Basis:
+	var away := point - head
+	if away.length() < 0.001 or absf(away.normalized().dot(up)) > 0.99: return XREPanels.facing(point, head, up)
+	return Basis.looking_at(away, up)
 
 
 ## The small 0 by component [param axis] in the Vector window (D-063): that component is 0.
@@ -2992,11 +3221,228 @@ func _vector_action(normalize: bool) -> void:
 	_message("Normalized." if normalize else "Zero.")
 
 
-## Commits [param value] to the token the ring or the arrows edit.
-func _set_value_edit(value: Variant, title: String) -> bool:
-	if _value_edit.is_empty(): return false
-	if str(_value_edit["box"]).is_empty(): return _set_token(_value_edit["block"], _value_edit["key"], value, title)
-	return _set_box(_value_edit["box"], value, title)
+## Opens the Color window (D-064) for the color token of [param key] on block
+## [param id], or of the box of [param box]: near the head, toward the token;
+## the 2D picker or, in 3D, the globe of colors in front of the window, as
+## the Color input setting says.
+func _open_color(id: int, key: String, box: String, value: Color) -> void:
+	_value_edit = {"block": id, "key": key, "box": box, "value": value, "start": value, "color": true}
+	_set_pipette(false)
+	var pose := _near_pose(_token_pose(id, key, box).origin)
+	var mode := _document.features.get_value(XREFeatureSettings.COLOR_INPUT)
+	var block := blueprint.graph.find_node(id)
+	var title := "%s · %s" % [box if not box.is_empty() else XREBlueprintGraph.title(block), key.capitalize() if box.is_empty() else "start value"]
+	_token_editor.close()
+	if mode == XREFeatureSettings.GLOBE: _token_editor.open_globe(pose, value)
+	color_panel.show_color(title, value, mode, _token_editor.get_globe_saturation() if mode == XREFeatureSettings.GLOBE else -1.0)
+	_request_window(XREBlueprintColorTab, pose)
+	_place_window_widgets()
+	if mode == XREFeatureSettings.GLOBE: _message("Drag the globe to turn it, click a color on it. Saturation under it. Done keeps it; × puts it back.")
+	else: _message("Pick a color; click the hex code or a figure to type it. Done keeps it; × puts it back.")
+
+
+## The Color window, or null while it is closed.
+func _color_window() -> XREPanelSurface:
+	if not XREBlueprintColorTab in _open_windows or not color_panel.is_inside_tree(): return null
+	return color_panel.get_viewport().get_parent() as XREPanelSurface
+
+
+## Whether the Color window edits a token now.
+func _editing_color() -> bool:
+	return bool(_value_edit.get("color", false))
+
+
+## Shows [param color] on the token the Color window edits, on its globe and
+## in the window, without keeping it: Done keeps it ([method _end_color]). A
+## color that came from elsewhere than the globe, [param turn], turns it to face the user.
+func _preview_color(color: Color, turn: bool = false) -> void:
+	if not _editing_color(): return
+	_value_edit["value"] = color
+	if str(_value_edit["box"]).is_empty(): canvas.preview_token(_value_edit["block"], _value_edit["key"], color)
+	else: canvas.get_shelf().preview_value(_value_edit["box"], color)
+	if _token_editor.mode == XREBlueprintTokenEditor.GLOBE:
+		_token_editor.set_globe_color(color)
+		if turn: _token_editor.face_globe_color()
+	if _pipette_hand != null: _pipette.set_color(color)
+	color_panel.set_color(color, _token_editor.get_globe_saturation() if _token_editor.mode == XREBlueprintTokenEditor.GLOBE else -1.0)
+
+
+## The saturation slider under the globe moved to [param saturation].
+func _saturate(saturation: float) -> void:
+	if not _editing_color() or _token_editor.mode != XREBlueprintTokenEditor.GLOBE: return
+	_preview_color(_token_editor.set_globe_saturation(saturation))
+
+
+## Ends the Color window's edit (D-064), as the Vector window's (D-063): Done
+## keeps the color as one edit; the ×, a click away or the window closing put
+## it back as it was.
+func _end_color(commit: bool) -> void:
+	_set_pipette(false)
+	if not _editing_color():
+		if _token_editor.mode == XREBlueprintTokenEditor.GLOBE: _token_editor.close()
+		_dismiss_window(XREBlueprintColorTab, true)
+		return
+	var edit := _value_edit
+	_value_edit = {}
+	if _token_editor.mode == XREBlueprintTokenEditor.GLOBE: _token_editor.close()
+	var field := _keyboard_target.get_ref() as LineEdit if _keyboard_target != null else null
+	if _keyboard.is_shown() and (_token_edit.has("channel") or _token_edit.has("hex") or (field != null and color_panel.is_ancestor_of(field))):
+		_keyboard.close()
+		_token_edit = {}
+	var value := edit["value"] as Color
+	var start := edit["start"] as Color
+	var changed := not value.is_equal_approx(start)
+	if commit and changed:
+		if str(edit["box"]).is_empty(): _set_token(edit["block"], edit["key"], value, "Set Color")
+		else: _set_box(edit["box"], value, "Set Color")
+		_message("Kept %s." % _color_text(value))
+	else:
+		if str(edit["box"]).is_empty(): canvas.preview_token(edit["block"], edit["key"], start)
+		else: canvas.get_shelf().preview_value(edit["box"], start)
+		if changed: _message("The color is as it was.")
+	_dismiss_window(XREBlueprintColorTab, true)
+
+
+## The keypad for channel [param channel] (0 for R) of the color, 0 to 255, low on the Color window (D-067).
+func _type_channel(channel: int) -> void:
+	if not _editing_color(): return
+	var color := _value_edit["value"] as Color
+	_token_edit = {"channel": channel}
+	_token_field.text = str([color.r8, color.g8, color.b8][channel])
+	_show_keyboard(_token_field, _keypad_at(_color_window()), 1)
+	_message("Type %s, 0 to 255." % XREBlueprintColorPanel.CHANNELS[channel])
+
+
+## The keyboard for the color's hex code, below the Color window.
+func _type_hex() -> void:
+	if not _editing_color(): return
+	_token_edit = {"hex": true}
+	_token_field.text = (_value_edit["value"] as Color).to_html(false)
+	_show_keyboard(_token_field, _below_window(_color_window()), 0, 0.0, KEYBOARD_BELOW_WINDOW)
+	_message("Type the hex code: ff8800, or f80.")
+
+
+## A figure or the hex code of the 2D picker clicked: the keypad low on the
+## window (D-066), or the keyboard, wider, below it.
+func _type_in_picker(field: LineEdit, numeric: bool) -> void:
+	if not _editing_color(): return
+	if numeric: _show_keyboard(field, _keypad_at(_color_window()), 1)
+	else: _show_keyboard(field, _below_window(_color_window()), 0, 0.0, KEYBOARD_BELOW_WINDOW)
+
+
+## A channel or the hex code typed for the color the Color window edits: [param edit] says which.
+func _typed_color(edit: Dictionary, text: String) -> void:
+	if not _editing_color(): return
+	var color := _value_edit["value"] as Color
+	if edit.has("hex"):
+		var code := text.strip_edges().trim_prefix("#")
+		if not Color.html_is_valid(code):
+			_message("Not a hex code: " + text)
+			return
+		var typed := Color.html(code)
+		# Without alpha digits the code keeps the color's alpha.
+		if code.length() in [3, 6]: typed.a = color.a
+		_preview_color(typed, true)
+		return
+	var number: Variant = XREBlueprintTokens.parse_number(text)
+	if number == null:
+		_message("Not a number: " + text)
+		return
+	color[int(edit["channel"])] = clampf(roundf(float(number)), 0.0, 255.0) / 255.0
+	_preview_color(color, true)
+
+
+## The middle of the bottom edge of [param window], or null without it.
+func _below_window(window: XREPanelSurface) -> Variant:
+	return window.pixel_to_global(Vector2(window.size_px.x * 0.5, window.size_px.y)) if window != null else null
+
+
+## Takes the pipette or puts it back (D-065): the hand that clicked Pipette
+## holds it instead of its controller, and its clicks off the Color window take
+## colors — of the scene's objects, of the graph's cards, tokens, ports and
+## boxes, of the windows — until Put back, or until the color's edit ends.
+func _set_pipette(on: bool) -> void:
+	var hand: XREHand = null
+	if on and _editing_color():
+		hand = panels.get_clicking_hand() if is_instance_valid(panels) else null
+		if hand == null: hand = _rig.right_hand
+	if _pipette_hand != null and _pipette_hand != hand: _controller(_pipette_hand).set_model_shown(true)
+	var taken := hand != null and hand != _pipette_hand
+	_pipette_hand = hand
+	if hand != null:
+		_controller(hand).set_model_shown(false)
+		_pipette.hold(hand, _value_edit["value"] as Color)
+	else:
+		_pipette.put_back()
+	color_panel.set_pipette(hand != null)
+	if taken: _message("The pipette is in your hand: click any color but this window's. Put back drops it.")
+
+
+## The model of [param hand]'s controller.
+func _controller(hand: XREHand) -> XREControllerModel:
+	return _rig.right_controller if hand == _rig.right_hand else _rig.left_controller
+
+
+## The ray of the hand that holds the pipette, off the Color window (D-065):
+## lit on what it meets first, whose color a click takes. The pipette stays in
+## the hand; a click selects nothing and closes nothing.
+func _point_pipette(pointer: Pointer, origin: Vector3, direction: Vector3) -> void:
+	var hand := pointer.hand
+	_leave(pointer)
+	hand.claim(self)
+	_pipette_hit(origin, direction)
+	hand.show_ray(_pipette_distance, _pipette_on != PIPETTE_NOTHING)
+	if not hand.trigger_pressed: return
+	pointer.swallow = true
+	var sampled: Variant = null
+	match _pipette_on:
+		PIPETTE_WINDOW: sampled = _pipette_window.color_at_pixel(_pipette_pixel)
+		PIPETTE_GRAPH: sampled = canvas.get_hit_color()
+		PIPETTE_SCENE: sampled = XREBlueprintColorSampler.color_at(_pipette_node, _pipette_point)
+	if sampled == null:
+		_message("No color there." if _pipette_on != PIPETTE_NOTHING else "Point at something: an object, a card, a token, a window.")
+		return
+	var color := sampled as Color
+	color.a = (_value_edit["value"] as Color).a
+	_preview_color(color, true)
+	_message("Took %s. Done keeps it." % _color_text(color))
+
+
+## Finds what the pipette's ray meets first within 5 m (D-065): a window but
+## the Color window, the graph — its cards, tokens, ports and boxes — or an
+## object of the scene; the [code]_pipette_[/code] fields say what and where.
+## Lit by the graph's ray test, nothing is allocated: it runs every frame the pipette is held.
+func _pipette_hit(origin: Vector3, direction: Vector3) -> void:
+	_pipette_on = PIPETTE_NOTHING
+	_pipette_distance = 5.0
+	if is_instance_valid(_root) and _picker.cast_segment(_root, origin, origin + direction * _pipette_distance):
+		_pipette_on = PIPETTE_SCENE
+		_pipette_distance = _picker.get_hit_distance()
+		_pipette_node = _picker.get_hit_node()
+		_pipette_point = _picker.get_hit_position()
+	var on_graph := canvas.intersect_ray(origin, direction, _pipette_distance)
+	if on_graph >= 0:
+		_pipette_on = PIPETTE_GRAPH
+		_pipette_distance = on_graph
+	var color_window := _color_window()
+	for window: XREPanelSurface in _windows: _pipette_window_hit(window, color_window, origin, direction)
+	if is_instance_valid(panels):
+		for window: XREPanelSurface in panels.get_windows(): _pipette_window_hit(window, color_window, origin, direction)
+
+
+func _pipette_window_hit(window: XREPanelSurface, color_window: XREPanelSurface, origin: Vector3, direction: Vector3) -> void:
+	if window == color_window: return
+	var hit := window.intersect_ray(origin, direction, _pipette_distance)
+	if hit < 0: return
+	_pipette_on = PIPETTE_WINDOW
+	_pipette_distance = hit
+	_pipette_window = window
+	_pipette_pixel = window.get_hit_pixel()
+
+
+## [param color] for the status line: its hex code and R, G, B.
+static func _color_text(color: Color) -> String:
+	return "#%s (%d, %d, %d)" % [color.to_html(false), color.r8, color.g8, color.b8]
 
 
 ## The grip carries a copy of a token: from a socket of block [param id] (it
@@ -3091,6 +3537,13 @@ func _drop_carried(pointer: Pointer, target: Dictionary) -> void:
 			return
 		for entry: Dictionary in state["nodes"]:
 			if entry["id"] == target["block"]: entry["params"][target["key"]] = value
+		# On a port a wire comes into, the token takes the wire's place (D-066): the wire goes.
+		var port := blueprint.graph.input_port(block, target["key"])
+		if port >= 0:
+			var edges: Array = state["edges"]
+			var before := edges.size()
+			state["edges"] = edges.filter(func(edge: Dictionary) -> bool: return not (edge["to"] == target["block"] and edge["to_port"] == port))
+			if (state["edges"] as Array).size() != before: _drop_orphan_inlines(state)
 	elif target.has("box"):
 		var variable := blueprint.graph.find_variable(target["box"])
 		if variable.is_empty() or not XREBlueprintSchema.accepts(XREBlueprintGraph.variable_type(variable), typeof(value)):
@@ -3129,6 +3582,7 @@ func _drop_carried(pointer: Pointer, target: Dictionary) -> void:
 
 ## Lets go of what [param pointer] turns or carries, without an edit.
 func _drop_tokens(pointer: Pointer) -> void:
+	if pointer.arrow_axis >= 0: pointer.hand.unclaim_stick(self)
 	pointer.arrow_axis = -1
 	_token_editor.close()
 	if not pointer.token_key.is_empty() or not pointer.token_box.is_empty(): _end_turn(pointer, false)
@@ -3200,6 +3654,7 @@ func _wire_variable(id: int, variable: String) -> void:
 		if entry["kind"] == "set_variable": entry["params"]["value"] = found.get("value", XREBlueprintSchema.default_value(XREBlueprintGraph.variable_type(found)))
 	if blueprint.perform(blueprint.commit.bind("Wire Variable", state), &"vr_graph"):
 		cancel_connection()
+		_close_wire_menu()
 		_message("%s uses %s." % [XREBlueprintGraph.title(block), variable])
 	else: _message(blueprint.last_error)
 
@@ -3218,7 +3673,9 @@ func _wire_box_to_port(variable: String, id: int, port: int) -> void:
 	var added: int = blueprint.perform(blueprint.insert_block.bind(getter, position, {"to": id, "to_port": port}, null, "Wire Variable"), &"vr_graph")
 	cancel_connection()
 	if added < 0: _message(blueprint.last_error)
-	else: _message("%s reads %s." % [XREBlueprintGraph.title(target), variable])
+	else:
+		_close_wire_menu()
+		_message("%s reads %s." % [XREBlueprintGraph.title(target), variable])
 
 
 ## Deletes the variable of a box; one in use stays, and the wires of its users flash.
@@ -3436,11 +3893,8 @@ func _point_at_petals(pointer: Pointer, origin: Vector3, direction: Vector3, lim
 			var off_tilt := XREPanels._tilt(pointer.hand.get_vector2(&"primary").y)
 			if off_tilt != 0.0:
 				pointer.hand.claim_stick(self)
-				pointer.fan_scroll -= off_tilt * XREPanels.SCROLL_SPEED * delta
-				var off_rows := int(pointer.fan_scroll)
-				if off_rows != 0:
-					pointer.fan_scroll -= off_rows
-					fan.scroll(off_rows)
+				# Smoothly, by parts of a row (D-067).
+				fan.scroll_by(-off_tilt * FAN_SPEED * delta)
 		return false
 	var hand := pointer.hand
 	var point := origin + direction * hit
@@ -3453,16 +3907,12 @@ func _point_at_petals(pointer: Pointer, origin: Vector3, direction: Vector3, lim
 	elif not _member_link.is_empty() and _member_hand == hand: canvas.show_link(canvas.to_local(_member_link["anchor_global"]), canvas.to_local(point))
 	var tilt := XREPanels._tilt(hand.get_vector2(&"primary").y)
 	if tilt != 0.0:
-		pointer.fan_scroll -= tilt * XREPanels.SCROLL_SPEED * delta
-		var rows := int(pointer.fan_scroll)
-		if rows != 0:
-			pointer.fan_scroll -= rows
-			fan.scroll(rows)
+		fan.scroll_by(-tilt * FAN_SPEED * delta)
 	if hand.trigger_pressed:
 		pointer.fan = fan
 		pointer.fan_item = fan.get_hit()
 		pointer.fan_height = fan.plane_height(origin, direction)
-		pointer.fan_rows = 0
+		pointer.fan_rows = 0.0
 		pointer.fan_dragged = false
 	return true
 
@@ -3509,8 +3959,9 @@ func stem_at(origin: Vector3, direction: Vector3, limit: float) -> TargetWire:
 	return found
 
 
-## A trigger held on petals: dragged up or down it scrolls the list, a row per
-## petal's step; let go without a drag it picks the petal it was pressed on.
+## A trigger held on petals: dragged up or down it scrolls the list, the rows
+## following the ray smoothly once it has moved half a row (D-067); let go
+## without a drag it picks the petal it was pressed on.
 func _update_fan_press(pointer: Pointer) -> void:
 	var hand := pointer.hand
 	var fan := pointer.fan
@@ -3518,10 +3969,14 @@ func _update_fan_press(pointer: Pointer) -> void:
 	var direction := -hand.global_basis.z.normalized()
 	var height := fan.plane_height(origin, direction)
 	if not is_nan(height) and not is_nan(pointer.fan_height):
-		var rows := int(roundf((height - pointer.fan_height) / XREBlueprintPetals.STEP))
-		if absf(height - pointer.fan_height) > XREBlueprintPetals.STEP * 0.5: pointer.fan_dragged = true
-		if rows != pointer.fan_rows:
-			fan.scroll(rows - pointer.fan_rows)
+		if not pointer.fan_dragged and absf(height - pointer.fan_height) > XREBlueprintPetals.STEP * 0.5:
+			# From here the rows go with the ray, with no jump of the half row it took.
+			pointer.fan_dragged = true
+			pointer.fan_height = height
+			pointer.fan_rows = 0.0
+		if pointer.fan_dragged:
+			var rows := (height - pointer.fan_height) / XREBlueprintPetals.STEP
+			fan.scroll_by(rows - pointer.fan_rows)
 			pointer.fan_rows = rows
 	var hit := fan.intersect_ray(origin, direction, 5.0)
 	fan.hover_hit()

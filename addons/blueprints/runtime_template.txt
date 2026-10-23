@@ -111,6 +111,15 @@ func _bp_equal(a: Variant, b: Variant) -> bool:
 	return a == b
 
 
+# An operator (D-065) on the values that came: an error, not a crash, when it can't take them.
+func _bp_operate(op: String, a: Variant, b: Variant, run: XREBlueprintRun, block_id: int) -> Variant:
+	var problem := XREBlueprintOperators.problem(op, a, b)
+	if not problem.is_empty():
+		_bp_error(run, block_id, problem)
+		return null
+	return XREBlueprintOperators.evaluate(op, a, b)
+
+
 func _bp_check_value(value: Variant, expected: int, run: XREBlueprintRun, block_id: int) -> bool:
 	if _bp_accepts(expected, typeof(value)):
 		return true

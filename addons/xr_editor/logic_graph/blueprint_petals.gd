@@ -8,8 +8,11 @@ extends Node3D
 ## Nodes without geometry under the object — an AnimationPlayer, a sound —
 ## are groups of their own, under a header with their name. A petal that
 ## doesn't fit the wire is dim. A long list scrolls: the right thumbstick, a
-## trigger dragged up or down along it, or its "▲ / ▼ more" petals. Built when
-## the object, the wire or the scroll changes, never per frame; picked analytically.
+## trigger dragged up or down along it, or its "▲ / ▼ more" petals. It scrolls
+## smoothly (D-067): the rows slide by parts of a row, the one leaving at the
+## top fading out and the one coming at the bottom fading in. Built when the
+## object, the wire or the first row changes, never per frame; between, the
+## rows only move. Picked analytically.
 ## It turns to the head and keeps its size in view farther than
 ## [constant FULL_SIZE_DISTANCE] away, as the badge does ([method follow]).
 
@@ -34,14 +37,26 @@ class Petal:
 	var item: Dictionary
 	var enabled := true
 	var frame: MeshInstance3D
+	## Its row among the items shown (0 the first), or -1 for a "more" petal, which stays put.
+	var row := -1
+	## How much of it is seen, while it slides in or out (D-067): under half, the ray passes it.
+	var seen := 1.0
 
 var _petals: Array[Petal] = []
 var _groups: Array[Dictionary] = []
 var _anchor := Vector3.ZERO
 var _head := Vector3.ZERO
 var _up := Vector3.UP
-## The first row shown of the whole list, headers counted.
+## The first row shown of the whole list, headers counted, and where the list
+## is scrolled to, in rows: its whole part is [member _first], the rest how far
+## the rows have slid up (D-067).
 var _first := 0
+var _position := 0.0
+## The headers shown, and their rows among the items shown.
+var _headers: Array[Label3D] = []
+var _header_rows := PackedInt32Array()
+## Room for the "▲ more" petal above the items, in rows: 1 for a list that scrolls.
+var _lead := 0.0
 var _items: Array[Dictionary] = []
 var _hit := -1
 var _hovered := -1
@@ -71,6 +86,7 @@ func open(object: Node3D, anchor: Vector3, head: Vector3, up: Vector3, groups: A
 	_up = up.normalized()
 	_groups = groups
 	_first = 0
+	_position = 0.0
 	_items.clear()
 	for group: Dictionary in _groups:
 		var listed: Array = group["items"]
@@ -98,6 +114,17 @@ func follow(head: Vector3) -> void:
 	_dot.position = anchor
 	var along := _spine_middle - anchor
 	_stem.transform = Transform3D(Basis(Quaternion(Vector3.UP, along.normalized())) * Basis.from_scale(Vector3(1.0, maxf(along.length(), 0.001), 1.0)), anchor + along * 0.5)
+
+
+## The fan as a sphere, its radius in [code]w[/code], for what covers it to
+## become see-through (D-066); a zero radius while it is closed.
+func focus_sphere() -> Vector4:
+	if not is_open() or _petals.is_empty(): return Vector4.ZERO
+	var top := _petals[0].center.y + STEP * 0.5
+	var bottom := _petals[_petals.size() - 1].center.y - STEP * 0.5
+	var middle := global_transform * Vector3(_widest * 0.5, (top + bottom) * 0.5, 0.0)
+	var radius := Vector2(_widest, top - bottom).length() * 0.5 * global_basis.get_scale().x
+	return Vector4(middle.x, middle.y, middle.z, radius)
 
 
 ## Draws the fan over everything (D-061), while a member is picked in focus.
@@ -153,10 +180,11 @@ func get_item_count() -> int:
 	return count
 
 
-## The items on the page shown, in order.
+## The items on the page shown, in order: more than half seen.
 func get_shown() -> Array[Dictionary]:
 	var shown: Array[Dictionary] = []
-	for petal: Petal in _petals: shown.append(petal.item)
+	for petal: Petal in _petals:
+		if petal.seen >= 0.5: shown.append(petal.item)
 	return shown
 
 
@@ -165,6 +193,8 @@ func _clear() -> void:
 		remove_child(child)
 		child.queue_free()
 	_petals.clear()
+	_headers.clear()
+	_header_rows.clear()
 	_stem = null
 	_dot = null
 	_hit = -1
@@ -176,46 +206,39 @@ func _build() -> void:
 	if _object == null:
 		visible = false
 		return
-	_first = clampi(_first, 0, maxi(_items.size() - PAGE, 0))
-	var shown: Array[Dictionary] = []
-	if _first > 0: shown.append({"text": "▲ %d more" % _first, "scroll": -(PAGE - 2), "enabled": true})
-	shown.append_array(_items.slice(_first, _first + PAGE))
-	var below := _items.size() - _first - PAGE
-	if below > 0: shown.append({"text": "▼ %d more" % below, "scroll": PAGE - 2, "enabled": true})
-	var spine_top := Vector3.ZERO
-	var spine_bottom := Vector3.ZERO
-	var widest := 0.0
-	for index: int in shown.size():
-		var item: Dictionary = shown[index]
-		var y := -index * STEP
-		if item.has("header"):
-			var header := XREBlueprintCanvas.label(str(item["header"]), 16)
-			header.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-			header.modulate = Color("a7afc1")
-			header.position = Vector3(0, y, 0)
-			add_child(header)
+	var last := maxi(_items.size() - PAGE, 0)
+	_position = clampf(_position, 0.0, float(last))
+	_first = floori(_position)
+	_lead = 1.0 if last > 0 else 0.0
+	_widest = 0.0
+	var top := -_lead * STEP
+	if _position > 0.0:
+		_add_petal({"text": "▲ %d more" % ceili(_position), "scroll": -(PAGE - 2), "enabled": true}, -1, 0.0)
+		top = 0.0
+	# A row more than a page: the one sliding in at the bottom (D-067).
+	var rows := mini(PAGE + 1, _items.size() - _first)
+	for index: int in rows:
+		var item: Dictionary = _items[_first + index]
+		if not item.has("header"):
+			_add_petal(item, index, 0.0)
 			continue
-		var text := str(item["text"])
-		var width := XREBlueprintCanvas.text_width(text, 18) + 0.03
-		widest = maxf(widest, width)
-		var petal := Petal.new()
-		petal.item = item
-		petal.enabled = item.get("enabled", true)
-		petal.center = Vector3(width * 0.5, y, 0)
-		petal.size = Vector2(width, PILL_HEIGHT)
-		petal.node = Node3D.new()
-		petal.node.position = petal.center
-		add_child(petal.node)
-		var pill := make_pill(text, 1.0 if petal.enabled else DIM)
-		petal.frame = pill.get_meta(&"frame") as MeshInstance3D
-		petal.node.add_child(pill)
-		_petals.append(petal)
-		if spine_top == Vector3.ZERO: spine_top = Vector3(-0.012, y, 0)
-		spine_bottom = Vector3(-0.012, y, 0)
+		var header := XREBlueprintCanvas.label(str(item["header"]), 16)
+		header.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		header.modulate = Color("a7afc1")
+		add_child(header)
+		_headers.append(header)
+		_header_rows.append(index)
+	var bottom := -(_lead + mini(PAGE, _items.size()) - 1) * STEP
+	var below := ceili(float(_items.size()) - _position - PAGE)
+	if below > 0:
+		bottom = -(_lead + PAGE + 0.5) * STEP
+		_add_petal({"text": "▼ %d more" % below, "scroll": PAGE - 2, "enabled": true}, -1, bottom)
 	if _petals.is_empty():
 		visible = false
 		return
-	_widest = widest
+	_place()
+	var spine_top := Vector3(-0.012, top, 0)
+	var spine_bottom := Vector3(-0.012, bottom, 0)
 	add_child(_stick(spine_top, spine_bottom, BORDER, 0.002))
 	_spine_middle = (spine_top + spine_bottom) * 0.5
 	# The stem is a rod of unit length that follow() stretches from the dot to the spine.
@@ -229,6 +252,56 @@ func _build() -> void:
 	visible = true
 	if _on_top: _raise(self, true)
 	if not _head.is_zero_approx() and is_inside_tree(): follow(_head)
+
+
+## A petal of [param item] in row [param row] of the items shown, or, with -1,
+## a "more" petal that stays at height [param y].
+func _add_petal(item: Dictionary, row: int, y: float) -> void:
+	var text := str(item["text"])
+	var width := XREBlueprintCanvas.text_width(text, 18) + 0.03
+	_widest = maxf(_widest, width)
+	var petal := Petal.new()
+	petal.item = item
+	petal.row = row
+	petal.enabled = item.get("enabled", true)
+	petal.center = Vector3(width * 0.5, y, 0)
+	petal.size = Vector2(width, PILL_HEIGHT)
+	petal.node = Node3D.new()
+	petal.node.position = petal.center
+	add_child(petal.node)
+	var pill := make_pill(text, 1.0 if petal.enabled else DIM)
+	petal.frame = pill.get_meta(&"frame") as MeshInstance3D
+	petal.node.add_child(pill)
+	_petals.append(petal)
+
+
+## Slides the rows to where the list is scrolled (D-067): up by the part of a
+## row past [member _first], the first row fading out as it goes, the row
+## under the page fading in. Only positions and transparency: no rebuild.
+func _place() -> void:
+	var slide := _position - _first
+	for petal: Petal in _petals:
+		if petal.row < 0: continue
+		petal.center.y = -(_lead + petal.row - slide) * STEP
+		petal.node.position = petal.center
+		petal.seen = _row_seen(petal.row, slide)
+		_fade(petal.node, petal.seen)
+	for index: int in _headers.size():
+		var row := _header_rows[index]
+		_headers[index].position = Vector3(0, -(_lead + row - slide) * STEP, 0)
+		_fade(_headers[index], _row_seen(row, slide))
+
+
+## How much of row [param row] is seen with the rows slid by [param slide].
+static func _row_seen(row: int, slide: float) -> float:
+	if row == 0: return 1.0 - slide
+	if row >= PAGE: return slide
+	return 1.0
+
+
+static func _fade(node: Node, seen: float) -> void:
+	if node is GeometryInstance3D: (node as GeometryInstance3D).transparency = 1.0 - seen
+	for child: Node in node.get_children(): _fade(child, seen)
 
 
 ## A basis at [param center] square to the line of sight from [param head],
@@ -304,6 +377,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 	var world := origin.distance_to(global_transform * point)
 	for index: int in _petals.size():
 		var petal := _petals[index]
+		if petal.seen < 0.5: continue
 		var offset := point - petal.center
 		if absf(offset.x) <= petal.size.x * 0.5 + 0.004 and absf(offset.y) <= petal.size.y * 0.5 + 0.004:
 			_hit = index
@@ -316,6 +390,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 	if point.y > top or point.y < bottom: return -1.0
 	var nearest := INF
 	for index: int in _petals.size():
+		if _petals[index].seen < 0.5: continue
 		var gap := absf(point.y - _petals[index].center.y)
 		if gap < nearest:
 			nearest = gap
@@ -346,11 +421,26 @@ func hover_hit() -> void:
 
 ## Scrolls the list by [param rows] rows, down for positive; false at its end.
 func scroll(rows: int) -> bool:
-	var first := clampi(_first + rows, 0, maxi(_items.size() - PAGE, 0))
-	if first == _first: return false
-	_first = first
-	_build()
+	return scroll_by(rows)
+
+
+## Scrolls the list smoothly by [param rows], parts of a row too, down for
+## positive; false at its end (D-067). The rows slide; the fan is built anew
+## only when another row comes first, or a "more" petal comes or goes.
+func scroll_by(rows: float) -> bool:
+	var last := float(maxi(_items.size() - PAGE, 0))
+	var position := clampf(_position + rows, 0.0, last)
+	if is_equal_approx(position, _position): return false
+	var rebuild := floori(position) != _first or (position > 0.0) != (_position > 0.0) or (position < last) != (_position < last)
+	_position = position
+	if rebuild: _build()
+	else: _place()
 	return true
+
+
+## Where the list is scrolled to, in rows (D-067).
+func get_scroll() -> float:
+	return _position
 
 
 ## Where the ray meets the fan's plane, up along it in meters; NAN off it.

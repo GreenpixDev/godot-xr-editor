@@ -19,6 +19,10 @@ extends Node3D
 ## settings without a port; the target's member after the Target ("Target ·
 ## visible") and an event's Source; Play Animation's Finished output for its
 ## wait; a Variable socket wired to its box on the shelf ([XREBlueprintShelf]).
+##
+## An operator (D-065: Equal and the Operator blocks) is a small card as in
+## Unreal: no title, its inputs and their tokens on the left, its symbol in the
+## middle, its result on the right; its trash and plus stand above it.
 
 const PIXEL_SIZE := 0.0009
 const CARD_WIDTH := 0.26
@@ -50,7 +54,7 @@ const CARD_GROUPS: Dictionary[String, int] = {
 	"signal": 0,
 	"get_property": 1, "set_property": 1,
 	"branch": 2,
-	"value": 3, "equals": 3, "get_variable": 3, "set_variable": 3,
+	"value": 3, "equals": 3, "operator": 3, "get_variable": 3, "set_variable": 3,
 }
 ## Faces of the library's categories.
 const CATEGORY_GROUPS: Dictionary[String, int] = {"Motion": 1, "Flow": 2, "Audio": 4, "Animation": 5}
@@ -73,7 +77,15 @@ const FADED := 0.35
 ## How much a token or a member grows under a ray.
 const SOCKET_HOVER := 1.15
 const MEMBER_COLOR := Color("dcc8fa")
+## An operator's card: how much taller than its rows, its symbol's font sizes
+## (a sign, a word such as AND) and the room on each side of the symbol.
+const OPERATOR_PAD := 0.03
+const SYMBOL_SIZE := 44
+const WORD_SIZE := 26
+const SYMBOL_ROOM := 0.034
 const TOKEN_FACE := Color("151a26")
+## How much nearer a token's text and swatch sort than its face, in meters.
+const TOKEN_SORTING := 0.01
 ## Pixel size of the cards' labels, for measuring their text.
 const LABEL_PIXEL := 0.0007
 
@@ -100,6 +112,11 @@ class Card:
 	var id: int
 	var node: Node3D
 	var height: float
+	var width := CARD_WIDTH
+	## An operator's small card (D-065).
+	var compact := false
+	## The height of the first row's ports; a compact card's output is in its middle.
+	var first_row := 0.0
 	## How far the front face is in front of a billboard's: ports, labels and icons sit on it.
 	var face := 0.0
 	var bounds: AABB
@@ -120,6 +137,8 @@ class Card:
 	## The wire of output 0 leaves the Finished socket: its block waits (D-052).
 	var waits := false
 	var finished := -1
+	## It covers an input in use and is see-through (D-066).
+	var faded := false
 
 class Wire:
 	var from: Card
@@ -134,6 +153,7 @@ class Wire:
 	var mesh: XREGraphWire
 	var normal: Material
 	var lit: Material
+	var faded := false
 
 var _cards: Array[Card] = []
 var _wires: Array[Wire] = []
@@ -345,9 +365,16 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		var inputs := graph.ports(block, true)
 		var outputs := graph.ports(block, false)
 		var layout := _layout(graph, block, inputs, outputs)
-		card.height = 0.08 + maxi((layout[0] as Array).size(), (layout[1] as Array).size()) * ROW_HEIGHT
+		card.compact = XREBlueprintGraph.is_operator(block)
+		if card.compact:
+			card.height = OPERATOR_PAD + maxi((layout[0] as Array).size(), 1) * ROW_HEIGHT
+			card.width = _operator_width(graph, block, inputs)
+			card.first_row = ((layout[0] as Array).size() - 1) * ROW_HEIGHT * 0.5
+		else:
+			card.height = 0.08 + maxi((layout[0] as Array).size(), (layout[1] as Array).size()) * ROW_HEIGHT
+			card.first_row = card.height * 0.5 - 0.064
 		var cuboid := _display == XREFeatureSettings.CUBOID
-		var body_size := Vector3(CARD_WIDTH, card.height, CUBOID_DEPTH if cuboid else CARD_THICKNESS)
+		var body_size := Vector3(card.width, card.height, CUBOID_DEPTH if cuboid else CARD_THICKNESS)
 		card.face = (CUBOID_DEPTH - CARD_THICKNESS) * 0.5 if cuboid else 0.0
 		card.bounds = AABB(-body_size * 0.5, body_size)
 		card.normal = _body_materials[card_group(block)]
@@ -358,15 +385,18 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			body = box
 		else:
 			var panel := QuadMesh.new()
-			panel.size = Vector2(CARD_WIDTH, card.height)
+			panel.size = Vector2(card.width, card.height)
 			body = panel
 		card.mesh = XRERig.create_vr_mesh(body, card.normal)
 		card.node.add_child(card.mesh)
 		_add_frame(card, body_size, cuboid)
-		var title := label("%s · %d" % [XREBlueprintGraph.title(block), card.id], 21)
-		title.position = Vector3(0, card.height * 0.5 - 0.022, card.face + CARD_THICKNESS * 0.5 + 0.0005)
-		card.node.add_child(title)
-		card.plus_point = Vector3(CARD_WIDTH * 0.5 - 0.023, card.height * 0.5 - 0.022, card.face + CARD_THICKNESS * 0.5 + 0.002)
+		if not card.compact:
+			var title := label("%s · %d" % [XREBlueprintGraph.title(block), card.id], 21)
+			title.position = Vector3(0, card.height * 0.5 - 0.022, card.face + CARD_THICKNESS * 0.5 + 0.0005)
+			card.node.add_child(title)
+		card.plus_point = Vector3(card.width * 0.5 - 0.023, card.height * 0.5 - 0.022, card.face + CARD_THICKNESS * 0.5 + 0.002)
+		# Above an operator's small card: inside, they would cover its ports.
+		if card.compact: card.plus_point = Vector3(card.width * 0.5 - 0.012, card.height * 0.5 + 0.016, card.face + CARD_THICKNESS * 0.5 + 0.002)
 		card.plus = Node3D.new()
 		card.node.add_child(card.plus)
 		for point: Vector3 in ([card.plus_point] if _plus_shown else []):
@@ -385,6 +415,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		card.node.add_child(card.trash)
 		card.trash.add_child(XRERig.create_vr_mesh(_trash_mesh, _trash_material))
 		_add_rows(card, graph, block, inputs, outputs, layout)
+		if card.compact: _add_symbol(card, block)
 		_cards.append(card)
 	var inline: Array[Wire] = []
 	for edge_index: int in graph.edges.size():
@@ -410,13 +441,52 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	_build_shelf(graph)
 	for wire: Wire in inline:
 		if not _shelf.has_box(wire.variable): continue
-		var color := COLORS[wire.to.input_types[wire.to_port]]
+		# In its variable's color, as a wire from an output is in its source's: the
+		# port it goes into may take any value, as an operator's does (D-065).
+		var color := COLORS[XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(graph.find_variable(wire.variable)))]
 		wire.mesh = create_scene_wire(color)
 		wire.normal = wire.mesh.material_override
 		wire.lit = wire_material(color, LIT_WIRE_GROW)
 		_wires.append(wire)
 	update_wires()
 	select_block(_selected)
+
+
+## How wide an operator's card is (D-065): its ports and the widest token on
+## them on the left, room for its symbol, its result's port on the right.
+func _operator_width(graph: XREBlueprintGraph, block: Dictionary, inputs: Array) -> float:
+	var tokens := XREBlueprintTokens.port_keys(graph, block) if _value_mode == XREFeatureSettings.PUCKS else ([] as Array[String])
+	var widest := 0.0
+	for spec: Array in inputs:
+		var key: String = spec[2] if spec.size() > 2 else ""
+		var value: Variant = (block["params"] as Dictionary).get(key)
+		if key in tokens and value != null: widest = maxf(widest, XREBlueprintTokens.width(XREBlueprintTokens.shown(value, key, XREBlueprintTokens.expression_of(block, key))))
+	return _operator_start(widest) + _symbol_width(block) + SYMBOL_ROOM
+
+
+## Where the room for an operator's symbol begins, from its card's left edge, past tokens [param widest] wide.
+static func _operator_start(widest: float) -> float:
+	return SYMBOL_ROOM + (widest + 0.012 if widest > 0.0 else 0.0)
+
+
+static func _symbol_size(block: Dictionary) -> int:
+	return SYMBOL_SIZE if XREBlueprintGraph.symbol(block).length() == 1 else WORD_SIZE
+
+
+static func _symbol_width(block: Dictionary) -> float:
+	return maxf(text_width(XREBlueprintGraph.symbol(block), _symbol_size(block)), 0.02)
+
+
+## The symbol in the middle of an operator's card, between its tokens and its result.
+func _add_symbol(card: Card, block: Dictionary) -> void:
+	var widest := 0.0
+	for socket: Socket in card.sockets:
+		if _value_mode == XREFeatureSettings.PUCKS and socket.kind == TOKEN and socket.visual.get_child_count() > 0: widest = maxf(widest, socket.size.x)
+	var start := -card.width * 0.5 + _operator_start(widest)
+	var symbol := label(XREBlueprintGraph.symbol(block), _symbol_size(block))
+	symbol.position = Vector3((start + card.width * 0.5 - SYMBOL_ROOM) * 0.5, 0, card.face + CARD_THICKNESS * 0.5 + 0.0005)
+	symbol.name = "Symbol"
+	card.node.add_child(symbol)
 
 
 ## Whether [param block] is an inline Get Variable (D-061): a wire from a
@@ -499,6 +569,30 @@ func preview_transform(id: int, pose: Transform3D) -> void:
 	card.node.transform = pose
 	_orient(card)
 	update_wires()
+
+
+## Makes the cards, wires and boxes that cover an input in use, seen from
+## [param eye], see-through, and gives the others back their look (D-066):
+## the inputs are the first [param count] spheres of [param targets]
+## ([XREBlueprintFade]). Only a card that changes is touched.
+func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> void:
+	for card: Card in _cards:
+		var faded := count > 0 and card.node.visible and XREBlueprintFade.covers(eye, targets, count, card.node.global_transform * card.bounds)
+		if faded == card.faded: continue
+		card.faded = faded
+		XREBlueprintFade.set_faded(card.node, faded)
+	for wire: Wire in _wires:
+		var faded := count > 0 and wire.mesh.visible and XREBlueprintFade.covers(eye, targets, count, wire.mesh.global_transform * wire.mesh.get_aabb())
+		if faded == wire.faded: continue
+		wire.faded = faded
+		XREBlueprintFade.set_faded(wire.mesh, faded)
+	_shelf.fade_covering(eye, targets, count)
+
+
+## Whether the card of block [param id] is see-through, covering an input (D-066).
+func is_faded(id: int) -> bool:
+	var card := _find_card(id)
+	return card != null and card.faded
 
 
 ## Turns flat cards towards the head without moving their centers or editing the graph.
@@ -717,6 +811,8 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 	var nearest := maximum
 	var proximity := INF
 	for card: Card in _cards:
+		# See-through over an input in use, a card doesn't take the ray from it (D-067).
+		if card.faded: continue
 		var card_inverse := card.node.transform.affine_inverse()
 		var card_origin := card_inverse * local_origin
 		var card_direction := card_inverse.basis * local_direction
@@ -888,6 +984,23 @@ func get_hit_id() -> int:
 ## Index of the socket the last ray hit on its card ([constant TOKEN] and the others), or -1.
 func get_hit_socket() -> int:
 	return _hit_socket
+
+
+## The color of what the last ray hit, for the pipette (D-065): a color
+## token's or a box's color, else the token's, the port's or the box's type
+## color, the plus's or the trash's own, the card's face. Null for nothing.
+func get_hit_color() -> Variant:
+	if _hit_box: return _shelf.get_hit_color()
+	var card := _find_card(_hit_id)
+	if card == null: return null
+	if _hit_socket >= 0 and _hit_socket < card.sockets.size():
+		var socket := card.sockets[_hit_socket]
+		if socket.value is Color: return socket.value
+		return MEMBER_COLOR if socket.kind == MEMBER else COLORS[socket.type]
+	if _hit_port >= 0: return COLORS[card.input_types[_hit_port] if _hit_input else card.output_types[_hit_port]]
+	if _hit_plus: return Color.WHITE
+	if _hit_delete: return (_trash_material as BaseMaterial3D).albedo_color
+	return (card.normal as ShaderMaterial).get_shader_parameter(&"face_tint")
 
 
 ## Kind of the socket the last ray hit, or -1.
@@ -1168,15 +1281,18 @@ func update_scene_wire(wire: XREGraphWire, id: int, port: int, end: Vector3) -> 
 	wire.update_curve(port_position(id, port, true), port_direction(id, true), end, Vector3.ZERO, _front(_find_card(id)))
 
 
-func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1) -> Label3D:
+## [param shown] is the type whose color it has, if not its own: an operator's
+## input of any value wired is in the color of what comes in (D-065).
+func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1, shown: int = -1) -> Label3D:
 	var point := _row_point(card, row if row >= 0 else index, input)
+	var color := COLORS[shown if shown >= 0 else spec[1]]
 	var mesh: MeshInstance3D
 	if _port_display == XREFeatureSettings.SPHERE:
 		# Shaded by the view angle, as wires are, so that it reads as round.
 		point.z = card.face + CARD_THICKNESS * 0.5 + PORT_RADIUS * SPHERE_LIFT
-		mesh = XRERig.create_vr_mesh(_sphere_mesh, wire_material(COLORS[spec[1]]))
+		mesh = XRERig.create_vr_mesh(_sphere_mesh, wire_material(color))
 	else:
-		mesh = XRERig.create_vr_mesh(_port_mesh, material(COLORS[spec[1]], true))
+		mesh = XRERig.create_vr_mesh(_port_mesh, material(color, true))
 		mesh.rotation.x = PI * 0.5
 	mesh.position = point
 	card.node.add_child(mesh)
@@ -1187,7 +1303,8 @@ func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1) 
 	else:
 		card.outputs.append(point)
 		card.output_types.append(spec[1])
-	var text := label(spec[0], 18)
+	# An operator's ports have no names (D-065): its symbol says what they are.
+	var text := label(spec[0] if not card.compact else "", 18)
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if input else HORIZONTAL_ALIGNMENT_RIGHT
 	text.position = point + Vector3(0.022 if input else -0.022, 0, 0)
 	card.node.add_child(text)
@@ -1195,8 +1312,10 @@ func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1) 
 
 
 ## Where the port of row [param row] is on the left ([param input]) or the right edge of [param card].
+## An operator's result is in the middle of its card's height.
 func _row_point(card: Card, row: int, input: bool) -> Vector3:
-	return Vector3((-CARD_WIDTH * 0.5 + 0.014) if input else (CARD_WIDTH * 0.5 - 0.014), card.height * 0.5 - 0.064 - row * ROW_HEIGHT, card.face + 0.003)
+	var top := 0.0 if card.compact and not input else card.first_row
+	return Vector3((-card.width * 0.5 + 0.014) if input else (card.width * 0.5 - 0.014), top - row * ROW_HEIGHT, card.face + 0.003)
 
 
 ## The rows of [param block]'s card (D-052): on the left its inputs, then square
@@ -1229,11 +1348,14 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 	var member_key := XREBlueprintTokens.member_key(block) if XREBlueprintTokens.member_on_card(_target_mode) else ""
 	for row: int in left.size():
 		var entry := left[row]
-		var occupied := row < right.size()
+		# An operator's token goes right by its port, before the symbol.
+		var occupied := row < right.size() or card.compact
 		if entry.has("port"):
 			var index: int = entry["port"]
 			var spec: Array = inputs[index]
-			var text := _add_port(card, spec, index, true, row)
+			# Wired, an operator's input of any value takes the color of what comes in, as an Unreal wildcard pin.
+			var shown := XREBlueprintGraph.port_type(graph.operand_type(block, spec[2])) if card.compact and spec[1] == XREBlueprintGraph.VALUE and wired.has(index) else -1
+			var text := _add_port(card, spec, index, true, row, shown)
 			var key: String = spec[2] if spec.size() > 2 else ""
 			if key == "target" and XREBlueprintTokens.adapter(_target_mode) and block["kind"] != "signal":
 				if not wired.has(index): _add_adapter(card, block, _row_point(card, row, true))
@@ -1307,7 +1429,7 @@ func _add_member(card: Card, after: Label3D, key: String, member: String, block:
 	var scale := 0.72
 	var width := float(pill.get_meta(&"width")) * scale
 	var start := after.position.x + text_width(after.text, 18) + 0.012
-	width = minf(width, CARD_WIDTH * 0.5 - 0.012 - start)
+	width = minf(width, card.width * 0.5 - 0.012 - start)
 	pill.scale = Vector3(minf(scale, width / float(pill.get_meta(&"width"))), scale, scale)
 	pill.position = Vector3(start + width * 0.5, after.position.y, card.face + 0.002)
 	card.node.add_child(pill)
@@ -1405,7 +1527,7 @@ func _add_token(card: Card, key: String, value: Variant, port: int, row: int, af
 	elif occupied:
 		center = Vector3(after.position.x + text_width(after.text, 18) + 0.008 + width * 0.5, point.y, card.face + PUCK_DEPTH * 0.5 + 0.001)
 	else:
-		center = Vector3(CARD_WIDTH * 0.5 - 0.016 - width * 0.5, point.y, card.face + PUCK_DEPTH * 0.5 + 0.001)
+		center = Vector3(card.width * 0.5 - 0.016 - width * 0.5, point.y, card.face + PUCK_DEPTH * 0.5 + 0.001)
 	var token: Node3D
 	if empty:
 		# Its token taken out (D-054): nothing is drawn (D-058), but the socket
@@ -1456,12 +1578,15 @@ static func make_token(value: Variant, key: String, width: float, plug: bool, sq
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text.position = Vector3(left, 0, front + 0.0003)
 	text.modulate = Color(1, 1, 1, alpha)
+	# Sorted after the face it lies on: from some angles the face's center came nearer and covered it.
+	text.sorting_offset = TOKEN_SORTING
 	token.add_child(text)
 	if value is Color:
 		var swatch := QuadMesh.new()
 		swatch.size = Vector2(0.012, 0.012)
 		var chip := XRERig.create_vr_mesh(swatch, _token_material(value as Color))
 		chip.position = Vector3(left - width * 0.5 + height * 0.5 + 0.004, 0, front + 0.0002)
+		chip.sorting_offset = TOKEN_SORTING
 		token.add_child(chip)
 		text.position.x = left + 0.006
 	token.set_meta(&"text", text)
@@ -1568,7 +1693,7 @@ func _build_shelf(graph: XREBlueprintGraph) -> void:
 	var left := INF
 	var low := INF
 	for card: Card in _cards:
-		left = minf(left, card.node.position.x - CARD_WIDTH * 0.5)
+		left = minf(left, card.node.position.x - card.width * 0.5)
 		low = minf(low, card.node.position.y - card.height * 0.5)
 	if is_inf(left):
 		left = -0.2

@@ -7,7 +7,8 @@ extends XREPanelSurface
 ## point, a comma for vectors; π, e, + − × /, ^, √ and brackets write
 ## expressions such as 3π, π/2 or 2√(1+π) (D-062, D-063), which
 ## [method XREBlueprintTokens.parse_number] reads. It has no letters: a number
-## is typed only as a number (D-063).
+## is typed only as a number (D-063). The keypad is a smaller board than the
+## letters', its keys about as big as theirs (D-066).
 
 signal applied(text: String)
 signal hover_feedback(hand: XREHand)
@@ -22,6 +23,12 @@ const KEY_RELEASE_THRESHOLD := 0.55
 const KEY_HIT_MARGIN := 3.0
 ## The keypad's keys, row by row; "⌫" and "Done" act, the rest type themselves ("−" a minus).
 const KEYPAD: Array[String] = ["7", "8", "9", "(", ")", "⌫", "4", "5", "6", "×", "/", "√", "1", "2", "3", "+", "−", "^", "0", ".", ",", "π", "e", "Done"]
+## The board in interface pixels, each [constant PIXEL_SIZE] meters: the
+## letters', and the keypad's, six keys of [constant KEYPAD_KEY] across.
+const LETTERS_SIZE := Vector2(900, 440)
+const KEYPAD_SIZE := Vector2(460, 344)
+const KEYPAD_KEY := Vector2(66, 60)
+const PIXEL_SIZE := 0.0008
 
 var value: LineEdit
 var _keys: Array[Button] = []
@@ -43,7 +50,7 @@ var _comma: Button
 
 
 func _init(theme: Theme = null) -> void:
-	super(Vector2(900, 440), 0.0008, 1.5, theme)
+	super(LETTERS_SIZE, PIXEL_SIZE, 1.5, theme)
 	name = "VirtualKeyboard"
 	_normal_style = _key_style(Color("2d3b4c"))
 	_hover_style = _key_style(Color("456e91"))
@@ -89,7 +96,7 @@ func _init(theme: Theme = null) -> void:
 	_keypad = GridContainer.new()
 	_keypad.columns = 6
 	_keypad.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_keypad.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_keypad.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_keypad.add_theme_constant_override(&"h_separation", 8)
 	_keypad.add_theme_constant_override(&"v_separation", 8)
 	_keypad.visible = false
@@ -100,8 +107,10 @@ func _init(theme: Theme = null) -> void:
 			"Done": _apply,
 			"−": func() -> void: value.insert_text_at_caret("-"),
 		}.get(text, Callable())
-		var key := _add_key(_keypad, text, action, 2.3)
-		key.add_theme_font_size_override(&"font_size", 30)
+		var key := _add_key(_keypad, text, action, 1.0)
+		key.custom_minimum_size = KEYPAD_KEY
+		key.size_flags_vertical = Control.SIZE_FILL
+		key.add_theme_font_size_override(&"font_size", 20 if text == "Done" else 26)
 		if not action.is_valid(): key.pressed.connect(_insert.bind(key))
 		if text == ",": _comma = key
 	value.text_submitted.connect(func(_text: String) -> void: _apply())
@@ -116,6 +125,7 @@ func _init(theme: Theme = null) -> void:
 
 ## Opens without changing the edited field until Done is pressed.
 func open_text(text: String) -> void:
+	if not size_px.is_equal_approx(LETTERS_SIZE): resize(LETTERS_SIZE, PIXEL_SIZE)
 	value.text = text
 	value.caret_column = text.length()
 	_plane = 0
@@ -128,6 +138,7 @@ func open_text(text: String) -> void:
 ## [param components] is more than one (a vector), until Done is pressed.
 func open_number(text: String, components: int = 1) -> void:
 	open_text(text)
+	resize(KEYPAD_SIZE, PIXEL_SIZE)
 	_letters.visible = false
 	_keypad.visible = true
 	_comma.disabled = components < 2

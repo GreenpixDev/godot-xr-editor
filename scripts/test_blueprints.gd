@@ -99,6 +99,7 @@ func _run() -> void:
 	await _test_calls()
 	_test_insert_block()
 	_test_actions()
+	_test_operators()
 	print("test_blueprints: %d of %d checks failed" % [_failures, _checks])
 	quit(1 if _failures > 0 else 0)
 
@@ -918,6 +919,102 @@ func _test_insert_block() -> void:
 	doc.undo()
 	_check(doc.graph.nodes.size() == 2 and doc.graph.edges.size() == 1, "the block and its wire are one undo step")
 	_check(doc.insert_block(XREBlueprintGraph.make_node(0, "print", Vector2.ZERO), Vector2.ZERO, {"from": 1, "from_port": 0}) == -1 and not doc.last_error.is_empty(), "an occupied execution output refuses another wire")
+
+
+func _operator(graph: XREBlueprintGraph, op: String, params: Dictionary = {}) -> int:
+	var id := graph.nodes.size() + 1
+	var block := XREBlueprintGraph.make_operator(id, op, Vector2(id * 200, 80))
+	(block["params"] as Dictionary).merge(params, true)
+	graph.nodes.append(block)
+	return id
+
+
+## The operators (D-065): their types, a wire's type taken by the other
+## literal, the menu, the generated code and its values.
+func _test_operators() -> void:
+	var invalid := XREBlueprintOperators.INVALID
+	_check(XREBlueprintOperators.result_type("add", TYPE_INT, TYPE_INT) == TYPE_INT and XREBlueprintOperators.result_type("add", TYPE_INT, TYPE_FLOAT) == TYPE_FLOAT, "integers add to an integer, with a real to a real")
+	_check(XREBlueprintOperators.result_type("multiply", TYPE_VECTOR3, TYPE_FLOAT) == TYPE_VECTOR3 and XREBlueprintOperators.result_type("multiply", TYPE_FLOAT, TYPE_COLOR) == TYPE_COLOR and XREBlueprintOperators.result_type("subtract", TYPE_VECTOR2, TYPE_VECTOR2) == TYPE_VECTOR2, "vectors and colors scale by numbers and add to their own kind")
+	_check(XREBlueprintOperators.result_type("add", TYPE_VECTOR3, TYPE_FLOAT) == invalid and XREBlueprintOperators.result_type("divide", TYPE_FLOAT, TYPE_VECTOR2) == invalid and XREBlueprintOperators.result_type("modulo", TYPE_VECTOR3, TYPE_VECTOR3) == invalid, "a vector and a number don't add; a number isn't divided by a vector")
+	_check(XREBlueprintOperators.result_type("add", TYPE_STRING, TYPE_STRING) == TYPE_STRING and XREBlueprintOperators.result_type("subtract", TYPE_STRING, TYPE_STRING) == invalid, "texts join with +, nothing else")
+	_check(XREBlueprintOperators.result_type("less", TYPE_INT, TYPE_FLOAT) == TYPE_BOOL and XREBlueprintOperators.result_type("less", TYPE_STRING, TYPE_INT) == invalid and XREBlueprintOperators.result_type("and", TYPE_BOOL, TYPE_BOOL) == TYPE_BOOL, "order compares numbers, logic takes booleans")
+	_check(XREBlueprintOperators.result_type("add", TYPE_NIL, TYPE_INT) == TYPE_NIL, "a value unknown before the game gives an unknown result")
+
+	var graph := XREBlueprintGraph.new()
+	var add := _operator(graph, "add")
+	var negation := _operator(graph, "not")
+	var less := _operator(graph, "less")
+	var inputs := graph.ports(graph.find_node(add), true)
+	_check(inputs.size() == 2 and inputs[0][1] == graph.VALUE and graph.ports(graph.find_node(add), false)[0][1] == graph.NUMBER, "Add takes any values; 0.0 + 0.0 gives a number")
+	_check(graph.ports(graph.find_node(negation), true).size() == 1 and graph.ports(graph.find_node(negation), true)[0][1] == graph.BOOLEAN and not (graph.find_node(negation)["params"] as Dictionary).has("b"), "NOT has one boolean input and no B")
+	_check(graph.ports(graph.find_node(less), true)[0][1] == graph.NUMBER and graph.ports(graph.find_node(less), false)[0][1] == graph.BOOLEAN, "Less compares numbers to a boolean")
+	_check(graph.validate().is_empty(), "operators validate: %s" % graph.validate())
+	_check(XREBlueprintGraph.title(graph.find_node(add)) == "Add" and XREBlueprintGraph.symbol(graph.find_node(add)) == "+" and XREBlueprintGraph.symbol(XREBlueprintGraph.make_node(9, "equals", Vector2.ZERO)) == "=", "an operator is titled by its name and shows its symbol; Equal shows =")
+	graph.upgrade()
+	_check(not (graph.find_node(negation)["params"] as Dictionary).has("b"), "an upgrade gives NOT no B")
+
+	# A wire's type is taken by the other operand's literal, as Unreal's wildcard pins.
+	var doc := XREBlueprintDocument.new()
+	var sum := doc.insert_block(XREBlueprintGraph.make_operator(0, "add", Vector2.ZERO), Vector2(400, 0))
+	var count := doc.insert_block(XREBlueprintGraph.make_node(0, "value", Vector2.ZERO), Vector2(0, 0))
+	doc.set_parameter(count, "value", 3)
+	doc.set_parameter(sum, "b", 1.0)
+	_check(doc.connect_blocks(count, 0, sum, 0), "an integer wires into Add")
+	_check(doc.graph.find_node(sum)["params"]["b"] is int and int(doc.graph.find_node(sum)["params"]["b"]) == 1 and doc.graph.ports(doc.graph.find_node(sum), false)[0][1] == XREBlueprintGraph.INTEGER, "B becomes the integer 1: the sum is an integer")
+	var scale := doc.insert_block(XREBlueprintGraph.make_operator(0, "multiply", Vector2.ZERO), Vector2(400, 200))
+	var direction := doc.insert_block(XREBlueprintGraph.make_node(0, "value", Vector2.ZERO), Vector2(0, 200))
+	doc.set_parameter(direction, "value", Vector3(1, 2, 3))
+	doc.connect_blocks(direction, 0, scale, 0)
+	_check(doc.graph.find_node(scale)["params"]["b"] is float and doc.graph.ports(doc.graph.find_node(scale), false)[0][1] == XREBlueprintGraph.VECTOR3, "a number stays by the vector it multiplies")
+	var offset := doc.insert_block(XREBlueprintGraph.make_operator(0, "add", Vector2.ZERO), Vector2(400, 400))
+	doc.connect_blocks(direction, 0, offset, 1)
+	_check(doc.graph.find_node(offset)["params"]["a"] == Vector3.ZERO and doc.graph.ports(doc.graph.find_node(offset), false)[0][1] == XREBlueprintGraph.VECTOR3, "a vector added: A becomes a zero vector")
+	doc.undo()
+	_check(doc.graph.find_node(offset)["params"]["a"] is float, "undo puts the literal back with the wire")
+
+	# Menu: Math, Comparison with Equal first, Logic.
+	var sections := XREBlueprintActions.new().sections({"chip": XREBlueprintActions.NATIVE, "graph": doc.graph})
+	var titles: Array[String] = []
+	for section: Dictionary in sections: titles.append(section["title"])
+	var comparison: Array = sections[titles.find("Comparison")]["actions"] if titles.has("Comparison") else []
+	_check(titles.has("Math") and titles.has("Logic") and not comparison.is_empty() and comparison[0]["id"] == "native:equals", "the native blocks have Math, Comparison with Equal first, and Logic: %s" % [titles])
+	var found := XREBlueprintActions.flatten(XREBlueprintActions.new().sections({"chip": XREBlueprintActions.ALL, "graph": doc.graph, "query": "remainder"}))
+	_check(found.size() == 1 and found[0]["id"] == "operator:modulo", "an operator is found by its search words")
+
+	# Generated code computes them; a value that doesn't fit is an error, not a crash.
+	graph = XREBlueprintGraph.new()
+	var seven := _block(graph, "value", {"value": 7})
+	var remainder := _operator(graph, "modulo", {"b": 3})
+	_wire(graph, seven, remainder)
+	var quotient := _operator(graph, "divide", {"a": 7.5, "b": 2.5})
+	var scaled := _operator(graph, "multiply", {"a": Vector3(1, 2, 3), "b": 2.0})
+	var ordered := _operator(graph, "greater_equal", {"a": 2, "b": 2.5})
+	var both := _operator(graph, "and", {"a": true, "b": true})
+	var inverse := _operator(graph, "not", {"a": true})
+	var differs := _operator(graph, "not_equal", {"a": 1, "b": 1.0})
+	var joined := _operator(graph, "add", {"a": "door ", "b": "open"})
+	var negative := _operator(graph, "negate", {"a": Vector2(1, -2)})
+	var real := _operator(graph, "modulo", {"a": 7.5, "b": 2.0})
+	var any := _block(graph, "get_variable", {"variable": "anything"})
+	graph.variables.append({"name": "anything", "value": 0})
+	var risky := _operator(graph, "divide", {"a": 1})
+	_wire(graph, any, risky, 0, 1)
+	var instance := Node.new()
+	instance.set_script(_script(graph))
+	var problems: Array[String] = []
+	instance.connect(&"blueprint_error", func(_id: int, message: String) -> void: problems.append(message))
+	_check(instance.call("_bp_value%d" % remainder) == 1, "7 % 3 is 1")
+	_check(is_equal_approx(float(instance.call("_bp_value%d" % quotient)), 3.0) and instance.call("_bp_value%d" % scaled) == Vector3(2, 4, 6), "7.5 ÷ 2.5 is 3; (1, 2, 3) × 2 is (2, 4, 6)")
+	_check(instance.call("_bp_value%d" % ordered) == false and instance.call("_bp_value%d" % both) == true and instance.call("_bp_value%d" % inverse) == false, "2 ≥ 2.5 is false; true AND true; NOT true")
+	_check(instance.call("_bp_value%d" % differs) == false and instance.call("_bp_value%d" % joined) == "door open", "1 ≠ 1.0 is false: both are numbers; texts join")
+	_check(instance.call("_bp_value%d" % negative) == Vector2(-1, 2) and is_equal_approx(float(instance.call("_bp_value%d" % real)), 1.5), "negation; a real remainder")
+	_check(instance.call("_bp_value%d" % risky) == null and problems.has("Division by zero."), "an integer division by a zero that came is reported: %s" % [problems])
+	instance.free()
+	graph = XREBlueprintGraph.new()
+	_operator(graph, "divide", {"a": 1, "b": 0})
+	_operator(graph, "add", {"a": Vector3.ONE, "b": "text"})
+	var errors := "\n".join(XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray)
+	_check(errors.contains("division by zero") and errors.contains("Add doesn't take Vector3 and String"), "the build reports a division by a literal 0 and operands an operator can't take: %s" % errors)
 
 
 func _test_actions() -> void:

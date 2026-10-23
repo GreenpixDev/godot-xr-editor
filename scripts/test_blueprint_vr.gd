@@ -24,7 +24,7 @@ var _saved_shape := XREFeatureSettings.FLAT
 ## The same for the parameter settings (D-052), which a headset session leaves as it set them.
 var _saved_parameters: Dictionary[StringName, StringName] = {}
 const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT,
-		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS]
+		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE]
 
 
 func _init(document: XREDocument) -> void:
@@ -278,6 +278,11 @@ func _run() -> void:
 	await _test_links_and_focus()
 	await _test_number_inputs()
 	await _test_d063()
+	await _test_d064()
+	await _test_d065()
+	await _test_d066()
+	await _test_d068()
+	await _test_d069()
 	_check(_service.blueprint.operation_source == &"desktop_graph", "VR command source scope is restored")
 	_service.parameters.call("_set_parameter", print_id, "value", "VR test")
 	await _frames()
@@ -287,8 +292,14 @@ func _run() -> void:
 	var pinned_center := _service.canvas.get_graph_center()
 	var pinned_cards: Dictionary[int, Vector3] = {}
 	for card: XREBlueprintCanvas.Card in _service.canvas.get("_cards") as Array: pinned_cards[card.id] = card.node.global_position
+	# A pipette taken in the Color window goes back with the graph (D-065).
+	_service.call("_open_color", print_id, "value", "", Color.RED)
+	_service.color_panel.get_pipette_button().toggled.emit(true)
+	var pipette_taken := not _rig.right_controller.is_model_shown()
 	_service.close_graph()
 	_check(not _service.is_open(), "Back to scene closes only spatial view")
+	await _frames(2)
+	_check(pipette_taken and _rig.right_controller.is_model_shown() and _service.get("_pipette_hand") == null and _panels.find_window(XREBlueprintColorTab) == null, "a pipette in the hand goes back with the graph, the Color window closed")
 	_check(_host.get_script() != null and FileAccess.file_exists(path), "closing retains behavior and source")
 	var saved := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as XREBlueprintGraph
 	_check(saved.find_node(print_id)["params"]["value"] == "VR test", "closing persists the draft")
@@ -1464,7 +1475,7 @@ func _aim_from(point: Vector3, front: Vector3) -> void:
 
 
 ## D-052 after the first headset check: tokens dragged by the trigger, the
-## dial, the ring of hues and the arrows of a vector at the token, scrolled
+## dial, the Color window (D-064) and the arrows of a vector, scrolled
 ## petals, a member's petal on its stem, a box's trash lit per hand.
 func _test_token_input() -> void:
 	var features := _document.features
@@ -1527,26 +1538,29 @@ func _test_token_input() -> void:
 	await _frames()
 	front = _card(equal).node.global_basis.z.normalized()
 	await _click_from(_service.canvas.token_transform(equal, "a").origin, front)
-	_check(editor.mode == XREBlueprintTokenEditor.RING, "a click on a color token opens the ring of hues around it")
-	var hue_point := editor.global_transform * (Vector3(cos(TAU / 3.0), sin(TAU / 3.0), 0.0) * XREBlueprintTokenEditor.RING_RADIUS)
-	await _click_from(hue_point, editor.global_basis.z.normalized())
-	var color := graph.find_node(equal)["params"]["a"] as Color
-	_check(absf(color.h - 1.0 / 3.0) < 0.05, "the ray picks a hue on the ring: %s" % color)
-	await _click(Vector3(5, 4, -2))
-	_check(not editor.is_open(), "the trigger elsewhere closes the ring")
+	await _frames(3)
+	_check(_panels.find_window(XREBlueprintColorTab) != null and _service.color_panel.get_picker().is_visible_in_tree() and editor.mode != XREBlueprintTokenEditor.GLOBE, "a click on a color token opens the Color window with the 2D picker (D-064)")
+	_service.color_panel.get_picker().color_changed.emit(Color.GREEN)
+	await _frames()
+	var color := _edited() as Color
+	_check(color.is_equal_approx(Color.GREEN) and graph.find_node(equal)["params"]["a"] == Color.BLUE, "the picker shows its color on the token; the graph keeps it until Done")
+	_service.color_panel.get_done_button().pressed.emit()
+	await _frames(3)
+	_check((graph.find_node(equal)["params"]["a"] as Color).is_equal_approx(Color.GREEN) and _panels.find_window(XREBlueprintColorTab) == null, "Done keeps the color and closes the window")
 	await _click_from(_service.canvas.token_transform(equal, "b").origin, front)
 	_check(editor.mode == XREBlueprintTokenEditor.ARROWS, "a click on a vector token opens its arrows")
 	var arrow := editor.global_position + editor.axis_direction(0) * float((editor.get("_lengths") as Array)[0]) * 0.6
+	var pull := editor.get_arrow_scale() * 2.5
 	_aim_from(arrow, Vector3.BACK)
 	await _frames()
 	_right.set_input(&"trigger", 1.0)
 	await _frames()
-	_aim_from(arrow + editor.axis_direction(0) * 0.1, Vector3.BACK)
+	_aim_from(arrow + editor.axis_direction(0) * pull, Vector3.BACK)
 	await _frames()
 	_right.set_input(&"trigger", 0.0)
 	await _frames()
 	var vector := _edited() as Vector3
-	_check(is_equal_approx(vector.x, 3.5) and is_equal_approx(vector.y, 2.0), "pulling X 10 cm at the scale of (1, 2, 3) adds 2.5 to X only: %s" % vector)
+	_check(is_equal_approx(vector.x, 3.5) and is_equal_approx(vector.y, 2.0), "pulling X 2.5 units long at the scale of (1, 2, 3) adds 2.5 to X only: %s" % vector)
 	_check(editor.global_position.distance_to(_service.canvas.token_transform(equal, "b").origin) > 0.1, "the arrows stand in front of the card, not in it")
 	_check(is_equal_approx(XREBlueprintTokenEditor.pulled(0.08, 0.0), 0.0) and is_equal_approx(XREBlueprintTokenEditor.pulled(0.9, 0.02), 1.0), "a pulled axis stops at whole numbers")
 	await _click_from(editor.global_position + editor.axis_direction(1) * float((editor.get("_lengths") as Array)[1]) * 0.6, Vector3.BACK)
@@ -1930,20 +1944,26 @@ func _test_vector_widget() -> void:
 	_check((editor.global_position - window.global_position).dot(face) > 0.0 and (editor.global_position - window.global_position).length() < 0.3, "the arrows stand in front of the window")
 	_check(_service.is_focused() and (_service.get("_focus_dimmer") as Node3D).visible and window.is_on_top(), "all else is dimmed, the window drawn over it")
 	_check(_service.vector_panel.components_text() == "X 0.5    Y 0.5    Z 0", "the window shows the components: %s" % _service.vector_panel.components_text())
+	var head := _rig.camera.global_position
+	_check(window.global_position.distance_to(head) <= XREBlueprints.NEAR_DISTANCE + 0.01 and window.global_position.y < head.y - 0.05, "the Vector window opens within a seated reach, below the eyes (D-064): %.2f m" % window.global_position.distance_to(head))
+	_check(window.size_m.x < 0.36 and window.size_m.y < 0.4, "and is small: %s" % window.size_m)
+	_check(window.global_basis.z.normalized().dot((head - window.global_position).normalized()) > 0.999, "tilted to face the head")
 	var lengths := editor.get("_lengths") as Array
 	var axes := editor.get("_axes") as Array
-	_check(is_equal_approx(float(lengths[0]), 0.06) and is_equal_approx(float(lengths[1]), 0.06) and is_equal_approx(float(lengths[3]), Vector2(0.06, 0.06).length()), "the arrows are drawn to one scale, the white one their sum")
+	# Meters per unit: the largest component is under 1, so a unit is ARROW_LENGTH long.
+	var unit := XREBlueprintTokenEditor.ARROW_LENGTH
+	_check(is_equal_approx(float(lengths[0]), 0.5 * unit) and is_equal_approx(float(lengths[1]), 0.5 * unit) and is_equal_approx(float(lengths[3]), Vector2(0.5, 0.5).length() * unit), "the arrows are drawn to one scale, the white one their sum")
 
 	# An axis pulled: the white arrow goes with it.
-	var on_y := editor.global_position + editor.axis_direction(1) * 0.03
+	var on_y := editor.global_position + editor.axis_direction(1) * 0.25 * unit
 	_aim_from(on_y, face)
 	await _frames()
 	_check((editor.get("_arrows")[1] as Node3D).scale.x > 1.1, "the arrow under the ray is lit")
 	_right.set_input(&"trigger", 1.0)
 	await _frames()
-	_aim_from(on_y + editor.axis_direction(1) * 0.06, face)
+	_aim_from(on_y + editor.axis_direction(1) * 0.5 * unit, face)
 	await _frames()
-	_check(is_equal_approx(float(lengths[1]), 0.12) and (axes[3] as Vector3).is_equal_approx((editor.axis_direction(0) * 0.06 + editor.axis_direction(1) * 0.12).normalized()) and is_equal_approx(float(lengths[3]), Vector2(0.06, 0.12).length()), "pulled, Y is longer and the white arrow follows it")
+	_check(is_equal_approx(float(lengths[1]), unit) and (axes[3] as Vector3).is_equal_approx((editor.axis_direction(0) * 0.5 + editor.axis_direction(1)).normalized()) and is_equal_approx(float(lengths[3]), Vector2(0.5, 1.0).length() * unit), "pulled, Y is longer and the white arrow follows it")
 	_right.set_input(&"trigger", 0.0)
 	await _frames(4)
 	var value: Variant = _edited()
@@ -1956,13 +1976,13 @@ func _test_vector_widget() -> void:
 	await _frames()
 	_right.set_input(&"trigger", 1.0)
 	await _frames()
-	_aim_from(tip + editor.axis_direction(0) * 0.024, face)
+	_aim_from(tip + editor.axis_direction(0) * 0.2 * unit, face)
 	await _frames()
-	_check(is_equal_approx(float(lengths[0]), 0.084) and is_equal_approx(float(lengths[1]), 0.12), "moved, the white arrow takes the axis arrows with it")
+	_check(is_equal_approx(float(lengths[0]), 0.7 * unit) and is_equal_approx(float(lengths[1]), unit), "moved, the white arrow takes the axis arrows with it")
 	_right.set_input(&"trigger", 0.0)
 	await _frames(4)
 	value = _edited()
-	_check(value is Vector3 and (value as Vector3).is_equal_approx(Vector3(0.7, 1.0, 0.0)), "the white arrow moved 2.4 cm adds 0.2 to X: %s" % value)
+	_check(value is Vector3 and (value as Vector3).is_equal_approx(Vector3(0.7, 1.0, 0.0)), "the white arrow moved 0.2 units along X adds 0.2 to X: %s" % value)
 
 	# Past its end the white arrow speeds on, the scale shrinking along a grid.
 	tip = editor.global_position + (axes[3] as Vector3) * float(lengths[3]) * 0.95
@@ -2385,7 +2405,7 @@ func _test_d063() -> void:
 	var head := _rig.camera.global_position
 	_check(keypad.is_shown() and keypad.global_position.distance_to(head) >= XREBlueprints.KEYBOARD_NEAREST - 0.001, "the keypad of an axis is clear of the head: %.2f m" % keypad.global_position.distance_to(head))
 	if window != null:
-		_check(absf(keypad.global_position.distance_to(head) - window.global_position.distance_to(head)) < 0.25 and keypad.global_position.y < window.global_position.y, "below the window, about as far as it")
+		_check(absf(keypad.global_position.distance_to(head) - window.global_position.distance_to(head)) < 0.06 and keypad.global_position.y < window.global_position.y, "low on the window, about as far as it (D-067): %.2f m, the window %.2f m" % [keypad.global_position.distance_to(head), window.global_position.distance_to(head)])
 	keypad.close()
 	_service.set("_token_edit", {})
 	_service.call("_end_vector", false)
@@ -2494,3 +2514,666 @@ func _click_from(point: Vector3, front: Vector3) -> void:
 	await _frames()
 	_right.set_input(&"trigger", 0.0)
 	await _frames()
+
+
+## D-064: the number line of a non-negative number from its least value, the
+## Vector window near the head, the menu's sections as dimmer buttons, and the
+## Color window: the globe of colors in 3D, R, G, B and hex typed, the
+## pipette, and the 2D picker's hex code typed on the keyboard.
+func _test_d064() -> void:
+	var features := _document.features
+	var saved_values := features.get_value(XREFeatureSettings.VALUE_INPUT)
+	features.set_value(XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.PUCKS)
+	var history := _service.blueprint.history.get_version()
+	var graph := _service.blueprint.graph
+	var editor := _service.get("_token_editor") as XREBlueprintTokenEditor
+	var keypad := _service.get("_keyboard") as XREVirtualKeyboard
+
+	# A line that may not go below zero begins there, as long as ever.
+	editor.open_dial(Transform3D.IDENTITY, 0.0, 0.0)
+	_check(is_zero_approx(float(editor.get("_line_left"))), "a Delay of 0 s: its number line begins at the token")
+	var below := false
+	for tick: MeshInstance3D in editor.get("_ticks") as Array: below = below or (tick.visible and tick.position.x < -0.0001)
+	_check(not below, "no tick below zero")
+	_check(is_zero_approx(float(editor.line_to(-0.05, 0.016))), "the ray left of it stays at 0")
+	_check(is_equal_approx(float(editor.line_to(0.2, 0.016)), 1.7), "20 cm right is 1.7 s, still on the line: %s" % editor.get_line_value())
+	editor.open_dial(Transform3D.IDENTITY, 0.5, 0.0)
+	_check(is_equal_approx(float(editor.get("_line_left")), -0.06), "at 0.5 s it begins 6 cm left, at 0")
+	editor.open_dial(Transform3D.IDENTITY, 0.0)
+	_check(is_equal_approx(float(editor.get("_line_left")), -XREBlueprintTokenEditor.LINE_HALF), "a number with no bound is centred on its token as before")
+	editor.close()
+
+	# The menu's sections: buttons, a dimmer gray than the chips.
+	_service.open_block_menu()
+	await _frames(3)
+	var menu := _service.block_menu
+	var subs := menu.get_node("Sections").get_children()
+	var chip := menu.get_node("Chips").get_child(0) as Button
+	var section: Button = null
+	if subs.size() > 1: section = subs[subs.size() - 1] as Button
+	var chip_style := chip.get_theme_stylebox(&"normal") as StyleBoxFlat
+	var section_style: StyleBoxFlat = null
+	if section != null: section_style = section.get_theme_stylebox(&"normal") as StyleBoxFlat
+	_check(section != null and not section.flat and section_style != null and chip_style != null and section_style.bg_color.get_luminance() < chip_style.bg_color.get_luminance(), "the menu's sections are buttons, a dimmer gray than the chips")
+	_service.close_block_palette()
+	await _frames()
+
+	# In 3D a color opens the globe in front of the Color window, near the head.
+	features.set_value(XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.GLOBE)
+	_service.add_block("equals")
+	await _frames()
+	var equal: int = graph.nodes.back()["id"]
+	_service.call("_set_token", equal, "a", Color.BLUE, "Set Token")
+	await _frames(4)
+	var token := _service.canvas.token_transform(equal, "a").origin
+	var front := _card(equal).node.global_basis.z.normalized()
+	await _click_from(token, front)
+	await _frames(3)
+	var window := _panels.find_window(XREBlueprintColorTab)
+	_check(window != null and editor.mode == XREBlueprintTokenEditor.GLOBE and not _service.color_panel.get_picker().is_visible_in_tree(), "in 3D a color token opens the Color window with the globe of colors")
+	if window == null or editor.mode != XREBlueprintTokenEditor.GLOBE:
+		_service.call("_close_inputs")
+		features.set_value(XREFeatureSettings.VALUE_INPUT, saved_values)
+		while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+		return
+	var head := _rig.camera.global_position
+	_check(window.global_position.distance_to(head) <= XREBlueprints.NEAR_DISTANCE + 0.01 and window.global_position.y < head.y - 0.05, "near the head, below the eyes: %.2f m" % window.global_position.distance_to(head))
+	var face := window.global_basis.z.normalized()
+	_check((editor.global_position - window.global_position).dot(face) > 0.0 and (editor.global_position - window.global_position).length() < 0.25, "the globe hangs in front of the window")
+	_check(_service.is_focused() and window.is_on_top() and (_service.get("_focus_dimmer") as Node3D).visible, "all else is dimmed, the window drawn over it")
+
+	var opened := editor.get_globe_turn()
+	_check(absf(wrapf(opened.x + TAU * 2.0 / 3.0, -PI, PI)) < 0.01 and absf(opened.y) < 0.01, "it opens turned so that blue faces the user: %s" % opened)
+	var toward := (head - editor.global_position).normalized()
+	_check(editor.global_basis.z.normalized().dot(toward) > 0.999, "the globe faces the head, the window below the eyes upright")
+	# A drag across the globe turns it; the color stays.
+	var center := editor.global_position
+	var globe_front := editor.global_basis.z.normalized()
+	_aim_from(center, globe_front)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_aim_from(center + editor.global_basis.x.normalized() * 0.03, globe_front)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames(3)
+	var turn := editor.get_globe_turn()
+	_check(absf(wrapf(turn.x - opened.x, -PI, PI) - 0.03 / editor.globe_radius()) < 0.05 and absf(turn.y - opened.y) < 0.05 and (_edited() as Color).is_equal_approx(Color.BLUE), "a drag across the globe turns it, the color kept: %s" % turn)
+
+	# A click on it picks the color there: in its middle, unturned, red at half lightness.
+	editor.turn_globe(0.0, 0.0)
+	await _click_from(editor.global_position, globe_front)
+	await _frames()
+	var picked := _edited() as Color
+	_check(_near(picked, Color.RED), "a click on the globe's middle picks red: %s" % picked)
+	_check((editor.get("_mark") as Node3D).visible and graph.find_node(equal)["params"]["a"] == Color.BLUE, "its mark shows it; the graph keeps the color until Done")
+	_service.color_panel.get_saturation_slider().value = 0.5
+	await _frames()
+	picked = _edited() as Color
+	_check(_near(picked, Color(0.75, 0.25, 0.25)) and editor.globe_radius() < XREBlueprintTokenEditor.GLOBE_RADIUS, "the saturation slider grays it and shrinks the globe: %s" % picked)
+
+	# R, G, B and the hex code typed.
+	_service.color_panel.get_channel_button(1).pressed.emit()
+	await _frames()
+	_check(keypad.is_shown(), "G opens the keypad")
+	_service.call("_token_text_submitted", "128")
+	await _frames()
+	picked = _edited() as Color
+	_check(picked.g8 == 128 and absi(picked.r8 - 191) <= 1 and absi(picked.b8 - 64) <= 1, "typed, G is 128, R and B kept: %s" % picked)
+	_check(_service.color_panel.get_channel_button(1).text == "G 128", "and its button says it")
+	_service.color_panel.get_hex_button().pressed.emit()
+	await _frames()
+	_service.call("_token_text_submitted", "#00ff00")
+	await _frames()
+	_check((_edited() as Color).is_equal_approx(Color.GREEN) and _service.color_panel.get_hex_button().text == "#00ff00", "the hex code typed is the color")
+	keypad.close()
+
+	# The pipette takes an object's own color, as dimmed as the scene may look.
+	var swatch := MeshInstance3D.new()
+	swatch.name = "PipetteFixture"
+	var box := BoxMesh.new()
+	box.size = Vector3(0.4, 0.4, 0.4)
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.2, 0.6, 0.9)
+	box.material = material
+	swatch.mesh = box
+	_document.add_node(swatch, _document.get_scene_root(), XREDocument.Source.PANEL)
+	swatch.global_position = Vector3(2.5, 1.0, -2.5)
+	await _frames(3)
+	var selection := _document.get_selection()
+	var pipette := _service.get("_pipette") as XREBlueprintPipette
+	var pipette_button := _service.color_panel.get_pipette_button()
+	_check(pipette_button.text == "Pipette" and not pipette.visible, "the pipette waits on its button (D-065)")
+	pipette_button.toggled.emit(true)
+	await _frames()
+	_check(_service.get("_pipette_hand") == _rig.right_hand and pipette.visible and pipette.get_parent() == _rig.right_hand and not _rig.right_controller.is_model_shown(), "taken, the pipette is in the hand instead of its controller")
+	_check(pipette_button.button_pressed and pipette_button.text == "Put back" and pipette.get_color().is_equal_approx(Color.GREEN), "its button says Put back; the color is in its tube")
+	var surface := swatch.global_position + Vector3(0.0, 0.0, 0.2)
+	_check(XREBlueprintColorSampler.color_at(swatch, surface) == Color(0.2, 0.6, 0.9), "the pipette reads the material color of the object where the ray meets it")
+	await _click(surface)
+	await _frames(3)
+	# The dummy headless renderer has no BVH candidates: the ray meets nothing there.
+	if DisplayServer.get_name() != "headless":
+		picked = _edited() as Color
+		_check(picked.is_equal_approx(Color(0.2, 0.6, 0.9)), "the pipette takes the object's material color: %s" % picked)
+	else:
+		_service.call("_preview_color", Color(0.2, 0.6, 0.9))
+	_check(_service.get("_pipette_hand") == _rig.right_hand and _panels.find_window(XREBlueprintColorTab) != null and _document.get_selection() == selection, "the pipette stays in the hand after a click; the window stays and nothing is selected")
+	_check(pipette.get_color().is_equal_approx(Color(0.2, 0.6, 0.9)), "the tube shows the color taken")
+
+	# The graph's colors: a card's face, a color token's color.
+	var card := _card(equal)
+	await _click_from(card.node.global_position, card.node.global_basis.z.normalized())
+	_check((_edited() as Color).is_equal_approx(XREBlueprintCanvas.CARD_PALETTE[3]), "a click on a card takes its face's color: %s" % _edited())
+	await _click_from(_service.canvas.token_transform(equal, "a").origin, card.node.global_basis.z.normalized())
+	_check((_edited() as Color).is_equal_approx(Color.BLUE), "a click on a color token takes its color: %s" % _edited())
+	# Windows: any but the Color window. Their pixels are read only with a GPU.
+	var other := _panels.open_window(XRESettingsTab)
+	other.global_transform = Transform3D(Basis.IDENTITY, _rig.camera.global_position + Vector3(0.6, 0, -1.2))
+	var color_window := _panels.find_window(XREBlueprintColorTab)
+	var aim := _rig.camera.global_position
+	_service.call("_pipette_hit", aim, (other.global_position - aim).normalized())
+	_check(int(_service.get("_pipette_on")) == XREBlueprints.PIPETTE_WINDOW and _service.get("_pipette_window") == other, "the pipette's ray takes a window")
+	_service.call("_pipette_hit", aim, (color_window.global_position - aim).normalized())
+	_check(int(_service.get("_pipette_on")) != XREBlueprints.PIPETTE_WINDOW, "but not the Color window")
+	var pixel: Variant = other.color_at_pixel(other.size_px * 0.5)
+	_check(pixel is Color if DisplayServer.get_name() != "headless" else pixel == null, "a window's pixel is read back from its viewport: %s" % [pixel])
+	_panels.call("_close_window", other)
+	_service.call("_preview_color", Color(0.2, 0.6, 0.9))
+	# Off the token: under the ray it would show its hint.
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+
+	# Put back: the controller comes back.
+	pipette_button.toggled.emit(false)
+	await _frames()
+	_check(_service.get("_pipette_hand") == null and not pipette.visible and _rig.right_controller.is_model_shown() and pipette_button.text == "Pipette", "put back, the controller is in the hand again")
+	pipette_button.toggled.emit(true)
+	await _frames()
+	_check(XREBlueprintColorSampler.material_color(null) == null, "no material, no color")
+	_service.color_panel.get_done_button().pressed.emit()
+	await _frames(3)
+	_check((graph.find_node(equal)["params"]["a"] as Color).is_equal_approx(Color(0.2, 0.6, 0.9)) and not editor.is_open() and _panels.find_window(XREBlueprintColorTab) == null, "Done keeps it; the globe and the window close")
+	_check(_service.get("_pipette_hand") == null and _rig.right_controller.is_model_shown(), "and the pipette is put back")
+
+	# The × puts it back.
+	await _click_from(token, front)
+	await _frames(3)
+	_service.call("_preview_color", Color.YELLOW)
+	_service.color_panel.close_pressed.emit()
+	await _frames(3)
+	_check((graph.find_node(equal)["params"]["a"] as Color).is_equal_approx(Color(0.2, 0.6, 0.9)) and _panels.find_window(XREBlueprintColorTab) == null and not _service.is_focused(), "the × puts the color back and closes the window")
+
+	# In 2D a click on the picker's hex code types it on the keyboard.
+	features.set_value(XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.PICKER)
+	await _click_from(token, front)
+	await _frames(3)
+	_check(_panels.find_window(XREBlueprintColorTab) != null and _service.color_panel.get_picker().is_visible_in_tree() and editor.mode != XREBlueprintTokenEditor.GLOBE, "in 2D the window shows the picker")
+	var hex: LineEdit = null
+	for field: LineEdit in _line_edits(_service.color_panel.get_picker(), []):
+		if not field.get_parent() is SpinBox and Color.html_is_valid(field.text.strip_edges().trim_prefix("#")): hex = field
+	_check(hex != null, "the picker has its hex code")
+	if hex != null:
+		var press := InputEventMouseButton.new()
+		press.button_index = MOUSE_BUTTON_LEFT
+		press.pressed = true
+		hex.gui_input.emit(press)
+		await _frames(2)
+		_check(keypad.is_shown(), "a click on it opens the keyboard")
+		_service.call("_apply_keyboard", "ff0000")
+		await _frames()
+		_check(_edited() is Color and (_edited() as Color).is_equal_approx(Color.RED), "typed there, it is the color: %s" % [_edited()])
+	_service.call("_close_inputs")
+	await _frames()
+	_check(not keypad.is_shown() and (graph.find_node(equal)["params"]["a"] as Color).is_equal_approx(Color(0.2, 0.6, 0.9)), "closed, the keyboard goes and the color is as it was")
+
+	_document.remove_nodes([swatch], XREDocument.Source.PANEL)
+	features.set_value(XREFeatureSettings.VALUE_INPUT, saved_values)
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## D-065: operators drawn as in Unreal, a variable's start value a puck that
+## takes the trigger all over, the 3D Color window see-through. The pipette in
+## the hand is checked in [method _test_d064].
+func _test_d065() -> void:
+	var features := _document.features
+	var saved_values := features.get_value(XREFeatureSettings.VALUE_INPUT)
+	var saved_variables := features.get_value(XREFeatureSettings.VARIABLE_INPUT)
+	var saved_colors := features.get_value(XREFeatureSettings.COLOR_INPUT)
+	features.set_value(XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.PUCKS)
+	await _frames()
+	var history := _service.blueprint.history.get_version()
+	var graph := _service.blueprint.graph
+
+	# An operator: a small card, no title, its symbol between its inputs and its result.
+	_service.add_block("operator")
+	await _frames(3)
+	var add: int = graph.nodes.back()["id"]
+	var card := _card(add)
+	var symbol := card.node.get_node_or_null("Symbol") as Label3D if card != null else null
+	_check(card != null and card.compact and card.width < XREBlueprintCanvas.CARD_WIDTH and card.height < 0.13 and symbol != null and symbol.text == "+", "Add is a small card with + on it")
+	if card == null or symbol == null:
+		while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+		return
+	var titled := false
+	for child: Node in card.node.get_children():
+		if child is Label3D and (child as Label3D).text.begins_with("Add"): titled = true
+	_check(not titled, "with no title")
+	_check(card.inputs[0].x < symbol.position.x and symbol.position.x < card.outputs[0].x and is_zero_approx(card.outputs[0].y) and card.inputs[0].y > 0.0 and card.inputs[1].y < 0.0, "A above B on the left, the symbol between, the result in the middle on the right")
+	var token := card.node.to_local(_service.canvas.token_transform(add, "a").origin)
+	_check(token.x > card.inputs[0].x and token.x < symbol.position.x and absf(token.y - card.inputs[0].y) < 0.001, "A's token right by its port, before the symbol")
+	_check(card.trash_point.y > card.height * 0.5, "its trash stands above it")
+	# A wire's type: B's literal takes it, and so does the result.
+	_service.add_block("value")
+	await _frames(3)
+	var count: int = graph.nodes.back()["id"]
+	_service.blueprint.set_parameter(count, "value", 4)
+	_service.blueprint.connect_blocks(count, 0, add, 0)
+	await _frames(3)
+	_check(graph.find_node(add)["params"]["b"] is int and _service.canvas.port_type(add, 0, false) == XREBlueprintGraph.INTEGER, "an integer wired into A: B and the result are integers")
+	var negation := _service.blueprint.insert_block(XREBlueprintGraph.make_operator(0, "not", Vector2.ZERO), graph.find_node(add)["position"] + Vector2(0, 260))
+	await _frames(3)
+	var unary := _card(negation)
+	var word := unary.node.get_node_or_null("Symbol") as Label3D if unary != null else null
+	_check(unary != null and unary.inputs.size() == 1 and is_zero_approx(unary.inputs[0].y) and word != null and word.text == "NOT" and unary.height < card.height, "NOT: one input level with its result, a shorter card")
+	_service.add_block("equals")
+	await _frames(3)
+	var equal := _card(graph.nodes.back()["id"])
+	_check(equal != null and equal.compact and (equal.node.get_node("Symbol") as Label3D).text == "=", "Equal is an operator too: =")
+
+	# A variable's start value is a puck even with plugs, and takes the trigger all over.
+	features.set_value(XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.PLUGS)
+	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
+	_service.blueprint.set_variable("speed", 2.0)
+	await _frames(3)
+	var shelf := _service.canvas.get_shelf()
+	var start: XREBlueprintShelf.Box = null
+	for box: XREBlueprintShelf.Box in shelf.get("_boxes") as Array:
+		if box.name == "speed": start = box
+	_check(start != null and start.token != null, "the box of speed has its start value")
+	if start != null and start.token != null:
+		var body := start.token.get_child(0) as MeshInstance3D
+		var bounds := body.get_aabb()
+		_check(absf(bounds.position.x + bounds.end.x) < 0.002, "a puck, not a plug: nothing sticks out to its left")
+		var front := _service.canvas.global_basis.z.normalized()
+		var center := shelf.token_transform("speed").origin
+		var across := _service.canvas.global_basis.x.normalized() * start.token_size.x * 0.4
+		for point: Vector3 in [center, center - across, center + across]:
+			_service.canvas.intersect_ray(point + front * 0.4, -front, 5.0)
+			_check(_service.canvas.get_hit_box() and shelf.get_hit_part() == XREBlueprintShelf.TOKEN, "the ray takes it at %s" % (point - center))
+	# A float's box wired into Add's B: the wire and B in a float's color, A in an integer's, as what comes in.
+	_service.call("_wire_box_to_port", "speed", add, 1)
+	await _frames(3)
+	var numbers := XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]
+	var wires := (_service.canvas.get("_wires") as Array).filter(func(wire: XREBlueprintCanvas.Wire) -> bool: return wire.variable == "speed" and wire.to.id == add)
+	_check(wires.size() == 1 and _tint((wires[0] as XREBlueprintCanvas.Wire).normal) == numbers, "the wire from a float's box is a float's color, not any value's: %s" % [_tint((wires[0] as XREBlueprintCanvas.Wire).normal) if wires.size() == 1 else null])
+	card = _card(add)
+	_check(_tint(card.ports[1].material_override) == numbers and _tint(card.ports[0].material_override) == XREBlueprintCanvas.COLORS[XREBlueprintGraph.INTEGER], "wired, B is a float's color and A an integer's")
+	_check(card.input_types[1] == XREBlueprintGraph.VALUE, "but B still takes any wire")
+
+	# In 3D the Color window is see-through, as the Vector window; in 2D it is not.
+	for mode: StringName in [XREFeatureSettings.GLOBE, XREFeatureSettings.PICKER]:
+		features.set_value(XREFeatureSettings.COLOR_INPUT, mode)
+		await _frames()
+		_service.call("_open_color", equal.id, "a", "", Color.BLUE)
+		await _frames(3)
+		var window := _panels.find_window(XREBlueprintColorTab)
+		var alpha := window.tab.get_frame_color().a if window != null else -1.0
+		_check(alpha < 1.0 and alpha > 0.0 if mode == XREFeatureSettings.GLOBE else is_equal_approx(alpha, 1.0), "%s: the frame's alpha is %.2f" % [mode, alpha])
+		_service.call("_close_inputs")
+		await _frames(3)
+
+	features.set_value(XREFeatureSettings.VALUE_INPUT, saved_values)
+	features.set_value(XREFeatureSettings.VARIABLE_INPUT, saved_variables)
+	features.set_value(XREFeatureSettings.COLOR_INPUT, saved_colors)
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## D-066: the graph's windows stay in the world; what covers an input is
+## see-through, and the petals take the ray over it; a token takes a wire's
+## place; the keypad small, beside its window, facing the hand; arrows taken
+## by their ends, the ray ending there, fine values under 1, the vector over its arrow.
+func _test_d066() -> void:
+	var features := _document.features
+	var saved := {}
+	for key: StringName in [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.AXIS_SCALE]: saved[key] = features.get_value(key)
+	features.set_value(XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.PUCKS)
+	# The arrows speed on and go toward zero by themselves (D-069: Auto), whatever the user chose.
+	features.set_value(XREFeatureSettings.AXIS_SCALE, XREFeatureSettings.AUTO)
+	await _frames()
+	var history := _service.blueprint.history.get_version()
+	var graph := _service.blueprint.graph
+	var editor := _service.get("_token_editor") as XREBlueprintTokenEditor
+	var keypad := _service.get("_keyboard") as XREVirtualKeyboard
+
+	# The block menu stays where it opened when the sticks fly or turn the user.
+	_service.open_block_menu()
+	await _frames(3)
+	var menu := _panels.find_window(XREBlueprintPaletteTab)
+	var rig_before := _rig.global_transform
+	var menu_before := menu.global_position if menu != null else Vector3.ZERO
+	_rig.global_position += Vector3(0.6, 0.0, -0.4)
+	_rig.global_transform = XRELocomotion.turned(_rig.global_transform, _rig.camera.global_position, 0.5)
+	await _frames()
+	_check(menu != null and menu.top_level and menu.global_position.distance_to(menu_before) < 0.001, "the block menu stays in the world as the rig moves")
+	_rig.global_transform = rig_before
+	_service.close_block_palette()
+	await _frames(3)
+
+	# A token dropped on a port a wire comes into takes the wire's place.
+	_service.add_block("delay")
+	await _frames()
+	var delay: int = graph.nodes.back()["id"]
+	_service.add_block("value")
+	await _frames()
+	var source: int = graph.nodes.back()["id"]
+	_service.blueprint.set_parameter(source, "value", 5.0)
+	var port := graph.input_port(graph.find_node(delay), "seconds")
+	_service.blueprint.connect_blocks(source, 0, delay, port)
+	await _frames(3)
+	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
+	pointer.carried = Node3D.new()
+	pointer.carried_value = 2.0
+	pointer.carried_key = "seconds"
+	pointer.carried_block = -1
+	pointer.carried_box = ""
+	pointer.carried_copy = true
+	_service.call("_drop_carried", pointer, {"block": delay, "key": "seconds"})
+	await _frames(3)
+	var into := graph.edges.filter(func(edge: Dictionary) -> bool: return edge["to"] == delay and edge["to_port"] == port)
+	_check(into.is_empty() and is_equal_approx(float(graph.find_node(delay)["params"]["seconds"]), 2.0) and not graph.find_node(source).is_empty(), "a token on a wired port takes the wire's place; the wire goes, its block stays")
+	_service.blueprint.undo()
+	await _frames(3)
+	_check(graph.edges.any(func(edge: Dictionary) -> bool: return edge["to"] == delay and edge["to_port"] == port), "one undo brings the wire back")
+
+	# A wire let go in empty space opens the block menu; ended on a port instead, it closes it (D-067).
+	_service.add_block("value")
+	await _frames()
+	var feeder: int = graph.nodes.back()["id"]
+	_service.add_block("delay")
+	await _frames()
+	var waiter: int = graph.nodes.back()["id"]
+	_service.click_port(feeder, 0, false, _rig.right_hand)
+	_service.call("_open_menu_for_wire", Vector3(0.0, 0.0, 0.1))
+	await _frames(3)
+	_check(_service.is_block_palette_shown(), "the wire's block menu is open")
+	_check(_service.click_port(waiter, graph.input_port(graph.find_node(waiter), "seconds"), true, _rig.right_hand), "the wire ends on a port")
+	await _frames(3)
+	_check(not _service.is_block_palette_shown() and _panels.find_window(XREBlueprintPaletteTab) == null, "and its menu closes")
+
+	# The Vector window of (1, 2, 3); a card and a scene object between it and the head.
+	_service.add_block("set_property")
+	await _frames()
+	var setter: int = graph.nodes.back()["id"]
+	_service.blueprint.choose_target(setter, _host)
+	_service.call("_set_token", setter, "property", "position", "Set Token")
+	_service.call("_set_token", setter, "value", Vector3(1.0, 2.0, 3.0), "Set Token")
+	await _frames(3)
+	var head := _rig.camera.global_position
+	var near_pose := _service.call("_near_pose", _service.canvas.token_transform(setter, "value").origin) as Transform3D
+	var between := head.lerp(near_pose.origin, 0.6)
+	var blocker := MeshInstance3D.new()
+	var cube := BoxMesh.new()
+	cube.size = Vector3.ONE * 0.05
+	blocker.mesh = cube
+	_host.add_child(blocker)
+	blocker.global_position = between
+	_service.canvas.preview_move(delay, _service.canvas.to_local(between))
+	_service.canvas.commit_move(_service.blueprint, delay)
+	await _frames(3)
+	_service.call("_open_vector", setter, "value", "", Vector3(1.0, 2.0, 3.0))
+	await _frames(4)
+	var window := _panels.find_window(XREBlueprintVectorTab)
+	_check(window != null and window.top_level, "the Vector window stands in the world too")
+	_check(_service.canvas.is_faded(delay) and not _service.canvas.is_faded(setter), "the card between the head and the arrows is see-through; the token's own, behind, is not")
+	_check(_service.get_fade().is_faded(blocker) and is_zero_approx(blocker.transparency), "so is the scene object there, its node untouched")
+	var faded_part := false
+	for child: Node in _card(delay).node.find_children("*", "GeometryInstance3D", true, false): faded_part = faded_part or (child as GeometryInstance3D).transparency > 0.5
+	_check(faded_part, "its parts are drawn faint")
+	_service.canvas.intersect_ray(head, (between - head).normalized(), 5.0)
+	_check(_service.canvas.get_hit_id() != delay, "and the ray passes it, on to the input (D-067)")
+
+	# The vector is written over the white arrow; the arrows are taken by their ends only.
+	var numbers := editor.get("_numbers") as Array
+	_check((numbers[XREBlueprintTokenEditor.VECTOR_AXIS] as Label3D).text == "(1, 2, 3)", "the white arrow has the vector over it: %s" % (numbers[XREBlueprintTokenEditor.VECTOR_AXIS] as Label3D).text)
+	var white := (editor.get("_shafts") as Array)[XREBlueprintTokenEditor.VECTOR_AXIS] as MeshInstance3D
+	_check(_tint(white.material_override).a < 0.9 and (numbers[XREBlueprintTokenEditor.VECTOR_AXIS] as Label3D).modulate.a < 0.9 and _tint(((editor.get("_shafts") as Array)[0] as MeshInstance3D).material_override).a > 0.99, "the white arrow and its vector are a little see-through, the axis arrows not (D-067)")
+	var face := window.global_basis.z.normalized() if window != null else Vector3.BACK
+	_service.call("_preview_value_edit", Vector3(0.0, 3.0, 0.0), "")
+	await _frames()
+	var lengths := editor.get("_lengths") as Array
+	var middle := editor.global_position + editor.axis_direction(1) * float(lengths[1]) * 0.3
+	var tip := editor.tip_position(1)
+	_check(editor.pick(middle + face * 0.4, -face).is_empty(), "the middle of an arrow doesn't take it")
+	_check(int(editor.pick(tip + face * 0.4, -face).get("axis", -1)) == 1, "its end does")
+	# Pulled, the ray ends on the arrow's end.
+	var y_tip := editor.tip_position(1)
+	_aim_from(y_tip, face)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_aim_from(y_tip - editor.axis_direction(1) * 0.02, face)
+	await _frames()
+	var hand_end := _rig.right_hand.get_ray_end()
+	var pulled_tip := editor.tip_position(1)
+	_check(hand_end.distance_to(pulled_tip) < 0.015, "the ray ends on the pulled arrow's end: %.3f m off" % hand_end.distance_to(pulled_tip))
+	_right.set_input(&"trigger", 0.0)
+	await _frames(3)
+
+	# Under 1, finer: 0.1 is reached by a pull from 1, then 0.01.
+	# Ten long, then one: the arrows are drawn anew by units.
+	_service.call("_preview_value_edit", Vector3(10.0, 0.0, 0.0), "")
+	_service.call("_preview_value_edit", Vector3(1.0, 0.0, 0.0), "")
+	await _frames()
+	_check(is_equal_approx(editor.get_arrow_scale(), XREBlueprintTokenEditor.ARROW_LENGTH) and is_equal_approx(editor.get_step(), 0.1), "by units a step is 0.1")
+	# Held near its foot X goes toward zero (D-067), smaller the longer it is held, the scale growing.
+	editor.begin_pull(0)
+	var near := -XREBlueprintTokenEditor.ARROW_LENGTH + (XREBlueprintTokenEditor.ZERO_ZONE + XREBlueprintTokenEditor.NEAR_ZONE) * 0.5
+	var value: Variant = editor.pull_to(0, near, 0.0)
+	var entered := float(value[0])
+	_check(entered > 0.1 and entered < 0.3, "pulled near its foot, X is still the value there: %s" % value)
+	var seen: Array[float] = []
+	for step: int in 30:
+		value = editor.pull_to(0, near, 0.1)
+		seen.append(float(value[0]))
+	_check(seen[5] < entered and seen.min() >= XREBlueprintTokenEditor.SMALLEST - 0.0001 and seen.any(func(shown: float) -> bool: return shown <= 0.1001 and shown > 0.0101) and seen.back() > 0.0 and seen.back() < 0.001, "held there it goes 0.1, 0.01 and on, finer than 0.01 (D-071), not to 0: %s" % [seen])
+	var arrow := float((editor.get("_lengths") as Array)[0])
+	_check(editor.get_arrow_scale() > XREBlueprintTokenEditor.ARROW_LENGTH * 5.0 and absf(arrow - XREBlueprintTokenEditor.NEAR_ZONE) < 0.003, "the scale grew, the arrow stays at the zone's edge: %.3f m" % arrow)
+	value = editor.pull_to(0, -XREBlueprintTokenEditor.ARROW_LENGTH + XREBlueprintTokenEditor.ZERO_ZONE * 0.5, 0.1)
+	_check(float(value[0]) == 0.0, "at the foot it is 0")
+	value = editor.pull_to(0, -XREBlueprintTokenEditor.ARROW_LENGTH + 0.03, 0.1)
+	_check(float(value[0]) > 0.0 and float(value[0]) < 0.1, "out of the zone again, by the finer scale: %s" % value)
+	editor.end_pull()
+	_check(editor.get_step() <= 0.0101, "let go, the arrows stay as fine, a step of 0.01: %.3f" % editor.get_step())
+
+	# The keypad of a component: small, beside the window on the hand's side, facing the hand.
+	_service.vector_panel.get_component_button(0).pressed.emit()
+	await _frames()
+	_check(keypad.is_shown() and keypad.is_keypad() and keypad.size_m.x < 0.4 and keypad.size_m.y < 0.3, "the keypad is small: %s" % keypad.size_m)
+	if window != null:
+		var eye := _rig.camera.global_position
+		var top := keypad.global_transform * Vector3(0.0, keypad.size_m.y * 0.5, 0.0)
+		var window_top := window.pixel_to_global(Vector2(window.size_px.x * 0.5, 0.0))
+		_check(keypad.global_position.y < window.global_position.y and top.y < window_top.y and top.y > keypad.global_position.y, "it stands low on the window, its top within it (D-067)")
+		_check(keypad.global_basis.z.normalized().dot((eye - keypad.global_position).normalized()) > 0.999, "square to the line of sight from the eyes")
+		var down := rad_to_deg(asin(clampf((eye - keypad.global_position).normalized().y, -1.0, 1.0)))
+		_check(down < 50.0, "and not far below them: %.0f°" % down)
+	var key: Button = null
+	for button: Button in keypad.get("_keys") as Array:
+		if button.text == "7" and button.is_visible_in_tree(): key = button
+	_check(key != null and key.size.x < 80 and key.size.y < 70, "its keys about as big as the letters': %s" % (key.size if key != null else Vector2.ZERO))
+	keypad.close()
+	keypad.open_text("")
+	_check(is_equal_approx(keypad.size_m.x, XREVirtualKeyboard.LETTERS_SIZE.x * XREVirtualKeyboard.PIXEL_SIZE), "the letters have their own size back")
+	keypad.close()
+	_service.set("_token_edit", {})
+	_service.call("_end_vector", false)
+	await _frames(3)
+	_check(not _service.canvas.is_faded(delay) and not _service.get_fade().is_faded(blocker), "closed, nothing is see-through")
+	var still_faded := false
+	for child: Node in _card(delay).node.find_children("*", "GeometryInstance3D", true, false): still_faded = still_faded or (child as GeometryInstance3D).transparency > 0.5
+	_check(not still_faded, "and the card's parts have their look back")
+
+	# Petals picked in focus take the ray over a card in front of them.
+	features.set_value(XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ADAPTER)
+	await _frames(3)
+	_service.call("_open_member_petals", setter, _rig.right_hand)
+	await _frames(3)
+	var petals := _service.get("_petals") as XREBlueprintPetals
+	var shown := petals.get("_petals") as Array
+	_check(petals.is_open() and _service.is_focused() and not shown.is_empty(), "the member's petals open in focus")
+	if petals.is_open() and not shown.is_empty():
+		var petal := petals.to_global((shown[0] as XREBlueprintPetals.Petal).center)
+		var toward := (_rig.camera.global_position - petal).normalized()
+		_service.canvas.preview_move(delay, _service.canvas.to_local(petal + toward * 0.2))
+		_service.canvas.commit_move(_service.blueprint, delay)
+		await _frames(3)
+		_aim_from(petal, toward)
+		await _frames(3)
+		_check(petals.get("_hovered") == 0, "the ray lights the petal through the card before it")
+		_check(_service.canvas.is_faded(delay), "and the card is see-through")
+		# The list scrolls smoothly (D-067): by half a row the first row is half seen, and so is the next one under the page.
+		if petals.get_item_count() > XREBlueprintPetals.PAGE + 1:
+			var before := (shown[0] as XREBlueprintPetals.Petal).center.y
+			_check(petals.scroll_by(0.5) and is_equal_approx(petals.get_scroll(), 0.5), "the fan scrolls by half a row")
+			shown = petals.get("_petals") as Array
+			var rows := shown.filter(func(item: XREBlueprintPetals.Petal) -> bool: return item.row >= 0)
+			var first := rows[0] as XREBlueprintPetals.Petal
+			var under := rows.back() as XREBlueprintPetals.Petal
+			_check(is_equal_approx(first.seen, 0.5) and is_equal_approx(under.seen, 0.5) and first.center.y > before - XREBlueprintPetals.STEP * 1.0, "the first row half gone, the one under the page half come: %.2f, %.2f" % [first.seen, under.seen])
+			petals.scroll_by(0.7)
+			_check(petals.get("_first") == 1 and is_equal_approx(petals.get_scroll(), 1.2), "past a row, the next is first")
+	_service.call("_close_inputs")
+	await _frames(3)
+	blocker.queue_free()
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	for item: StringName in saved: features.set_value(item, saved[item])
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## D-068: a number's line held near its 0 tick goes toward zero, as an arrow near its foot.
+func _test_d068() -> void:
+	var editor := _service.get("_token_editor") as XREBlueprintTokenEditor
+	editor.scale_mode = XREFeatureSettings.AUTO
+	var unit := XREBlueprintTokenEditor.LINE_STEP_GAP / 0.1
+	editor.open_dial(Transform3D.IDENTITY, 0.5)
+	var zero := -0.5 * unit
+	var held := zero + (XREBlueprintTokenEditor.ZERO_ZONE + XREBlueprintTokenEditor.NEAR_ZONE) * 0.5
+	var first := float(editor.line_to(held, 0.0))
+	_check(first > 0.05 and first < 0.2, "near the 0 tick, the value is the line's there: %s" % first)
+	var seen: Array[float] = []
+	for step: int in 30: seen.append(float(editor.line_to(held, 0.1)))
+	_check(seen[5] < first and seen.min() >= XREBlueprintTokenEditor.SMALLEST - 0.0001 and seen.any(func(shown: float) -> bool: return shown < 0.0999 and shown > 0.0101) and seen.back() > 0.0 and seen.back() < 0.001, "held there it goes toward zero, finer than 0.01 (D-071), not to 0: %s" % [seen])
+	var scale := float(editor.get("_line_scale"))
+	_check(absf(-float(editor.get("_line_center")) * scale - zero) < 0.0005 and scale > unit * 5.0, "the ruler grew finer about its 0, which stayed put: %.2f m a unit" % scale)
+	var before_nudge := float(editor.get_line_value())
+	var nudged := float(editor.nudge(1))
+	_check(float(editor.get("_line_step")) <= 0.0201 and nudged > before_nudge and nudged < 0.1, "its step is fine, for the wrist and the stick too: %s → %s" % [before_nudge, nudged])
+	# The stick moved the ruler: its 0 tick is where it is now.
+	zero = -float(editor.get("_line_center")) * float(editor.get("_line_scale"))
+	_check(float(editor.line_to(zero + XREBlueprintTokenEditor.ZERO_ZONE * 0.5, 0.1)) == 0.0, "at the 0 tick it is 0")
+	_check(float(editor.line_to(zero + 0.03, 0.1)) > 0.0 and float(editor.get_line_value()) < 0.1, "away from it again, by the finer ruler: %s" % editor.get_line_value())
+	# A Delay's line begins at 0: held by its start it goes to zero too.
+	editor.open_dial(Transform3D.IDENTITY, 0.5, 0.0)
+	for step: int in 30: editor.line_to(float(editor.get("_line_left")) + 0.01, 0.1)
+	_check(float(editor.get_line_value()) > 0.0 and float(editor.get_line_value()) < 0.001, "a Delay held by its start goes toward 0 s: %s" % editor.get_line_value())
+	# A whole number has no fractions to go to.
+	editor.open_dial(Transform3D.IDENTITY, 1)
+	var integer_zero := -XREBlueprintTokenEditor.LINE_STEP_GAP
+	for step: int in 10: editor.line_to(integer_zero + 0.01, 0.1)
+	_check(editor.get_line_value() is int and is_equal_approx(float(editor.get("_line_scale")), XREBlueprintTokenEditor.LINE_STEP_GAP), "a whole number's line stays by units: %s" % editor.get_line_value())
+	editor.close()
+
+
+## D-069: Axis scale — Auto speeds on and goes toward zero; Stick scales by the stick, the value kept, and nothing speeds.
+func _test_d069() -> void:
+	# D-071: figures as fine as they are, the step written.
+	_check(XREBlueprintTokens.text(0.000025, "") == "0.000025" and XREBlueprintTokens.text(1.503, "") == "1.503" and XREBlueprintTokens.text(0.5, "") == "0.5" and XREBlueprintTokens.text(2.0, "") == "2" and XREBlueprintTokens.text(-0.0, "") == "0", "numbers are written as fine as they are: %s, %s" % [XREBlueprintTokens.text(0.000025, ""), XREBlueprintTokens.text(1.503, "")])
+	_check(XREFeatureSettings.get_values(XREFeatureSettings.AXIS_SCALE) == [XREFeatureSettings.AUTO, XREFeatureSettings.STICK] and XREFeatureSettings.get_default(XREFeatureSettings.AXIS_SCALE) == XREFeatureSettings.AUTO, "Axis scale: Auto, the default, or Stick")
+	var editor := _service.get("_token_editor") as XREBlueprintTokenEditor
+	editor.scale_mode = XREFeatureSettings.STICK
+	# The number line: past its end it slides on evenly (D-070), the stick scales it about the marker.
+	editor.open_dial(Transform3D.IDENTITY, 0.5)
+	var slid: Array[float] = []
+	for step: int in 11: slid.append(float(editor.line_to(XREBlueprintTokenEditor.LINE_HALF + 0.05, 0.1)))
+	_check(slid[10] > slid[0] + 1.0 and absf((slid[10] - slid[5]) - (slid[5] - slid[0])) < 0.25, "on Stick, past its end the line slides on evenly, not faster and faster: %s" % [slid])
+	var kept := float(editor.get_line_value())
+	var coarse_step := float(editor.get("_line_step"))
+	_check(editor.get_shown_step() == "step 0.1", "the line writes its step: %s" % editor.get_shown_step())
+	editor.zoom(1.0, 1.0)
+	_check(editor.get_shown_step() == "step " + XREBlueprintTokens.plain(float(editor.get("_line_step"))) and editor.get_shown_step() != "step 0.1", "finer, a finer step: %s" % editor.get_shown_step())
+	_check(is_equal_approx(float(editor.get_line_value()), kept) and float(editor.get("_line_step")) < coarse_step, "the stick up makes it finer, the value kept: step %s" % editor.get("_line_step"))
+	var finer := float(editor.line_to(XREBlueprintTokenEditor.LINE_HALF - 0.05, 0.1))
+	_check(finer < kept and finer > kept - 0.2, "5 cm back is now a little less: %s" % finer)
+	editor.zoom(-1.0, 3.0)
+	_check(float(editor.get("_line_step")) > coarse_step, "down, coarser: step %s" % editor.get("_line_step"))
+	editor.zoom(1.0, 10.0)
+	_check(float(editor.get("_line_step")) < 0.00001, "up and up, finer than 0.01 (D-071): step %s" % editor.get("_line_step"))
+	editor.open_dial(Transform3D.IDENTITY, 0.5)
+	editor.zoom(-1.0, 1.0)
+	var coarse_slid := 0.0
+	for step: int in 11: coarse_slid = float(editor.line_to(XREBlueprintTokenEditor.LINE_HALF + 0.05, 0.1))
+	_check(coarse_slid - 0.5 > (slid[10] - slid[0]) * 10.0, "coarser, it slides on faster: %s" % coarse_slid)
+	editor.open_dial(Transform3D.IDENTITY, 0.5)
+	var zero := -0.5 * XREBlueprintTokenEditor.LINE_STEP_GAP / 0.1
+	var scale := float(editor.get("_line_scale"))
+	for step: int in 20: editor.line_to(zero + 0.01, 0.1)
+	_check(is_equal_approx(float(editor.get("_line_scale")), scale), "held by 0, the line doesn't go toward zero on Stick")
+	# The arrows: no speeding past the end nor toward zero; the stick scales them.
+	editor.open_arrows(Transform3D.IDENTITY, 3, Vector3(1.0, 0.0, 0.0))
+	editor.begin_pull(0)
+	var near := -XREBlueprintTokenEditor.ARROW_LENGTH + 0.007
+	var values: Array[float] = []
+	for step: int in 5: values.append(float(editor.pull_to(0, near, 0.1)[0]))
+	_check(values.max() == values.min() and is_equal_approx(values[0], 0.1), "near its foot it stays, 0.1: %s" % [values])
+	var scale_before := editor.get_arrow_scale()
+	editor.zoom(1.0, 1.0)
+	_check(editor.get_arrow_scale() > scale_before * 4.0 and is_equal_approx(float(editor.pull_to(0, near, 0.1)[0]), 0.1), "the stick up makes it finer, the value kept")
+	var refined := float(editor.pull_to(0, near - 0.02, 0.1)[0])
+	_check(refined > 0.0 and refined < 0.1, "then the ray sets less than 0.1: %s" % refined)
+	# Past its longest the axis slides on (D-070): by an even share of the value, not faster and faster.
+	values.clear()
+	for step: int in 11: values.append(float(editor.pull_to(0, 0.3, 0.1)[0]))
+	var lengths := editor.get("_lengths") as Array
+	var early := values[5] - values[0]
+	var late := values[10] - values[5]
+	_check(early > 0.0 and absf(late / early - 1.0) < 0.15 and absf(float(lengths[0]) - XREBlueprintTokenEditor.ARROW_MAX) < 0.003 and editor.get_bases().x > 0.0, "past its longest its axis slides on evenly, the arrow at its longest, beginning further on (D-071): %s" % [values])
+	var base_label := (editor.get("_base_labels") as Array)[0] as Label3D
+	_check(base_label.visible and base_label.text.begins_with("from "), "its foot says where it begins: %s" % base_label.text)
+	# Finer and finer, past where the arrow would fit (D-071): it begins further on instead.
+	var held := float(editor.get_vector()[0])
+	var fine_before := editor.get_arrow_scale()
+	editor.zoom(1.0, 10.0)
+	_check(editor.get_arrow_scale() > fine_before * 1000.0 and is_equal_approx(float(editor.get_vector()[0]), held) and float(lengths[0]) <= XREBlueprintTokenEditor.ARROW_MAX + 0.001 and float(lengths[3]) <= XREBlueprintTokenEditor.VECTOR_MAX + 0.001, "the stick goes on making it finer, the value kept, the arrows within their reach: %.1f m a unit" % editor.get_arrow_scale())
+	_check(editor.get_step() < 0.00001 and editor.get_shown_step() == "step " + XREBlueprintTokens.plain(editor.get_step()), "to a step finer than 0.01, written under the arrows: %s" % editor.get_shown_step())
+	var nudged := float(editor.pull_to(0, 0.3 - 0.01, 0.1)[0])
+	_check(nudged < held and nudged > held - 0.001, "and 1 cm of the ray is now a little: %s → %s" % [held, nudged])
+	editor.zoom(-1.0, 10.0)
+	_check(editor.get_bases().x == 0.0 and not base_label.visible, "coarse again, the arrow begins at 0")
+	var left := editor.get_arrow_scale()
+	editor.end_pull()
+	_check(is_equal_approx(editor.get_arrow_scale(), left), "let go, the scale stays as the stick left it")
+	editor.close()
+	editor.scale_mode = XREFeatureSettings.AUTO
+
+
+## The color [param material] draws in: a standard material's albedo, a shader's tint.
+static func _tint(material: Material) -> Color:
+	if material is BaseMaterial3D: return (material as BaseMaterial3D).albedo_color
+	return (material as ShaderMaterial).get_shader_parameter(&"tint") if material is ShaderMaterial else Color.BLACK
+
+
+## A color near [param expected], within a step of 255.
+static func _near(color: Color, expected: Color) -> bool:
+	return absf(color.r - expected.r) < 0.004 and absf(color.g - expected.g) < 0.004 and absf(color.b - expected.b) < 0.004 and is_equal_approx(color.a, expected.a)
+
+
+## Every line edit under [param node], internal ones too, into [param found].
+func _line_edits(node: Node, found: Array[LineEdit]) -> Array[LineEdit]:
+	for child: Node in node.get_children(true):
+		if child is LineEdit: found.append(child as LineEdit)
+		_line_edits(child, found)
+	return found

@@ -19,9 +19,10 @@ func get_symbol() -> StringName:
 	return &"parameters"
 
 
-## Square enough for arrows up to [constant XREBlueprintTokenEditor.ARROW_MAX] each way.
+## Square enough for arrows up to [constant XREBlueprintTokenEditor.ARROW_MAX]
+## each way, and no larger (D-064): near the head it stays within a seated reach.
 func get_window_size() -> Vector2:
-	return Vector2(520, 560)
+	return Vector2(380, 420)
 
 
 ## No Control Bar (D-062): the window has its own ×, and a click away closes it.

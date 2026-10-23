@@ -394,6 +394,10 @@ func _refresh() -> void:
 		canvas.add_child(node)
 		var inputs := document.graph.ports(block, true)
 		var outputs := document.graph.ports(block, false)
+		if XREBlueprintGraph.is_operator(block):
+			_fill_operator(node, block, inputs, outputs)
+			node.selected = selected.has(block["id"])
+			continue
 		for slot: int in maxi(inputs.size(), outputs.size()):
 			var row := HBoxContainer.new()
 			node.add_child(row)
@@ -431,6 +435,43 @@ func _refresh() -> void:
 	if not _keep_details or _details_state != document.graph.snapshot():
 		_refresh_details()
 	_keep_details = false
+
+
+## An operator as Unreal draws one (D-065): no title, the literal of each
+## input without a wire by its port, the symbol in the middle, the result on
+## the right. Its name is its tooltip.
+func _fill_operator(node: GraphNode, block: Dictionary, inputs: Array, outputs: Array) -> void:
+	node.title = ""
+	node.tooltip_text = "%s · %d" % [XREBlueprintGraph.title(block), block["id"]]
+	node.custom_minimum_size.x = 0
+	var params: Dictionary = block["params"]
+	var wired: Dictionary[int, bool] = {}
+	for edge: Dictionary in document.graph.edges:
+		if edge["to"] == block["id"]: wired[int(edge["to_port"])] = true
+	for slot: int in inputs.size():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override(&"separation", 10)
+		node.add_child(row)
+		var key: String = inputs[slot][2]
+		var left := _label(row, _short(params[key]) if params.has(key) and not wired.has(slot) else "")
+		left.modulate = Color("adbac9")
+		left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var middle := _label(row, XREBlueprintGraph.symbol(block) if slot == 0 else "")
+		middle.add_theme_font_size_override(&"font_size", 22)
+		middle.custom_minimum_size.x = 36
+		middle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var left_type: int = inputs[slot][1]
+		var right_type: int = outputs[0][1]
+		# Wired, an input of any value is in the color of what comes in; its type still takes any wire.
+		var shown := XREBlueprintGraph.port_type(document.graph.operand_type(block, key)) if left_type == XREBlueprintGraph.VALUE and wired.has(slot) else left_type
+		node.set_slot(slot, true, left_type, PORT_COLORS[shown], slot == 0, right_type, PORT_COLORS[right_type])
+
+
+## A literal in a few characters, for an operator's input.
+static func _short(value: Variant) -> String:
+	if value is Color: return "#" + (value as Color).to_html(false)
+	if value is String: return "\"%s\"" % (value as String).left(10)
+	return str(value).left(18)
 
 
 func _summary(block: Dictionary) -> String:
@@ -483,9 +524,16 @@ func _refresh_details() -> void:
 	if block["kind"] == "call":
 		_call_details(block)
 	for key: String in (params if block["kind"] != "call" else {}):
-		if not _shows(block, key): continue
+		if not _shows(block, key) or XREBlueprintGraph.is_unused(block, key): continue
 		_label(_details, key.capitalize())
-		if key == "target":
+		if key == "op":
+			# Another operator of the same group and as many operands (D-065).
+			var op := str(params[key])
+			var same: Array[String] = []
+			for other: String in XREBlueprintOperators.OPERATORS:
+				if XREBlueprintOperators.group_of(other) == XREBlueprintOperators.group_of(op) and XREBlueprintOperators.is_unary(other) == XREBlueprintOperators.is_unary(op): same.append(other)
+			_options(block["id"], key, same, op)
+		elif key == "target":
 			_target_editor(block)
 		elif key == "policy":
 			_options(block["id"], key, ["parallel", "ignore", "restart"], params[key])
@@ -503,7 +551,7 @@ func _refresh_details() -> void:
 	if block["kind"] != "call":
 		var defaults: Dictionary = XREBlueprintGraph.BLOCKS[block["kind"]]["params"]
 		for key: String in defaults:
-			if params.has(key) or not _shows(block, key): continue
+			if params.has(key) or not _shows(block, key) or XREBlueprintGraph.is_unused(block, key): continue
 			_label(_details, key.capitalize())
 			_empty_editor(block["id"], key, defaults[key])
 	if block.has("property_type"):

@@ -5,7 +5,8 @@ extends VBoxContainer
 ## headset's Add block window alike: chips that pick what is listed — a
 ## context object, the library, @GlobalScope, the native blocks or all of
 ## them — a row under them that picks one of their sections, such as one class
-## of the object, or All (D-063), a search field, the pin a wire comes from,
+## of the object, or All (D-063), as buttons a dimmer gray than the chips
+## (D-064), a search field, the pin a wire comes from,
 ## and the actions in sections ([XREBlueprintActions]). A click on a row
 ## chooses it; a row pulled out of the list sideways is dragged, so that the
 ## view places its block where the pull ends.
@@ -26,6 +27,10 @@ const KIND_COLORS: Dictionary[String, Color] = {
 }
 const GROUPS: Array[StringName] = [XREBlueprintActions.LIBRARY, XREBlueprintActions.GLOBAL, XREBlueprintActions.NATIVE, XREBlueprintActions.ALL]
 const GROUP_TITLES: Array[String] = ["Library", "Global", "Native", "All"]
+## How much darker than a chip a section's button is (D-064): a dimmer gray, a
+## level under the chips; the picked one less so.
+const SECTION_DIM := 0.3
+const SECTION_PICKED_DIM := 0.12
 
 var actions := XREBlueprintActions.shared()
 var search: LineEdit
@@ -281,11 +286,30 @@ func _build_subs() -> void:
 		chip.toggle_mode = true
 		chip.button_group = _sub_group
 		chip.button_pressed = title == (_sub if not _sub.is_empty() else "All")
-		chip.flat = true
+		_dim(chip)
 		# Class names and section titles as the actions have them, not translated by the editor.
 		chip.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		chip.pressed.connect(choose_section.bind("" if title == "All" else title), CONNECT_DEFERRED)
 		_subs.add_child(chip)
+
+
+## Gives section button [param button] the chips' look, darker (D-064).
+func _dim(button: Button) -> void:
+	for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled"]:
+		var style := get_theme_stylebox(state, &"Button") as StyleBoxFlat
+		if style == null: continue
+		var dim := style.duplicate() as StyleBoxFlat
+		dim.bg_color = dim.bg_color.darkened(SECTION_PICKED_DIM if state in [&"pressed", &"hover_pressed"] else SECTION_DIM)
+		dim.border_color = dim.border_color.darkened(SECTION_DIM)
+		button.add_theme_stylebox_override(state, dim)
+	for color: StringName in [&"font_color", &"font_hover_color"]:
+		button.add_theme_color_override(color, get_theme_color(color, &"Button").darkened(0.15))
+
+
+func _notification(what: int) -> void:
+	# The sections' look comes from the chips' theme, which may come later than they do.
+	if what == NOTIFICATION_THEME_CHANGED and _subs != null:
+		for child: Node in _subs.get_children(): _dim(child as Button)
 
 
 func _build_chips() -> void:

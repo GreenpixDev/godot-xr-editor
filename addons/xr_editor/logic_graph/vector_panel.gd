@@ -52,17 +52,17 @@ func _init() -> void:
 	add_child(_area)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override(&"separation", 12)
+	row.add_theme_constant_override(&"separation", 6)
 	add_child(row)
 	for axis: int in 3:
 		var pair := HBoxContainer.new()
 		pair.add_theme_constant_override(&"separation", 2)
 		row.add_child(pair)
 		var component := Button.new()
-		component.custom_minimum_size = Vector2(112, 44)
+		component.custom_minimum_size = Vector2(84, 44)
 		component.focus_mode = Control.FOCUS_NONE
 		component.clip_text = true
-		component.add_theme_font_size_override(&"font_size", 22)
+		component.add_theme_font_size_override(&"font_size", 19)
 		component.add_theme_color_override(&"font_color", XREBlueprintTokenEditor.AXIS_COLORS[axis].lightened(0.3))
 		component.tooltip_text = "Type %s" % ["X", "Y", "Z"][axis]
 		component.pressed.connect(component_pressed.emit.bind(axis))
@@ -70,7 +70,7 @@ func _init() -> void:
 		_components.append(component)
 		var zero := Button.new()
 		zero.text = "0"
-		zero.custom_minimum_size = Vector2(34, 44)
+		zero.custom_minimum_size = Vector2(28, 44)
 		zero.focus_mode = Control.FOCUS_NONE
 		zero.add_theme_font_size_override(&"font_size", 16)
 		zero.add_theme_color_override(&"font_color", Color("a9b0bf"))
@@ -80,12 +80,12 @@ func _init() -> void:
 		_zeros.append(zero)
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
-	buttons.add_theme_constant_override(&"separation", 16)
+	buttons.add_theme_constant_override(&"separation", 10)
 	add_child(buttons)
 	for entry: Array in [["Zero", zero_pressed], ["Normalize", normalize_pressed], ["Done", done_pressed]]:
 		var button := Button.new()
 		button.text = entry[0]
-		button.custom_minimum_size = Vector2(140, 48)
+		button.custom_minimum_size = Vector2(104, 48)
 		button.focus_mode = Control.FOCUS_NONE
 		button.pressed.connect((entry[1] as Signal).emit)
 		buttons.add_child(button)
