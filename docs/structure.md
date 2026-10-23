@@ -30,7 +30,8 @@ addons/xr_editor/logic_graph/ пространственные карточки 
                            параметры в графе (D-052): фишки (XREBlueprintTokens, XREBlueprintTokenTray, XREBlueprintValuePanel), лепестки членов (XREBlueprintPetals), полка ящиков переменных (XREBlueprintShelf); окно Vector с 3D-стрелками (XREBlueprintVectorTab, XREBlueprintVectorPanel, D-061);
                            окно Color — 2D-пикер или глобус цветов (XREBlueprintColorTab, XREBlueprintColorPanel, D-064), пипетка — цвет материала (XREBlueprintColorSampler)
                            и её модель в руке вместо контроллера (XREBlueprintPipette, D-065);
-                           прозрачность того, что заслоняет ввод (XREBlueprintFade, D-066)
+                           прозрачность того, что заслоняет ввод (XREBlueprintFade, D-066);
+                           фокусировка на карточке или ящике под лучом — светлее, остальное темнее или прозрачное (XREBlueprintFocus, D-072)
 gdextension/               C++ (GDExtension): src/, godot-cpp/ (сабмодуль), thirdparty/openxr/
 benchmarks/                эталонные сцены (empty, xr_view_check, xr_game_check — контрольная XR-игра, xr_handoff_game — игра для замера передачи,
                            manipulation_check — ручная проверка манипуляции в шлеме, play_check — ручная проверка play-mode),

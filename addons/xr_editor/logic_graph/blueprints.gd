@@ -70,6 +70,9 @@ const MEMBER_HINT := "click: pick on the object's petals"
 ## covers, the window is: so that no card covers it or takes its ray.
 const PARAMETERS_GAP := 0.04
 const PARAMETERS_LIFT := 0.05
+## A ray gone off the graph keeps what it was on in focus this long, in
+## seconds (D-072): passing between two cards, the graph doesn't flash.
+const FOCUS_HOLD := 0.15
 
 class Pointer:
 	var hand: XREHand
@@ -159,6 +162,10 @@ class Pointer:
 	var carried_block := -1
 	var carried_box := ""
 	var carried_copy := false
+	## What this hand's ray put in focus this frame (D-072): a card, -1 for none,
+	## and a variable's box, empty for none.
+	var focus := -1
+	var focus_box := ""
 
 class Marker:
 	var host: Node
@@ -191,6 +198,8 @@ class TargetWire:
 	var lit := false
 	var normal: Material
 	var lit_material: Material
+	## How it, its petal and its stem are painted for the focus (D-072): -1 not yet.
+	var look := -1
 
 var blueprint: XREBlueprintDocument
 var canvas: XREBlueprintCanvas
@@ -267,6 +276,8 @@ var _token_editor: XREBlueprintTokenEditor
 ## through it, the graph's through the canvas; the inputs as spheres, reused.
 var _fade := XREBlueprintFade.new()
 var _focus_targets := PackedVector4Array()
+## How long what the rays were on stays in focus after they left it (D-072).
+var _focus_hold := 0.0
 ## The token the Vector or the Color window edits: [code]{"block", "key", "box", "value", "start"}[/code],
 ## and [code]"color"[/code] for a color.
 var _value_edit: Dictionary = {}
@@ -352,6 +363,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	canvas.set_port_display(document.features.get_value(XREFeatureSettings.PORT_DISPLAY))
 	canvas.set_parameter_modes(document.features.get_value(XREFeatureSettings.VALUE_INPUT), document.features.get_value(XREFeatureSettings.TARGET_INPUT),
 			document.features.get_value(XREFeatureSettings.ANIMATION_WAIT), document.features.get_value(XREFeatureSettings.VARIABLE_INPUT))
+	canvas.set_focus_modes(document.features.get_value(XREFeatureSettings.FOCUS), document.features.get_value(XREFeatureSettings.DEFOCUS))
 	_workspace.add_child(canvas)
 	_petals = XREBlueprintPetals.new()
 	add_child(_petals)
@@ -512,12 +524,15 @@ func _process(delta: float) -> void:
 		wire.hot = false
 		wire.lit = false
 	for pointer: Pointer in _pointers:
+		pointer.focus = -1
+		pointer.focus_box = ""
 		_update_pointer(pointer, delta)
 		_keyboard.poll_trigger(pointer.hand, pointer.surface == _keyboard and _keyboard.is_shown())
 	if _token_editor.is_interactive(): _token_editor.light(_editor_right if not _editor_right.is_empty() else _editor_left)
 	_place_window_widgets()
 	_update_focus()
 	_update_fade()
+	_update_graph_focus(delta)
 	_editor_right = {}
 	_editor_left = {}
 	_update_target_wires()
@@ -1435,6 +1450,8 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		return
 	if pointer.held != null:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
+		# A card carried stays in focus (D-072).
+		if pointer.held == canvas: pointer.focus = pointer.block
 		if not hand.get_has_tracking_data(): _finish_hold(pointer, false)
 		elif pointer.block >= 0 and pointer.depth_uses_grip and not _rig.has_grip_pose(hand): _finish_hold(pointer, false)
 		elif not (hand.trigger_held if pointer.by_trigger else hand.grip_held): _finish_hold(pointer, true)
@@ -1874,6 +1891,9 @@ func _feature_changed(key: StringName) -> void:
 		# The next color opens in the other mode; one open now is put back.
 		if _editing_color(): _end_color(false)
 		return
+	if key in [XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS]:
+		canvas.set_focus_modes(_document.features.get_value(XREFeatureSettings.FOCUS), _document.features.get_value(XREFeatureSettings.DEFOCUS))
+		return
 	if key in [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT, XREFeatureSettings.VARIABLE_INPUT]:
 		var features := _document.features
 		if not canvas.set_parameter_modes(features.get_value(XREFeatureSettings.VALUE_INPUT), features.get_value(XREFeatureSettings.TARGET_INPUT),
@@ -2200,8 +2220,20 @@ func _update_target_wires() -> void:
 			wire.stem.visible = wire.mesh.visible
 			wire.dot.visible = wire.mesh.visible
 		if not wire.mesh.visible: continue
-		var material: Material = wire.lit_material if wire.lit or wire.hot else wire.normal
+		# Lit or darker with its card's focus, see-through out of it, its petal and stem too (D-072).
+		var state := canvas.focus_state(wire.id)
+		var paint := canvas.focus_paint(state)
+		var material := XREBlueprintFocus.variant(wire.lit_material if wire.lit or wire.hot else wire.normal, paint)
 		if wire.mesh.material_override != material: wire.mesh.material_override = material
+		var seen := canvas.focus_seen(state)
+		var look := paint * 2 + (1 if seen < 1.0 else 0)
+		if look != wire.look:
+			wire.look = look
+			XREBlueprintFade.set_seen(wire.mesh, &"focus", seen)
+			if wire.label != null:
+				for part: Node3D in [wire.label, wire.stem, wire.dot]:
+					XREBlueprintFocus.paint(part, paint)
+					XREBlueprintFade.set_seen(part, &"focus", seen)
 		var end := wire.anchor.global_transform * wire.point
 		if wire.label != null:
 			# The wire ends at the member's petal; the petal hangs on its stem from the
@@ -2436,6 +2468,8 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	var kind := canvas.get_hit_socket_kind()
 	var key := canvas.get_hit_socket_key()
 	var right := hand == _rig.right_hand
+	# The card is in focus wherever on it the ray is; a port or a detail grows over that (D-072).
+	pointer.focus = id
 	canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), right, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1)
 	canvas.hover_socket(id, socket, right)
 	# The wire to the scene object thickens under the ray on its Target port,
@@ -3082,6 +3116,36 @@ func _update_fade() -> void:
 	_fade.update(eye, _focus_targets, count)
 
 
+## Puts in focus what the rays are on (D-072): a card, a member's petal of a
+## card on its object, a variable's box; a card held and the card or box a
+## wire is drawn from stay in focus too. Gone off the graph, a ray keeps its
+## focus for [constant FOCUS_HOLD]. While an input is in use (D-061) the focus
+## stays as it was when it opened: the rays are on the input, not the graph,
+## and the rest of the graph stays darker or see-through under its dimmer.
+## The canvas paints only what changes.
+func _update_graph_focus(delta: float) -> void:
+	if is_focused():
+		_focus_hold = FOCUS_HOLD
+		return
+	var cards := Vector3i(-1, -1, -1)
+	var box := ""
+	var other_box := ""
+	var pointed := false
+	if _workspace.visible:
+		cards.x = _pointers[0].focus
+		cards.y = _pointers[1].focus
+		box = _pointers[0].focus_box
+		other_box = _pointers[1].focus_box
+		pointed = cards.x >= 0 or cards.y >= 0 or not box.is_empty() or not other_box.is_empty()
+		cards.z = _pending_id if _pending_id >= 0 else _link_block if _link_kind >= 0 else -1
+		if other_box.is_empty() and _link_kind >= 0: other_box = _link_box
+	if pointed: _focus_hold = FOCUS_HOLD
+	elif _focus_hold > 0.0 and _workspace.visible:
+		_focus_hold -= delta
+		return
+	canvas.set_focus(cards, box, other_box)
+
+
 func _add_window(count: int, surface: XREPanelSurface) -> int:
 	if surface == null or not surface.is_shown() or not surface.is_on_top(): return count
 	var center := surface.global_position
@@ -3614,6 +3678,7 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 	shelf.hover(shelf.get_hit_index(), shelf.get_hit_part(), hand == _rig.right_hand)
 	var variable := shelf.get_hit_name()
 	var part := shelf.get_hit_part()
+	pointer.focus_box = variable
 	if _link_kind == XREBlueprintCanvas.VARIABLE and _link_hand == hand: canvas.show_link(_link_origin(), canvas.to_local(origin + direction * hit))
 	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and not variable.is_empty():
 		_delete_consumed = true
@@ -3925,6 +3990,8 @@ func _point_at_stem(pointer: Pointer, origin: Vector3, direction: Vector3, limit
 	if hit == null: return false
 	var hand := pointer.hand
 	hit.hot = true
+	# The member's petal on the object stands for its card: that card is in focus (D-072).
+	pointer.focus = hit.id
 	hand.claim(self)
 	hand.show_ray(origin.distance_to(hit.label.global_position), true)
 	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)

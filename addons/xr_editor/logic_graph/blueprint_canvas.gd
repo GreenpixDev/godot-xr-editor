@@ -23,6 +23,10 @@ extends Node3D
 ## An operator (D-065: Equal and the Operator blocks) is a small card as in
 ## Unreal: no title, its inputs and their tokens on the left, its symbol in the
 ## middle, its result on the right; its trash and plus stand above it.
+##
+## The cards and boxes a ray is on are in focus (D-072, [method set_focus]):
+## lit with their ports, details and wires as [constant XREFeatureSettings.FOCUS]
+## says, the rest darker or see-through as [constant XREFeatureSettings.DEFOCUS] says.
 
 const PIXEL_SIZE := 0.0009
 const CARD_WIDTH := 0.26
@@ -139,6 +143,13 @@ class Card:
 	var finished := -1
 	## It covers an input in use and is see-through (D-066).
 	var faded := false
+	## Its focus (D-072): a state of [XREBlueprintFocus], the ports (bits of
+	## [member ports]) and sockets kept as they are out of focus, and how it is
+	## painted now: paint, see-through, those ports and sockets.
+	var focus := XREBlueprintFocus.NORMAL
+	var keep_ports := 0
+	var keep_sockets := 0
+	var look := Vector4i(-1, 0, 0, 0)
 
 class Wire:
 	var from: Card
@@ -154,6 +165,9 @@ class Wire:
 	var normal: Material
 	var lit: Material
 	var faded := false
+	## Its focus (D-072) and how it is painted now: paint and see-through, -1 not yet.
+	var focus := XREBlueprintFocus.NORMAL
+	var look := -1
 
 var _cards: Array[Card] = []
 var _wires: Array[Wire] = []
@@ -212,11 +226,23 @@ var _compatible_input := false
 var _head_position := Vector3.ZERO
 var _view_transform := Transform3D.IDENTITY
 static var _wire_shader: Shader
+## Focus on what a ray is on (D-072): the settings [constant XREFeatureSettings.FOCUS]
+## and [constant XREFeatureSettings.DEFOCUS], the cards in focus (-1 for none),
+## the boxes of variables in focus (empty for none), whether anything is, and
+## the frame of a card in focus.
+var _focus_mode := XREFeatureSettings.OFF
+var _defocus_mode := XREFeatureSettings.OFF
+var _focus_cards := Vector3i(-1, -1, -1)
+var _focus_box := ""
+var _focus_other_box := ""
+var _focus_any := false
+var _focus_frame: Material
 
 
 func _init() -> void:
 	_selected_material = material(Color.WHITE, true)
 	_frame_material = material(Color("65839b"), true)
+	_focus_frame = material(XREBlueprintFocus.FRAME, true)
 	var shader := Shader.new()
 	shader.code = """
 shader_type spatial;
@@ -450,6 +476,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		_wires.append(wire)
 	update_wires()
 	select_block(_selected)
+	_paint_focus()
 
 
 ## How wide an operator's card is (D-065): its ports and the widest token on
@@ -660,8 +687,181 @@ func get_block_position(id: int) -> Vector3:
 ## Highlights a card without changing the scene selection.
 func select_block(id: int) -> void:
 	_selected = id
+	for card: Card in _cards: _paint_frame(card)
+
+
+## A selected card's frame is white, one in focus is [constant XREBlueprintFocus.FRAME]
+## with Focus on (D-072), darker out of focus with Defocus on Dim.
+func _paint_frame(card: Card) -> void:
+	var base := _selected_material if card.id == _selected else _focus_frame if card.look.x == XREBlueprintFocus.LIT else _frame_material
+	card.frame.material_override = XREBlueprintFocus.variant(base, XREBlueprintFocus.DARK if card.look.x == XREBlueprintFocus.DARK else XREBlueprintFocus.PLAIN)
+
+
+## Switches focus (D-072) to [param focus], a value of [constant XREFeatureSettings.FOCUS],
+## and [param defocus], one of [constant XREFeatureSettings.DEFOCUS]: the graph
+## is painted again. False if nothing changed.
+func set_focus_modes(focus: StringName, defocus: StringName) -> bool:
+	if focus == _focus_mode and defocus == _defocus_mode: return false
+	_focus_mode = focus
+	_defocus_mode = defocus
+	for card: Card in _cards: card.look = Vector4i(-1, 0, 0, 0)
+	for wire: Wire in _wires: wire.look = -1
+	for link: Dictionary in _variable_wires: link["look"] = -1
+	_shelf.forget_looks()
+	_paint_focus()
+	return true
+
+
+## The focus settings, as [method set_focus_modes] takes them.
+func get_focus_modes() -> Array[StringName]:
+	return [_focus_mode, _defocus_mode]
+
+
+## Puts the cards of [param cards] (-1 for none) and the boxes of variables
+## [param box] and [param other_box] (empty for none) in focus, with their
+## ports, details and wires, and the rest of the graph out of it (D-072);
+## nothing in focus gives everything back. Only what changes is painted: it
+## may be called every frame.
+func set_focus(cards: Vector3i, box: String = "", other_box: String = "") -> void:
+	if cards == _focus_cards and box == _focus_box and other_box == _focus_other_box: return
+	_focus_cards = cards
+	_focus_box = box
+	_focus_other_box = other_box
+	_paint_focus()
+
+
+## How block [param id] is in focus: [constant XREBlueprintFocus.FOCUSED],
+## [constant XREBlueprintFocus.OUT], or [constant XREBlueprintFocus.NORMAL] while nothing is.
+func focus_state(id: int) -> int:
+	if not _focus_any: return XREBlueprintFocus.NORMAL
+	return XREBlueprintFocus.FOCUSED if _in_focus(id) else XREBlueprintFocus.OUT
+
+
+## How what is in focus [param state] is painted under the settings: lit in
+## focus with Focus on, darker out of it with Defocus on Dim.
+func focus_paint(state: int) -> int:
+	if state == XREBlueprintFocus.FOCUSED and _focus_mode == XREFeatureSettings.ON: return XREBlueprintFocus.LIT
+	if state == XREBlueprintFocus.OUT and _defocus_mode == XREFeatureSettings.DIM: return XREBlueprintFocus.DARK
+	return XREBlueprintFocus.PLAIN
+
+
+## How much of what is in focus [param state] is seen: less out of focus with Defocus on Transparent.
+func focus_seen(state: int) -> float:
+	return XREBlueprintFocus.SEEN if state == XREBlueprintFocus.OUT and _defocus_mode == XREFeatureSettings.TRANSPARENT else 1.0
+
+
+func _in_focus(id: int) -> bool:
+	return id >= 0 and (id == _focus_cards.x or id == _focus_cards.y or id == _focus_cards.z)
+
+
+## Works out what is in focus and paints what changed (D-072). Run on a change
+## of focus, of the graph or of the ports a wire may end on, never every frame.
+## In focus: the cards and boxes asked for and the wires on them. Out of it:
+## the rest, but the far ends of those wires — a port, a socket, a box — and
+## the ports a wire being drawn may end on stay as they are.
+func _paint_focus() -> void:
+	var used := _focus_mode == XREFeatureSettings.ON or _defocus_mode != XREFeatureSettings.OFF
+	var any := false
+	if used:
+		for card: Card in _cards: any = any or _in_focus(card.id)
+		any = any or _shelf.has_box(_focus_box) or _shelf.has_box(_focus_other_box)
+	_focus_any = any
 	for card: Card in _cards:
-		card.frame.material_override = _selected_material if card.id == id else _frame_material
+		card.focus = (XREBlueprintFocus.FOCUSED if _in_focus(card.id) else XREBlueprintFocus.OUT) if any else XREBlueprintFocus.NORMAL
+		card.keep_ports = 0
+		card.keep_sockets = 0
+	var boxes: Dictionary[String, int] = {}
+	if any:
+		for variable: String in [_focus_box, _focus_other_box]:
+			if _shelf.has_box(variable): boxes[variable] = XREBlueprintFocus.FOCUSED
+	for wire: Wire in _wires:
+		var focused: bool = any and ((wire.from != null and wire.from.focus == XREBlueprintFocus.FOCUSED) or wire.to.focus == XREBlueprintFocus.FOCUSED
+				or (wire.from == null and boxes.get(wire.variable, XREBlueprintFocus.NORMAL) == XREBlueprintFocus.FOCUSED))
+		wire.focus = XREBlueprintFocus.FOCUSED if focused else XREBlueprintFocus.OUT if any else XREBlueprintFocus.NORMAL
+		if not focused: continue
+		_keep_port(wire.to, wire.to_port, true)
+		if wire.from != null: _keep_port(wire.from, wire.from_port, false)
+		elif not boxes.has(wire.variable): boxes[wire.variable] = XREBlueprintFocus.KEPT
+	for link: Dictionary in _variable_wires:
+		var card: Card = link["card"]
+		var variable: String = link["variable"]
+		var focused: bool = any and (card.focus == XREBlueprintFocus.FOCUSED or boxes.get(variable, XREBlueprintFocus.NORMAL) == XREBlueprintFocus.FOCUSED)
+		link["focus"] = XREBlueprintFocus.FOCUSED if focused else XREBlueprintFocus.OUT if any else XREBlueprintFocus.NORMAL
+		if not focused: continue
+		if card.focus != XREBlueprintFocus.FOCUSED: card.keep_sockets |= 1 << int(link["socket"])
+		if not boxes.has(variable): boxes[variable] = XREBlueprintFocus.KEPT
+	if any and _compatible_type >= 0:
+		for card: Card in _cards:
+			if card.focus != XREBlueprintFocus.OUT: continue
+			for index: int in card.ports.size():
+				if _compatible(card, index): card.keep_ports |= 1 << index
+	for card: Card in _cards: _look_card(card)
+	for wire: Wire in _wires: _look_wire(wire)
+	for link: Dictionary in _variable_wires: _look_link(link)
+	for index: int in _shelf.box_count():
+		var state: int = boxes.get(_shelf.box_name(index), XREBlueprintFocus.OUT if any else XREBlueprintFocus.NORMAL)
+		_shelf.paint_box(index, state, focus_paint(state), focus_seen(state))
+
+
+## Keeps port [param port] of [param card] (an input if [param input]) as it
+## is out of focus: the far end of a wire in focus. Play Animation's output 0
+## is its Finished socket while it waits.
+func _keep_port(card: Card, port: int, input: bool) -> void:
+	if card.focus == XREBlueprintFocus.FOCUSED: return
+	if not input and port == 0 and card.finished >= 0 and card.waits: card.keep_sockets |= 1 << card.finished
+	else: card.keep_ports |= 1 << (port if input else card.inputs.size() + port)
+
+
+func _look_card(card: Card) -> void:
+	var paint := focus_paint(card.focus)
+	var seen := focus_seen(card.focus)
+	var look := Vector4i(paint, 1 if seen < 1.0 else 0, card.keep_ports, card.keep_sockets)
+	if look == card.look: return
+	card.look = look
+	XREBlueprintFocus.paint(card.node, paint)
+	XREBlueprintFade.set_seen(card.node, &"focus", seen)
+	for index: int in card.ports.size():
+		if (card.keep_ports & (1 << index)) == 0: continue
+		XREBlueprintFocus.paint(card.ports[index], XREBlueprintFocus.PLAIN)
+		XREBlueprintFade.set_seen(card.ports[index], &"focus", 1.0)
+	for index: int in card.sockets.size():
+		if (card.keep_sockets & (1 << index)) == 0 or card.sockets[index].visual == null: continue
+		XREBlueprintFocus.paint(card.sockets[index].visual, XREBlueprintFocus.PLAIN)
+		XREBlueprintFade.set_seen(card.sockets[index].visual, &"focus", 1.0)
+	_paint_frame(card)
+
+
+func _look_wire(wire: Wire) -> void:
+	var seen := focus_seen(wire.focus)
+	var look := focus_paint(wire.focus) * 2 + (1 if seen < 1.0 else 0)
+	if look == wire.look: return
+	wire.look = look
+	XREBlueprintFade.set_seen(wire.mesh, &"focus", seen)
+	_paint_wire(wire)
+
+
+## The wire's material: thicker if a click would detach it, then lit or darker by its focus (D-072).
+func _paint_wire(wire: Wire) -> void:
+	var lit := wire.edge == _edge_right or wire.edge == _edge_left
+	wire.mesh.material_override = XREBlueprintFocus.variant(wire.lit if lit else wire.normal, focus_paint(wire.focus))
+
+
+func _look_link(link: Dictionary) -> void:
+	var state: int = link["focus"]
+	var seen := focus_seen(state)
+	var look := focus_paint(state) * 2 + (1 if seen < 1.0 else 0)
+	if look == int(link["look"]): return
+	link["look"] = look
+	XREBlueprintFade.set_seen(link["mesh"] as Node, &"focus", seen)
+	_paint_link(link)
+
+
+## A Variable wire's material: white while its variable flashes, thicker
+## under a ray on its socket, then lit or darker by its focus (D-072).
+func _paint_link(link: Dictionary) -> void:
+	var card: Card = link["card"]
+	var base: Material = link["flash"] if link["flash"] != null else link["lit"] if is_socket_hovered(card.id, int(link["socket"])) else link["normal"]
+	(link["mesh"] as XREGraphWire).material_override = XREBlueprintFocus.variant(base, focus_paint(int(link["focus"])))
 
 
 ## Each hand contributes hover independently, so one idle ray cannot clear the other.
@@ -676,22 +876,30 @@ func hover_plus(id: int, right: bool) -> void:
 
 ## Highlights only type-compatible endpoints while a connection is being made.
 func highlight_ports(type: int, want_input: bool) -> void:
+	var changed := type != _compatible_type or want_input != _compatible_input
 	_compatible_type = type
 	_compatible_input = want_input
 	_scale_ports()
+	# Out of focus, the ports a wire may end on stay as they are (D-072).
+	if changed: _paint_focus()
 
 
 ## Grows the ports a wire may end on and, more, the ports under a ray.
 func _scale_ports() -> void:
 	for card: Card in _cards:
 		for index: int in card.ports.size():
-			var input := index < card.inputs.size()
-			var port_index := index if input else index - card.inputs.size()
-			var port_type := card.input_types[port_index] if input else card.output_types[port_index]
-			var compatible := _compatible_type >= 0 and input == _compatible_input and (XREBlueprintGraph.ports_compatible(_compatible_type, port_type) if _compatible_input else XREBlueprintGraph.ports_compatible(port_type, _compatible_type))
 			var hovered := Vector2i(card.id, index) == _port_right or Vector2i(card.id, index) == _port_left
-			card.ports[index].scale = Vector3.ONE * (HOVER_SCALE if hovered else COMPATIBLE_SCALE if compatible else 1.0)
+			card.ports[index].scale = Vector3.ONE * (HOVER_SCALE if hovered else COMPATIBLE_SCALE if _compatible(card, index) else 1.0)
 	update_wires()
+
+
+## Whether a wire being drawn may end on port [param index] of [param card] (in [member Card.ports]).
+func _compatible(card: Card, index: int) -> bool:
+	if _compatible_type < 0: return false
+	var input := index < card.inputs.size()
+	if input != _compatible_input: return false
+	var port_type := card.input_types[index] if input else card.output_types[index - card.inputs.size()]
+	return XREBlueprintGraph.ports_compatible(_compatible_type, port_type) if _compatible_input else XREBlueprintGraph.ports_compatible(port_type, _compatible_type)
 
 
 ## Whether the port of card [param id] at [param index] in its ports is under a hand's ray.
@@ -724,8 +932,7 @@ func _hover_edge(edge: int, right: bool) -> void:
 	if edge == (_edge_right if right else _edge_left): return
 	if right: _edge_right = edge
 	else: _edge_left = edge
-	for wire: Wire in _wires:
-		wire.mesh.material_override = wire.lit if wire.edge == _edge_right or wire.edge == _edge_left else wire.normal
+	for wire: Wire in _wires: _paint_wire(wire)
 
 
 ## Whether the wire of graph edge [param edge] is lit under a ray.
@@ -1109,9 +1316,7 @@ func hover_socket(id: int, socket: int, right: bool) -> void:
 			if item.kind in [FINISHED, SOURCE, VARIABLE]: item.visual.scale = item.base_scale * (HOVER_SCALE if hovered else 1.0)
 			else: item.visual.scale = item.base_scale * (SOCKET_HOVER if hovered else 1.0)
 	# The wire of a Variable socket under a ray thickens, as a port's does (D-061).
-	for link: Dictionary in _variable_wires:
-		var lit := is_socket_hovered((link["card"] as Card).id, int(link["socket"]))
-		(link["mesh"] as XREGraphWire).material_override = link["lit"] if lit else link["normal"]
+	for link: Dictionary in _variable_wires: _paint_link(link)
 
 
 ## Whether socket [param socket] of block [param id] is under a hand's ray.
@@ -1271,9 +1476,8 @@ func update_socket_wire(wire: XREGraphWire, id: int, kind: int, end: Vector3) ->
 func flash_variable(variable: String, lit: bool) -> void:
 	for link: Dictionary in _variable_wires:
 		if link["variable"] != variable: continue
-		var card: Card = link["card"]
-		var color := COLORS[card.sockets[link["socket"]].type]
-		(link["mesh"] as XREGraphWire).material_override = wire_material(Color.WHITE, LIT_WIRE_GROW * 2.0) if lit else wire_material(color)
+		link["flash"] = wire_material(Color.WHITE, LIT_WIRE_GROW * 2.0) if lit else null
+		_paint_link(link)
 
 
 ## A static Target wire: from its input port, leaving left, free towards the scene object.
@@ -1710,7 +1914,8 @@ func _build_shelf(graph: XREBlueprintGraph) -> void:
 			if not _shelf.has_box(variable): continue
 			var type := card.sockets[index].type
 			var mesh := create_scene_wire(COLORS[type])
-			_variable_wires.append({"card": card, "socket": index, "variable": variable, "mesh": mesh, "normal": mesh.material_override, "lit": wire_material(COLORS[type], LIT_WIRE_GROW)})
+			_variable_wires.append({"card": card, "socket": index, "variable": variable, "mesh": mesh, "normal": mesh.material_override, "lit": wire_material(COLORS[type], LIT_WIRE_GROW),
+					"flash": null, "focus": XREBlueprintFocus.NORMAL, "look": -1})
 
 
 func _add_frame(card: Card, size: Vector3, cuboid: bool) -> void:
@@ -1730,6 +1935,8 @@ func _add_frame(card: Card, size: Vector3, cuboid: bool) -> void:
 					corner[(axis + 2) % 3] = size[(axis + 2) % 3] * second * 0.5
 					surface.append_from(edge, 0, Transform3D(Basis.IDENTITY, corner))
 		card.frame = XRERig.create_vr_mesh(surface.commit(), _frame_material)
+		# Its material is the selection's and the focus's ([method _paint_frame]).
+		card.frame.set_meta(&"painted", true)
 		card.node.add_child(card.frame)
 		return
 	for axis: int in 2:
@@ -1742,6 +1949,7 @@ func _add_frame(card: Card, size: Vector3, cuboid: bool) -> void:
 			point[1 - axis] = size[1 - axis] * side * 0.5
 			surface.append_from(shape, 0, Transform3D(Basis.IDENTITY, point))
 	card.frame = XRERig.create_vr_mesh(surface.commit(), _frame_material)
+	card.frame.set_meta(&"painted", true)
 	card.node.add_child(card.frame)
 
 

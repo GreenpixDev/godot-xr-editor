@@ -24,7 +24,8 @@ var _saved_shape := XREFeatureSettings.FLAT
 ## The same for the parameter settings (D-052), which a headset session leaves as it set them.
 var _saved_parameters: Dictionary[StringName, StringName] = {}
 const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT,
-		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE]
+		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
+		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS]
 
 
 func _init(document: XREDocument) -> void:
@@ -283,6 +284,7 @@ func _run() -> void:
 	await _test_d066()
 	await _test_d068()
 	await _test_d069()
+	await _test_d072()
 	_check(_service.blueprint.operation_source == &"desktop_graph", "VR command source scope is restored")
 	_service.parameters.call("_set_parameter", print_id, "value", "VR test")
 	await _frames()
@@ -3158,6 +3160,149 @@ func _test_d069() -> void:
 	_check(is_equal_approx(editor.get_arrow_scale(), left), "let go, the scale stays as the stick left it")
 	editor.close()
 	editor.scale_mode = XREFeatureSettings.AUTO
+
+
+## D-072: what the ray is on is in focus — a card with its ports, details and
+## wires lit, the rest darker or see-through, the far ends of its wires as they
+## are; a port under the ray grows over its card's focus; a variable's box the same.
+func _test_d072() -> void:
+	var features := _document.features
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var history := _service.blueprint.history.get_version()
+	var saved_variables := features.get_value(XREFeatureSettings.VARIABLE_INPUT)
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.FOCUS) == XREFeatureSettings.OFF and XREFeatureSettings.get_default(XREFeatureSettings.DEFOCUS) == XREFeatureSettings.OFF
+			and XREFeatureSettings.get_values(XREFeatureSettings.DEFOCUS).size() == 3 and XREFeatureSettings.get_values(XREFeatureSettings.DEFOCUS)[1] == XREFeatureSettings.DIM,
+			"Focus and Defocus are settings, off by default; Defocus is Off, Dim or Transparent")
+
+	# Three cards to the right of all the others: a value wired into a delay, and a delay alone below.
+	var right := -INF
+	for card: XREBlueprintCanvas.Card in canvas.get("_cards") as Array: right = maxf(right, card.node.position.x + card.width * 0.5)
+	_service.add_block("value")
+	await _frames()
+	var feeder: int = graph.nodes.back()["id"]
+	_service.add_block("delay")
+	await _frames()
+	var waiter: int = graph.nodes.back()["id"]
+	_service.add_block("delay")
+	await _frames()
+	var other: int = graph.nodes.back()["id"]
+	var places: Dictionary[int, Vector3] = {feeder: Vector3(right + 0.3, 0.0, 0.0), waiter: Vector3(right + 0.7, 0.0, 0.0), other: Vector3(right + 0.7, -0.35, 0.0)}
+	for id: int in places:
+		canvas.preview_move(id, places[id])
+		canvas.commit_move(_service.blueprint, id)
+		await _frames()
+	var seconds := graph.input_port(graph.find_node(waiter), "seconds")
+	_service.blueprint.connect_blocks(feeder, 0, waiter, seconds)
+	await _frames(3)
+	var wire: XREBlueprintCanvas.Wire
+	for item: XREBlueprintCanvas.Wire in canvas.get("_wires") as Array:
+		if item.from != null and item.from.id == feeder and item.to.id == waiter: wire = item
+	var feeder_out := _card(feeder).ports[_card(feeder).inputs.size()]
+
+	# Off: the ray on a card changes nothing.
+	_aim_from(canvas.to_global(canvas.get_block_position(waiter) + Vector3(0.0, 0.02, 0.0)), _card(waiter).node.global_basis.z.normalized())
+	await _frames()
+	_check(canvas.focus_state(waiter) == XREBlueprintFocus.NORMAL and _card(other).mesh.material_override == _card(other).normal, "with both off nothing is in focus")
+
+	# Focus On, Defocus Dim: the card under the ray lit, its wire lit, the rest darker.
+	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.ON)
+	features.set_value(XREFeatureSettings.DEFOCUS, XREFeatureSettings.DIM)
+	await _frames()
+	var body := _card(waiter).node.global_position + _card(waiter).node.global_basis.y.normalized() * 0.02
+	_aim_from(body, _card(waiter).node.global_basis.z.normalized())
+	await _frames()
+	_check(canvas.focus_state(waiter) == XREBlueprintFocus.FOCUSED and canvas.focus_state(other) == XREBlueprintFocus.OUT and canvas.focus_state(feeder) == XREBlueprintFocus.OUT, "the card under the ray is in focus, the others out of it")
+	var face := _face(_card(waiter).normal)
+	_check(_face(_card(waiter).mesh.material_override).r > face.r + 0.05, "the card in focus is lighter")
+	_check(_tint(_card(waiter).frame.material_override).is_equal_approx(XREBlueprintFocus.FRAME), "and its frame is the focus's")
+	_check(_face(_card(other).mesh.material_override).r < _face(_card(other).normal).r * 0.5, "a card out of focus is darker")
+	var dark_label := false
+	for child: Node in _card(other).node.get_children():
+		if child is Label3D: dark_label = dark_label or (child as Label3D).modulate.r < 0.5
+	_check(dark_label, "its text too")
+	_check(wire != null and wire.focus == XREBlueprintFocus.FOCUSED and _tint(wire.mesh.material_override).r >= _tint(wire.normal).r and wire.mesh.material_override != wire.normal, "the card's wire is in focus, lit")
+	_check(_face(_card(feeder).mesh.material_override).r < _face(_card(feeder).normal).r * 0.5 and not feeder_out.has_meta(&"unpainted"), "the far end of that wire stays as it is on its darker card")
+
+	# A port under the ray grows over its card's focus.
+	_aim_from(canvas.to_global(canvas.port_position(waiter, seconds, true)), _card(waiter).node.global_basis.z.normalized())
+	await _frames()
+	_check(canvas.focus_state(waiter) == XREBlueprintFocus.FOCUSED and canvas.is_port_hovered(waiter, seconds, true) and is_equal_approx(_card(waiter).ports[seconds].scale.x, XREBlueprintCanvas.HOVER_SCALE), "a port under the ray grows, its card still in focus")
+
+	# An input in use keeps the focus it opened with, the rays on the input, not the graph.
+	var keyboard := _service.get("_keyboard") as XREVirtualKeyboard
+	keyboard.set_shown(true)
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await get_tree().create_timer(XREBlueprints.FOCUS_HOLD * 2.0).timeout
+	await _frames(2)
+	_check(_service.is_focused() and canvas.focus_state(waiter) == XREBlueprintFocus.FOCUSED and _face(_card(other).mesh.material_override).r < _face(_card(other).normal).r * 0.5,
+			"while an input is in use the focus stays, the rest still darker")
+	keyboard.set_shown(false)
+
+	# Off the graph: a moment later, everything as it was.
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await _frames(1)
+	_check(canvas.focus_state(waiter) == XREBlueprintFocus.FOCUSED, "gone off the graph, the ray keeps its focus a moment")
+	await get_tree().create_timer(XREBlueprints.FOCUS_HOLD * 2.0).timeout
+	await _frames(2)
+	_check(canvas.focus_state(waiter) == XREBlueprintFocus.NORMAL and _card(other).mesh.material_override == _card(other).normal and _card(waiter).mesh.material_override == _card(waiter).normal
+			and wire.mesh.material_override == wire.normal and not _tint(_card(waiter).frame.material_override).is_equal_approx(XREBlueprintFocus.FRAME), "then everything is as it was")
+
+	# Defocus Transparent: the rest see-through, the far end of the wire not; Focus Off: the card not lit.
+	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.OFF)
+	features.set_value(XREFeatureSettings.DEFOCUS, XREFeatureSettings.TRANSPARENT)
+	_aim_from(body, _card(waiter).node.global_basis.z.normalized())
+	await _frames()
+	_check(is_equal_approx(_card(other).mesh.transparency, 1.0 - XREBlueprintFocus.SEEN) and _card(other).mesh.material_override == _card(other).normal, "with Transparent a card out of focus is see-through, not darker")
+	_check(is_equal_approx(_card(feeder).mesh.transparency, 1.0 - XREBlueprintFocus.SEEN) and feeder_out.transparency == 0.0, "the far end of the wire is not")
+	_check(_card(waiter).mesh.transparency == 0.0 and _card(waiter).mesh.material_override == _card(waiter).normal, "with Focus off the card under the ray is as it is")
+	# See-through layers don't undo each other (D-066 and D-072).
+	XREBlueprintFade.set_faded(_card(other).node, true)
+	_check(is_equal_approx(_card(other).mesh.transparency, 1.0 - XREBlueprintFade.SEEN), "covering an input it is fainter still")
+	features.set_value(XREFeatureSettings.DEFOCUS, XREFeatureSettings.OFF)
+	await _frames()
+	_check(is_equal_approx(_card(other).mesh.transparency, 1.0 - XREBlueprintFade.SEEN), "out of focus no more, it still covers the input")
+	XREBlueprintFade.set_faded(_card(other).node, false)
+	_check(_card(other).mesh.transparency == 0.0, "and then it is as it was")
+
+	# A variable's box: in focus with its wire; the Variable socket at its far end stays as it is.
+	features.set_value(XREFeatureSettings.DEFOCUS, XREFeatureSettings.DIM)
+	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
+	_service.blueprint.set_variable("focus_count", 0)
+	_service.add_block("get_variable")
+	await _frames()
+	var getter: int = graph.nodes.back()["id"]
+	canvas.preview_move(getter, Vector3(right + 0.3, -0.35, 0.0))
+	canvas.commit_move(_service.blueprint, getter)
+	await _frames()
+	_service.call("_wire_variable", getter, "focus_count")
+	await _frames(3)
+	var shelf := canvas.get_shelf()
+	var links := (canvas.get("_variable_wires") as Array).filter(func(link: Dictionary) -> bool: return link["variable"] == "focus_count")
+	_aim_from(shelf.to_global(shelf.box_point("focus_count")) + Vector3.UP * 0.015, Vector3.BACK)
+	await _frames()
+	_check(shelf.box_focus("focus_count") == XREBlueprintFocus.FOCUSED and canvas.focus_state(getter) == XREBlueprintFocus.OUT, "the box under the ray is in focus, its card out of it")
+	var socket := -1
+	for index: int in _card(getter).sockets.size():
+		if _card(getter).sockets[index].kind == XREBlueprintCanvas.VARIABLE: socket = index
+	_check(links.size() == 1 and int(links[0]["focus"]) == XREBlueprintFocus.FOCUSED and socket >= 0 and not _card(getter).sockets[socket].visual.has_meta(&"unpainted")
+			and _face(_card(getter).mesh.material_override).r < _face(_card(getter).normal).r * 0.5, "its wire is in focus; the Variable socket it goes into stays as it is on its darker card")
+	_aim_from(_card(getter).node.global_position + _card(getter).node.global_basis.y.normalized() * 0.02, _card(getter).node.global_basis.z.normalized())
+	await _frames()
+	_check(canvas.focus_state(getter) == XREBlueprintFocus.FOCUSED and shelf.box_focus("focus_count") == XREBlueprintFocus.KEPT, "the ray on its card: the box at the far end of the wire stays as it is")
+
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.OFF)
+	features.set_value(XREFeatureSettings.DEFOCUS, XREFeatureSettings.OFF)
+	features.set_value(XREFeatureSettings.VARIABLE_INPUT, saved_variables)
+	await get_tree().create_timer(XREBlueprints.FOCUS_HOLD * 2.0).timeout
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames(3)
+
+
+## The face of a card's body material.
+static func _face(material: Material) -> Color:
+	return (material as ShaderMaterial).get_shader_parameter(&"face_tint") if material is ShaderMaterial else Color.BLACK
 
 
 ## The color [param material] draws in: a standard material's albedo, a shader's tint.

@@ -45,6 +45,9 @@ class Box:
 	var token_size := Vector3.ZERO
 	## It covers an input in use and is see-through (D-066).
 	var faded := false
+	## Its focus (D-072), a state of [XREBlueprintFocus], and how it is painted now: -1 not yet.
+	var focus := XREBlueprintFocus.NORMAL
+	var look := -1
 
 var _boxes: Array[Box] = []
 var _hit := -1
@@ -222,6 +225,40 @@ func hover(index: int, part: int, right: bool) -> void:
 		if item.trash != null: item.trash.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if TRASH in [right_part, left_part] else 1.0)
 		if item.token != null: item.token.scale = Vector3.ONE * (0.85 * XREBlueprintCanvas.SOCKET_HOVER if TOKEN in [right_part, left_part] else 0.85)
 		item.node.scale = Vector3.ONE * (1.06 if BODY in [right_part, left_part] or PLUS in [right_part, left_part] else 1.0)
+
+
+## How many boxes there are, the plus too.
+func box_count() -> int:
+	return _boxes.size()
+
+
+## The variable of box [param index], empty for the plus.
+func box_name(index: int) -> String:
+	return _boxes[index].name
+
+
+## Puts box [param index] in focus [param state] (D-072), painted
+## [param paint_as] ([XREBlueprintFocus]) with [param seen] of it seen. Only a change is painted.
+func paint_box(index: int, state: int, paint_as: int, seen: float) -> void:
+	var box := _boxes[index]
+	box.focus = state
+	var look := paint_as * 2 + (1 if seen < 1.0 else 0)
+	if look == box.look: return
+	box.look = look
+	XREBlueprintFocus.paint(box.node, paint_as)
+	XREBlueprintFade.set_seen(box.node, &"focus", seen)
+
+
+## How the box of [param variable] is in focus, a state of [XREBlueprintFocus].
+func box_focus(variable: String) -> int:
+	for box: Box in _boxes:
+		if box.name == variable: return box.focus
+	return XREBlueprintFocus.NORMAL
+
+
+## Forgets how the boxes are painted: the next [method paint_box] paints them again.
+func forget_looks() -> void:
+	for box: Box in _boxes: box.look = -1
 
 
 ## Index of the box the last ray hit, for [method hover]; -1 for none.

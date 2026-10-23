@@ -103,6 +103,15 @@ const AXIS_SCALE := &"axis_scale"
 const AUTO := &"auto"
 ## By the stick, up finer and down coarser, the value kept; nothing speeds on.
 const STICK := &"stick"
+## Whether what a ray is on in the graph lights up (D-072): a card with its
+## ports, details, adapters and wires, or a variable's box with its wires.
+const FOCUS := &"focus"
+## What the rest of the graph becomes while a ray is on a card or a box (D-072).
+const DEFOCUS := &"defocus"
+## Darker.
+const DIM := &"dim"
+## See-through.
+const TRANSPARENT := &"transparent"
 
 ## Every setting by key: its page, title, values (the first is the default),
 ## the values' titles and a line of explanation.
@@ -190,6 +199,20 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [AUTO, STICK],
 		"labels": ["Auto", "Stick"],
 		"hint": "For a number's line and a vector's arrows. Auto: past an end the value speeds up, held by 0 it goes toward 0. Stick: the stick up makes the scale finer, down coarser; nothing speeds up.",
+	},
+	FOCUS: {
+		"category": Category.FEATURES,
+		"title": "Focus",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: the card or variable under the ray lights up with its ports, details and wires; a port or a detail under the ray grows as well.",
+	},
+	DEFOCUS: {
+		"category": Category.FEATURES,
+		"title": "Defocus",
+		"values": [OFF, DIM, TRANSPARENT],
+		"labels": ["Off", "Dim", "Transparent"],
+		"hint": "While the ray is on a card or a variable, the rest of the graph stays as it is (Off), goes darker (Dim) or see-through (Transparent).",
 	},
 }
 

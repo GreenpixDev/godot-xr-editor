@@ -57,15 +57,39 @@ static func covers(eye: Vector3, targets: PackedVector4Array, count: int, box: A
 ## Fades [param node] and every geometry under it, or gives them back the
 ## transparency they had: the graph's own nodes, never the scene's.
 static func set_faded(node: Node, faded: bool) -> void:
+	set_seen(node, &"cover", SEEN if faded else 1.0)
+
+
+## Makes [param node] and every geometry under it see-through for
+## [param layer], [param seen] of it still seen; [param seen] 1 takes the
+## layer away. Layers don't undo each other (D-072: what covers an input,
+## what is out of focus): the faintest wins, and with none left a geometry
+## has the transparency it had.
+static func set_seen(node: Node, layer: StringName, seen: float) -> void:
 	var geometry := node as GeometryInstance3D
-	if geometry != null:
-		if faded and not geometry.has_meta(&"unfaded"):
-			geometry.set_meta(&"unfaded", geometry.transparency)
-			geometry.transparency = maxf(geometry.transparency, 1.0 - SEEN)
-		elif not faded and geometry.has_meta(&"unfaded"):
-			geometry.transparency = float(geometry.get_meta(&"unfaded"))
-			geometry.remove_meta(&"unfaded")
-	for child: Node in node.get_children(): set_faded(child, faded)
+	if geometry != null: _set_seen(geometry, layer, seen)
+	for child: Node in node.get_children(): set_seen(child, layer, seen)
+
+
+static func _set_seen(geometry: GeometryInstance3D, layer: StringName, seen: float) -> void:
+	var layers: Dictionary = geometry.get_meta(&"seen") if geometry.has_meta(&"seen") else {}
+	if seen >= 1.0:
+		if not layers.has(layer): return
+		layers.erase(layer)
+	else:
+		if layers.has(layer) and is_equal_approx(float(layers[layer]), seen): return
+		layers[layer] = seen
+	if not geometry.has_meta(&"unfaded"): geometry.set_meta(&"unfaded", geometry.transparency)
+	var before := float(geometry.get_meta(&"unfaded"))
+	if layers.is_empty():
+		geometry.transparency = before
+		geometry.remove_meta(&"unfaded")
+		geometry.remove_meta(&"seen")
+		return
+	var faintest := 1.0
+	for value: Variant in layers.values(): faintest = minf(faintest, float(value))
+	geometry.transparency = maxf(before, 1.0 - faintest)
+	geometry.set_meta(&"seen", layers)
 
 
 ## Takes the visible geometry under [param root] as what may cover an input:
