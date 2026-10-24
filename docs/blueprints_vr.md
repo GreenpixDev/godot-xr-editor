@@ -314,7 +314,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 
 Прислать лог `logs/editor_<рантайм>_<время>.log` и снимки, если были (в окне — F12, `build/shots/`), отметить несовпавшие пункты и где проверялось. Отдельно: легко ли попасть лучом в провод и узел, не мешает ли провод выбирать карточки, понятно ли без подсказки, что провод можно тянуть. Руками D-081 не проверено: ни в шлеме, ни в окне.
 
-## Ярлык объекта вместо окна Blueprints (D-082)
+## Ярлык объекта вместо окна Blueprints (D-085)
 
 Окна Blueprints над графом больше нет. Граф открывается и закрывается с ярлыка над объектом, от ярлыка к объекту идёт пунктир. Остальные команды окна (Save draft, Build & Attach, Undo, Redo, Pick Target, Cancel wire / target, Variables, Choose host, Tokens) — во вкладке Blueprints лаунчера, пока граф открыт. Термины — [vr_ui.md](vr_ui.md#ярлык-объекта).
 
@@ -338,7 +338,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 
 Прислать лог `logs/editor_<рантайм>_<время>.log` и снимки (в окне — F12, `build/shots/`) пунктов 1, 3 и 5, отметить несовпавшие пункты.
 
-## Палитра блоков поверх всего (D-083)
+## Палитра блоков поверх всего (D-086)
 
 ```powershell
 py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn

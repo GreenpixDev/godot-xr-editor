@@ -85,7 +85,7 @@ func has_control_bar() -> bool:
 
 
 ## Whether the tab's window is drawn over everything, as an input of the graph
-## is (D-058), but without darkening the rest (D-083): the graph's cards between
+## is (D-058), but without darkening the rest (D-086): the graph's cards between
 ## it and the head neither hide it nor take its ray.
 func is_drawn_on_top() -> bool:
 	return false

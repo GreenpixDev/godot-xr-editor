@@ -3,7 +3,7 @@ class_name XREBlueprintTab
 extends XREPanelTab
 ## Project graph catalog, and Add block, which opens the block menu (D-051).
 ## While a graph is open, its commands, which the graph's toolbar had before
-## the object's badge took its place (D-082).
+## the object's badge took its place (D-085).
 
 var _service: XREBlueprints
 var _status: Label

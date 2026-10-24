@@ -170,7 +170,7 @@ func _run() -> void:
 	await _test_window_corners()
 	var badge := _service.get("_badge") as XREBlueprintBadge
 	await _test_badge_graph(badge, path)
-	# The badge's title, off its buttons (D-082).
+	# The badge's title, off its buttons (D-085).
 	var title_pose := _pose_at(badge, Vector2(110, badge.size_px.y * 0.5))
 	_right.set_pose(&"aim", title_pose, Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 	_left.set_pose(&"aim", title_pose, Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
@@ -461,7 +461,7 @@ func _aim_corner(window: XREPanelSurface, corner: int, trigger: float, grip: flo
 ## Corner handles of the graph's windows (D-040): grip on the keyboard's
 ## corner moves that window. The parameters and the block palette are the
 ## panels' windows since D-044; the toolbar, which moved them all, is gone
-## since D-082.
+## since D-085.
 func _test_window_corners() -> void:
 	var floating := _service.get("_floating_ui") as Node3D
 	var panel := _service.get("_keyboard") as XREVirtualKeyboard
@@ -1110,7 +1110,7 @@ func _test_keyboard() -> void:
 
 
 ## A card in front of a panel takes the ray; a panel drawn over everything,
-## as the graph's badge is (D-082), takes it over the card.
+## as the graph's badge is (D-085), takes it over the card.
 func _test_surface_occlusion(badge: XREBlueprintBadge) -> void:
 	var before := _service.canvas.get_block_position(1)
 	var pixel := Vector2(110, badge.size_px.y * 0.5)
@@ -1143,7 +1143,7 @@ func _test_badge() -> void:
 	await _frames()
 	var badge := _service.get("_badge") as XREBlueprintBadge
 	var first := badge.global_position
-	# In the scene: the object's name and the Blueprint button, faint with a plus before it has a graph (D-082).
+	# In the scene: the object's name and the Blueprint button, faint with a plus before it has a graph (D-085).
 	_check(badge.is_shown() and not badge.is_graph() and not badge.is_on_top(), "the scene's badge shows over the selected object")
 	_check(badge.get_blueprint_button().is_visible_in_tree() and badge.get_blueprint_button().text == "Blueprint"
 			and badge.get_blueprint_button().tooltip_text == "Create Blueprint", "its one button is Blueprint, which creates one here")
@@ -1178,7 +1178,7 @@ func _test_badge() -> void:
 		await _frames()
 
 
-## The dashed leader (D-082) runs from the top of [param bounds], where its dot is, up to the pill's bottom edge.
+## The dashed leader (D-085) runs from the top of [param bounds], where its dot is, up to the pill's bottom edge.
 func _check_leader(badge: XREBlueprintBadge, bounds: AABB) -> void:
 	var top := Vector3(bounds.get_center().x, bounds.end.y, bounds.get_center().z)
 	var leader := badge.get_leader()
@@ -1192,7 +1192,7 @@ func _check_leader(badge: XREBlueprintBadge, bounds: AABB) -> void:
 	_check(is_equal_approx(dashes, XREBlueprintBadge.GAP / (XREBlueprintBadge.DASH * 2.0)), "it is dashed: %.1f dashes" % dashes)
 
 
-## The graph's badge (D-082): over the graph's object, drawn over everything,
+## The graph's badge (D-085): over the graph's object, drawn over everything,
 ## with the graph's name, + (the block palette), the trash (twice: detach and
 ## close) and × (close). The graph is open for [member _host] on [param path].
 func _test_badge_graph(badge: XREBlueprintBadge, path: String) -> void:
@@ -1413,7 +1413,7 @@ func _test_block_menu() -> void:
 	await _frames()
 
 
-## D-083: the block palette is drawn over everything, as an input is, but
+## D-086: the block palette is drawn over everything, as an input is, but
 ## without the focus veil; a card between it and the hand takes neither the
 ## sight of it nor its ray.
 func _test_palette_on_top(window: XREPanelWindow, card: int) -> void:
@@ -1433,7 +1433,7 @@ func _test_palette_on_top(window: XREPanelWindow, card: int) -> void:
 	await _frames()
 
 
-## D-083: with Focus on Front the card a wire is drawn from is drawn over
+## D-086: with Focus on Front the card a wire is drawn from is drawn over
 ## everything (D-075); the block palette the wire opened is drawn over it.
 func _test_palette_over_focus(card: int) -> void:
 	_document.features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.FRONT)

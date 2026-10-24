@@ -51,7 +51,7 @@ M83.8 83.8L89.5 89.5M44.2 44.2L38.5 38.5"/></g>"""],
 stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>"""],
 }
 ## Glyphs for buttons: the launcher's library, a window, a pin, close; the
-## object's badge's Blueprint, add a block and delete (D-082).
+## object's badge's Blueprint, add a block and delete (D-085).
 const GLYPHS: Dictionary[StringName, String] = {
 	&"blueprint": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <rect x="14" y="28" width="40" height="32" rx="8"/><rect x="74" y="68" width="40" height="32" rx="8"/>

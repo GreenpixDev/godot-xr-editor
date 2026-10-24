@@ -1,7 +1,7 @@
 @tool
 class_name XREBlueprintBadge
 extends XREPanelSurface
-## The badge over the selected object (D-082), object-locked (docs/vr_ui.md):
+## The badge over the selected object (D-085), object-locked (docs/vr_ui.md):
 ## a pill as a window's control bar is (D-042), hung over the object on a
 ## dashed leader that ends in a dot on top of it.
 ##

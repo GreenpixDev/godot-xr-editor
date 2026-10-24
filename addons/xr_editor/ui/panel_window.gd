@@ -161,7 +161,7 @@ func set_overlay(enabled: bool) -> void:
 	_bar.set_overlay(enabled)
 
 
-## Drawn over everything, the control bar too (D-083).
+## Drawn over everything, the control bar too (D-086).
 func set_on_top(enabled: bool) -> void:
 	super(enabled)
 	_bar.set_on_top(enabled)

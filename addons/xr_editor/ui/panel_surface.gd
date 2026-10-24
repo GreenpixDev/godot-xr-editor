@@ -66,7 +66,7 @@ const _HOVER_BODY := 1 << 4
 ## How much later than the rest a panel drawn over everything is drawn ([method set_on_top]):
 ## by default as the petals over the cards (D-062); one the graph's cards must not cover,
 ## after its Front focus (D-075: 100 and up to some 60 more for a card's front parts) and the
-## value widgets (150), but before the hands' rays (200) (D-083).
+## value widgets (150), but before the hands' rays (200) (D-086).
 const TOP_SORTING := 100.0
 const OVER_FOCUS_SORTING := 190.0
 

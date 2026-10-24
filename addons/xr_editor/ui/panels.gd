@@ -631,7 +631,7 @@ func _set_pin(window: XREPanelWindow, where: int) -> void:
 
 
 ## The hand [param window] is pinned to, or null.
-## The nearest window drawn over everything (D-083) or its control bar that
+## The nearest window drawn over everything (D-086) or its control bar that
 ## [param hand]'s ray from [param origin] along [param direction] meets, or
 ## null; [member on_top_distance] is then how far.
 func on_top_surface(hand: XREHand, origin: Vector3, direction: Vector3) -> XREPanelSurface:
@@ -717,7 +717,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		distance = on_launcher
 	else:
 		var hit := -1.0
-		# A window drawn over everything (D-083) takes the ray before the nearer cards and
+		# A window drawn over everything (D-086) takes the ray before the nearer cards and
 		# windows it is drawn over; only what is drawn over everything too may still take it.
 		surface = on_top_surface(hand, origin, direction)
 		if surface != null:

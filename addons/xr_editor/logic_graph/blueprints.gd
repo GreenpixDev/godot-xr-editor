@@ -27,7 +27,7 @@ const BODY_BOTTOM := 0.65
 ## object grows with the distance and so keeps its size in view (D-043).
 const BADGE_DISTANCE := 1.2
 ## Where the badge of a graph without an object stands in the graph's window
-## group: over the graph, where its toolbar was before D-082.
+## group: over the graph, where its toolbar was before D-085.
 const BADGE_FLOATING := Vector3(0.0, 0.42, 0.03)
 ## How far below a token and in front of it, toward the head, its keyboard opens, in meters (D-057).
 ## How far along a number's line the ray must go before the line follows it (D-062): a click stays a click.
@@ -375,7 +375,7 @@ var _open_windows: Array[GDScript] = []
 ## The block the parameters window was opened beside, or -1, and on which side of it: -1 left, 1 right.
 var _parameters_block := -1
 var _parameters_side := -1.0
-## The badge over the selected object, or over the graph's (D-082).
+## The badge over the selected object, or over the graph's (D-085).
 var _badge: XREBlueprintBadge
 var _badge_anchor: Node3D
 var _badge_geometry: Array[GeometryInstance3D] = []
@@ -451,7 +451,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_keyboard = XREVirtualKeyboard.new(theme)
 	# Over everything, so that it never sinks into a card (D-058); grip moves it, × closes it.
 	_keyboard.set_on_top(true)
-	# Over the block palette (D-083) too, whose search it types.
+	# Over the block palette (D-086) too, whose search it types.
 	_keyboard.set_top_sorting(XREPanelSurface.OVER_FOCUS_SORTING + 1.0)
 	_keyboard.applied.connect(_apply_keyboard)
 	_floating_ui.add_child(_keyboard)
@@ -572,7 +572,7 @@ func _process(delta: float) -> void:
 		var top := _badge_top()
 		_badge.place(top, head, up, maxf(top.distance_to(head) / BADGE_DISTANCE, 1.0))
 	elif _workspace.visible:
-		# A graph without an object in the scene: its badge stands over the graph (D-082).
+		# A graph without an object in the scene: its badge stands over the graph (D-085).
 		var point := _floating_ui.global_transform * BADGE_FLOATING
 		_badge.float_at(Transform3D(XREPanels.facing(point, head, up), point))
 	else:
@@ -854,7 +854,7 @@ func detach_selected() -> bool:
 	return true
 
 
-## The badge's trash (D-082): the open graph's object loses its Blueprint — its
+## The badge's trash (D-085): the open graph's object loses its Blueprint — its
 ## script and source link, as one scene undo step, as Detach does — and the
 ## graph closes. The graph's file stays in the catalog.
 func delete_blueprint() -> bool:
@@ -874,7 +874,7 @@ func delete_blueprint() -> bool:
 	return true
 
 
-## Graph undo and redo, from the Blueprints tab (D-082).
+## Graph undo and redo, from the Blueprints tab (D-085).
 func undo() -> void:
 	blueprint.perform(blueprint.undo, &"vr_panel")
 
@@ -1257,7 +1257,7 @@ func take_back(form: Control) -> void:
 ## Where the parameters window of block [param id] goes: beside the card, at
 ## its height, facing the head; on its left, or on its right if more cards are
 ## there to cover on the left. Without the card, to the right of where the
-## graph's toolbar was (D-082), where the window was before D-044.
+## graph's toolbar was (D-085), where the window was before D-044.
 func parameters_pose(id: int) -> Transform3D:
 	if not canvas.has_block(id):
 		var point := _floating_ui.global_transform * Vector3(0.85, -0.05, 0.03)
@@ -1640,7 +1640,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	# windows, which covered them and took the ray, they take it first.
 	var fan_first := _workspace.visible and is_focused() and (_choice.is_open() or (_petals.is_open() and (_petal_block >= 0 or _petal_dynamic)))
 	if fan_first and _point_at_petals(pointer, origin, direction, 5.0, delta): return
-	# A window of the panels drawn over everything, as the block palette (D-083), is the
+	# A window of the panels drawn over everything, as the block palette (D-086), is the
 	# panels' from the next frame, however near the cards in front of it; the keyboard, over it, stays.
 	if _workspace.visible and is_instance_valid(panels) and not (pointer.surface != null and pointer.surface.is_pressed()) \
 			and not (_keyboard.is_shown() and _keyboard.intersect_ray(origin, direction, INF) >= 0) and panels.on_top_surface(hand, origin, direction) != null:
@@ -1945,7 +1945,7 @@ func touch_block(hand: XREHand) -> int:
 
 
 ## Earlier panel routing yields to nearby touch and to a closer keyboard surface.
-## On a panel drawn over everything ([param on_top], D-083), only what is drawn
+## On a panel drawn over everything ([param on_top], D-086), only what is drawn
 ## over everything too, a touch and what the hand already does take the ray.
 func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance: float, on_top: bool = false) -> bool:
 	if _workspace.visible: canvas.face_user(_rig.camera.global_position)
@@ -1981,7 +1981,7 @@ func _selection_changed() -> void:
 	changed.emit()
 
 
-## The badge (D-082): in the scene, over the one selected object, with its
+## The badge (D-085): in the scene, over the one selected object, with its
 ## Blueprint button; in the graph, over the graph's object, with the graph's
 ## buttons, drawn over everything — or over the graph, if no object has it.
 func _update_badge() -> void:
@@ -2576,7 +2576,7 @@ func _update_tray() -> void:
 	elif not wanted and XREBlueprintTokensTab in _open_windows: _dismiss_window(XREBlueprintTokensTab, true)
 
 
-## Where the Tokens window opens: left of where the graph's toolbar was (D-082), facing the head.
+## Where the Tokens window opens: left of where the graph's toolbar was (D-085), facing the head.
 func _tray_pose() -> Transform3D:
 	var point := _floating_ui.global_transform * Vector3(-0.75, -0.15, 0.05)
 	return Transform3D(XREPanels.facing(point, _rig.camera.global_position, _rig.global_basis.y), point)
