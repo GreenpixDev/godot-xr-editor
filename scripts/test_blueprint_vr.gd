@@ -75,6 +75,29 @@ func _click(point: Vector3) -> void:
 	await _frames()
 
 
+## A ray's pose, in the rig, at [param pixel] of [param surface], from 0.3 m in front of it.
+func _pose_at(surface: XREPanelSurface, pixel: Vector2) -> Transform3D:
+	var target := surface.pixel_to_global(pixel)
+	var origin := target + surface.global_basis.z.normalized() * 0.3
+	return _rig.global_transform.affine_inverse() * Transform3D(Basis.looking_at(target - origin), origin)
+
+
+## A trigger click by the right ray on [param pixel] of [param surface].
+func _click_at(surface: XREPanelSurface, pixel: Vector2) -> void:
+	_right.set_pose(&"aim", _pose_at(surface, pixel), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+
+
+## The center of [param control] in its panel's interface pixels.
+static func _pixel_of(control: Control) -> Vector2:
+	return control.get_global_rect().get_center()
+
+
 func _run() -> void:
 	for frame: int in 600:
 		await get_tree().process_frame
@@ -145,21 +168,24 @@ func _run() -> void:
 	await _test_workspace()
 	await _test_node_display()
 	await _test_window_corners()
-	var toolbar := _service.get("_toolbar") as XREPanelSurface
-	var toolbar_point := toolbar.pixel_to_global(Vector2(12, 144))
-	_aim(toolbar_point)
-	_left.set_pose(&"aim", Transform3D(Basis.IDENTITY, toolbar_point + Vector3.BACK * 0.4), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	var badge := _service.get("_badge") as XREBlueprintBadge
+	await _test_badge_graph(badge, path)
+	# The badge's title, off its buttons (D-085).
+	var title_pose := _pose_at(badge, Vector2(110, badge.size_px.y * 0.5))
+	_right.set_pose(&"aim", title_pose, Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	_left.set_pose(&"aim", title_pose, Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 	await _frames()
 	_right.set_input(&"trigger", 1.0)
 	await _frames()
-	_check(toolbar.is_pressed(), "one hand owns the panel mouse while pressed")
+	_check(badge.is_pressed(), "one hand owns the panel mouse while pressed")
 	_left.set_pose(&"aim", Transform3D(Basis.IDENTITY, Vector3(-5, 0, 0)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 	await _frames()
-	_check(toolbar.is_pressed(), "idle second hand leaving does not release the owner's button")
+	_check(badge.is_pressed(), "idle second hand leaving does not release the owner's button")
 	_right.set_input(&"trigger", 0.0)
 	await _frames()
-	_check(not toolbar.is_pressed(), "owner releases its own panel mouse")
-	await _test_surface_occlusion(toolbar)
+	_check(not badge.is_pressed(), "owner releases its own panel mouse")
+	_check(_service.is_open(), "a click on the badge's title closes nothing")
+	await _test_surface_occlusion(badge)
 	for child: Node in EditorInterface.get_editor_main_screen().get_children():
 		if child is XREBlueprintEditor: _check((child as XREBlueprintEditor).document == _service.blueprint, "desktop and VR share one document")
 	_service.add_block("print")
@@ -433,17 +459,17 @@ func _aim_corner(window: XREPanelSurface, corner: int, trigger: float, grip: flo
 
 
 ## Corner handles of the graph's windows (D-040): grip on the keyboard's
-## corner moves that window; trigger on the toolbar's moves them all. The
-## parameters and the block palette are the panels' windows since D-044.
+## corner moves that window. The parameters and the block palette are the
+## panels' windows since D-044; the toolbar, which moved them all, is gone
+## since D-085.
 func _test_window_corners() -> void:
 	var floating := _service.get("_floating_ui") as Node3D
-	var toolbar := _service.get("_toolbar") as XREPanelSurface
 	var panel := _service.get("_keyboard") as XREVirtualKeyboard
 	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
 	var floating_before := floating.global_transform
 	var history := _service.blueprint.history.get_version()
-	for window: XREPanelSurface in [toolbar, panel]:
-		_check(window.has_corner_handles(), "graph window %s has corner handles" % window.name)
+	_check(panel.has_corner_handles(), "the keyboard has corner handles")
+	_check((_service.get("_windows") as Array).size() == 1, "the keyboard is the graph's only window of its own")
 	_check(not (_service.get("_badge") as XREPanelSurface).has_corner_handles(), "the object's badge, object-locked, has none")
 	panel.open_text("corner")
 	var panel_before := panel.transform
@@ -451,7 +477,6 @@ func _test_window_corners() -> void:
 	_aim_corner(panel, XREPanelSurface.Corner.BOTTOM_RIGHT, 0, 0)
 	await _frames()
 	_check(panel.handle_lit(XREPanelSurface.Corner.BOTTOM_RIGHT), "the ray lights the keyboard's corner handle")
-	_check(not toolbar.handle_shown(XREPanelSurface.Corner.TOP_LEFT), "another window's handles stay hidden")
 	_right.set_input(&"grip", 1.0)
 	await _frames()
 	_check(pointer.held == panel and pointer.window == panel, "grip on a corner handle takes the keyboard")
@@ -461,33 +486,15 @@ func _test_window_corners() -> void:
 	await _frames()
 	_check(panel.global_position.distance_to(start + Vector3(0.1, 0.05, 0)) < 0.001, "the window follows the hand by its corner")
 	_check(panel.global_basis.is_equal_approx(floating_before.basis * panel_before.basis), "and keeps its tilt")
-	_check(toolbar.global_transform.is_equal_approx(floating_before * toolbar.transform), "the keyboard moves alone")
+	_check(floating.global_transform.is_equal_approx(floating_before), "the keyboard moves alone")
 	_right.set_input(&"grip", 0.0)
 	await _frames()
 	_check(pointer.held == null, "letting go of the grip leaves the window")
-	panel.transform = panel_before
-
-	_aim_corner(toolbar, XREPanelSurface.Corner.TOP_LEFT, 0, 0)
-	await _frames()
-	_check(toolbar.handle_lit(XREPanelSurface.Corner.TOP_LEFT), "the ray lights the toolbar's corner handle")
-	_right.set_input(&"trigger", 1.0)
-	await _frames()
-	_check(pointer.held == floating and pointer.window == toolbar, "trigger on the toolbar's corner takes the graph's windows")
-	_check(not toolbar.is_pressed(), "without clicking the toolbar")
-	hand = _rig.right_hand.global_transform
-	_right.set_pose(&"aim", _rig.global_transform.affine_inverse() * hand.translated(Vector3(-0.1, 0, 0)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-	await _frames()
-	_check(floating.global_position.distance_to(floating_before.origin + Vector3(-0.1, 0, 0)) < 0.001, "the graph's windows move together by the toolbar's corner")
-	_check(panel.transform.is_equal_approx(panel_before), "keeping their places in the group")
-	_check(toolbar.handle_lit(XREPanelSurface.Corner.TOP_LEFT), "the handle stays lit while it is held")
-	_right.set_input(&"trigger", 0.0)
-	await _frames()
-	_check(pointer.held == null, "letting go of the trigger leaves the windows")
 	_check(_service.blueprint.history.get_version() == history, "moving windows is not a graph edit")
-	floating.global_transform = floating_before
+	panel.transform = panel_before
 	_aim(Vector3(5, 4, -2))
 	await _frames()
-	_check(not toolbar.handle_shown(XREPanelSurface.Corner.TOP_LEFT), "handles hide when the ray leaves")
+	_check(not panel.handle_shown(XREPanelSurface.Corner.BOTTOM_RIGHT), "handles hide when the ray leaves")
 	panel.close()
 
 
@@ -1012,18 +1019,20 @@ func _test_windows_and_ports(id: int) -> void:
 	await _frames()
 	_check(_card(id).ports[0].mesh is CylinderMesh, "flat ports again")
 
-	var toolbar := _service.get("_toolbar") as XREPanelSurface
+	var keyboard := _service.get("_keyboard") as XREVirtualKeyboard
+	keyboard.open_text("shape")
 	_check(_document.set_feature(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.CONCAVE, XREDocument.Source.PANEL), "windows switch to concave")
-	_check(toolbar.curve_radius > 0.0 and (_service.get("_keyboard") as XREPanelSurface).curve_radius > 0.0 and not (_service.get("_badge") as XREPanelSurface).curve_radius > 0.0,
+	_check(keyboard.curve_radius > 0.0 and not (_service.get("_badge") as XREPanelSurface).curve_radius > 0.0,
 			"the graph's windows bend, the object's badge doesn't")
 	var pixel := Vector2(60, 40)
-	var point := toolbar.pixel_to_global(pixel)
-	_check(toolbar.to_local(point).z > 0.05, "a concave window's edge comes towards the user")
-	var normal := toolbar.global_basis.z.normalized()
-	_check(toolbar.intersect_ray(point + normal * 0.3, -normal, 1.0) >= 0 and toolbar.get_hit_pixel().distance_to(pixel) < 0.5,
-			"the ray hits the pixel drawn there: %s" % toolbar.get_hit_pixel())
-	_check(_document.set_feature(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.FLAT, XREDocument.Source.PANEL) and toolbar.curve_radius == 0.0,
+	var point := keyboard.pixel_to_global(pixel)
+	_check(keyboard.to_local(point).z > 0.05, "a concave window's edge comes towards the user")
+	var normal := keyboard.global_basis.z.normalized()
+	_check(keyboard.intersect_ray(point + normal * 0.3, -normal, 1.0) >= 0 and keyboard.get_hit_pixel().distance_to(pixel) < 0.5,
+			"the ray hits the pixel drawn there: %s" % keyboard.get_hit_pixel())
+	_check(_document.set_feature(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.FLAT, XREDocument.Source.PANEL) and keyboard.curve_radius == 0.0,
 			"and flat again")
+	keyboard.close()
 
 
 func _test_keyboard() -> void:
@@ -1100,16 +1109,24 @@ func _test_keyboard() -> void:
 	await _frames()
 
 
-func _test_surface_occlusion(toolbar: XREPanelSurface) -> void:
+## A card in front of a panel takes the ray; a panel drawn over everything,
+## as the graph's badge is (D-085), takes it over the card.
+func _test_surface_occlusion(badge: XREBlueprintBadge) -> void:
 	var before := _service.canvas.get_block_position(1)
-	var center := toolbar.pixel_to_global(toolbar.size_px * 0.5) + toolbar.global_basis.z * 0.05
-	_service.canvas.preview_move(1, _service.canvas.to_local(center))
-	_aim(center)
+	var pixel := Vector2(110, badge.size_px.y * 0.5)
+	var normal := badge.global_basis.z.normalized()
+	_service.canvas.preview_move(1, _service.canvas.to_local(badge.pixel_to_global(pixel) + normal * 0.05))
+	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
+	_right.set_pose(&"aim", _pose_at(badge, pixel), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await _frames()
+	_check(pointer.surface == badge, "the badge drawn over everything takes the ray over a card in front of it")
+	badge.set_on_top(false)
 	await _frames()
 	var ray := _rig.right_hand.get("_ray") as MeshInstance3D
-	_check(ray.scale.z < 0.43, "front card stops the pointer before a panel behind it: %.3f m" % ray.scale.z)
-	await _click(center)
+	_check(ray.scale.z < 0.28 and pointer.surface == null, "front card stops the pointer before a panel behind it: %.3f m" % ray.scale.z)
+	await _click_at(badge, pixel)
 	_check(_service.get("_selected") == 1, "trigger reaches the card instead of the covered panel")
+	badge.set_on_top(true)
 	_service.canvas.preview_move(1, before)
 	_service.select_block(-1)
 	_aim(Vector3(5, 4, -2))
@@ -1124,8 +1141,14 @@ func _test_badge() -> void:
 	geometry.position = Vector3(0.7, 0.2, 0)
 	_document.add_node(geometry, _host, XREDocument.Source.PANEL)
 	await _frames()
-	var badge := _service.get("_badge") as XREPanelSurface
+	var badge := _service.get("_badge") as XREBlueprintBadge
 	var first := badge.global_position
+	# In the scene: the object's name and the Blueprint button, faint with a plus before it has a graph (D-085).
+	_check(badge.is_shown() and not badge.is_graph() and not badge.is_on_top(), "the scene's badge shows over the selected object")
+	_check(badge.get_blueprint_button().is_visible_in_tree() and badge.get_blueprint_button().text == "Blueprint"
+			and badge.get_blueprint_button().tooltip_text == "Create Blueprint", "its one button is Blueprint, which creates one here")
+	_check(not badge.get_close_button().is_visible_in_tree() and not badge.get_trash_button().is_visible_in_tree(), "the graph's buttons wait for the graph")
+	_check_leader(badge, geometry.global_transform * geometry.custom_aabb)
 	var before := _host.transform
 	_document.preview_transform(_host, Transform3D(Basis.from_euler(Vector3(0.1, 0.3, 0.4)).scaled(Vector3(4, 7, 2)), before.origin))
 	await _frames()
@@ -1153,6 +1176,66 @@ func _test_badge() -> void:
 		_check(badge.global_position.y - badge.size_m.y * 0.5 > csg_bounds.end.y, "badge follows resized CSG geometry")
 		_document.remove_nodes([csg], XREDocument.Source.PANEL)
 		await _frames()
+
+
+## The dashed leader (D-085) runs from the top of [param bounds], where its dot is, up to the pill's bottom edge.
+func _check_leader(badge: XREBlueprintBadge, bounds: AABB) -> void:
+	var top := Vector3(bounds.get_center().x, bounds.end.y, bounds.get_center().z)
+	var leader := badge.get_leader()
+	var grown := badge.global_basis.y.length()
+	var bottom := badge.global_position - badge.global_basis.y * badge.size_m.y * 0.5
+	_check(leader.visible and badge.get_dot().visible and badge.get_dot().global_position.distance_to(top) < 0.001, "the leader's dot sits on top of the object")
+	_check((leader.global_transform * Vector3(0, -0.5, 0)).distance_to(top) < 0.001 and (leader.global_transform * Vector3(0, 0.5, 0)).distance_to(bottom) < 0.001,
+			"the leader runs from the object up to the pill")
+	_check(is_equal_approx(top.distance_to(bottom), XREBlueprintBadge.GAP * grown), "the leader is %.2f m long at full size" % XREBlueprintBadge.GAP)
+	var dashes := float((leader.material_override as ShaderMaterial).get_shader_parameter(&"dashes"))
+	_check(is_equal_approx(dashes, XREBlueprintBadge.GAP / (XREBlueprintBadge.DASH * 2.0)), "it is dashed: %.1f dashes" % dashes)
+
+
+## The graph's badge (D-085): over the graph's object, drawn over everything,
+## with the graph's name, + (the block palette), the trash (twice: detach and
+## close) and × (close). The graph is open for [member _host] on [param path].
+func _test_badge_graph(badge: XREBlueprintBadge, path: String) -> void:
+	var geometry := _host.get_node("Geometry") as MeshInstance3D
+	_check(badge.is_shown() and badge.is_graph() and badge.is_on_top(), "in the graph the badge shows the graph's buttons over everything")
+	_check(not badge.get_blueprint_button().is_visible_in_tree() and badge.get_add_button().is_visible_in_tree()
+			and badge.get_trash_button().is_visible_in_tree() and badge.get_close_button().is_visible_in_tree(), "+, the trash and × instead of Blueprint")
+	_check((badge.get_leader().material_override as ShaderMaterial).render_priority == Material.RENDER_PRIORITY_MAX, "the leader is drawn over the dimmed scene too")
+	_check_leader(badge, geometry.global_transform * geometry.custom_aabb)
+	await _click_at(badge, _pixel_of(badge.get_add_button()))
+	_check(_service.is_block_palette_shown() and _service.is_open(), "+ opens the block palette")
+	_service.close_block_palette()
+	await _frames()
+	# The trash asks once more: the first click only arms it.
+	var trash := _pixel_of(badge.get_trash_button())
+	await _click_at(badge, trash)
+	_check(badge.is_armed() and _service.is_open() and XREBlueprints.source_path(_host) == path, "the first click on the trash only arms it")
+	badge.show_scene("", false)
+	badge.show_graph(str(_host.name))
+	_check(not badge.is_armed(), "leaving the graph's view disarms it")
+	await _click_at(badge, trash)
+	await _click_at(badge, trash)
+	_check(not _service.is_open() and _host.get_script() == null and not _host.has_meta(&"_xre_blueprint") and FileAccess.file_exists(path),
+			"the second click detaches the Blueprint and closes the graph; its file stays")
+	_check(badge.is_shown() and not badge.is_graph() and badge.get_blueprint_button().tooltip_text == "Create Blueprint" and not badge.is_on_top(),
+			"the badge is the scene's again, for an object without a Blueprint")
+	_check(badge.get_message().begins_with("Blueprint deleted"), "and says so over the pill: %s" % badge.get_message())
+	var plugin := (_document as XREPluginDocument).get("_plugin") as EditorPlugin
+	var manager := plugin.get_undo_redo()
+	manager.get_history_undo_redo(manager.get_object_history_id(_host)).undo()
+	await _frames()
+	_check(XREBlueprints.source_path(_host) == path, "scene undo gives the object its Blueprint back")
+	# The history's own undo, unlike Ctrl+Z through the manager, tells the plugin nothing.
+	_service.refresh_catalog()
+	_check(badge.get_blueprint_button().tooltip_text == "Open Blueprint", "and the badge's button opens it")
+	await _click_at(badge, _pixel_of(badge.get_blueprint_button()))
+	_check(_service.is_open() and _service.blueprint.path == path and badge.is_graph(), "Blueprint opens the object's graph")
+	await _click_at(badge, _pixel_of(badge.get_close_button()))
+	_check(not _service.is_open() and XREBlueprints.source_path(_host) == path, "× closes the graph and keeps the Blueprint")
+	_check(_service.open_graph(path), "the graph opens again")
+	await _frames()
+	_aim(Vector3(5, 4, -2))
+	await _frames()
 
 
 func _test_target() -> void:
@@ -1284,6 +1367,7 @@ func _test_block_menu() -> void:
 	var menu := _service.block_menu
 	var window := _panels.find_window(XREBlueprintPaletteTab)
 	_check(window != null and window.tab.is_ancestor_of(menu), "the plus opens the block menu in its window")
+	if window != null: await _test_palette_on_top(window, source)
 	_check(menu.get_pin().get("type") == XREBlueprintGraph.EXEC and menu.get_pin().get("output") == true, "the menu is filtered by the card's execution output")
 	_check(menu.get_chip_titles().has(str(_host.name)) and menu.get_chip_titles().has("Library") and menu.get_chip_titles().has("All"), "chips name the host and the groups")
 	menu.choose_chip(menu.get_chip_titles().find("Library"))
@@ -1312,6 +1396,7 @@ func _test_block_menu() -> void:
 	_service.call("_open_menu_for_wire", Vector3(0.6, -0.4, 0.05))
 	await _frames()
 	_check(_service.is_block_palette_shown() and menu.get_pin().get("output") == true, "a wire let go in empty space opens the menu for its port")
+	await _test_palette_over_focus(graph.nodes.back()["id"])
 	menu.choose_chip(menu.get_chip_titles().find("Native"))
 	var branch: Array[Dictionary] = menu.get_listed().filter(func(action: Dictionary) -> bool: return action["id"] == "native:branch")
 	if not branch.is_empty():
@@ -1325,6 +1410,47 @@ func _test_block_menu() -> void:
 	await _frames()
 	_check(graph.nodes.size() == blocks + 2 and _service.get("_ghost") == null, "a row pulled out of the menu is placed where its trigger is let go")
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## D-086: the block palette is drawn over everything, as an input is, but
+## without the focus veil; a card between it and the hand takes neither the
+## sight of it nor its ray.
+func _test_palette_on_top(window: XREPanelWindow, card: int) -> void:
+	_check(window.is_on_top() and window.get_bar().is_on_top(), "the block palette is drawn over everything, its control bar too")
+	_check(not _service.is_focused() and not (_service.get("_focus_dimmer") as MeshInstance3D).visible, "without the focus veil of an input")
+	var pixel := window.size_px * 0.5
+	var before := _service.canvas.get_block_position(card)
+	_service.canvas.preview_move(card, _service.canvas.to_local(window.pixel_to_global(pixel) + window.global_basis.z.normalized() * 0.05))
+	var pose := _pose_at(window, pixel)
+	_check(_service.canvas.intersect_ray(_rig.global_transform * pose.origin, -(_rig.global_basis * pose.basis.z).normalized(), 1.0) >= 0, "a card stands between the hand and the palette")
+	_right.set_pose(&"aim", pose, Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await _frames()
+	var ray := _rig.right_hand.get("_ray") as MeshInstance3D
+	_check(_rig.right_hand.get_claimant() == _panels and ray.scale.z > 0.28, "the ray goes through the card to the palette: %.3f m" % ray.scale.z)
+	_service.canvas.preview_move(card, before)
+	_aim(Vector3(5, 4, -2))
+	await _frames()
+
+
+## D-086: with Focus on Front the card a wire is drawn from is drawn over
+## everything (D-075); the block palette the wire opened is drawn over it.
+func _test_palette_over_focus(card: int) -> void:
+	_document.features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.FRONT)
+	await _frames()
+	var window := _panels.find_window(XREBlueprintPaletteTab)
+	var highest := -INF
+	var parts: Array[Node] = [_service.canvas.get_node("Block%d" % card)]
+	while not parts.is_empty():
+		var part: Node = parts.pop_back()
+		parts.append_array(part.get_children())
+		if part is GeometryInstance3D and (part as GeometryInstance3D).visible: highest = maxf(highest, (part as GeometryInstance3D).sorting_offset)
+	_check(highest >= XREBlueprintFocus.TOP_SORTING, "the wire's card is in Front focus, over everything: %.1f" % highest)
+	_check(window != null and (window.get("_quad") as MeshInstance3D).sorting_offset > highest and (window.get_bar().get("_quad") as MeshInstance3D).sorting_offset > highest,
+			"the palette and its bar are drawn after it")
+	# XREHand draws its ray over everything 200 later.
+	_check((window.get("_quad") as MeshInstance3D).sorting_offset < 200.0, "and before the hands' rays")
+	_document.features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.OFF)
 	await _frames()
 
 

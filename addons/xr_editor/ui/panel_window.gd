@@ -161,6 +161,17 @@ func set_overlay(enabled: bool) -> void:
 	_bar.set_overlay(enabled)
 
 
+## Drawn over everything, the control bar too (D-086).
+func set_on_top(enabled: bool) -> void:
+	super(enabled)
+	_bar.set_on_top(enabled)
+
+
+func set_top_sorting(sorting: float) -> void:
+	super(sorting)
+	_bar.set_top_sorting(sorting)
+
+
 ## The control bar bends with the window, around the same axis.
 func set_curve_radius(radius: float) -> void:
 	super(radius)

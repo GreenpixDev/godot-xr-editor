@@ -84,6 +84,13 @@ func has_control_bar() -> bool:
 	return true
 
 
+## Whether the tab's window is drawn over everything, as an input of the graph
+## is (D-058), but without darkening the rest (D-086): the graph's cards between
+## it and the head neither hide it nor take its ray.
+func is_drawn_on_top() -> bool:
+	return false
+
+
 ## Whether the tab waits for a controller button to be pressed
 ## ([constant XREFeatureSettings.BUTTONS]). [XREPanels] then gives it the next
 ## one ([method take_button]), and no tool acts on that press.
