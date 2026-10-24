@@ -26,6 +26,9 @@ const BODY_BOTTOM := 0.65
 ## Farther than this from the head, in meters, the badge over a selected
 ## object grows with the distance and so keeps its size in view (D-043).
 const BADGE_DISTANCE := 1.2
+## Where the badge of a graph without an object stands in the graph's window
+## group: over the graph, where its toolbar was before D-082.
+const BADGE_FLOATING := Vector3(0.0, 0.42, 0.03)
 ## How far below a token and in front of it, toward the head, its keyboard opens, in meters (D-057).
 ## How far along a number's line the ray must go before the line follows it (D-062): a click stays a click.
 const LINE_START := 0.008
@@ -278,7 +281,6 @@ var _dimmer: MeshInstance3D
 ## what is drawn over everything.
 var _focus_dimmer: MeshInstance3D
 var _focused := false
-var _toolbar: XREPanelSurface
 ## The block menu's form ([XREBlueprintPaletteTab]): the action menu of the
 ## desktop view, with larger rows (D-051). A card's plus, a wire let go in
 ## empty space and Add block of the Blueprints tab open it.
@@ -373,14 +375,10 @@ var _open_windows: Array[GDScript] = []
 ## The block the parameters window was opened beside, or -1, and on which side of it: -1 left, 1 right.
 var _parameters_block := -1
 var _parameters_side := -1.0
-var _badge: XREPanelSurface
+## The badge over the selected object, or over the graph's (D-082).
+var _badge: XREBlueprintBadge
 var _badge_anchor: Node3D
 var _badge_geometry: Array[GeometryInstance3D] = []
-var _badge_label: Label
-var _badge_open: Button
-var _badge_detach: Button
-var _title: Label
-var _status_label: Label
 var _pointers: Array[Pointer] = []
 var _markers: Array[Marker] = []
 var _target_wires: Array[TargetWire] = []
@@ -435,10 +433,6 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	add_child(_choice)
 	_petal_outline = XREOutline.new(Color.WHITE)
 	add_child(_petal_outline)
-	_toolbar = XREPanelSurface.new(Vector2(840, 150), 0.0009, 1.5, theme)
-	_toolbar.position = Vector3(0, 0.42, 0.03)
-	_floating_ui.add_child(_toolbar)
-	_build_toolbar()
 	_forms_home = SubViewport.new()
 	_forms_home.name = "FormsHome"
 	_forms_home.disable_3d = true
@@ -457,6 +451,8 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_keyboard = XREVirtualKeyboard.new(theme)
 	# Over everything, so that it never sinks into a card (D-058); grip moves it, × closes it.
 	_keyboard.set_on_top(true)
+	# Over the block palette (D-083) too, whose search it types.
+	_keyboard.set_top_sorting(XREPanelSurface.OVER_FOCUS_SORTING + 1.0)
 	_keyboard.applied.connect(_apply_keyboard)
 	_floating_ui.add_child(_keyboard)
 	_build_block_menu(theme)
@@ -493,20 +489,17 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_token_editor = XREBlueprintTokenEditor.new()
 	add_child(_token_editor)
 	_focus_targets.resize(XREBlueprintFade.MOST)
-	_windows = [_toolbar, _keyboard]
+	_windows = [_keyboard]
 	for window: XREPanelSurface in _windows: window.add_corner_handles()
 	_update_window_shape()
 	_workspace.hide()
 	_floating_ui.hide()
-	_badge = XREPanelSurface.new(Vector2(340, 170), 0.00065, 1.5, theme)
+	_badge = XREBlueprintBadge.new(theme)
+	_badge.blueprint_pressed.connect(open_selected)
+	_badge.add_pressed.connect(open_block_menu)
+	_badge.delete_pressed.connect(delete_blueprint)
+	_badge.close_pressed.connect(close_graph)
 	add_child(_badge)
-	var column := VBoxContainer.new()
-	_badge.root.add_child(column)
-	_badge_label = Label.new()
-	_badge_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(_badge_label)
-	_badge_open = _button(column, "Create Blueprint", open_selected)
-	_badge_detach = _button(column, "Detach Blueprint", detach_selected)
 	_badge.set_shown(false)
 	for hand: XREHand in [rig.right_hand, rig.left_hand]:
 		var pointer := Pointer.new()
@@ -571,15 +564,17 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
+	var head := _rig.camera.global_position
+	var up := _rig.global_basis.y.normalized()
 	if is_instance_valid(_badge_anchor) and _badge_anchor.is_inside_tree():
 		# As light icons do (XREIcons), the badge keeps its size in view farther than
 		# BADGE_DISTANCE away, so that its text stays readable (D-043); nearer, it keeps its size.
-		var head := _rig.camera.global_position
-		var up := _rig.global_basis.y.normalized()
-		var base := _badge_position()
-		var size := maxf(base.distance_to(head) / BADGE_DISTANCE, 1.0)
-		var point := base + up * (_badge.size_m.y * 0.5 * size)
-		_badge.global_transform = Transform3D(XREPanels.facing(point, head, up) * Basis.from_scale(Vector3.ONE * size), point)
+		var top := _badge_top()
+		_badge.place(top, head, up, maxf(top.distance_to(head) / BADGE_DISTANCE, 1.0))
+	elif _workspace.visible:
+		# A graph without an object in the scene: its badge stands over the graph (D-082).
+		var point := _floating_ui.global_transform * BADGE_FLOATING
+		_badge.float_at(Transform3D(XREPanels.facing(point, head, up), point))
 	else:
 		_badge.set_shown(false)
 	for marker: Marker in _markers:
@@ -808,6 +803,7 @@ func show_graph() -> void:
 	parameters.select_block(-1)
 	_update_tray()
 	_update_selection_fan()
+	_update_badge()
 	_schedule_rebuild()
 	changed.emit()
 
@@ -834,6 +830,7 @@ func close_graph() -> void:
 	_floating_ui.hide()
 	_dimmer.hide()
 	_set_ui_overlay(false)
+	_update_badge()
 	_message("Back to scene. Blueprint draft saved.")
 
 
@@ -855,6 +852,59 @@ func detach_selected() -> bool:
 	_selection_changed()
 	_message("Blueprint detached. Its files remain in the catalog.")
 	return true
+
+
+## The badge's trash (D-082): the open graph's object loses its Blueprint — its
+## script and source link, as one scene undo step, as Detach does — and the
+## graph closes. The graph's file stays in the catalog.
+func delete_blueprint() -> bool:
+	if not _workspace.visible: return false
+	var host := blueprint.get_host()
+	var assigned := host != null and not blueprint.path.is_empty() and source_path(host) == blueprint.path
+	if assigned and not _document.assign_blueprint(host, "", null, XREDocument.Source.PANEL):
+		_message("The node has an unrelated script; it was kept.")
+		return false
+	# A new graph not yet saved (D-063) is just left.
+	_unsaved_host = null
+	close_graph()
+	if _workspace.visible: return false
+	_refresh_markers()
+	_selection_changed()
+	_message("Blueprint deleted. Its file remains in the catalog." if assigned else "Blueprint closed: no object had it.")
+	return true
+
+
+## Graph undo and redo, from the Blueprints tab (D-082).
+func undo() -> void:
+	blueprint.perform(blueprint.undo, &"vr_panel")
+
+
+func redo() -> void:
+	blueprint.perform(blueprint.redo, &"vr_panel")
+
+
+## Drops the wire being drawn and the Target being picked.
+func cancel_pick() -> void:
+	cancel_connection()
+	_target_pick = -1
+
+
+## Opens the graph's variables in the Parameters window.
+func show_variables() -> void:
+	parameters.show_variables()
+	_show_parameters()
+
+
+## Opens the host picker in the Parameters window.
+func show_host_picker() -> void:
+	parameters.show_host_picker()
+	_show_parameters()
+
+
+## Opens or closes the Tokens window.
+func toggle_tokens() -> void:
+	if XREBlueprintTokensTab in _open_windows: _dismiss_window(XREBlueprintTokensTab, true)
+	else: _request_window(XREBlueprintTokensTab, _tray_pose())
 
 
 ## Prevents play from silently using stale code after an invalid graph edit.
@@ -1206,8 +1256,8 @@ func take_back(form: Control) -> void:
 
 ## Where the parameters window of block [param id] goes: beside the card, at
 ## its height, facing the head; on its left, or on its right if more cards are
-## there to cover on the left. Without the card, to the right of the graph's
-## toolbar, where the window was before D-044.
+## there to cover on the left. Without the card, to the right of where the
+## graph's toolbar was (D-082), where the window was before D-044.
 func parameters_pose(id: int) -> Transform3D:
 	if not canvas.has_block(id):
 		var point := _floating_ui.global_transform * Vector3(0.85, -0.05, 0.03)
@@ -1496,39 +1546,6 @@ func set_logic_mode(enabled: bool) -> void:
 	changed.emit()
 
 
-func _build_toolbar() -> void:
-	var column := VBoxContainer.new()
-	_toolbar.root.add_child(column)
-	_title = Label.new()
-	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(_title)
-	var row := HBoxContainer.new()
-	column.add_child(row)
-	_button(row, "Back to scene", close_graph)
-	_button(row, "Save draft", save_draft)
-	_button(row, "Build & Attach", build_and_attach)
-	_button(row, "Undo", func() -> void: blueprint.perform(blueprint.undo, &"vr_panel"))
-	_button(row, "Redo", func() -> void: blueprint.perform(blueprint.redo, &"vr_panel"))
-	var second := HBoxContainer.new()
-	column.add_child(second)
-	_button(second, "Pick Target", pick_target)
-	_button(second, "Cancel wire / target", func() -> void:
-		cancel_connection()
-		_target_pick = -1)
-	_button(second, "Variables", func() -> void:
-		parameters.show_variables()
-		_show_parameters())
-	_button(second, "Choose host", func() -> void:
-		parameters.show_host_picker()
-		_show_parameters())
-	_button(second, "Tokens", func() -> void:
-		if XREBlueprintTokensTab in _open_windows: _dismiss_window(XREBlueprintTokensTab, true)
-		else: _request_window(XREBlueprintTokensTab, _tray_pose()))
-	_status_label = Label.new()
-	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(_status_label)
-
-
 func _update_pointer(pointer: Pointer, delta: float) -> void:
 	var hand := pointer.hand
 	if pointer.swallow and not (hand.trigger_held and hand.get_has_tracking_data()):
@@ -1623,6 +1640,15 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	# windows, which covered them and took the ray, they take it first.
 	var fan_first := _workspace.visible and is_focused() and (_choice.is_open() or (_petals.is_open() and (_petal_block >= 0 or _petal_dynamic)))
 	if fan_first and _point_at_petals(pointer, origin, direction, 5.0, delta): return
+	# A window of the panels drawn over everything, as the block palette (D-083), is the
+	# panels' from the next frame, however near the cards in front of it; the keyboard, over it, stays.
+	if _workspace.visible and is_instance_valid(panels) and not (pointer.surface != null and pointer.surface.is_pressed()) \
+			and not (_keyboard.is_shown() and _keyboard.intersect_ray(origin, direction, INF) >= 0) and panels.on_top_surface(hand, origin, direction) != null:
+		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
+		_leave(pointer)
+		hand.unclaim(self)
+		hand.unclaim_stick(self)
+		return
 	if pointer.surface != null and pointer.surface.is_pressed():
 		surface = pointer.surface
 		distance = surface.intersect_ray(origin, direction, INF, false)
@@ -1837,9 +1863,8 @@ func _start_hold(pointer: Pointer, node: Node3D, block: int, point: Vector3 = Ve
 
 ## Takes [param window], by its [param corner] handle or by its interface
 ## with -1, held by the trigger if [param by_trigger], otherwise by the grip.
-## The toolbar leads the graph's windows: taking it moves them all.
 func _hold_window(pointer: Pointer, window: XREPanelSurface, corner: int, by_trigger: bool) -> void:
-	_start_hold(pointer, _floating_ui if window == _toolbar else window, -1)
+	_start_hold(pointer, window, -1)
 	if pointer.held == null: return
 	pointer.window = window
 	pointer.corner = corner
@@ -1920,7 +1945,9 @@ func touch_block(hand: XREHand) -> int:
 
 
 ## Earlier panel routing yields to nearby touch and to a closer keyboard surface.
-func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance: float) -> bool:
+## On a panel drawn over everything ([param on_top], D-083), only what is drawn
+## over everything too, a touch and what the hand already does take the ray.
+func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance: float, on_top: bool = false) -> bool:
 	if _workspace.visible: canvas.face_user(_rig.camera.global_position)
 	# What is drawn over everything takes the ray however far it is (D-058).
 	if _workspace.visible and _token_editor.is_interactive() and not _token_editor.pick(origin, direction).is_empty(): return true
@@ -1928,6 +1955,8 @@ func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance:
 	if hand.grip_pressed and touch_block(hand) >= 0: return true
 	for pointer: Pointer in _pointers:
 		if pointer.hand == hand and (pointer.carried != null or not pointer.pull.is_empty() or not pointer.token_key.is_empty() or not pointer.token_box.is_empty()): return true
+	if on_top: return false
+	for pointer: Pointer in _pointers:
 		# A link button, or a wire that may become a link, nearer than the panel (D-074).
 		if pointer.hand == hand and _workspace.visible and pointer.button != null and pointer.button.visible and _pill_distance(pointer.button, origin, direction) >= 0.0: return true
 	if _workspace.visible and not _document.features.get_value(XREFeatureSettings.LINK_CREATE) in [XREFeatureSettings.PORT_BUTTON, XREFeatureSettings.ALWAYS] and _link_wire_hit(origin, direction, distance) >= 0.0: return true
@@ -1946,19 +1975,30 @@ func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance:
 func _selection_changed() -> void:
 	_update_selection_fan()
 	var nodes := _document.get_selection()
-	_badge_anchor = null
-	_badge_geometry.clear()
-	_badge.set_shown(false)
-	if nodes.size() == 1 and is_instance_valid(nodes[0]):
-		_badge_anchor = _anchor(nodes[0])
-		if _badge_anchor != null: _collect_badge_geometry(_badge_anchor)
-		var host := related_host(nodes[0])
-		if is_block_palette_shown() and _workspace.visible: block_menu.set_contexts(_menu_contexts(_menu_card), blueprint.get_host(), blueprint.graph)
-		_badge_label.text = str(nodes[0].name) + (" · Blueprint" if host != null else " · Logic")
-		_badge_open.text = "Open Blueprint" if host != null else "Create Blueprint"
-		_badge_detach.visible = host != null
-		_badge.set_shown(_badge_anchor != null)
+	if nodes.size() == 1 and is_instance_valid(nodes[0]) and is_block_palette_shown() and _workspace.visible:
+		block_menu.set_contexts(_menu_contexts(_menu_card), blueprint.get_host(), blueprint.graph)
+	_update_badge()
 	changed.emit()
+
+
+## The badge (D-082): in the scene, over the one selected object, with its
+## Blueprint button; in the graph, over the graph's object, with the graph's
+## buttons, drawn over everything — or over the graph, if no object has it.
+func _update_badge() -> void:
+	var nodes := _document.get_selection()
+	var selected: Node = nodes[0] if nodes.size() == 1 and is_instance_valid(nodes[0]) else null
+	var graph := _workspace.visible
+	var object: Node = blueprint.get_host() if graph else selected
+	_badge_anchor = _anchor(object) if is_instance_valid(object) and object.is_inside_tree() else null
+	_badge_geometry.clear()
+	if _badge_anchor != null: _collect_badge_geometry(_badge_anchor)
+	if graph:
+		var title := str(object.name) if is_instance_valid(object) else blueprint.path.get_file().get_basename()
+		_badge.show_graph(title if not title.is_empty() else "Untitled")
+	elif selected != null:
+		_badge.show_scene(str(selected.name), related_host(selected) != null)
+	_badge.set_on_top(graph)
+	_badge.set_shown(graph or _badge_anchor != null)
 
 
 ## Selection/structural events cache geometry; the frame loop never walks the tree.
@@ -1969,7 +2009,8 @@ func _collect_badge_geometry(node: Node) -> void:
 	for child: Node in node.get_children(): _collect_badge_geometry(child)
 
 
-func _badge_position() -> Vector3:
+## The top of the badge's object, where its leader starts.
+func _badge_top() -> Vector3:
 	var up := _rig.global_basis.y.normalized()
 	var bounds := AABB()
 	var found := false
@@ -1980,11 +2021,11 @@ func _badge_position() -> Vector3:
 		var part := geometry.global_transform * local
 		bounds = bounds.merge(part) if found else part
 		found = true
-	if not found: return _badge_anchor.global_position + up * 0.3
+	if not found: return _badge_anchor.global_position + up * 0.2
 	# Support of the world AABB along rig-up keeps the whole panel outside it,
 	# including rotated/nonuniform scales, offset children and changing CSG bounds.
 	var radius := bounds.size.dot(up.abs()) * 0.5
-	return bounds.get_center() + up * (radius + 0.1)
+	return bounds.get_center() + up * radius
 
 
 func _scene_changed() -> void:
@@ -2106,8 +2147,9 @@ func _rebuild() -> void:
 		else: canvas.highlight_ports(canvas.port_type(_pending_id, _pending_port, _pending_input), not _pending_input)
 	# A rebuild shows the token as the graph has it: the vector being edited is shown again (D-063).
 	if _token_editor.mode == XREBlueprintTokenEditor.ARROWS and not _value_edit.is_empty(): _preview_value_edit(_value_edit["value"], str(_value_edit["expression"]))
-	_title.text = (blueprint.path.get_file() if not blueprint.path.is_empty() else "Untitled") + " · Host: " + str(blueprint.graph.host_path)
-	_status_label.text = status if blueprint.scene_context_active() else blueprint.scene_context_message()
+	# The host may have changed: the badge goes over the new one.
+	_update_badge()
+	if not blueprint.scene_context_active(): _badge.show_message(blueprint.scene_context_message())
 	changed.emit()
 
 
@@ -2175,16 +2217,8 @@ func _open_owner_scene() -> void:
 
 func _message(text: String) -> void:
 	status = text
-	if is_instance_valid(_status_label): _status_label.text = text
+	if is_instance_valid(_badge): _badge.show_message(text)
 	changed.emit()
-
-
-func _button(parent: Node, text: String, action: Callable) -> Button:
-	var button := Button.new()
-	button.text = text
-	button.pressed.connect(action)
-	parent.add_child(button)
-	return button
 
 
 func _build_block_menu(theme: Theme) -> void:
@@ -2291,7 +2325,7 @@ void fragment() {
 
 
 func _set_ui_overlay(enabled: bool) -> void:
-	for surface: XREPanelSurface in [_toolbar, _keyboard, _badge]: surface.set_overlay(enabled)
+	for surface: XREPanelSurface in [_keyboard, _badge]: surface.set_overlay(enabled)
 	_rig.left_hand.set_overlay(enabled)
 	_rig.right_hand.set_overlay(enabled)
 
@@ -2542,7 +2576,7 @@ func _update_tray() -> void:
 	elif not wanted and XREBlueprintTokensTab in _open_windows: _dismiss_window(XREBlueprintTokensTab, true)
 
 
-## Where the Tokens window opens: left of the graph's toolbar, facing the head.
+## Where the Tokens window opens: left of where the graph's toolbar was (D-082), facing the head.
 func _tray_pose() -> Transform3D:
 	var point := _floating_ui.global_transform * Vector3(-0.75, -0.15, 0.05)
 	return Transform3D(XREPanels.facing(point, _rig.camera.global_position, _rig.global_basis.y), point)

@@ -134,6 +134,8 @@ var _menus_shown := false
 var _fade := 0.0
 ## The hand whose trigger the panels are handing to a panel right now, or null.
 var _clicking: XREHand
+## How far the ray went to the surface [method on_top_surface] last found.
+var on_top_distance := POINT_DISTANCE
 
 
 ## [param theme] and [param editor_scale] are the editor's; without them
@@ -571,6 +573,10 @@ func _window_for(type: Script) -> XREPanelWindow:
 	add_child(window)
 	_windows.append(window)
 	window.set_overlay(_blueprints != null and _blueprints.is_open())
+	if tab.is_drawn_on_top():
+		# Over the graph's Front focus too: a card in focus, as the one a wire is drawn from, must not cover it.
+		window.set_top_sorting(XREPanelSurface.OVER_FOCUS_SORTING)
+		window.set_on_top(true)
 	window.set_curve_radius(_window_curve(window))
 	if tab is XREObjectsTab: _palette.set_host(window, tab as XREObjectsTab)
 	return window
@@ -625,6 +631,27 @@ func _set_pin(window: XREPanelWindow, where: int) -> void:
 
 
 ## The hand [param window] is pinned to, or null.
+## The nearest window drawn over everything (D-083) or its control bar that
+## [param hand]'s ray from [param origin] along [param direction] meets, or
+## null; [member on_top_distance] is then how far.
+func on_top_surface(hand: XREHand, origin: Vector3, direction: Vector3) -> XREPanelSurface:
+	var surface: XREPanelSurface = null
+	on_top_distance = POINT_DISTANCE
+	for window: XREPanelWindow in _windows:
+		# A hand doesn't point at what is pinned to its own forearm.
+		if not window.is_on_top() or _pin_hand(window) == hand:
+			continue
+		var hit := window.intersect_ray(origin, direction, on_top_distance)
+		if hit >= 0.0:
+			surface = window
+			on_top_distance = hit
+		hit = window.get_bar().intersect_ray(origin, direction, on_top_distance)
+		if hit >= 0.0:
+			surface = window.get_bar()
+			on_top_distance = hit
+	return surface
+
+
 func _pin_hand(window: XREPanelWindow) -> XREHand:
 	match window.pin:
 		XREPanelWindow.Pin.LEFT_HAND: return _rig.left_hand
@@ -690,35 +717,44 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		distance = on_launcher
 	else:
 		var hit := -1.0
-		for window: XREPanelWindow in _windows:
-			# A hand doesn't point at what is pinned to its own forearm.
-			if _pin_hand(window) == hand:
-				continue
-			hit = window.intersect_ray(origin, direction, distance)
-			if hit >= 0.0:
-				surface = window
-				distance = hit
-			hit = window.get_bar().intersect_ray(origin, direction, distance)
-			if hit >= 0.0:
-				surface = window.get_bar()
-				distance = hit
-		# A handle lies outside its window's frame: only one nearer than any panel is taken.
-		for window: XREPanelWindow in _windows:
-			hit = window.intersect_handle(origin, direction, distance)
-			if hit >= 0.0:
-				handle = window
-				distance = hit
-		if graph_wire and surface == null and handle == null:
-			_leave(pointer)
-			return
-		if _blueprints != null and _blueprints.takes_pointer(hand, origin, direction, distance):
-			_leave(pointer)
-			return
-		# A node touched, or pointed at in front of the panel within reach, or a hold joined (D-047).
-		if (surface != null or handle != null) and _manipulator != null \
-				and _manipulator.takes_pointer(hand, origin, direction, distance):
-			_leave(pointer)
-			return
+		# A window drawn over everything (D-083) takes the ray before the nearer cards and
+		# windows it is drawn over; only what is drawn over everything too may still take it.
+		surface = on_top_surface(hand, origin, direction)
+		if surface != null:
+			distance = on_top_distance
+			if _blueprints != null and _blueprints.takes_pointer(hand, origin, direction, distance, true):
+				_leave(pointer)
+				return
+		else:
+			for window: XREPanelWindow in _windows:
+				# A hand doesn't point at what is pinned to its own forearm.
+				if _pin_hand(window) == hand:
+					continue
+				hit = window.intersect_ray(origin, direction, distance)
+				if hit >= 0.0:
+					surface = window
+					distance = hit
+				hit = window.get_bar().intersect_ray(origin, direction, distance)
+				if hit >= 0.0:
+					surface = window.get_bar()
+					distance = hit
+			# A handle lies outside its window's frame: only one nearer than any panel is taken.
+			for window: XREPanelWindow in _windows:
+				hit = window.intersect_handle(origin, direction, distance)
+				if hit >= 0.0:
+					handle = window
+					distance = hit
+			if graph_wire and surface == null and handle == null:
+				_leave(pointer)
+				return
+			if _blueprints != null and _blueprints.takes_pointer(hand, origin, direction, distance):
+				_leave(pointer)
+				return
+			# A node touched, or pointed at in front of the panel within reach, or a hold joined (D-047).
+			if (surface != null or handle != null) and _manipulator != null \
+					and _manipulator.takes_pointer(hand, origin, direction, distance):
+				_leave(pointer)
+				return
 	if handle != null:
 		_point_at_handle(pointer, handle, origin + direction * distance, distance)
 		return

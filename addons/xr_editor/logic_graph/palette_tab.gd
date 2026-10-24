@@ -21,5 +21,10 @@ func get_symbol() -> StringName:
 	return &"add_block"
 
 
+## Over the cards it opens among (D-083), without the focus veil of an input.
+func is_drawn_on_top() -> bool:
+	return true
+
+
 func _form() -> Control:
 	return _service.block_menu

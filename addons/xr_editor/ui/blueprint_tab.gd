@@ -2,9 +2,13 @@
 class_name XREBlueprintTab
 extends XREPanelTab
 ## Project graph catalog, and Add block, which opens the block menu (D-051).
+## While a graph is open, its commands, which the graph's toolbar had before
+## the object's badge took its place (D-082).
 
 var _service: XREBlueprints
 var _status: Label
+var _graph: VBoxContainer
+var _graph_title: Label
 var _graphs: ItemList
 var _markers: CheckBox
 
@@ -37,6 +41,39 @@ func _init(document: XREDocument) -> void:
 	# The block menu, without a pin; the block goes beside the selected card (D-051).
 	_button(self, "Add block…", func() -> void:
 		if _service != null: _service.open_block_menu())
+	_graph = VBoxContainer.new()
+	_graph.name = "Graph"
+	add_child(_graph)
+	_graph.add_child(HSeparator.new())
+	_graph_title = Label.new()
+	_graph_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_graph.add_child(_graph_title)
+	var first := HBoxContainer.new()
+	_graph.add_child(first)
+	_button(first, "Back to scene", func() -> void:
+		if _service != null: _service.close_graph())
+	_button(first, "Save draft", func() -> void:
+		if _service != null: _service.save_draft())
+	_button(first, "Build & Attach", func() -> void:
+		if _service != null: _service.build_and_attach())
+	var second := HBoxContainer.new()
+	_graph.add_child(second)
+	_button(second, "Undo", func() -> void:
+		if _service != null: _service.undo())
+	_button(second, "Redo", func() -> void:
+		if _service != null: _service.redo())
+	_button(second, "Pick Target", func() -> void:
+		if _service != null: _service.pick_target())
+	_button(second, "Cancel wire / target", func() -> void:
+		if _service != null: _service.cancel_pick())
+	var third := HBoxContainer.new()
+	_graph.add_child(third)
+	_button(third, "Variables", func() -> void:
+		if _service != null: _service.show_variables())
+	_button(third, "Choose host", func() -> void:
+		if _service != null: _service.show_host_picker())
+	_button(third, "Tokens", func() -> void:
+		if _service != null: _service.toggle_tokens())
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_status)
@@ -63,9 +100,12 @@ func get_symbol() -> StringName:
 
 
 func _refresh() -> void:
+	_graph.visible = _service != null and _service.is_open()
 	if _service == null:
 		_status.text = "Blueprint tools are available in the XR view."
 		return
+	var open_path := _service.blueprint.path
+	_graph_title.text = (open_path.get_file() if not open_path.is_empty() else "Untitled") + " · Host: " + str(_service.blueprint.graph.host_path)
 	_graphs.clear()
 	for path: String in _service.graph_paths():
 		var index := _graphs.add_item(path.trim_prefix("res://"))

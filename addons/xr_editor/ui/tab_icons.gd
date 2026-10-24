@@ -50,8 +50,15 @@ M83.8 83.8L89.5 89.5M44.2 44.2L38.5 38.5"/></g>"""],
 	&"debug": ["#ff7a85", "#d93a4f", """<path d="M20 68H42L52 44L66 92L78 56L86 68H108" fill="none" stroke="#fff"
 stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>"""],
 }
-## Glyphs for buttons: the launcher's library, a window, a pin, close.
+## Glyphs for buttons: the launcher's library, a window, a pin, close; the
+## object's badge's Blueprint, add a block and delete (D-082).
 const GLYPHS: Dictionary[StringName, String] = {
+	&"blueprint": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+<rect x="14" y="28" width="40" height="32" rx="8"/><rect x="74" y="68" width="40" height="32" rx="8"/>
+<path d="M54 44C72 44 56 84 74 84"/></g>""",
+	&"plus": """<path d="M64 28V100M28 64H100" stroke="#fff" stroke-width="11" stroke-linecap="round"/>""",
+	&"trash": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M22 36H106M50 36V24H78V36M34 36L40 106H88L94 36M56 56V86M72 56V86"/></g>""",
 	&"library": """<g fill="#fff"><circle cx="34" cy="34" r="10"/><circle cx="64" cy="34" r="10"/>
 <circle cx="94" cy="34" r="10"/><circle cx="34" cy="64" r="10"/><circle cx="64" cy="64" r="10"/>
 <circle cx="94" cy="64" r="10"/><circle cx="34" cy="94" r="10"/><circle cx="64" cy="94" r="10"/>

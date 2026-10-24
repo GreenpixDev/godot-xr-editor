@@ -63,6 +63,12 @@ const HANDLE_ALONG := 0.07
 const HANDLE_COLOR := Color(1.0, 1.0, 1.0, 0.45)
 const HANDLE_HOT_COLOR := Color(1.0, 1.0, 1.0, 0.95)
 const _HOVER_BODY := 1 << 4
+## How much later than the rest a panel drawn over everything is drawn ([method set_on_top]):
+## by default as the petals over the cards (D-062); one the graph's cards must not cover,
+## after its Front focus (D-075: 100 and up to some 60 more for a card's front parts) and the
+## value widgets (150), but before the hands' rays (200) (D-083).
+const TOP_SORTING := 100.0
+const OVER_FOCUS_SORTING := 190.0
 
 ## A pulse ([method pulse]): how long it takes, in seconds, and how much the
 ## panel grows at its height.
@@ -118,6 +124,7 @@ var _hover_mask := 0
 var _shown_mask := -1
 var _overlay := false
 var _on_top := false
+var _top_sorting := TOP_SORTING
 ## Seconds into the pulse, or -1 without one.
 var _pulse := -1.0
 ## Drag scrolling: the list a press waits on, the one being dragged, the one
@@ -666,8 +673,15 @@ func set_overlay(enabled: bool) -> void:
 func set_on_top(enabled: bool) -> void:
 	_on_top = enabled
 	if enabled and _top_material == null: _top_material = _make_panel_material(Material.RENDER_PRIORITY_MAX, true)
-	_quad.sorting_offset = 100.0 if enabled else 0.0
+	_quad.sorting_offset = _top_sorting if enabled else 0.0
 	_quad.material_override = _top_material if enabled else (_overlay_material if _overlay else _scene_material)
+
+
+## How much later than the rest the panel is drawn while over everything:
+## [constant TOP_SORTING] or [constant OVER_FOCUS_SORTING].
+func set_top_sorting(sorting: float) -> void:
+	_top_sorting = sorting
+	if _on_top: _quad.sorting_offset = sorting
 
 
 ## Whether the panel is drawn over everything ([method set_on_top]).
