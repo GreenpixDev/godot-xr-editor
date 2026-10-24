@@ -6,16 +6,21 @@
 #      and the VR view without a headset (keyboard and mouse for controllers);
 #   3. the plugin loads in a headless editor without errors, and the inspector in the headset
 #      works there with the editor's own EditorInspector.
-# Exits non-zero on any error. Override the binary with GODOT=/path/to/godot.
+# Exits non-zero on any error. Override the binary with GODOT=/path/to/godot and the
+# headless editors' language server port with LSP_PORT.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-godot}"
+# Not the editor's default 6005: with no editor of the project holding it, an IDE
+# attached there (Rider) talks to the headless editor instead, asks it to parse
+# scripts the checks don't load (worktrees under .claude/), and its LSP errors fail the check.
+LSP_PORT="${LSP_PORT:-6097}"
 
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
 # XR off: checks must not depend on a headset or try to start OpenXR.
-run() { timeout 300 "$GODOT" --headless --xr-mode off --path . "$@" >>"$log" 2>&1; }
+run() { timeout 300 "$GODOT" --headless --xr-mode off --lsp-port "$LSP_PORT" --path . "$@" >>"$log" 2>&1; }
 
 run --import                       # builds the global class cache class_name lookups need
 run -s res://scripts/parse_all.gd  # loads every script, including ones nothing references yet

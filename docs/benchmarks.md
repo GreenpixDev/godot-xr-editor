@@ -23,7 +23,7 @@ py scripts/xr_editor.py [сцена] -- --xre-session-frames  # покадров
 
 ```bash
 py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--check] [--no-restart] [сцена] [-- --xre-benchmark]  # редактор: в VR на рантайме, который видит шлем, иначе без VR; sim — VR-вид в окне без шлема (D-057), --fallback sim — он же, если ни один рантайм не видит шлем; уже открытый на проекте редактор сам закрывает и запускает заново; лог в logs/editor_<рантайм>_<время>.log
-scripts/check.sh                              # все скрипты парсятся и типизированы, headless-тесты инструментов, панелей, моделей контроллеров и play-mode проходят, нативная библиотека и плагин грузятся в headless-редакторе, инспектор в шлеме работает в нём
+scripts/check.sh                              # все скрипты парсятся и типизированы, headless-тесты инструментов, панелей, моделей контроллеров и play-mode проходят, нативная библиотека и плагин грузятся в headless-редакторе, инспектор в шлеме работает в нём; языковой сервер headless-редакторов — на порту LSP_PORT (по умолчанию 6097, не 6005), иначе Rider, подключённый к 6005, просит их разобрать скрипты worktree из .claude/ и ошибки LSP валят проверку
 scripts/build_gdextension.sh android          # нативная часть под Android arm64 для автономного шлема (NDK 29.0.14206865 в %LOCALAPPDATA%\Android\Sdk\ndk или ANDROID_NDK_ROOT)
 py scripts/quest.py [--scene res://...] [--engine=--verbose] [--no-deploy] [--no-open] [--no-log] [-- --xre-benchmark]  # шлем по USB: копирует проект, закрывает и открывает редактор, VR открывается сам (на сцене, если задана); лог в logs/quest_<время>.log
 scripts/build_gdextension.sh                  # собрать gdextension/ в addons/xr_editor/bin/ (редактор перед этим закрыть)
