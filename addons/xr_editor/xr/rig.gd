@@ -25,6 +25,8 @@ var right_controller: XREControllerModel
 var _capturing := false
 ## The capture ended; actions see no button until every one is up.
 var _blocked_until_released := false
+## The frame each action's press was last taken by a tool ([method consume_action]).
+var _consumed: Dictionary[StringName, int] = {}
 
 
 func _init() -> void:
@@ -73,12 +75,20 @@ func get_action_hand(features: XREFeatureSettings, action: StringName) -> XREHan
 	return get_button_hand(XREFeatureSettings.binding_of(features, action))
 
 
-## Whether the button of [param action] went down this frame.
+## Whether the button of [param action] went down this frame, and no tool took the press yet.
 func is_action_pressed(features: XREFeatureSettings, action: StringName) -> bool:
-	if is_capturing():
+	if is_capturing() or _consumed.get(action, -1) == Engine.get_process_frames():
 		return false
 	var button := XREFeatureSettings.binding_of(features, action)
 	return get_action_hand(features, action).was_input_pressed(XREFeatureSettings.button_input(button))
+
+
+## Takes this frame's press of [param action]: the tools after see none. One
+## press does one thing even when the button is on another hand than the ray
+## it acts on, as X deletes what the right ray is on (D-082): the hand's claim
+## ([method XREHand.claim]) would not keep the press from the other hand's tools.
+func consume_action(action: StringName) -> void:
+	_consumed[action] = Engine.get_process_frames()
 
 
 ## Whether the button of [param action] is down.

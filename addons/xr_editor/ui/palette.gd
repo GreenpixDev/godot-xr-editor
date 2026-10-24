@@ -22,7 +22,7 @@ extends Node
 ## size. Snapping applies as to a grab, and the trigger of the hand inverts it.
 ## [br]- Letting go of the grip: the node goes into the scene, under the scene
 ## root, and is selected. Two hands scale it up from there.
-## [br]- A while holding it: throw it away.
+## [br]- The delete action (X) while holding it: throw it away.
 ## [br][br]
 ## Until the grip lets go, the new node is not part of the scene: it hangs
 ## under this node. Putting it in is then one [method XREDocument.add_node],
@@ -160,11 +160,12 @@ func _process(_delta: float) -> void:
 	var hovered := _hovered
 	_hovered = null
 	var hit_distance := -1.0
-	# The hand stays claimed for the frame that lets go of the node: the A that
-	# throws it away must not also delete the selection.
+	# The hand stays claimed for the frame that lets go of the node, and the
+	# press is taken: the X that throws it away must not also delete the selection.
 	var was_holding := _held != null
 	if _held != null:
 		if _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
+			_rig.consume_action(XREFeatureSettings.DELETE)
 			_discard()
 		elif not right.grip_held:
 			_place()

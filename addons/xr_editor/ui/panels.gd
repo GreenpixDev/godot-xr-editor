@@ -10,8 +10,9 @@ extends Node3D
 ## forearm. Both look as Meta Horizon OS's Navigator and windows do.
 ##
 ## Controls:
-## [br]- X on the left controller: show or hide the launcher in front of the
-## user, an icon for each tab, over a dimmed scene. It fades in and out.
+## [br]- The launcher action (the left Menu; the right stick's click on
+## SteamVR, D-050, D-082): show or hide the launcher in front of the user, an
+## icon for each tab, over a dimmed scene. It fades in and out.
 ## [br]- A controller's ray on a panel is a mouse pointer: the trigger clicks,
 ## pulling it twice quickly double-clicks, and the right thumbstick, up and
 ## down, scrolls. Either hand points at the launcher and at windows, but not
@@ -29,6 +30,11 @@ extends Node3D
 ## pinned there before comes back in front of the user. The window glyph on a
 ## pinned window's bar, or grip on it with the other hand's ray: make it a
 ## window again, in front of the user or in the hand.
+## [br][br]
+## What the user does with them is a change of the headset's history
+## ([XREHistory], D-082): undo hides the launcher they showed, closes a window
+## they opened, opens one they closed by its × where it was, puts back one they
+## moved, pinned or unpinned — with the windows that made way for it.
 ## [br][br]
 ## Windows are rig-locked (docs/vr_ui.md): flying and turning
 ## ([XRELocomotion]) take them along, the head doesn't, and they stay when
@@ -109,6 +115,8 @@ class Pointer:
 	var corner := -1
 	## The trigger holds the window, not the grip.
 	var by_trigger := false
+	## The windows as they were when it was taken ([method XREPanels._layout]).
+	var layout: Dictionary = {}
 
 	func _init(controller: XREHand, is_right: bool) -> void:
 		hand = controller
@@ -192,6 +200,9 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	if _rig.is_action_pressed(_document.features, XREFeatureSettings.LAUNCHER):
 		show_launcher(not _menus_shown)
+		# A menu opened: undo hides it. Hidden, the step that showed it is done with.
+		if _menus_shown:
+			_document.history.record(XREHistory.Kind.VIEW, "Launcher", _set_launcher.bind(false), _set_launcher.bind(true))
 	_update_fade(delta)
 	for window: XREPanelWindow in _windows:
 		var hand := _pin_hand(window)
@@ -228,7 +239,7 @@ func get_launcher() -> XRETabLauncher:
 
 
 ## Shows the launcher in front of the user, over a dimmed scene, or hides it
-## (D-041, D-042): the launcher action toggles it (left Menu, X on SteamVR, D-050). It fades in and out (D-043, D-045); it takes
+## (D-041, D-042): the launcher action toggles it (left Menu, the right stick's click on SteamVR, D-050, D-082). It fades in and out (D-043, D-045); it takes
 ## the ray only while shown, not while it fades out.
 func show_launcher(shown: bool) -> void:
 	if shown == _menus_shown:
@@ -246,6 +257,14 @@ func show_launcher(shown: bool) -> void:
 ## Whether the launcher is shown, or fading in; not while it fades out.
 func is_launcher_shown() -> bool:
 	return _menus_shown
+
+
+## Shows or hides the launcher for undo and redo: false if it already is.
+func _set_launcher(shown: bool) -> bool:
+	if shown == _menus_shown:
+		return false
+	show_launcher(shown)
+	return true
 
 
 ## Lets [param manipulator], after the panels in the tree, have a hand whose
@@ -561,10 +580,10 @@ func _window_for(type: Script) -> XREPanelWindow:
 	window = XREPanelWindow.new(tab, tab.get_window_size() * _scale, WINDOW_PIXEL_SIZE / _scale, _render_scale(), _theme)
 	window.name = "%sWindow" % window.tab.name
 	# Deferred: the click on the button is still being handled.
-	window.close_requested.connect(_close_window.bind(window), CONNECT_DEFERRED)
+	window.close_requested.connect(_on_close_requested.bind(window), CONNECT_DEFERRED)
 	# Not deferred: the hand that clicked is known only while the click is handled.
 	window.pin_requested.connect(_on_pin_requested.bind(window))
-	window.unpin_requested.connect(pin_window.bind(window, XREPanelWindow.Pin.WINDOW), CONNECT_DEFERRED)
+	window.unpin_requested.connect(_pin_by_user.bind(window, XREPanelWindow.Pin.WINDOW), CONNECT_DEFERRED)
 	# The graph's windows stand by its cards, in the world: flying or turning by
 	# the sticks leaves them there (D-066), as the cards; the tabs' go with the user.
 	if tab is XREBlueprintFormTab: window.top_level = true
@@ -649,13 +668,100 @@ func _on_pin_requested(window: XREPanelWindow) -> void:
 	if _clicking == null:
 		return
 	var where := XREPanelWindow.Pin.RIGHT_HAND if _clicking == _rig.right_hand else XREPanelWindow.Pin.LEFT_HAND
-	pin_window.call_deferred(window, where)
+	_pin_by_user.call_deferred(window, where)
+
+
+## The user pins [param window] to a forearm or makes it a window again, [param where]: one step of the history.
+func _pin_by_user(window: XREPanelWindow, where: int) -> void:
+	if not _windows.has(window):
+		return
+	var before := _layout()
+	pin_window(window, where)
+	_remember_layout("Unpin %s" % window.tab.get_title() if where == XREPanelWindow.Pin.WINDOW else "Pin %s" % window.tab.get_title(), before)
+
+
+## The × of [param window]'s bar: it closes; undo opens a tab's window again where it was.
+## The graph's windows are its menus and inputs, put back by the graph's own history ([XREBlueprints]).
+func _on_close_requested(window: XREPanelWindow) -> void:
+	if not _windows.has(window):
+		return
+	if window.tab is XREBlueprintFormTab:
+		_close_window(window)
+		return
+	var before := _layout()
+	_close_window(window)
+	_remember_layout("Close %s" % window.tab.get_title(), before)
 
 
 func _on_tab_chosen(type: GDScript) -> void:
-	open_window(type)
+	var before := _layout()
+	var window := open_window(type)
 	# As an app launcher closes when an app starts; X brings it back.
 	show_launcher(false)
+	_remember_layout("Open %s" % window.tab.get_title(), before)
+
+
+## Where every window is, by its tab's class: its transform and pin. Undo puts them back ([method _put_window]).
+func _layout() -> Dictionary:
+	var layout: Dictionary = {}
+	for window: XREPanelWindow in _windows:
+		layout[window.tab.get_script()] = _window_state(window)
+	return layout
+
+
+## Where [param window] is and how it is pinned; not its size, which a pulse changes for a moment.
+static func _window_state(window: XREPanelWindow) -> Dictionary:
+	return {"transform": Transform3D(window.transform.basis.orthonormalized(), window.transform.origin), "pin": window.pin}
+
+
+static func _same_state(first: Dictionary, second: Dictionary) -> bool:
+	if first.is_empty() or second.is_empty():
+		return first.is_empty() == second.is_empty()
+	return first["pin"] == second["pin"] and (first["transform"] as Transform3D).is_equal_approx(second["transform"])
+
+
+## Records in the history, as [param step_name], every window that changed since the layout [param before]:
+## opened, closed, moved, pinned or unpinned.
+func _remember_layout(step_name: String, before: Dictionary) -> void:
+	var after := _layout()
+	var types: Array = before.keys()
+	for type: Variant in after:
+		if not types.has(type):
+			types.append(type)
+	for type: Variant in types:
+		var was: Dictionary = before.get(type, {})
+		var now: Dictionary = after.get(type, {})
+		if _same_state(was, now):
+			continue
+		_document.history.record(XREHistory.Kind.VIEW, step_name,
+				_put_window.bind(type, was, now.is_empty()), _put_window.bind(type, now, was.is_empty()))
+
+
+## Puts the window of the tab of class [param type] as [param state] says: closed if it
+## is empty, otherwise where and pinned as it says. A window not open is opened only to
+## [param reopen] it — a tab's, not the graph's — so that putting back a window's move
+## doesn't bring back a window closed meanwhile. False if nothing changed.
+func _put_window(type: Script, state: Dictionary, reopen: bool) -> bool:
+	var window := find_window(type)
+	if state.is_empty():
+		if window == null:
+			return false
+		_close_window(window)
+		return true
+	if window == null:
+		if not reopen or not tab_types().has(type):
+			return false
+		window = _window_for(type)
+	elif _same_state(_window_state(window), state):
+		return false
+	var pin: int = state["pin"]
+	if window.pin != pin:
+		_set_pin(window, pin)
+	if pin == XREPanelWindow.Pin.WINDOW:
+		window.transform = state["transform"]
+	else:
+		window.global_transform = _pin_hand(window).global_transform * HAND_OFFSET
+	return true
 
 
 func _update_pointer(pointer: Pointer, delta: float) -> void:
@@ -664,7 +770,9 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		if (hand.trigger_held if pointer.by_trigger else hand.grip_held) and hand.get_has_tracking_data():
 			_carry(pointer, delta)
 			return
+		var carried := pointer.window
 		pointer.window = null
+		_remember_layout("Move %s" % carried.tab.get_title(), pointer.layout)
 	var origin := hand.global_position
 	var direction := -hand.global_basis.z.normalized()
 	# The launcher is over everything (D-043): the ray on it is the launcher's even when the
@@ -802,6 +910,7 @@ func _point_at_handle(pointer: Pointer, window: XREPanelWindow, point: Vector3, 
 ## ray hit it. A window taken by its [param corner] handle is held by the
 ## trigger if [param by_trigger], otherwise by the grip.
 func _take(pointer: Pointer, window: XREPanelWindow, point: Vector3, corner: int = -1, by_trigger: bool = false) -> void:
+	pointer.layout = _layout()
 	if window.is_pinned():
 		_set_pin(window, XREPanelWindow.Pin.WINDOW)
 		window.global_transform = Transform3D(

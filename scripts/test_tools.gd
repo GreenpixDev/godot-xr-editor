@@ -764,15 +764,15 @@ func _light_taken() -> void:
 			Vector3(snappedf(unsnapped.x, 0.5), snappedf(unsnapped.y, 0.5), snappedf(unsnapped.z, 0.5)),
 			"a node taken out snaps to the grid")
 	_check_vector(_taken.scale, Vector3.ONE, "a light comes out at its natural scale")
-	_right.set_input(&"ax_button", true)
+	_left.set_input(&"ax_button", true)
 
 
 func _light_thrown_away() -> void:
-	_check(_palette.get_held() == null and _document.added.size() == 1, "A throws the held light away")
+	_check(_palette.get_held() == null and _document.added.size() == 1, "X throws the held light away")
 	_check(not is_instance_valid(_taken), "the thrown light is freed")
 	_check(_operations.size() == _operation_count, "throwing away records nothing: %s" % [_operations])
-	_check(_document.removed.is_empty(), "the A that throws a light away doesn't delete the selection")
-	_right.set_input(&"ax_button", false)
+	_check(_document.removed.is_empty(), "the X that throws a light away doesn't delete the selection")
+	_left.set_input(&"ax_button", false)
 	# The ray, from 40 cm in front, on the sphere's miniature (D-045).
 	_document.snap = XRESnap.new(false, 0.5, 15.0, 10.0)
 	_set_hand(_right, _palette.get_item_transform(&"CSGSphere3D").origin + Vector3(0.0, 0.0, 0.4), 0.0, 0.0)
@@ -792,24 +792,24 @@ func _sphere_taken_by_ray() -> void:
 		var miniature := _palette.get_item_transform(&"CSGSphere3D")
 		_check(_taken.global_transform.is_equal_approx(Transform3D(miniature.basis.orthonormalized() * XREPalette.MINIATURE_SCALE, miniature.origin)),
 				"where its miniature is, as big as it: %s" % _taken.global_transform)
-	_right.set_input(&"ax_button", true)
+	_left.set_input(&"ax_button", true)
 
 
 func _sphere_thrown_away() -> void:
-	_check(_palette.get_held() == null and _document.added.size() == 1, "A throws it away")
-	_right.set_input(&"ax_button", false)
+	_check(_palette.get_held() == null and _document.added.size() == 1, "X throws it away")
+	_left.set_input(&"ax_button", false)
 	_set_hand(_right, Vector3(1.0, 1.5, 0.0), 0.0, 0.0)
 
 
 func _delete_placed() -> void:
-	_right.set_input(&"ax_button", true)
+	_left.set_input(&"ax_button", true)
 
 
 func _placed_deleted() -> void:
-	_check(_document.removed.size() == 1 and _document.removed[0] is CSGBox3D, "A deletes the selection: %s" % [_document.removed])
+	_check(_document.removed.size() == 1 and _document.removed[0] is CSGBox3D, "X deletes the selection: %s" % [_document.removed])
 	_check(_operations.back() == "remove_nodes TOOL [\"CSGBox3D\"]", "deleting is recorded: %s" % [_operations])
 	_check(_document.get_selection().is_empty(), "nothing is selected after deleting")
-	_right.set_input(&"ax_button", false)
+	_left.set_input(&"ax_button", false)
 	_commit_count = _document.commits.size()
 	_set_hand(_right, Vector3(0.0, 0.0, -2.0), 0.0, 1.0)
 
@@ -818,17 +818,17 @@ func _grab_far() -> void:
 	var far := _scene.get_node(^"Far")
 	_check(_document.get_selection() == [far], "touch grab of the far box selects it: %s" % [_document.get_selection()])
 	_set_hand(_right, Vector3(0.1, 0.0, -2.0), 0.0, 1.0)
-	_right.set_input(&"ax_button", true)
+	_left.set_input(&"ax_button", true)
 
 
 func _held_deleted() -> void:
 	var far := _document.removed.back() as Node3D
-	_check(far != null and far.name == &"Far", "A deletes the node being held: %s" % [_document.removed])
+	_check(far != null and far.name == &"Far", "X deletes the node being held: %s" % [_document.removed])
 	if far != null:
 		_check_vector(far.position, Vector3(0.0, 0.0, -2.0), "a node deleted while held goes back where the grab found it")
 	_check(_document.commits.size() == _commit_count, "a node deleted while held records no move")
 	_set_hand(_right, Vector3(1.0, 1.5, 0.0), 0.0, 0.0)
-	_right.set_input(&"ax_button", false)
+	_left.set_input(&"ax_button", false)
 	# The window closes, as × on its control bar closes it.
 	_palette.set_host(null, null)
 	_objects.queue_free()

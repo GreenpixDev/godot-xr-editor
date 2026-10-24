@@ -266,11 +266,11 @@ func _run() -> void:
 	await _frames()
 	_service.select_block(branch_id)
 	_aim(Vector3(5, 4, -2))
-	_right.set_input(&"ax_button", true)
+	_left.set_input(&"ax_button", true)
 	await _frames()
-	_right.set_input(&"ax_button", false)
+	_left.set_input(&"ax_button", false)
 	await _frames()
-	_check(_service.blueprint.graph.find_node(branch_id).is_empty(), "A deletes the selected graph block")
+	_check(_service.blueprint.graph.find_node(branch_id).is_empty(), "X deletes the selected graph block")
 	_check(_rig.right_hand.is_free_for(self), "released graph input returns hand ownership")
 	_check(is_instance_valid(_host) and _host.is_inside_tree(), "graph deletion preserves the scene host")
 	_service.select_block(print_id)
@@ -306,6 +306,7 @@ func _run() -> void:
 	await _test_d074()
 	await _test_d078()
 	await _test_wire_bends()
+	await _test_history(print_id)
 	_check(_service.blueprint.operation_source == &"desktop_graph", "VR command source scope is restored")
 	_service.parameters.call("_set_parameter", print_id, "value", "VR test")
 	await _frames()
@@ -400,6 +401,88 @@ func _run() -> void:
 
 func _record(operation: StringName, _source: XREDocument.Source, _nodes: Array[Node], _time_usec: int) -> void:
 	_operations.append(operation)
+
+
+## D-082: what is done in the graph is a step of the headset's history — an
+## edit, a menu or an input opened, the graph closed — that undo puts back and
+## redo makes again. An input that closed by itself leaves only its value to undo.
+func _test_history(print_id: int) -> void:
+	var history := _document.history
+	var graph := _service.blueprint.graph
+	var keyboard := _service.get("_keyboard") as XREVirtualKeyboard
+	_service.call("_close_inputs")
+	_service.close_block_palette()
+	_service.close_parameters()
+	await _frames()
+	history.clear()
+	var before: Variant = graph.find_node(print_id)["params"]["value"]
+	_service.blueprint.perform(_service.blueprint.set_parameter.bind(print_id, "value", "Undo me"), &"vr_graph")
+	_check(history.get_undo_name() == "Set Value", "an edit of the graph in the headset is a step: %s" % history.get_undo_name())
+	await _frames()
+	_operations.clear()
+	_check(_document.undo(XREDocument.Source.TOOL) and graph.find_node(print_id)["params"]["value"] == before, "undo puts the edit back through the graph's history")
+	_check(_document.redo(XREDocument.Source.TOOL) and graph.find_node(print_id)["params"]["value"] == "Undo me", "redo makes it again")
+	_check(_operations == [&"undo", &"redo"], "each is one operation, none of the graph's own: %s" % [_operations])
+	var toolbar_undo: Button = null
+	for button: Node in (_service.get("_toolbar") as XREPanelSurface).root.find_children("*", "Button", true, false):
+		if (button as Button).text == "Undo": toolbar_undo = button as Button
+	toolbar_undo.pressed.emit()
+	_check(graph.find_node(print_id)["params"]["value"] == before and _operations.back() == &"undo", "the toolbar's Undo is the headset's undo")
+	_document.redo(XREDocument.Source.TOOL)
+	await _frames()
+	# On the desktop, the graph's history goes on past the headset's.
+	_service.blueprint.perform(_service.blueprint.set_parameter.bind(print_id, "value", "Desktop"), &"desktop_graph")
+	_check(not history.can_undo(), "an edit on the desktop leaves the headset nothing of the graph to undo")
+	_service.blueprint.undo()
+	_service.blueprint.undo()
+	await _frames()
+	_check(graph.find_node(print_id)["params"]["value"] == before, "the desktop's undo puts it all back")
+	# A menu opened is a step: undo closes it, redo opens it again.
+	history.clear()
+	_service.open_block_menu()
+	await _frames()
+	_check(_service.is_block_palette_shown() and history.get_undo_name() == "Block menu", "the block menu opened is a step: %s" % history.get_undo_name())
+	_check(_document.undo(XREDocument.Source.TOOL) and not _service.is_block_palette_shown() and _panels.find_window(XREBlueprintPaletteTab) == null, "undo closes it")
+	_check(_document.redo(XREDocument.Source.TOOL) and _service.is_block_palette_shown() and _panels.find_window(XREBlueprintPaletteTab) != null, "redo opens it again")
+	await _frames()
+	_check(history.get_step_count() == 1, "what undo and redo opened and closed is no step of its own: %d" % history.get_step_count())
+	_service.close_block_palette()
+	await _frames()
+	_check(not _document.undo(XREDocument.Source.TOOL) and not _service.is_block_palette_shown(), "closed meanwhile, the menu is no step left to undo")
+	# Nothing is recorded in the frame of an undo.
+	await _frames()
+	# A token's keyboard: undo closes it, its draft not kept; a value typed
+	# closes it, and undo puts back the value, the keyboard staying closed.
+	history.clear()
+	_service.call("_open_token_keyboard", print_id, "value", "", before)
+	await _frames()
+	_check(keyboard.is_shown() and history.get_undo_name() == "Keyboard", "a token's keyboard opened is a step: %s" % history.get_undo_name())
+	keyboard.value.text = "typed"
+	_check(_document.undo(XREDocument.Source.TOOL) and not keyboard.is_shown() and graph.find_node(print_id)["params"]["value"] == before,
+			"undo closes the keyboard, its draft not typed")
+	_check(_document.redo(XREDocument.Source.TOOL) and keyboard.is_shown(), "redo opens it again")
+	await _frames()
+	keyboard.value.text = "typed"
+	keyboard.call("_apply")
+	await _frames()
+	_check(not keyboard.is_shown() and graph.find_node(print_id)["params"]["value"] == "typed", "the value typed is kept, the keyboard closed")
+	_check(_document.undo(XREDocument.Source.TOOL) and graph.find_node(print_id)["params"]["value"] == before and not keyboard.is_shown(),
+			"undo puts back the value; the keyboard stays closed")
+	_check(not _document.undo(XREDocument.Source.TOOL), "the keyboard closed by itself is no step left")
+	_check(_document.redo(XREDocument.Source.TOOL) and graph.find_node(print_id)["params"]["value"] == "typed", "redo types the value again")
+	await _frames()
+	_service.blueprint.perform(_service.blueprint.set_parameter.bind(print_id, "value", before), &"vr_graph")
+	# Back to scene is a step: undo opens the graph again.
+	history.clear()
+	await _frames()
+	_service.close_graph()
+	await _frames()
+	_check(not _service.is_open() and history.get_undo_name() == "Back to scene", "Back to scene is a step: %s" % history.get_undo_name())
+	_check(_document.undo(XREDocument.Source.TOOL) and _service.is_open(), "undo opens the graph again")
+	_check(_document.redo(XREDocument.Source.TOOL) and not _service.is_open(), "redo goes back to the scene")
+	_check(_document.undo(XREDocument.Source.TOOL) and _service.is_open(), "and undo opens it once more")
+	await _frames()
+	history.clear()
 
 
 ## Switching the node display (D-039) redraws the open graph at once, and back.
@@ -1380,11 +1463,11 @@ func _test_parameters_in_graph() -> void:
 	_check(is_equal_approx(float(graph.find_node(delay)["params"]["seconds"]), 1.2), "undo puts the token back")
 	aim.call(0.0)
 	await _frames()
-	_right.set_input(&"ax_button", true)
+	_left.set_input(&"ax_button", true)
 	await _frames()
-	_right.set_input(&"ax_button", false)
+	_left.set_input(&"ax_button", false)
 	await _frames()
-	_check(not graph.find_node(delay).is_empty() and is_equal_approx(float((graph.find_node(delay)["params"] as Dictionary).get("seconds", -1.0)), 1.0), "A on a token gives back the default token and keeps its block")
+	_check(not graph.find_node(delay).is_empty() and is_equal_approx(float((graph.find_node(delay)["params"] as Dictionary).get("seconds", -1.0)), 1.0), "X with the right ray on a token gives back the default token and keeps its block")
 	_service.blueprint.undo()
 	await _frames()
 	_check(_document.set_feature(XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.PLUGS, XREDocument.Source.PANEL), "values switch to plugs")
@@ -2574,13 +2657,13 @@ func _drag_wire(point: Vector3, offset: Vector3, button: StringName = &"trigger"
 	await _frames()
 
 
-## Presses the delete button (A) with the right ray at the wire's point [param point].
+## Presses the delete button (X) with the right ray at the wire's point [param point].
 func _delete_at_wire(point: Vector3) -> void:
 	_aim_at_wire(point)
 	await _frames()
-	_right.set_input(&"ax_button", true)
+	_left.set_input(&"ax_button", true)
 	await _frames()
-	_right.set_input(&"ax_button", false)
+	_left.set_input(&"ax_button", false)
 	await _frames()
 
 

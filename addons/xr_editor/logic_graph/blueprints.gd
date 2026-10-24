@@ -88,6 +88,24 @@ const PROJECTION_NODES := 200
 const LINK_HINT := "click: another one  ·  grip: move, let go in the air: a wire"
 ## How long the cards that keep a variable from being deleted flash, in seconds (D-079).
 const FLASH_TIME := 1.5
+## What of the graph is open for the user, bits of [method _open_inputs]: each
+## one opened is a change of the headset's history, which undo closes (D-082).
+const _OPEN_GRAPH := 1
+const _OPEN_PARAMETERS := 2
+const _OPEN_MENU := 4
+const _OPEN_TOKENS := 8
+const _OPEN_VECTOR := 16
+const _OPEN_COLOR := 32
+const _OPEN_KEYBOARD := 64
+const _OPEN_PETALS := 128
+const _OPEN_CHOICE := 256
+const _OPEN_WIRE := 512
+const _OPEN_TARGET := 1024
+const _OPEN_NAMES: Dictionary[int, String] = {
+	_OPEN_GRAPH: "Open graph", _OPEN_PARAMETERS: "Parameters", _OPEN_MENU: "Block menu", _OPEN_TOKENS: "Tokens",
+	_OPEN_VECTOR: "Vector", _OPEN_COLOR: "Color", _OPEN_KEYBOARD: "Keyboard", _OPEN_PETALS: "Members",
+	_OPEN_CHOICE: "Choice", _OPEN_WIRE: "Wire", _OPEN_TARGET: "Pick target",
+}
 
 class Pointer:
 	var hand: XREHand
@@ -111,6 +129,8 @@ class Pointer:
 	var window: XREPanelSurface
 	var corner := -1
 	var by_trigger := false
+	## Where the held window was when it was taken: undo puts it back there (D-082).
+	var window_before := Transform3D.IDENTITY
 	## A token turned by the wrist while the trigger is held (D-052): its block
 	## (or the variable of its box), parameter, value now and at the start, the
 	## hand's basis at the start, and the turn so far.
@@ -400,6 +420,12 @@ var _keyboard_target: WeakRef
 var _windows: Array[XREPanelSurface] = []
 ## The object a new graph was opened for by selecting it, not yet saved (D-063).
 var _unsaved_host: WeakRef
+## The graph's history version the headset's history knows of (D-082).
+var _graph_version := 0
+## What of the graph was open for the user last frame, as bits of _OPEN_*, and
+## the graph's file then ([method _watch_inputs]).
+var _seen_open := 0
+var _seen_path := ""
 var _built_state: Dictionary = {}
 var _built_path := ""
 var _built_host: WeakRef
@@ -529,6 +555,10 @@ func _enter_tree() -> void:
 	blueprint.update_active_scene(_root)
 	blueprint.changed.connect(_schedule_rebuild)
 	blueprint.operation_recorded.connect(_graph_operation)
+	blueprint.history.version_changed.connect(_graph_history_changed)
+	_graph_version = blueprint.history.get_version()
+	_see_inputs()
+	_document.history.replayed.connect(_see_inputs)
 	_document.selection_changed.connect(_selection_changed)
 	_document.scene_changed.connect(_scene_changed)
 	_document.files_changed.connect(_schedule_refresh)
@@ -556,6 +586,8 @@ func _exit_tree() -> void:
 	if blueprint.amend == _link_new_references: blueprint.amend = Callable()
 	blueprint.changed.disconnect(_schedule_rebuild)
 	blueprint.operation_recorded.disconnect(_graph_operation)
+	blueprint.history.version_changed.disconnect(_graph_history_changed)
+	_document.history.replayed.disconnect(_see_inputs)
 	_document.selection_changed.disconnect(_selection_changed)
 	_document.scene_changed.disconnect(_scene_changed)
 	_document.files_changed.disconnect(_schedule_refresh)
@@ -621,8 +653,184 @@ func _process(delta: float) -> void:
 	elif _petal_outline.is_active(): _petal_outline.clear()
 	var delete_hand := _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE)
 	if _workspace.visible and not _delete_consumed and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and delete_hand.is_free_for(self):
+		# With the graph open, the button deletes in the graph, never the scene's selection.
+		_consume_delete()
 		delete_hand.claim(self)
 		delete_block()
+	_watch_inputs()
+
+
+## What of the graph is open for the user now, as bits of _OPEN_*: the graph,
+## its windows, an input in use, a wire being drawn, a target being picked.
+func _open_inputs() -> int:
+	var open := 0
+	if _workspace.visible: open |= _OPEN_GRAPH
+	if XREBlueprintParametersTab in _open_windows: open |= _OPEN_PARAMETERS
+	if XREBlueprintPaletteTab in _open_windows: open |= _OPEN_MENU
+	if XREBlueprintTokensTab in _open_windows: open |= _OPEN_TOKENS
+	if _token_editor.mode == XREBlueprintTokenEditor.ARROWS and not _value_edit.is_empty(): open |= _OPEN_VECTOR
+	if _editing_color(): open |= _OPEN_COLOR
+	if _keyboard.is_shown(): open |= _OPEN_KEYBOARD
+	if _petals.is_open() and (_petal_block >= 0 or _petal_dynamic): open |= _OPEN_PETALS
+	if _choice.is_open(): open |= _OPEN_CHOICE
+	if _pending_id >= 0 or _link_kind >= 0 or not _member_link.is_empty(): open |= _OPEN_WIRE
+	if _target_pick >= 0: open |= _OPEN_TARGET
+	return open
+
+
+## Watches what of the graph the user opens (D-082), however it opened — a
+## click, a wire let go in empty space, a token typed into —: each is a change
+## of the headset's history, which undo closes without keeping what was being
+## edited, as its × does, and redo opens again where it can. What closes by
+## itself, as the keyboard does when its value is typed, leaves nothing to
+## undo but the value. The graph closed by Back to scene is a change too,
+## which undo opens again. What a step put back or made again opened or closed
+## is that step's: the watch takes it as it finds it ([method _see_inputs]).
+func _watch_inputs() -> void:
+	var open := _open_inputs()
+	var history := _document.history
+	var opened := open & ~_seen_open
+	var closed := (_seen_open & _OPEN_GRAPH) != 0 and (open & _OPEN_GRAPH) == 0
+	var switched := (open & _seen_open & _OPEN_GRAPH) != 0 and blueprint.path != _seen_path
+	var before := _seen_path
+	_seen_open = open
+	_seen_path = blueprint.path
+	if opened == 0 and not closed and not switched: return
+	if closed: history.record(XREHistory.Kind.VIEW, "Back to scene", _show_graph_view.bind(before), _hide_graph_view)
+	elif switched: history.record(XREHistory.Kind.VIEW, "Open graph", _show_graph_view.bind(before), _show_graph_view.bind(blueprint.path))
+	for bit: int in _OPEN_NAMES:
+		if (opened & bit) == 0: continue
+		if bit == _OPEN_GRAPH: history.record(XREHistory.Kind.VIEW, _OPEN_NAMES[bit], _hide_graph_view, _show_graph_view.bind(blueprint.path))
+		else: history.record(XREHistory.Kind.VIEW, _OPEN_NAMES[bit], _close_input.bind(bit), _reopen_input(bit))
+
+
+## Takes what of the graph is open now as seen: at the start, and as soon as a step of the headset's history was put back or made again.
+func _see_inputs() -> void:
+	_seen_open = _open_inputs()
+	_seen_path = blueprint.path
+
+
+## Closes the graph's input [param bit] if it is open, for undo: what it was editing stays as it was.
+func _close_input(bit: int) -> bool:
+	if (_open_inputs() & bit) == 0: return false
+	match bit:
+		_OPEN_PARAMETERS: close_parameters()
+		_OPEN_MENU: close_block_palette()
+		_OPEN_TOKENS: _dismiss_window(XREBlueprintTokensTab, true)
+		_OPEN_VECTOR: _end_vector(false)
+		_OPEN_COLOR: _end_color(false)
+		_OPEN_KEYBOARD:
+			_keyboard.close()
+			_token_edit = {}
+		_OPEN_PETALS:
+			cancel_connection()
+			_petals.close()
+		_OPEN_CHOICE: _choice.close()
+		_OPEN_WIRE:
+			# The menu of a wire let go is that wire's (D-051).
+			if _menu_at_point and is_block_palette_shown(): close_block_palette()
+			cancel_connection()
+		_OPEN_TARGET: _target_pick = -1
+	return true
+
+
+## What opens the graph's input [param bit] again for redo, as it is open now; an empty
+## callable for an input that can't be opened again so: a wire, petals, a choice.
+func _reopen_input(bit: int) -> Callable:
+	match bit:
+		_OPEN_PARAMETERS: return _reopen_parameters.bind(_parameters_block)
+		_OPEN_MENU: return Callable() if _menu_at_point else _reopen_menu.bind(_menu_card, not _menu_wire.is_empty())
+		_OPEN_TOKENS: return _reopen_tokens
+		_OPEN_VECTOR, _OPEN_COLOR: return _reopen_value.bind(_value_edit.duplicate())
+		# A token's own keyboard; the keypad of a figure of the Vector or Color window goes with the window.
+		_OPEN_KEYBOARD: return _reopen_keyboard.bind(_token_edit.duplicate()) if _token_edit.size() == 4 and _token_edit.has("block") else Callable()
+		_OPEN_TARGET: return _reopen_target.bind(_target_pick)
+	return Callable()
+
+
+func _reopen_parameters(block: int) -> bool:
+	if not _workspace.visible or is_parameters_shown() or not canvas.has_block(block): return false
+	select_block(block)
+	return is_parameters_shown()
+
+
+func _reopen_menu(card: int, wired: bool) -> bool:
+	if not _workspace.visible or is_block_palette_shown(): return false
+	if wired and canvas.has_block(card): _show_block_palette(card)
+	else: open_block_menu()
+	return is_block_palette_shown()
+
+
+func _reopen_tokens() -> bool:
+	if not _workspace.visible or XREBlueprintTokensTab in _open_windows: return false
+	_request_window(XREBlueprintTokensTab, _tray_pose())
+	return true
+
+
+## Opens the Vector or Color window again for the token [param edit] was editing, at its value then.
+func _reopen_value(edit: Dictionary) -> bool:
+	if not _workspace.visible or not _value_edit.is_empty() or not _token_exists(edit): return false
+	if edit.has("color"): _open_color(edit["block"], edit["key"], edit["box"], edit["start"])
+	else: _open_vector(edit["block"], edit["key"], edit["box"], edit["start"])
+	return true
+
+
+func _reopen_keyboard(edit: Dictionary) -> bool:
+	if not _workspace.visible or _keyboard.is_shown() or not _token_exists(edit): return false
+	_open_token_keyboard(edit["block"], edit["key"], edit["box"], edit["value"])
+	return _keyboard.is_shown()
+
+
+func _reopen_target(block: int) -> bool:
+	if _target_pick >= 0 or blueprint.graph.find_node(block).is_empty(): return false
+	_target_pick = block
+	return true
+
+
+## Whether the block or the variable's box of the token [param edit] names is in the graph.
+func _token_exists(edit: Dictionary) -> bool:
+	var box := str(edit.get("box", ""))
+	if not box.is_empty(): return not blueprint.graph.find_variable(box).is_empty()
+	return not blueprint.graph.find_node(int(edit.get("block", -1))).is_empty()
+
+
+## Shows the graph saved at [param path] (empty: the untitled one open now), for undo and redo.
+func _show_graph_view(path: String) -> bool:
+	if _workspace.visible and blueprint.path == path: return false
+	if path.is_empty() or path == blueprint.path:
+		if _workspace.visible or path != blueprint.path: return false
+		show_graph()
+		return true
+	return open_graph(path)
+
+
+## Back to the scene from the graph, for undo and redo.
+func _hide_graph_view() -> bool:
+	if not _workspace.visible: return false
+	close_graph()
+	return not _workspace.visible
+
+
+## Puts one of the graph's own windows — the toolbar and those it leads, the
+## keyboard — back where [param xform] says, for undo and redo of its move.
+func _place_window(node: Node3D, xform: Transform3D) -> bool:
+	if not is_instance_valid(node) or not node.is_visible_in_tree() or node.global_transform.is_equal_approx(xform): return false
+	node.global_transform = xform
+	return true
+
+
+## Whether the delete button went down this frame and nothing took it yet:
+## it acts on what a ray is on — a token, a link, a knot, a box —, the right
+## hand's first, whichever hand the button is on (X on the left, D-082).
+func _deletes_now() -> bool:
+	return not _delete_consumed and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE)
+
+
+## Takes this frame's press of the delete button: the selected block stays, and
+## the manipulator, after the graph, doesn't delete the scene's selection with it.
+func _consume_delete() -> void:
+	_delete_consumed = true
+	_rig.consume_action(XREFeatureSettings.DELETE)
 
 
 ## Catalog scanning is event-driven, never part of the frame loop.
@@ -1507,8 +1715,9 @@ func _build_toolbar() -> void:
 	_button(row, "Back to scene", close_graph)
 	_button(row, "Save draft", save_draft)
 	_button(row, "Build & Attach", build_and_attach)
-	_button(row, "Undo", func() -> void: blueprint.perform(blueprint.undo, &"vr_panel"))
-	_button(row, "Redo", func() -> void: blueprint.perform(blueprint.redo, &"vr_panel"))
+	# The headset's history, as A and B: the graph's edits and what was opened, in turn (D-082).
+	_button(row, "Undo", func() -> void: _document.undo(XREDocument.Source.PANEL))
+	_button(row, "Redo", func() -> void: _document.redo(XREDocument.Source.PANEL))
 	var second := HBoxContainer.new()
 	column.add_child(second)
 	_button(second, "Pick Target", pick_target)
@@ -1844,6 +2053,7 @@ func _hold_window(pointer: Pointer, window: XREPanelSurface, corner: int, by_tri
 	pointer.window = window
 	pointer.corner = corner
 	pointer.by_trigger = by_trigger
+	pointer.window_before = pointer.held.global_transform
 
 
 ## Distance from [param point] to the body: a vertical shoulder-to-hip segment
@@ -1887,6 +2097,9 @@ func _finish_hold(pointer: Pointer, commit: bool) -> void:
 	elif not pointer.box.is_empty():
 		if commit: canvas.commit_box_move(blueprint, pointer.box)
 		else: canvas.preview_box_move(pointer.box, pointer.before.origin)
+	elif pointer.held != null and pointer.window != null and not pointer.held.global_transform.is_equal_approx(pointer.window_before):
+		_document.history.record(XREHistory.Kind.VIEW, "Move window", _place_window.bind(pointer.held, pointer.window_before),
+				_place_window.bind(pointer.held, pointer.held.global_transform))
 	pointer.held = null
 	pointer.block = -1
 	pointer.box = ""
@@ -2070,8 +2283,54 @@ func _feature_changed(key: StringName) -> void:
 
 
 func _graph_operation(operation: StringName, source: StringName, _time_usec: int) -> void:
-	if source == &"vr_graph" or source == &"vr_panel": _document.record_graph_operation(operation, XREDocument.Source.TOOL if source == &"vr_graph" else XREDocument.Source.PANEL)
+	if source == &"vr_graph" or source == &"vr_panel":
+		_document.record_graph_operation(operation, XREDocument.Source.TOOL if source == &"vr_graph" else XREDocument.Source.PANEL)
+		_remember_graph_edit(operation)
 	if _unsaved_host != null and blueprint.path.is_empty(): _save_new_graph.call_deferred()
+
+
+## An edit of the graph made in the headset — its history went one action on —
+## is a change of the headset's history (D-082): undo puts it back through the
+## graph's history, as long as that is where the edit left it. Undo or redo of
+## the graph's own from a window leaves the headset's changes of the graph behind.
+func _remember_graph_edit(operation: StringName) -> void:
+	var actions := blueprint.history
+	if operation == &"undo" or operation == &"redo":
+		if not _document.history.is_replaying(): _document.history.forget(XREHistory.Kind.GRAPH)
+	elif actions.get_version() != _graph_version and actions.has_undo() and not actions.has_redo():
+		var action := actions.get_current_action_name()
+		_document.history.record(XREHistory.Kind.GRAPH, action.trim_prefix("Blueprints: "),
+				_undo_graph_edit.bind(actions.get_version(), action), _redo_graph_edit.bind(actions.get_version(), action))
+	_graph_version = actions.get_version()
+
+
+## The graph's history changed. Past the headset — on the desktop, or emptied
+## as another graph opened — the headset's changes of the graph can't be put back in turn.
+func _graph_history_changed() -> void:
+	var actions := blueprint.history
+	var from_headset := blueprint.operation_source == &"vr_graph" or blueprint.operation_source == &"vr_panel"
+	if _document.history.is_replaying(): _graph_version = actions.get_version()
+	elif (not actions.has_undo() and not actions.has_redo()) or not from_headset:
+		_document.history.forget(XREHistory.Kind.GRAPH)
+		_graph_version = actions.get_version()
+
+
+## Puts back the graph's edit [param action], made when its history came to [param version]: false if it moved since.
+func _undo_graph_edit(version: int, action: String) -> bool:
+	var actions := blueprint.history
+	if actions.get_version() != version or actions.get_current_action_name() != action: return false
+	actions.undo()
+	_graph_version = actions.get_version()
+	return true
+
+
+## Makes the graph's edit [param action] again, if it is the graph's next to redo.
+func _redo_graph_edit(version: int, action: String) -> bool:
+	var actions := blueprint.history
+	if actions.get_version() != version - 1 or not actions.has_redo() or actions.get_action_name(actions.get_current_action() + 1) != action: return false
+	actions.redo()
+	_graph_version = actions.get_version()
+	return true
 
 
 func _schedule_refresh() -> void:
@@ -2689,8 +2948,8 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 			var finished := (1 if canvas.get_hit_finished() else 0) if canvas.get_hit_port() == 0 and not canvas.get_hit_input() and canvas.has_finished(id) else -1
 			click_port(id, canvas.get_hit_port(), canvas.get_hit_input(), hand, canvas.get_hit_edge(), finished)
 		else: select_block(id)
-	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
-		_delete_consumed = true
+	if _deletes_now():
+		_consume_delete()
 		if token: _reset_token(id, key)
 		# A link is a wire again (D-074): nothing of the reference is lost; with Always it stays a link (D-077).
 		elif not link.is_empty():
@@ -2716,8 +2975,8 @@ func _point_at_wire(pointer: Pointer, hit: float) -> void:
 	pointer.wire_frame = Engine.get_process_frames()
 	if hand.trigger_pressed or hand.grip_pressed:
 		_start_bend(pointer, edge, bend, hit, not hand.grip_pressed)
-	elif hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
-		_delete_consumed = true
+	elif _deletes_now():
+		_consume_delete()
 		_unbend(edge, bend)
 
 
@@ -2760,9 +3019,9 @@ func _update_bend(pointer: Pointer) -> void:
 	if not (hand.trigger_held if pointer.bend_trigger else hand.grip_held):
 		_end_bend(pointer, true)
 		return
-	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
+	if _deletes_now():
 		# The delete button takes off the knot in hand, as any knot, not the selected block.
-		_delete_consumed = true
+		_consume_delete()
 		var edge := pointer.bend_edge
 		var index := pointer.bend_index
 		var kept := not pointer.bend_new
@@ -2852,7 +3111,7 @@ func _set_token(id: int, key: String, value: Variant, title: String, expression:
 	return success
 
 
-## A token taken out by A: a port's socket is left empty (D-054), the build
+## A token taken out by the delete button: a port's socket is left empty (D-054), the build
 ## reports it until a token or a wire is back; a square socket gets its default.
 func _reset_token(id: int, key: String) -> void:
 	var block := blueprint.graph.find_node(id)
@@ -3969,8 +4228,8 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 	var part := boxes.get_hit_part()
 	pointer.focus_box = variable
 	if _link_kind == XREBlueprintCanvas.VARIABLE and _link_hand == hand: canvas.show_link(_link_origin(), canvas.to_local(origin + direction * hit))
-	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and not variable.is_empty():
-		_delete_consumed = true
+	if _deletes_now() and not variable.is_empty():
+		_consume_delete()
 		_remove_box(variable)
 		return
 	if hand.grip_pressed:
