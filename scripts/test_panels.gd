@@ -124,7 +124,7 @@ var _trigger: Area3D
 var _left_aim := Transform3D(Basis.IDENTITY, Vector3(-0.2, -0.3, -0.3))
 var _operation_count := 0
 var _window_before: Vector3
-## Where the windows were before a history check (D-082), and where the FileSystem window was.
+## Where the windows were before a history check (D-087), and where the FileSystem window was.
 var _layout_before: Dictionary = {}
 var _files_transform := Transform3D.IDENTITY
 var _rig_before: Vector3
@@ -952,7 +952,7 @@ func _test_controls_store(path: String) -> void:
 	_check(store.get_layout() == XREFeatureSettings.STEAMVR, "the runtime's layout is in use until one is picked")
 	_check(store.get_binding(delete) == &"left_x" and store.get_binding(XREFeatureSettings.PLAY) == &"left_y"
 			and store.get_binding(XREFeatureSettings.LAUNCHER) == &"right_stick" and store.get_binding(XREFeatureSettings.SPEED) == &"left_stick",
-			"SteamVR's dashboard has the left Menu, and X deletes: the launcher is on the right stick (D-082)")
+			"SteamVR's dashboard has the left Menu, and X deletes: the launcher is on the right stick (D-087)")
 	_check(store.get_binding(XREFeatureSettings.UNDO) == &"right_a" and store.get_binding(XREFeatureSettings.REDO) == &"right_b"
 			and XREFeatureSettings.preset_binding(XREFeatureSettings.HORIZON_LINK, XREFeatureSettings.UNDO) == &"right_a"
 			and XREFeatureSettings.preset_binding(XREFeatureSettings.HORIZON_OS, XREFeatureSettings.REDO) == &"right_b"
@@ -1426,7 +1426,7 @@ func _list_glided() -> void:
 	surface.queue_free()
 
 
-# D-082: the launcher shown and windows opened, closed by ×, pinned and moved are undone and redone.
+# D-087: the launcher shown and windows opened, closed by ×, pinned and moved are undone and redone.
 
 func _files_window() -> XREPanelWindow:
 	return _panels.find_window(XREFileSystemTab)

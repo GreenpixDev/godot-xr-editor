@@ -4,7 +4,7 @@ extends Node
 ## with the editor's own EditorInspector, editing a node of the open scene
 ## through XREInspectorProxy and XREPluginDocument into the editor's undo
 ## history, and XREPluginDocument opening scenes and listing files, and undo
-## and redo in the headset through the editor's own Undo and Redo (D-082). The plugin
+## and redo in the headset through the editor's own Undo and Redo (D-087). The plugin
 ## starts it in an editor run with "-- --xre-test-inspector" (scripts/check.sh)
 ## and it quits the editor when done. Prints "test_inspector: FAILED ..." for
 ## every failed check and a summary line at the end. Undoes its edits and
@@ -26,7 +26,7 @@ var _window: XREPanelWindow
 var _tab: XREInspectorTab
 var _sun: DirectionalLight3D
 var _energy_before := 0.0
-## A node the headset adds and deletes, undone and redone (D-082).
+## A node the headset adds and deletes, undone and redone (D-087).
 var _added: Node3D
 
 
@@ -174,7 +174,7 @@ func _other_scene_opened() -> void:
 	_next()
 
 
-## D-082: a value set in the inspector is put back by the headset's undo,
+## D-087: a value set in the inspector is put back by the headset's undo,
 ## through the editor's own Undo, and made again by its redo.
 func _undo_value() -> void:
 	_document.history.clear()

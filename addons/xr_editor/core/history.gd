@@ -3,7 +3,7 @@ class_name XREHistory
 extends RefCounted
 ## What the user did in the headset, in the order it was done, to undo by the
 ## undo action and redo by the redo action (A and B, [XREUndo];
-## docs/decisions.md, D-082): changes of the edited scene and of logic graphs,
+## docs/decisions.md, D-087): changes of the edited scene and of logic graphs,
 ## values typed, feature settings switched, windows, menus and inputs opened.
 ##
 ## Each change is recorded once it is made ([method record]) with two

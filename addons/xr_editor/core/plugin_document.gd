@@ -5,7 +5,7 @@ extends XREDocument
 ##
 ## Every change goes into the editor's own undo history, so anything done in
 ## the headset shows up on the desktop immediately and can be undone with Ctrl+Z.
-## It is a change of [member XREDocument.history] too (D-082), which the undo
+## It is a change of [member XREDocument.history] too (D-087), which the undo
 ## in the headset puts back by the editor's own Undo of the Scene menu, as
 ## Ctrl+Z does: a script can't undo through [EditorUndoRedoManager], and
 ## undoing the scene's [UndoRedo] itself would leave the manager's own record
@@ -327,7 +327,7 @@ func _on_scene_changed(_scene_root: Node) -> void:
 
 ## Commits the action [param undo_redo] is building and records it in
 ## [member XREDocument.history], by the history of [param object]: what puts
-## it back is the editor's own Undo, what makes it again its Redo (D-082).
+## it back is the editor's own Undo, what makes it again its Redo (D-087).
 func _commit(undo_redo: EditorUndoRedoManager, object: Object) -> void:
 	_changing = true
 	undo_redo.commit_action()

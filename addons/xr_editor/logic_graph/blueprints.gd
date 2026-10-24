@@ -89,7 +89,7 @@ const LINK_HINT := "click: another one  ·  grip: move, let go in the air: a wir
 ## How long the cards that keep a variable from being deleted flash, in seconds (D-079).
 const FLASH_TIME := 1.5
 ## What of the graph is open for the user, bits of [method _open_inputs]: each
-## one opened is a change of the headset's history, which undo closes (D-082).
+## one opened is a change of the headset's history, which undo closes (D-087).
 const _OPEN_GRAPH := 1
 const _OPEN_PARAMETERS := 2
 const _OPEN_MENU := 4
@@ -129,7 +129,7 @@ class Pointer:
 	var window: XREPanelSurface
 	var corner := -1
 	var by_trigger := false
-	## Where the held window was when it was taken: undo puts it back there (D-082).
+	## Where the held window was when it was taken: undo puts it back there (D-087).
 	var window_before := Transform3D.IDENTITY
 	## A token turned by the wrist while the trigger is held (D-052): its block
 	## (or the variable of its box), parameter, value now and at the start, the
@@ -420,7 +420,7 @@ var _keyboard_target: WeakRef
 var _windows: Array[XREPanelSurface] = []
 ## The object a new graph was opened for by selecting it, not yet saved (D-063).
 var _unsaved_host: WeakRef
-## The graph's history version the headset's history knows of (D-082).
+## The graph's history version the headset's history knows of (D-087).
 var _graph_version := 0
 ## What of the graph was open for the user last frame, as bits of _OPEN_*, and
 ## the graph's file then ([method _watch_inputs]).
@@ -678,7 +678,7 @@ func _open_inputs() -> int:
 	return open
 
 
-## Watches what of the graph the user opens (D-082), however it opened — a
+## Watches what of the graph the user opens (D-087), however it opened — a
 ## click, a wire let go in empty space, a token typed into —: each is a change
 ## of the headset's history, which undo closes without keeping what was being
 ## edited, as its × does, and redo opens again where it can. What closes by
@@ -821,7 +821,7 @@ func _place_window(node: Node3D, xform: Transform3D) -> bool:
 
 ## Whether the delete button went down this frame and nothing took it yet:
 ## it acts on what a ray is on — a token, a link, a knot, a box —, the right
-## hand's first, whichever hand the button is on (X on the left, D-082).
+## hand's first, whichever hand the button is on (X on the left, D-087).
 func _deletes_now() -> bool:
 	return not _delete_consumed and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE)
 
@@ -1715,7 +1715,7 @@ func _build_toolbar() -> void:
 	_button(row, "Back to scene", close_graph)
 	_button(row, "Save draft", save_draft)
 	_button(row, "Build & Attach", build_and_attach)
-	# The headset's history, as A and B: the graph's edits and what was opened, in turn (D-082).
+	# The headset's history, as A and B: the graph's edits and what was opened, in turn (D-087).
 	_button(row, "Undo", func() -> void: _document.undo(XREDocument.Source.PANEL))
 	_button(row, "Redo", func() -> void: _document.redo(XREDocument.Source.PANEL))
 	var second := HBoxContainer.new()
@@ -2290,7 +2290,7 @@ func _graph_operation(operation: StringName, source: StringName, _time_usec: int
 
 
 ## An edit of the graph made in the headset — its history went one action on —
-## is a change of the headset's history (D-082): undo puts it back through the
+## is a change of the headset's history (D-087): undo puts it back through the
 ## graph's history, as long as that is where the edit left it. Undo or redo of
 ## the graph's own from a window leaves the headset's changes of the graph behind.
 func _remember_graph_edit(operation: StringName) -> void:

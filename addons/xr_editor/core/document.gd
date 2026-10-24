@@ -13,7 +13,7 @@ extends RefCounted
 ## Every operation names its [enum Source] and is reported through
 ## [signal operation_recorded] (docs/decisions.md, D-009). What the user does
 ## in the headset is recorded in [member history] as well, to undo and redo
-## there (D-082): implementations record their changes of the scene, this
+## there (D-087): implementations record their changes of the scene, this
 ## class the switches of the settings and, if asked to, of the selection.
 
 ## Emitted when the set of selected nodes changes, from VR or from the desktop.
@@ -47,7 +47,7 @@ var prepare_play: Callable
 ## Variants of features under study (D-039), shared by every tool and panel.
 ## Read them here; switch them with [method set_feature].
 var features := XREFeatureSettings.new()
-## What was done in the headset, to undo and redo there (D-082).
+## What was done in the headset, to undo and redo there (D-087).
 var history := XREHistory.new()
 
 
@@ -265,7 +265,7 @@ func _may_replay() -> bool:
 
 ## Records the change of the selection from [param before] to the one now in
 ## [member history], when [constant XREFeatureSettings.UNDO_SELECTION] asks
-## for it (D-082). Implementations call it from [method select].
+## for it (D-087). Implementations call it from [method select].
 func _remember_selection(before: Array[Node]) -> void:
 	if features.get_value(XREFeatureSettings.UNDO_SELECTION) != XREFeatureSettings.ON:
 		return

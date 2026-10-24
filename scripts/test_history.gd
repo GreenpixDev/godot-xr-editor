@@ -1,5 +1,5 @@
 extends SceneTree
-## Headless tests of undo and redo in the headset (docs/decisions.md, D-082):
+## Headless tests of undo and redo in the headset (docs/decisions.md, D-087):
 ## XREHistory's steps, the document's undo of feature settings, bindings and
 ## the selection, and XREUndo's buttons with fake controller trackers. The
 ## scene's undo through the editor is tested in scripts/test_inspector.gd, the

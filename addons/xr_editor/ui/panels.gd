@@ -11,7 +11,7 @@ extends Node3D
 ##
 ## Controls:
 ## [br]- The launcher action (the left Menu; the right stick's click on
-## SteamVR, D-050, D-082): show or hide the launcher in front of the user, an
+## SteamVR, D-050, D-087): show or hide the launcher in front of the user, an
 ## icon for each tab, over a dimmed scene. It fades in and out.
 ## [br]- A controller's ray on a panel is a mouse pointer: the trigger clicks,
 ## pulling it twice quickly double-clicks, and the right thumbstick, up and
@@ -32,7 +32,7 @@ extends Node3D
 ## window again, in front of the user or in the hand.
 ## [br][br]
 ## What the user does with them is a change of the headset's history
-## ([XREHistory], D-082): undo hides the launcher they showed, closes a window
+## ([XREHistory], D-087): undo hides the launcher they showed, closes a window
 ## they opened, opens one they closed by its × where it was, puts back one they
 ## moved, pinned or unpinned — with the windows that made way for it.
 ## [br][br]
@@ -239,7 +239,7 @@ func get_launcher() -> XRETabLauncher:
 
 
 ## Shows the launcher in front of the user, over a dimmed scene, or hides it
-## (D-041, D-042): the launcher action toggles it (left Menu, the right stick's click on SteamVR, D-050, D-082). It fades in and out (D-043, D-045); it takes
+## (D-041, D-042): the launcher action toggles it (left Menu, the right stick's click on SteamVR, D-050, D-087). It fades in and out (D-043, D-045); it takes
 ## the ray only while shown, not while it fades out.
 func show_launcher(shown: bool) -> void:
 	if shown == _menus_shown:

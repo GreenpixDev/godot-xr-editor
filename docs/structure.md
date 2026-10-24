@@ -6,7 +6,7 @@
 addons/xr_editor/          плагин (всё, что поставляется)
   plugin.cfg, plugin.gd    точка входа EditorPlugin; владеет XREDocument
   core/                    XREDocument и его реализации; варианты фич для сравнения (XREFeatureSettings, D-039);
-                           история шлема для отмены и повтора (XREHistory, D-082)
+                           история шлема для отмены и повтора (XREHistory, D-087)
   xr/                      XR-сессия в процессе редактора (XRESession), риг (XRERig), контроллер: луч и кнопки (XREHand),
                            модель контроллера по профилю OpenXR с движущимися кнопками (XREControllerModel);
                            автономный шлем (D-018): общее для редактора и игры (XREStandalone), открыть VR из 2D-панели (XREStandaloneLauncher);
@@ -14,7 +14,7 @@ addons/xr_editor/          плагин (всё, что поставляется
   xr/controller_models/    glTF контроллеров из WebXR Input Profiles, папка на контроллер (D-010)
   tools/                   инструменты VR-слоя: манипуляция и удаление (XREManipulator), снап (XRESnap), обводка рёбер выбора и наведения (XREOutline, рёбра меша — XREEdgeMesh) с запасной рамкой (XREBoundsBox),
                            значки нод без геометрии — пока света (XREIcons), полёт и поворот стиками (XRELocomotion),
-                           отмена и повтор кнопками A и B (XREUndo, D-082)
+                           отмена и повтор кнопками A и B (XREUndo, D-087)
   ui/                      меню в шлеме: палитра объектов в окне Objects (XREPalette, XREObjectsTab, D-045); панели (XREPanels): хост с вводом от луча (XREPanelSurface),
                            лаунчер вкладок по X как Navigator Meta (XRETabLauncher, XRETabIcons, D-041, D-042), окна с угловыми ручками и Control Bar
                            с закреплением на руке (XREPanelWindow, D-040 — D-042), вкладки сцены, инспектора с прокси документа,

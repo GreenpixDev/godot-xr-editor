@@ -1,7 +1,7 @@
 @tool
 class_name XREUndo
 extends Node
-## Undo and redo in the headset (docs/decisions.md, D-082): the undo action
+## Undo and redo in the headset (docs/decisions.md, D-087): the undo action
 ## (A on the right controller) puts back the latest step of
 ## [member XREDocument.history] — a change of the scene or of a graph, a value
 ## typed, a setting switched, a window, a menu or an input opened — and the

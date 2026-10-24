@@ -26,7 +26,7 @@ extends Node
 ## hand lets go, the other holds on at its own point, so a node can be passed
 ## from hand to hand.
 ## [br]- Trigger of a holding hand: inverts snapping, like Ctrl on the desktop.
-## [br]- The delete action (X on the left controller, D-082): delete the
+## [br]- The delete action (X on the left controller, D-087): delete the
 ## selection, as Delete on the desktop, without asking; A undoes it
 ## ([XREUndo]). A node being held is put back first, so that undo brings it
 ## back where the grab found it.

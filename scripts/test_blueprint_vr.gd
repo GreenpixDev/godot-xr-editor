@@ -403,7 +403,7 @@ func _record(operation: StringName, _source: XREDocument.Source, _nodes: Array[N
 	_operations.append(operation)
 
 
-## D-082: what is done in the graph is a step of the headset's history — an
+## D-087: what is done in the graph is a step of the headset's history — an
 ## edit, a menu or an input opened, the graph closed — that undo puts back and
 ## redo makes again. An input that closed by itself leaves only its value to undo.
 func _test_history(print_id: int) -> void:

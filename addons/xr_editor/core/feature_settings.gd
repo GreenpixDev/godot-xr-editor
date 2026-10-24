@@ -139,7 +139,7 @@ const ALWAYS := &"always"
 ## drawn as before and the bends a graph has are kept but not shown; on, a
 ## wire goes through its bends, and trigger or grip on it adds and drags them.
 const WIRE_BENDS := &"wire_bends"
-## Whether undo in the headset ([XREHistory], D-082) puts back the selection
+## Whether undo in the headset ([XREHistory], D-087) puts back the selection
 ## of scene objects too, a step of its own each time it changes, as Blender's
 ## does; off, it doesn't, as the desktop editor's Ctrl+Z doesn't.
 const UNDO_SELECTION := &"undo_selection"
@@ -305,7 +305,7 @@ const DELETE := &"delete"
 const LAUNCHER := &"launcher"
 const PLAY := &"play"
 const SPEED := &"speed"
-## Undo and redo in the headset ([XREUndo], D-082).
+## Undo and redo in the headset ([XREUndo], D-087).
 const UNDO := &"undo"
 const REDO := &"redo"
 const ACTIONS: Array[StringName] = [LAUNCHER, PLAY, UNDO, REDO, DELETE, SPEED]
@@ -335,7 +335,7 @@ const BUTTONS: Dictionary[StringName, Dictionary] = {
 }
 
 ## Bindings of the presets, by layout. A undoes and B redoes, X deletes
-## (D-082). On Meta's runtimes the launcher is on the left Menu button, as
+## (D-087). On Meta's runtimes the launcher is on the left Menu button, as
 ## Meta's own apps open their menus; SteamVR keeps that button for its
 ## dashboard, and X deletes, so there the launcher is on the right stick's
 ## click. Without a headset the keys are Tab, Y, E, B, X and Shift.
@@ -522,7 +522,7 @@ func set_binding(action: StringName, button: StringName) -> bool:
 
 
 ## The layout the user picked and their bindings, for [method set_controls]
-## to put back: undo of a pick or a rebinding (D-082).
+## to put back: undo of a pick or a rebinding (D-087).
 func get_controls() -> Dictionary:
 	return {"layout": _layout, "custom": _custom.duplicate()}
 

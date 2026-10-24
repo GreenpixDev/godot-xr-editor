@@ -85,7 +85,7 @@ func is_action_pressed(features: XREFeatureSettings, action: StringName) -> bool
 
 ## Takes this frame's press of [param action]: the tools after see none. One
 ## press does one thing even when the button is on another hand than the ray
-## it acts on, as X deletes what the right ray is on (D-082): the hand's claim
+## it acts on, as X deletes what the right ray is on (D-087): the hand's claim
 ## ([method XREHand.claim]) would not keep the press from the other hand's tools.
 func consume_action(action: StringName) -> void:
 	_consumed[action] = Engine.get_process_frames()
