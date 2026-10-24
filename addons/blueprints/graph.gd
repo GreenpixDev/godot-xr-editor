@@ -88,7 +88,14 @@ func structure_key() -> Array:
 		shape.erase("vr_rotation")
 		shape.erase("vr_anchor")
 		blocks.append(shape)
-	return [blocks, edges.duplicate(true), variables.duplicate(true), host_path, scene_path, vr_placed, vr_workspace, vr_center]
+	# A variable's box placed in the headset's graph (D-078) is placement too.
+	var kept: Array = []
+	for variable: Dictionary in variables:
+		var shape := variable.duplicate(true)
+		shape.erase("vr_position")
+		shape.erase("vr_depth")
+		kept.append(shape)
+	return [blocks, edges.duplicate(true), kept, host_path, scene_path, vr_placed, vr_workspace, vr_center]
 
 
 ## Applies one complete edit and notifies every view of this resource.
@@ -346,22 +353,53 @@ func adopt_operands(before: Array) -> bool:
 		if before.has(edge) or not edge.get("to") is int or not edge.get("to_port") in [0, 1]: continue
 		var block := find_node(edge["to"])
 		if not is_operator(block) or not block.get("params") is Dictionary: continue
-		var op := operator_of(block)
-		if not (op == "equal" or XREBlueprintOperators.group_of(op) == XREBlueprintOperators.MATH): continue
 		var key := "a" if edge["to_port"] == 0 else "b"
 		var other := "b" if key == "a" else "a"
 		var params: Dictionary = block["params"]
 		if not params.has(other) or is_unused(block, other) or _operand_wired(block, other): continue
-		var wired := operand_type(block, key)
-		var literal: Variant = params[other]
-		if wired in [TYPE_NIL, TYPE_OBJECT] or typeof(literal) == wired: continue
-		var scales := op == "multiply" or (op == "divide" and key == "a")
-		if scales and wired in XREBlueprintOperators.VECTORS and typeof(literal) in XREBlueprintOperators.NUMBERS: continue
-		var adopted: Variant = convert_literal(literal, wired)
+		var adopted: Variant = adopted_literal(operator_of(block), key, operand_type(block, key), params[other])
 		if adopted == null: continue
 		params[other] = adopted
 		changed = true
 	return changed
+
+
+## The literal [param literal] of the other operand of operator [param op] as
+## it takes the type [param wired] of a wire into operand [param key]
+## ([method adopt_operands]), or null when it stays as it is: the operator
+## isn't arithmetic or equality, the types match, or a number scales a vector.
+static func adopted_literal(op: String, key: String, wired: int, literal: Variant) -> Variant:
+	if not (op == "equal" or XREBlueprintOperators.group_of(op) == XREBlueprintOperators.MATH): return null
+	if wired in [TYPE_NIL, TYPE_OBJECT] or typeof(literal) == wired: return null
+	var scales := op == "multiply" or (op == "divide" and key == "a")
+	if scales and wired in XREBlueprintOperators.VECTORS and typeof(literal) in XREBlueprintOperators.NUMBERS: return null
+	return convert_literal(literal, wired)
+
+
+## Which of the Variant types [param types] a wire into operand
+## [param key] of operator block [param block] may bring (D-080): those the
+## operator works on with its other operand — what is wired into it, or its
+## literal as it would take the wire's type ([method adopted_literal]).
+## Equal and the equality operators compare anything.
+func operand_types(block: Dictionary, key: String, types: Array) -> Array[int]:
+	var op := operator_of(block)
+	var other := "b" if key == "a" else "a"
+	var params: Dictionary = block.get("params", {})
+	var result: Array[int] = []
+	for candidate: Variant in types:
+		var type := int(candidate)
+		if op == "equal":
+			result.append(type)
+			continue
+		var second := TYPE_NIL
+		if not XREBlueprintOperators.is_unary(op):
+			second = operand_type(block, other)
+			if not _operand_wired(block, other) and params.has(other):
+				var adopted: Variant = adopted_literal(op, key, type, params[other])
+				if adopted != null: second = typeof(adopted)
+		var works := XREBlueprintOperators.result_type(op, type, second) if key == "a" else XREBlueprintOperators.result_type(op, second, type)
+		if works != XREBlueprintOperators.INVALID: result.append(type)
+	return result
 
 
 ## [param value] as a literal of Variant type [param type]: a number keeps its
@@ -514,6 +552,10 @@ func validate() -> PackedStringArray:
 		if not variable.get("name") is String or not name.is_valid_identifier() or names.has(name) or not typed:
 			errors.append("Variables need unique identifiers and supported default values.")
 		names[name] = true
+		if variable.has("vr_position") and (not variable["vr_position"] is Vector2 or not (variable["vr_position"] as Vector2).is_finite()):
+			errors.append("Variable %s has an invalid VR position." % name)
+		if variable.has("vr_depth") and (not typeof(variable["vr_depth"]) in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(variable["vr_depth"]))):
+			errors.append("Variable %s has invalid VR depth." % name)
 	for block: Dictionary in nodes:
 		var id: Variant = block.get("id")
 		var kind: Variant = block.get("kind")

@@ -13,7 +13,7 @@ signal graph_scene_requested
 ## Compact views can supply headset text input without depending on XR classes.
 signal text_edit_requested(field: LineEdit)
 
-const PORT_COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("7be5b3"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878")]
+const PORT_COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("b4e05a"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878")]
 
 var document: XREBlueprintDocument
 ## Input origin of this view. The compact XR inspector uses vr_panel.

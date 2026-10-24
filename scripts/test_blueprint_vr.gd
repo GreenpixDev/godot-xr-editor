@@ -303,6 +303,7 @@ func _run() -> void:
 	await _test_d069()
 	await _test_d072()
 	await _test_d074()
+	await _test_d078()
 	_check(_service.blueprint.operation_source == &"desktop_graph", "VR command source scope is restored")
 	_service.parameters.call("_set_parameter", print_id, "value", "VR test")
 	await _frames()
@@ -1473,8 +1474,8 @@ func _test_parameters_in_graph() -> void:
 	_service.add_block("get_variable")
 	await _frames()
 	var getter: int = graph.nodes.back()["id"]
-	var shelf := _service.canvas.get_shelf()
-	_check(shelf.visible and shelf.has_box("door_open") and shelf.has_box("count"), "the variables are boxes on the shelf")
+	var shelf := _service.canvas.get_boxes()
+	_check(shelf.visible and shelf.has_box("door_open") and shelf.has_box("count"), "the variables are boxes in the graph")
 	_check(not _service.shows_in_window(graph.find_node(getter), "variable"), "a Get Variable's variable leaves the window")
 	_service.call("_remove_box", "door_open")
 	_check(not graph.find_variable("door_open").is_empty(), "a box in use can't be deleted")
@@ -1665,16 +1666,18 @@ func _test_token_input() -> void:
 	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
 	_service.blueprint.set_variable("lit", false)
 	await _frames()
-	var box_token := _service.canvas.get_shelf().token_transform("lit").origin
+	# The start value never leaves its box (D-079, after D-054 let the grip take it out): the grip carries the box.
+	var box_token := _service.canvas.get_boxes().token_transform("lit").origin
 	_aim_from(box_token, Vector3.BACK)
 	await _frames()
 	_right.set_input(&"grip", 1.0)
 	await _frames()
-	_aim(Vector3(5, 4, -2))
+	_check(pointer.carried == null, "the grip on a box's token takes no token")
+	_aim_from(box_token + Vector3(0.05, 0.0, 0.0), Vector3.BACK)
 	await _frames()
 	_right.set_input(&"grip", 0.0)
 	await _frames()
-	_check(not graph.find_variable("lit").has("value") and XREBlueprintGraph.variable_type(graph.find_variable("lit")) == TYPE_BOOL, "a box's token is taken out, not copied: the box is empty, its type kept")
+	_check(graph.find_variable("lit").get("value") == false and graph.find_variable("lit").get("vr_position") is Vector2, "it carries the box, its start value kept")
 	_service.blueprint.undo()
 	await _frames()
 	_service.call("_wire_box_to_port", "pause", equal, 0)
@@ -1682,10 +1685,10 @@ func _test_token_input() -> void:
 	var reader: Dictionary = graph.nodes.back()
 	_check(reader["kind"] == "get_variable" and reader["params"]["variable"] == "pause" and graph.edges.has({"from": reader["id"], "from_port": 0, "to": equal, "to_port": 0}), "a wire between a box and an input adds the box's Get Variable wired to it")
 	await _frames()
-	var shelf := _service.canvas.get_shelf()
-	shelf.hover(0, XREBlueprintShelf.TRASH, true)
+	var shelf := _service.canvas.get_boxes()
+	shelf.hover(0, XREBlueprintBoxes.TRASH, true)
 	shelf.hover(-1, -1, false)
-	var trash := ((shelf.get("_boxes") as Array)[0] as XREBlueprintShelf.Box).trash
+	var trash := ((shelf.get("_boxes") as Array)[0] as XREBlueprintBoxes.Box).trash
 	_check(is_equal_approx(trash.scale.x, XREBlueprintCanvas.HOVER_SCALE), "a box's trash grows under a ray, and the other hand's idle ray leaves it so")
 	shelf.hover(-1, -1, true)
 
@@ -2147,9 +2150,9 @@ func _test_links_and_focus() -> void:
 	var reader: Dictionary = graph.nodes.back()
 	_check(reader["kind"] == "get_variable" and bool(reader.get("vr_inline", false)) and not _service.canvas.has_block(reader["id"]), "a box wired into a port is an inline Get Variable, with no card")
 	var inline_wires := (_service.canvas.get("_wires") as Array).filter(func(wire: XREBlueprintCanvas.Wire) -> bool: return wire.variable == "speed")
-	var from_box := (inline_wires[0] as XREBlueprintCanvas.Wire).mesh.get_point(0) - _service.canvas.get_shelf().box_point("speed") if inline_wires.size() == 1 else Vector3.INF
-	var half := XREBlueprintShelf.BOX_SIZE * 0.5 + Vector3.ONE * 0.0005
-	var to_port := _service.canvas.port_position(delay, seconds_port, true) - _service.canvas.get_shelf().box_point("speed")
+	var from_box := (inline_wires[0] as XREBlueprintCanvas.Wire).mesh.get_point(0) - _service.canvas.get_boxes().box_point("speed") if inline_wires.size() == 1 else Vector3.INF
+	var half := XREBlueprintBoxes.BOX_SIZE * 0.5 + Vector3.ONE * 0.0005
+	var to_port := _service.canvas.port_position(delay, seconds_port, true) - _service.canvas.get_boxes().box_point("speed")
 	_check(absf(from_box.x) <= half.x and absf(from_box.y) <= half.y and absf(from_box.z) <= half.z and from_box.normalized().dot(to_port.normalized()) > 0.999, "its wire comes straight from the box, aimed at its centre (D-063): %s" % from_box)
 	_check((XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray).is_empty(), "and it builds")
 	# Under the ray on the port its wire thickens.
@@ -2821,9 +2824,9 @@ func _test_d065() -> void:
 	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
 	_service.blueprint.set_variable("speed", 2.0)
 	await _frames(3)
-	var shelf := _service.canvas.get_shelf()
-	var start: XREBlueprintShelf.Box = null
-	for box: XREBlueprintShelf.Box in shelf.get("_boxes") as Array:
+	var shelf := _service.canvas.get_boxes()
+	var start: XREBlueprintBoxes.Box = null
+	for box: XREBlueprintBoxes.Box in shelf.get("_boxes") as Array:
 		if box.name == "speed": start = box
 	_check(start != null and start.token != null, "the box of speed has its start value")
 	if start != null and start.token != null:
@@ -2835,7 +2838,7 @@ func _test_d065() -> void:
 		var across := _service.canvas.global_basis.x.normalized() * start.token_size.x * 0.4
 		for point: Vector3 in [center, center - across, center + across]:
 			_service.canvas.intersect_ray(point + front * 0.4, -front, 5.0)
-			_check(_service.canvas.get_hit_box() and shelf.get_hit_part() == XREBlueprintShelf.TOKEN, "the ray takes it at %s" % (point - center))
+			_check(_service.canvas.get_hit_box() and shelf.get_hit_part() == XREBlueprintBoxes.TOKEN, "the ray takes it at %s" % (point - center))
 	# A float's box wired into Add's B: the wire and B in a float's color, A in an integer's, as what comes in.
 	_service.call("_wire_box_to_port", "speed", add, 1)
 	await _frames(3)
@@ -2912,7 +2915,6 @@ func _test_d066() -> void:
 	pointer.carried_value = 2.0
 	pointer.carried_key = "seconds"
 	pointer.carried_block = -1
-	pointer.carried_box = ""
 	pointer.carried_copy = true
 	_service.call("_drop_carried", pointer, {"block": delay, "key": "seconds"})
 	await _frames(3)
@@ -3349,7 +3351,7 @@ func _test_d072() -> void:
 	await _frames()
 	_service.call("_wire_variable", getter, "focus_count")
 	await _frames(3)
-	var shelf := canvas.get_shelf()
+	var shelf := canvas.get_boxes()
 	var links := (canvas.get("_variable_wires") as Array).filter(func(link: Dictionary) -> bool: return link["variable"] == "focus_count")
 	var box_place := shelf.box_point("focus_count")
 	var link_mesh: XREGraphWire = links[0]["mesh"] if links.size() == 1 else null
@@ -3591,6 +3593,197 @@ func _test_d074() -> void:
 	features.set_value(XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.OFF)
 	features.set_value(XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BUTTON)
 	features.set_value(XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.WINDOW)
+	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.WINDOW)
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await _frames()
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames(3)
+
+
+## D-078: the variables' boxes stand among the cards, where they were put: the
+## grip carries a box as it does a card, one edit on letting go. New variables
+## come from the block menu, their box where it was opened, read by the input
+## whose wire opened it in the same edit.
+func _test_d078() -> void:
+	var features := _document.features
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var boxes := canvas.get_boxes()
+	var menu := _service.block_menu
+	var keyboard := _service.get("_keyboard") as XREVirtualKeyboard
+	var history := _service.blueprint.history.get_version()
+	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
+	_service.blueprint.set_variable("place_gain", 1.0)
+	await _frames()
+	var row := boxes.box_point("place_gain")
+	var node := boxes.get_node_or_null("Box_place_gain")
+	_check(boxes.has_box("place_gain") and not graph.find_variable("place_gain").has("vr_position"), "a variable never put anywhere has its box in the row below the cards")
+
+	# The grip on the box's body carries it on the ray; letting go is one edit, and it stays there.
+	var start := boxes.to_global(row) + Vector3.UP * 0.019
+	var version := _service.blueprint.history.get_version()
+	_aim_from(start, Vector3.BACK)
+	await _frames()
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	_aim_from(start + Vector3(0.1, 0.05, 0.0), Vector3.BACK)
+	await _frames()
+	_check(boxes.box_point("place_gain").distance_to(row + Vector3(0.1, 0.05, 0.0)) < 0.002 and _service.blueprint.history.get_version() == version, "the grip carries the box along the ray, the graph not edited yet")
+	_right.set_input(&"grip", 0.0)
+	await _frames()
+	var placed: Dictionary = graph.find_variable("place_gain")
+	_check(_service.blueprint.history.get_version() == version + 1 and placed.get("vr_position") is Vector2 and &"move_variable" in _operations, "letting go is one edit, Move Variable, that keeps the box's place")
+	_check(boxes.box_point("place_gain").distance_to(row + Vector3(0.1, 0.05, 0.0)) < 0.002 and boxes.get_node_or_null("Box_place_gain") == node, "the box stays where it was let go, the same box")
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	var lowest := -1
+	var bottom := INF
+	for card: XREBlueprintCanvas.Card in canvas.get("_cards") as Array:
+		if card.node.position.y < bottom:
+			bottom = card.node.position.y
+			lowest = card.id
+	var moved_box := boxes.box_point("place_gain")
+	if lowest >= 0:
+		canvas.preview_move(lowest, canvas.get_block_position(lowest) + Vector3.DOWN * 0.4)
+		canvas.commit_move(_service.blueprint, lowest)
+		await _frames()
+	_check(lowest >= 0 and boxes.box_point("place_gain").is_equal_approx(moved_box), "a box that was put somewhere doesn't follow the cards")
+	if lowest >= 0: _service.blueprint.undo()
+	_service.blueprint.undo()
+	await _frames()
+	_check(boxes.box_point("place_gain").is_equal_approx(row) and not graph.find_variable("place_gain").has("vr_position") and boxes.get_node_or_null("Box_place_gain") == node,
+			"undo puts the box back in the row, moving the same box")
+
+	# A new variable from the menu: the keyboard asks its name; with none typed it is named by its type.
+	_service.open_block_menu()
+	await _frames()
+	menu.choose_chip(menu.get_chip_titles().find("Native"))
+	var floats: Array[Dictionary] = menu.get_listed().filter(func(action: Dictionary) -> bool: return action["id"] == "variable:new:float")
+	_check(not floats.is_empty() and menu.get_listed().any(func(action: Dictionary) -> bool: return action["id"] == "variable:new:Color"), "the menu's native blocks offer a new variable of each type")
+	menu.choose_chip(menu.get_chip_titles().find(str(_host.name)))
+	_check(menu.get_listed().any(func(action: Dictionary) -> bool: return action["id"] == "variable:new:float"), "so does the host's chip")
+	var expected := canvas.position_from_block({"position": _service.call("_menu_position", null), "vr_depth": 0.0})
+	var variables := graph.variables.size()
+	if not floats.is_empty(): menu.action_chosen.emit(floats[0])
+	await _frames()
+	_check(keyboard.is_shown() and graph.variables.size() == variables, "choosing it asks for the name, nothing added yet")
+	_service.call("_token_text_submitted", "")
+	await _frames()
+	var added: Dictionary = graph.find_variable("new_float")
+	_check(added.get("value") is float and added.get("vr_position") is Vector2 and &"add_variable" in _operations, "Done with no name adds new_float, as one edit")
+	_check(boxes.has_box("new_float") and boxes.box_point("new_float").distance_to(expected) < 0.001, "its box is where the menu was opened, beside its card")
+	_check(_service.call("_free_variable_name", 0.0) == "new_float_2", "the next one of the type gets the next free name")
+	if not floats.is_empty(): _service.call("_ask_new_variable", floats[0], null)
+	_service.call("_token_text_submitted", "place_gain")
+	await _frames()
+	_check(graph.variables.size() == variables + 1, "a taken name adds nothing")
+	keyboard.close()
+
+	# From the wire of a number input let go in empty space: the new variable and its reader are one edit.
+	_service.add_block("delay")
+	await _frames()
+	var delay: int = graph.nodes.back()["id"]
+	var seconds := graph.input_port(graph.find_node(delay), "seconds")
+	_check(_service.click_port(delay, seconds, true), "a wire from Delay's Seconds")
+	var point := canvas.get_block_position(delay) + Vector3(-0.35, 0.05, 0.04)
+	_service.call("_open_menu_for_wire", point)
+	await _frames()
+	menu.choose_chip(menu.get_chip_titles().find("Native"))
+	var listed := menu.get_listed()
+	var wired: Array[Dictionary] = listed.filter(func(action: Dictionary) -> bool: return action["id"] == "variable:new:float")
+	_check(not wired.is_empty() and not listed.any(func(action: Dictionary) -> bool: return str(action["id"]).begins_with("variable:new:") and action["id"] != "variable:new:float"),
+			"the input's pin lists a new variable of its own type only, not even an int it could take (D-079)")
+	version = _service.blueprint.history.get_version()
+	if not wired.is_empty(): menu.action_chosen.emit(wired[0])
+	await _frames()
+	_check(int(_service.get("_pending_id")) == -1 and keyboard.is_shown(), "the wire is done with, the keyboard asks the name")
+	_service.call("_token_text_submitted", "speed_limit")
+	await _frames()
+	var readers := graph.edges.filter(func(edge: Dictionary) -> bool:
+		var params: Dictionary = graph.find_node(edge["from"]).get("params", {})
+		return edge["to"] == delay and edge["to_port"] == seconds and params.get("variable") == "speed_limit")
+	_check(not graph.find_variable("speed_limit").is_empty() and readers.size() == 1 and _service.blueprint.history.get_version() == version + 1, "the new variable is read by Seconds, both in one edit")
+	_check(boxes.box_point("speed_limit").distance_to(point) < 0.001, "its box is where the wire was let go")
+	_service.blueprint.undo()
+	await _frames()
+	_check(graph.find_variable("speed_limit").is_empty() and not graph.edges.any(func(edge: Dictionary) -> bool: return edge["to"] == delay and edge["to_port"] == seconds), "one undo takes both back")
+	keyboard.close()
+	_service.close_block_palette()
+
+	# D-079: an operator's operand takes any value, but a new variable for it is of the type in it.
+	_service.add_block("operator")
+	await _frames()
+	var add: int = graph.nodes.back()["id"]
+	_check(_service.click_port(add, 0, true), "a wire from Add's A, a float in it")
+	_service.call("_open_menu_for_wire", canvas.get_block_position(add) + Vector3(-0.3, 0.0, 0.04))
+	await _frames()
+	menu.choose_chip(menu.get_chip_titles().find("Native"))
+	var operand := menu.get_listed().map(func(action: Dictionary) -> String: return str(action["id"]))
+	_check(operand.has("variable:new:float") and operand.has("variable:new:int") and operand.has("variable:new:Vector3") and not operand.has("variable:new:bool"),
+			"Add's A lists new variables of the types Add works on, an int as well as a float (D-080), not a bool it couldn't add")
+	_service.cancel_connection()
+	_service.close_block_palette()
+	await _frames()
+
+	# D-080: an int has its own color. Add takes either and gives an int for two ints, a float else, its ports showing which.
+	var int_color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.INTEGER]
+	var float_color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]
+	_check(int_color != float_color, "an int's color is not a float's")
+	_service.blueprint.set_variable("steps", 2)
+	_service.blueprint.set_variable("rate", 0.5)
+	await _frames()
+	_service.call("_wire_box_to_port", "steps", add, 0)
+	await _frames(3)
+	var added_card := _card(add)
+	_check(added_card != null and _tint(added_card.ports[0].material_override) == int_color and _tint(added_card.ports[2].material_override) == int_color and graph.find_node(add)["params"]["b"] is int,
+			"an int into A: A and the result are an int's color, B's token an int")
+	var int_wires := (canvas.get("_wires") as Array).filter(func(wire: XREBlueprintCanvas.Wire) -> bool: return wire.variable == "steps" and wire.to.id == add)
+	_check(int_wires.size() == 1 and _tint((int_wires[0] as XREBlueprintCanvas.Wire).normal) == int_color, "the wire from the int's box is an int's color")
+	_check(_service.click_port(add, 1, true), "a wire from Add's B, an int A wired")
+	_service.call("_open_menu_for_wire", canvas.get_block_position(add) + Vector3(-0.3, -0.1, 0.04))
+	await _frames()
+	menu.choose_chip(menu.get_chip_titles().find("Native"))
+	var second := menu.get_listed().map(func(action: Dictionary) -> String: return str(action["id"]))
+	_check(second.has("variable:new:int") and second.has("variable:new:float") and not second.has("variable:new:Vector3") and not second.has("variable:new:String") and second.has("variable:get:rate"),
+			"by an int, B lists an int or a float, new or there, but not a vector")
+	_service.cancel_connection()
+	_service.close_block_palette()
+	_service.call("_wire_box_to_port", "rate", add, 1)
+	await _frames(3)
+	added_card = _card(add)
+	_check(added_card != null and _tint(added_card.ports[0].material_override) == int_color and _tint(added_card.ports[1].material_override) == float_color and _tint(added_card.ports[2].material_override) == float_color,
+			"an int into A and a float into B: A an int's color, B and the result a float's")
+
+	# D-079: deleting a box takes its wires and links into ports with it; the ports get their default tokens back.
+	_service.blueprint.set_variable("drop_gain", 4.0)
+	await _frames()
+	_service.call("_wire_box_to_port", "drop_gain", delay, seconds)
+	await _frames()
+	version = _service.blueprint.history.get_version()
+	_service.call("_remove_box", "drop_gain")
+	await _frames()
+	var params: Dictionary = graph.find_node(delay)["params"]
+	_check(graph.find_variable("drop_gain").is_empty() and not graph.edges.any(func(edge: Dictionary) -> bool: return edge["to"] == delay and edge["to_port"] == seconds)
+			and not graph.nodes.any(func(block: Dictionary) -> bool: return (block["params"] as Dictionary).get("variable") == "drop_gain")
+			and params.get("seconds") is float and _service.blueprint.history.get_version() == version + 1 and &"remove_variable" in _operations,
+			"a box wired into Seconds is deleted with its wire and the Get Variable it stands for, Seconds a token again, as one edit")
+	_service.blueprint.undo()
+	await _frames()
+	_check(not graph.find_variable("drop_gain").is_empty() and graph.edges.any(func(edge: Dictionary) -> bool: return edge["to"] == delay and edge["to_port"] == seconds), "one undo brings the box and its wire back")
+	# A card that uses the variable keeps it: the card's frame and its wire to the box flash, the wire drawn even as a link.
+	_service.add_block("set_variable")
+	await _frames()
+	var setter: int = graph.nodes.back()["id"]
+	_service.call("_wire_variable", setter, "drop_gain")
+	await _frames()
+	_service.call("_remove_box", "drop_gain")
+	await _frames()
+	var flashing := _card(setter)
+	_check(not graph.find_variable("drop_gain").is_empty() and flashing != null and flashing.flash and str(_service.status).contains("Set Variable #%d" % setter),
+			"a box a Set Variable card uses stays; the message names the card, and it flashes")
+	_check(flashing != null and _tint(flashing.frame.material_override) == XREBlueprintCanvas.FLASH_FRAME, "in the flash's color")
+	await get_tree().create_timer(XREBlueprints.FLASH_TIME + 0.2).timeout
+	_check(_card(setter) != null and not _card(setter).flash, "the flash goes after a while")
+
 	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.WINDOW)
 	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
 	await _frames()

@@ -357,6 +357,24 @@ func _test_scene_bindings() -> void:
 	_check(doc.set_variable("has_key", true) and doc.graph.find_variable("has_key")["value"] == true, "a value goes back into the box")
 	doc.add_block("get_variable", Vector2.ZERO)
 	_check(not doc.remove_variable("has_key"), "referenced variable cannot be deleted silently")
+	# D-078: a variable added with the place of its box in the headset's graph, which is placement, not structure.
+	_check(doc.add_variable("gain", 1.5, {"vr_position": Vector2(40, 80), "vr_depth": 0.05}) and doc.graph.find_variable("gain")["vr_position"] == Vector2(40, 80), "a variable is added with a view's fields")
+	_check(not doc.add_variable("gain", 2.0) and not doc.add_variable("not a name", 2.0), "a taken or invalid name is refused")
+	var key := doc.graph.structure_key()
+	var moved := doc.graph.snapshot()
+	var placed: Dictionary = (moved["variables"] as Array).back()
+	placed["vr_position"] = Vector2(90, 10)
+	_check(doc.commit("Move Variable", moved) and doc.graph.find_variable("gain")["vr_position"] == Vector2(90, 10) and doc.graph.structure_key() == key, "moving a box changes the graph's placement only")
+	var broken := XREBlueprintGraph.new()
+	broken.restore(doc.graph.snapshot())
+	broken.variables[-1]["vr_position"] = Vector2(NAN, 0)
+	_check(not broken.validate().is_empty(), "a box's non-finite place is rejected")
+	var reader := XREBlueprintGraph.make_node(0, "get_variable", Vector2.ZERO)
+	reader["params"]["variable"] = "speed"
+	var print_id := doc.insert_block(XREBlueprintGraph.make_node(0, "print", Vector2.ZERO), Vector2(300, 0))
+	var count := doc.history.get_version()
+	var read := doc.insert_block(reader, Vector2(0, 0), {"to": print_id, "to_port": doc.graph.input_port(doc.graph.find_node(print_id), "value")}, null, "Add Variable", [{"name": "speed", "value": 2.0}])
+	_check(read > 0 and not doc.graph.find_variable("speed").is_empty() and doc.history.get_version() == count + 1, "a new variable and the block that reads it are one edit")
 	door.free()
 	_check(not doc.validate_scene().is_empty(), "deleted target is diagnosed before build")
 	scene.free()
@@ -971,6 +989,13 @@ func _test_operators() -> void:
 	_check(doc.graph.find_node(offset)["params"]["a"] == Vector3.ZERO and doc.graph.ports(doc.graph.find_node(offset), false)[0][1] == XREBlueprintGraph.VECTOR3, "a vector added: A becomes a zero vector")
 	doc.undo()
 	_check(doc.graph.find_node(offset)["params"]["a"] is float, "undo puts the literal back with the wire")
+	# D-080: the types a wire into an operand may bring, by what the operator works on.
+	var candidates := [TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_COLOR]
+	_check(doc.graph.operand_types(doc.graph.find_node(offset), "a", candidates) == [TYPE_INT, TYPE_FLOAT, TYPE_STRING, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_COLOR],
+			"a free operand of Add takes anything but a bool: the other literal takes its type")
+	_check(doc.graph.operand_types(doc.graph.find_node(sum), "b", candidates) == [TYPE_INT, TYPE_FLOAT], "by a wired integer, Add's B takes an int or a float")
+	_check(doc.graph.operand_types(doc.graph.find_node(scale), "b", candidates) == [TYPE_INT, TYPE_FLOAT, TYPE_VECTOR3], "by a wired vector, Multiply's B takes a number or the same vector")
+	_check(doc.graph.operand_types(XREBlueprintGraph.make_node(9, "equals", Vector2.ZERO), "a", candidates) == candidates, "Equal compares anything")
 
 	# Menu: Math, Comparison with Equal first, Logic.
 	var sections := XREBlueprintActions.new().sections({"chip": XREBlueprintActions.NATIVE, "graph": doc.graph})
@@ -1060,6 +1085,18 @@ func _test_actions() -> void:
 	_check(globals.any(func(action: Dictionary) -> bool: return action["id"] == "global:clampf"), "global functions are searchable")
 	var natives := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.NATIVE, "host": scene, "graph": doc.graph}))
 	_check(natives.any(func(action: Dictionary) -> bool: return action["id"] == "native:branch") and natives.any(func(action: Dictionary) -> bool: return action["id"] == "variable:set:door_open"), "native blocks include each variable's Get and Set")
+	_check(not natives.any(func(action: Dictionary) -> bool: return str(action["id"]).begins_with("variable:new:")), "without a view that adds them, no new variables are offered")
+	var offered := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.NATIVE, "host": scene, "graph": doc.graph, "new_variables": true, "pin": {"type": XREBlueprintGraph.NUMBER, "output": false}}))
+	_check(offered.any(func(action: Dictionary) -> bool: return action["id"] == "variable:new:float" and action["variable"] is float)
+			and not offered.any(func(action: Dictionary) -> bool: return action["id"] in ["variable:new:String", "variable:new:int"]),
+			"a wire from a number input offers a new variable of its type only, not even an int it takes (D-078, D-079)")
+	var any_value := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.NATIVE, "graph": doc.graph, "new_variables": true, "pin": {"type": XREBlueprintGraph.VALUE, "output": false, "value_types": [TYPE_VECTOR3]}}))
+	_check(any_value.filter(func(action: Dictionary) -> bool: return str(action["id"]).begins_with("variable:new:")).map(func(action: Dictionary) -> String: return action["id"]) == ["variable:new:Vector3"]
+			and not any_value.any(func(action: Dictionary) -> bool: return action["id"] == "variable:get:door_open"),
+			"an input of any value offers new and existing variables of the type the view says is in it (D-079)")
+	var host_chip := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.CONTEXT, "node": scene, "host": scene, "graph": doc.graph, "new_variables": true}))
+	_check(host_chip.any(func(action: Dictionary) -> bool: return action["id"] == "variable:new:Vector3") and host_chip.any(func(action: Dictionary) -> bool: return action["id"] == "variable:get:door_open"),
+			"the host's chip offers its graph's variables, new ones too")
 	var id := doc.insert_block(preset["block"], Vector2(200, 0), {"from": 1, "from_port": 0}, player)
 	_check(id > 0 and doc.graph.find_node(id)["params"]["target"] == "Animations" and not doc.target_is_connected(id), "an action's block is added aimed at its object")
 	actions.remember(preset)

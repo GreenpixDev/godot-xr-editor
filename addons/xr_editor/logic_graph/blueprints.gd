@@ -86,6 +86,8 @@ const PROJECTION_PARTS := 24
 const PROJECTION_NODES := 200
 ## What the ray on a link says (D-074).
 const LINK_HINT := "click: another one  ·  grip: move, let go in the air: a wire"
+## How long the cards that keep a variable from being deleted flash, in seconds (D-079).
+const FLASH_TIME := 1.5
 
 class Pointer:
 	var hand: XREHand
@@ -94,6 +96,8 @@ class Pointer:
 	var held: Node3D
 	var hold := Transform3D.IDENTITY
 	var block := -1
+	## The variable whose box is held (D-078), carried as a card is; empty for none.
+	var box := ""
 	var before := Transform3D.IDENTITY
 	var touched := false
 	var grab_point := Vector3.ZERO
@@ -167,13 +171,12 @@ class Pointer:
 	var fan_dragged := false
 	## This hand's ray lit a petal of the fan last frame.
 	var fan_hover := false
-	## A token the grip carries: its mesh, value and parameter, the socket or
-	## box it came from (none from the tray), and whether it is a copy.
+	## A token the grip carries: its mesh, value and parameter, the socket it
+	## came from (none from the tray), and whether it is a copy.
 	var carried: Node3D
 	var carried_value: Variant
 	var carried_key := ""
 	var carried_block := -1
-	var carried_box := ""
 	var carried_copy := false
 	## What this hand's ray put in focus this frame (D-072): a card, -1 for none,
 	## and a variable's box, empty for none.
@@ -285,7 +288,7 @@ var _petal_outline: XREOutline
 ## target that comes by wire.
 var _petal_block := -1
 var _petal_dynamic := false
-## A small fan of choices at a point: Get, Set or Tween for a property, a type for a new variable.
+## A small fan of choices at a point: Get, Set or Tween for a property.
 var _choice: XREBlueprintPetals
 var _choice_point := Vector3.ZERO
 ## A wire from a petal of the selected object (Create from scene) and the hand that draws it.
@@ -309,7 +312,6 @@ var _projection_meshes: Dictionary[int, Mesh] = {}
 ## The token typed on the keyboard, or a new variable's name ([member _token_field]).
 var _token_field: LineEdit
 var _token_edit: Dictionary = {}
-var _new_variable := ""
 ## The input around a token, as in the concept: a dial, a choice, a globe of colors (D-064), arrows (D-052).
 var _token_editor: XREBlueprintTokenEditor
 ## What covers an input in use becomes see-through (D-066): the scene's objects
@@ -909,6 +911,9 @@ func open_block_menu() -> void:
 ## one undo step. Pinned to a hand, the menu stays: the next block follows
 ## from the new one's execution output, so that a chain is added in a row.
 func _add_from_menu(action: Dictionary, point: Variant = null) -> void:
+	if action.has("variable"):
+		_ask_new_variable(action, point)
+		return
 	var position := _menu_position(point)
 	var block: Dictionary = (action["block"] as Dictionary).duplicate(true)
 	if point is Vector3 or _menu_at_point: block["vr_depth"] = (point as Vector3).z if point is Vector3 else _menu_point.z
@@ -992,6 +997,8 @@ func _open_menu_for_wire(point: Vector3) -> void:
 	if block.is_empty(): return
 	var spec: Array = blueprint.graph.ports(block, _pending_input)[_pending_port]
 	var pin := {"type": spec[1], "output": not _pending_input, "port": _pending_port, "label": "%s ▸ %s · %s" % [XREBlueprintGraph.title(block), spec[0], _type_name(spec[1])]}
+	var types: Variant = _input_value_types(block, _pending_port) if _pending_input else null
+	if types is Array: pin["value_types"] = types
 	var pin_context := {}
 	if spec[1] == XREBlueprintGraph.OBJECT and block["kind"] == "signal" and not _pending_input:
 		var arguments: Array = block.get("arguments", [])
@@ -1005,6 +1012,20 @@ func _open_menu_for_wire(point: Vector3) -> void:
 	_menu_at_point = true
 	block_menu.open(_menu_contexts(_pending_id, pin_context), blueprint.get_host(), blueprint.graph, pin)
 	_request_menu_at(point)
+
+
+## The Variant types a new variable may have to go into input [param port]
+## of [param block], or null where any value fits, as Print's: the port's own
+## (D-079); for an operator's operand, every type of a new variable the
+## operator works on with its other operand (D-080) — Add takes an int as
+## well as a float, and gives an int for two ints.
+func _input_value_types(block: Dictionary, port: int) -> Variant:
+	var spec: Array = blueprint.graph.ports(block, true)[port]
+	var key: String = spec[2] if spec.size() > 2 else ""
+	if XREBlueprintGraph.is_operator(block) and key in ["a", "b"]:
+		return blueprint.graph.operand_types(block, key, XREBlueprintActions.NEW_VARIABLES.map(func(value: Variant) -> int: return typeof(value)))
+	var own := XREBlueprintGraph.variant_type(spec[1])
+	return [own] if own != TYPE_NIL else null
 
 
 ## The menu for a wire from the box of a variable let go in empty space at
@@ -1512,13 +1533,16 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		return
 	if pointer.held != null:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
-		# A card carried stays in focus (D-072).
-		if pointer.held == canvas: pointer.focus = pointer.block
+		# A card or a box carried stays in focus (D-072).
+		if pointer.held == canvas:
+			pointer.focus = pointer.block
+			pointer.focus_box = pointer.box
+		var on_rod := pointer.block >= 0 or not pointer.box.is_empty()
 		if not hand.get_has_tracking_data(): _finish_hold(pointer, false)
-		elif pointer.block >= 0 and pointer.depth_uses_grip and not _rig.has_grip_pose(hand): _finish_hold(pointer, false)
+		elif on_rod and pointer.depth_uses_grip and not _rig.has_grip_pose(hand): _finish_hold(pointer, false)
 		elif not (hand.trigger_held if pointer.by_trigger else hand.grip_held): _finish_hold(pointer, true)
 		else:
-			if pointer.block >= 0:
+			if on_rod:
 				var physical := _rig.hand_pose(hand, pointer.depth_uses_grip).origin
 				if not pointer.touched:
 					# Only the hand's motion along the rod, relative to the body, reels the
@@ -1533,7 +1557,8 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 					pointer.body_offset = offset
 					pointer.along = along
 				var contact := physical if pointer.touched else hand.global_position - hand.global_basis.z.normalized() * pointer.distance
-				canvas.preview_grab(pointer.block, contact, pointer.grab_point, _rig.camera.global_position)
+				if pointer.box.is_empty(): canvas.preview_grab(pointer.block, contact, pointer.grab_point, _rig.camera.global_position)
+				else: canvas.preview_box_grab(pointer.box, contact, pointer.grab_point)
 				if pointer.touched: hand.hide_ray()
 				else: hand.show_ray(pointer.distance, true)
 			else:
@@ -1762,20 +1787,24 @@ func _preview_connection(point: Vector3, end_id: int = -1, end_port: int = -1, e
 	canvas.show_connection(_pending_id, _pending_port, _pending_input, canvas.to_local(point), end_id, end_port, end_input, _pending_finished)
 
 
-func _start_hold(pointer: Pointer, node: Node3D, block: int, point: Vector3 = Vector3.ZERO, touched: bool = false) -> void:
+## Takes [param node] in [param pointer]'s hand: the canvas with card
+## [param block] or the box of variable [param box] (D-078) on a rod to
+## [param point], or by touch; a window with -1 and no box.
+func _start_hold(pointer: Pointer, node: Node3D, block: int, point: Vector3 = Vector3.ZERO, touched: bool = false, box: String = "") -> void:
 	for other: Pointer in _pointers:
 		if other.held != null: return
 	cancel_connection()
 	_leave(pointer)
 	pointer.held = node
 	pointer.block = block
+	pointer.box = box
 	pointer.window = null
 	pointer.corner = -1
 	pointer.by_trigger = false
 	var target := node.global_transform
-	if block >= 0:
-		select_block(block)
-		pointer.before = canvas.get_block_transform(block)
+	if block >= 0 or not box.is_empty():
+		if block >= 0: select_block(block)
+		pointer.before = canvas.get_block_transform(block) if box.is_empty() else Transform3D(Basis.IDENTITY, canvas.get_boxes().box_point(box))
 		pointer.touched = touched
 		target = canvas.global_transform * pointer.before
 		pointer.grab_point = target.affine_inverse() * point
@@ -1825,8 +1854,12 @@ func _finish_hold(pointer: Pointer, commit: bool) -> void:
 	if pointer.block >= 0:
 		if commit: canvas.commit_move(blueprint, pointer.block)
 		else: canvas.preview_transform(pointer.block, pointer.before)
+	elif not pointer.box.is_empty():
+		if commit: canvas.commit_box_move(blueprint, pointer.box)
+		else: canvas.preview_box_move(pointer.box, pointer.before.origin)
 	pointer.held = null
 	pointer.block = -1
+	pointer.box = ""
 	pointer.window = null
 	pointer.by_trigger = false
 	pointer.hand.show_ray(XREHand.RAY_LENGTH, false)
@@ -2123,6 +2156,7 @@ func _button(parent: Node, text: String, action: Callable) -> Button:
 func _build_block_menu(theme: Theme) -> void:
 	block_menu = XREBlueprintActionMenu.new()
 	block_menu.set_large(true)
+	block_menu.offers_variables = true
 	if theme != null: block_menu.theme = theme
 	block_menu.action_chosen.connect(_add_from_menu)
 	block_menu.action_dragged.connect(_drag_from_menu)
@@ -2500,7 +2534,7 @@ func _take_from_tray(pointer: Pointer, origin: Vector3, direction: Vector3) -> b
 	_leave(pointer)
 	var by_trigger := pointer.hand.trigger_pressed and not pointer.hand.grip_pressed
 	if XREBlueprintLinks.is_link_value(cell["value"]): _carry_link(pointer, cell["value"], {}, by_trigger)
-	else: _carry(pointer, cell["value"], cell["key"], -1, "", true, by_trigger)
+	else: _carry(pointer, cell["value"], cell["key"], -1, true, by_trigger)
 	return true
 
 
@@ -2601,7 +2635,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		return
 	if hand.grip_pressed:
 		if token and _value_mode() != XREFeatureSettings.WINDOW:
-			_carry(pointer, canvas.token_value(id, key), key, id, "", false)
+			_carry(pointer, canvas.token_value(id, key), key, id, false)
 		elif not link.is_empty(): _carry_link(pointer, _link_value(link, canvas.get_hit_link_value()), link)
 		else: _start_hold(pointer, canvas, id, origin + direction * hit)
 	elif hand.trigger_pressed:
@@ -2683,7 +2717,7 @@ func _reset_token(id: int, key: String) -> void:
 ## wrist edits a number or a choice while it is held, around a dial at the
 ## token; moving the ray off the token drags it, as the grip does.
 func _start_turn(pointer: Pointer, id: int, key: String, box: String, point: Vector3) -> void:
-	var value: Variant = canvas.token_value(id, key) if box.is_empty() else canvas.get_shelf().box_value(box)
+	var value: Variant = canvas.token_value(id, key) if box.is_empty() else canvas.get_boxes().box_value(box)
 	if value == null: return
 	_token_editor.close()
 	pointer.token_point = point
@@ -2768,7 +2802,7 @@ func _update_turn(pointer: Pointer, delta: float) -> void:
 			pointer.token_moved = true
 			pointer.token_value = value
 			if pointer.token_box.is_empty(): canvas.preview_token(pointer.token_block, key, value)
-			else: canvas.get_shelf().preview_value(pointer.token_box, value)
+			else: canvas.get_boxes().preview_value(pointer.token_box, value)
 			if kind == XREBlueprintTokens.CHOICE: _token_editor.set_choice(str(value), XREBlueprintTokens.POLICIES)
 			_message("%s: %s" % [key.capitalize() if not key.is_empty() else pointer.token_box, XREBlueprintTokens.text(value, key)])
 	if not hand.trigger_held: _end_turn(pointer, true)
@@ -2807,7 +2841,7 @@ func _end_turn(pointer: Pointer, commit: bool) -> void:
 	if _token_editor.mode in [XREBlueprintTokenEditor.DIAL, XREBlueprintTokenEditor.CHOICE]: _token_editor.close()
 	if not commit:
 		if box.is_empty(): canvas.preview_token(id, key, start)
-		else: canvas.get_shelf().preview_value(box, start)
+		else: canvas.get_boxes().preview_value(box, start)
 		return
 	if turned:
 		if typeof(value) == typeof(start) and value == start: return
@@ -2871,7 +2905,7 @@ func _token_text_submitted(text: String) -> void:
 	var edit := _token_edit
 	_token_edit = {}
 	if edit.get("new_variable", false):
-		_name_new_variable(text.strip_edges())
+		_add_new_variable(edit, text.strip_edges())
 		return
 	if edit.is_empty(): return
 	if edit.has("channel") or edit.has("hex"):
@@ -2937,7 +2971,7 @@ static func _parse(text: String, like: Variant) -> Variant:
 
 ## Where a token is, facing the head: on block [param id]'s card, or on the box of [param box].
 func _token_pose(id: int, key: String, box: String) -> Transform3D:
-	var at := canvas.token_transform(id, key).origin if box.is_empty() else canvas.get_shelf().token_transform(box).origin
+	var at := canvas.token_transform(id, key).origin if box.is_empty() else canvas.get_boxes().token_transform(box).origin
 	return Transform3D(XREPanels.facing(at, _rig.camera.global_position, _rig.global_basis.y), at)
 
 
@@ -3050,7 +3084,7 @@ func _update_arrow(pointer: Pointer, delta: float) -> void:
 	# The ray ends on the end of the arrow it pulls (D-066), not at the arrows' foot or past them.
 	hand.show_ray(maxf((_token_editor.tip_position(pointer.arrow_axis) - origin).dot(direction), 0.01), true)
 	if pointer.arrow_box.is_empty(): canvas.preview_token(pointer.arrow_block, pointer.arrow_key, value)
-	else: canvas.get_shelf().preview_value(pointer.arrow_box, value)
+	else: canvas.get_boxes().preview_value(pointer.arrow_box, value)
 	_message("%s: %s" % [key_name(pointer.arrow_axis), XREBlueprintTokens.text(value, pointer.arrow_key)])
 	vector_panel.set_vector(value)
 	if hand.trigger_held and hand.get_has_tracking_data(): return
@@ -3345,7 +3379,7 @@ func _preview_value_edit(value: Variant, expression: String) -> void:
 	_value_edit["expression"] = expression
 	var shown := XREBlueprintTokens.shown(value, str(_value_edit["key"]), expression)
 	if str(_value_edit["box"]).is_empty(): canvas.preview_token(_value_edit["block"], _value_edit["key"], value, shown)
-	else: canvas.get_shelf().preview_value(_value_edit["box"], value, shown)
+	else: canvas.get_boxes().preview_value(_value_edit["box"], value, shown)
 	_token_editor.set_vector(value)
 	vector_panel.set_vector(value, expression)
 
@@ -3374,7 +3408,7 @@ func _end_vector(commit: bool) -> void:
 		var start: Variant = edit["start"]
 		var shown := XREBlueprintTokens.shown(start, str(edit["key"]), str(edit["start_expression"]))
 		if str(edit["box"]).is_empty(): canvas.preview_token(edit["block"], edit["key"], start, shown)
-		else: canvas.get_shelf().preview_value(edit["box"], start, shown)
+		else: canvas.get_boxes().preview_value(edit["box"], start, shown)
 		if changed: _message("The vector is as it was.")
 	_dismiss_window(XREBlueprintVectorTab, true)
 
@@ -3433,7 +3467,7 @@ func _preview_color(color: Color, turn: bool = false) -> void:
 	if not _editing_color(): return
 	_value_edit["value"] = color
 	if str(_value_edit["box"]).is_empty(): canvas.preview_token(_value_edit["block"], _value_edit["key"], color)
-	else: canvas.get_shelf().preview_value(_value_edit["box"], color)
+	else: canvas.get_boxes().preview_value(_value_edit["box"], color)
 	if _token_editor.mode == XREBlueprintTokenEditor.GLOBE:
 		_token_editor.set_globe_color(color)
 		if turn: _token_editor.face_globe_color()
@@ -3472,7 +3506,7 @@ func _end_color(commit: bool) -> void:
 		_message("Kept %s." % _color_text(value))
 	else:
 		if str(edit["box"]).is_empty(): canvas.preview_token(edit["block"], edit["key"], start)
-		else: canvas.get_shelf().preview_value(edit["box"], start)
+		else: canvas.get_boxes().preview_value(edit["box"], start)
 		if changed: _message("The color is as it was.")
 	_dismiss_window(XREBlueprintColorTab, true)
 
@@ -3620,10 +3654,10 @@ static func _color_text(color: Color) -> String:
 
 
 ## The grip carries a copy of a token: from a socket of block [param id] (it
-## moves; a second grip makes it a copy), from the box of variable
-## [param box], or from the tray with [param copy].
+## moves; a second grip makes it a copy), or from the tray with [param copy].
+## A box's start value is never carried (D-079).
 ## [param by_trigger]: the trigger holds it, dragged off its socket, not the grip.
-func _carry(pointer: Pointer, value: Variant, key: String, id: int, box: String, copy: bool, by_trigger: bool = false) -> void:
+func _carry(pointer: Pointer, value: Variant, key: String, id: int, copy: bool, by_trigger: bool = false) -> void:
 	if value == null: return
 	var shown := XREBlueprintTokens.text(value, key)
 	pointer.carried = XREBlueprintCanvas.make_token(value, key, XREBlueprintTokens.width(shown), _value_mode() == XREFeatureSettings.PLUGS, false, false)
@@ -3632,14 +3666,12 @@ func _carry(pointer: Pointer, value: Variant, key: String, id: int, box: String,
 	pointer.carried_value = value
 	pointer.carried_key = key
 	pointer.carried_block = id
-	pointer.carried_box = box
 	pointer.carried_copy = copy
 	pointer.carried_trigger = by_trigger
 	pointer.hand.claim(self)
-	# The token itself is in the hand, not a copy of it: it leaves its socket or box
+	# The token itself is in the hand, not a copy of it: it leaves its socket
 	# at once (D-058). Let go anywhere but in another socket, the graph puts it back.
 	if id >= 0 and not copy: canvas.hide_token(id, key)
-	if not box.is_empty() and not copy: canvas.get_shelf().hide_token(box)
 	_update_carried(pointer)
 
 
@@ -3672,8 +3704,8 @@ func _update_carried(pointer: Pointer) -> void:
 func _dock_target(hit: float) -> Dictionary:
 	if hit < 0: return {}
 	if canvas.get_hit_box():
-		var shelf := canvas.get_shelf()
-		if shelf.get_hit_part() in [XREBlueprintShelf.TOKEN, XREBlueprintShelf.BODY] and not shelf.get_hit_name().is_empty(): return {"box": shelf.get_hit_name()}
+		var boxes := canvas.get_boxes()
+		if boxes.get_hit_part() in [XREBlueprintBoxes.TOKEN, XREBlueprintBoxes.BODY] and not boxes.get_hit_name().is_empty(): return {"box": boxes.get_hit_name()}
 		return {}
 	var id := canvas.get_hit_id()
 	if canvas.get_hit_socket_kind() in [XREBlueprintCanvas.TOKEN, XREBlueprintCanvas.SQUARE]: return {"block": id, "key": canvas.get_hit_socket_key()}
@@ -3691,18 +3723,15 @@ func _drop_carried(pointer: Pointer, target: Dictionary) -> void:
 	var value: Variant = pointer.carried_value
 	var source_block := pointer.carried_block
 	var source_key := pointer.carried_key
-	var source_box := pointer.carried_box
 	var copy := pointer.carried_copy
 	pointer.carried.queue_free()
 	pointer.carried = null
-	_show_carried_source(source_block, source_key, source_box, copy)
+	_show_carried_source(source_block, source_key, copy)
 	pointer.carried_block = -1
-	pointer.carried_box = ""
 	pointer.hand.unclaim(self)
 	pointer.hand.show_ray(XREHand.RAY_LENGTH, false)
 	var from_socket := source_block >= 0 and not copy
-	var from_box := not source_box.is_empty() and not copy
-	if (target.has("block") and target["block"] == source_block and target["key"] == source_key) or (target.has("box") and target["box"] == source_box):
+	if target.has("block") and target["block"] == source_block and target["key"] == source_key:
 		_schedule_rebuild()
 		return
 	var state := blueprint.graph.snapshot()
@@ -3731,28 +3760,23 @@ func _drop_carried(pointer: Pointer, target: Dictionary) -> void:
 			if entry["name"] == target["box"]:
 				entry["value"] = float(value) if XREBlueprintGraph.variable_type(variable) == TYPE_FLOAT else value
 				entry.erase("type")
-	elif not from_socket and not from_box:
+	elif not from_socket:
 		# A copy or a token from the tray, let go in the air, just goes.
 		_schedule_rebuild()
 		return
 	# Taken out of its socket, the token leaves a port a default token unless a
 	# wire brings its value (D-059, after D-054 left it empty); a square socket
-	# gets its default back. A box is left empty (D-054).
+	# gets its default back.
 	if from_socket:
 		for entry: Dictionary in state["nodes"]:
 			if entry["id"] != source_block: continue
 			if source_key in blueprint.graph.socket_keys(entry): (entry["params"] as Dictionary).erase(source_key)
 			else: entry["params"][source_key] = XREBlueprintTokens.default_value(entry, source_key)
 		_fill_sockets(state)
-	if from_box:
-		for entry: Dictionary in state["variables"]:
-			if entry["name"] == source_box and entry.has("value"):
-				entry["type"] = typeof(entry["value"])
-				entry.erase("value")
-	var title := "Dock Token" if target.has("block") or target.has("box") else ("Take Token Out" if from_box else "Reset Token")
+	var title := "Dock Token" if target.has("block") or target.has("box") else "Reset Token"
 	if blueprint.perform(blueprint.commit.bind(title, state), &"vr_graph"):
 		if title == "Dock Token": token_tray.remember(value)
-		_message("Token in %s." % str(target.get("key", target.get("box", ""))).capitalize() if title == "Dock Token" else ("Token taken out: the box is empty." if from_box else "Back to the default token."))
+		_message("Token in %s." % str(target.get("key", target.get("box", ""))).capitalize() if title == "Dock Token" else "Back to the default token.")
 	else: _message(blueprint.last_error)
 	_schedule_rebuild()
 
@@ -3766,7 +3790,7 @@ func _drop_tokens(pointer: Pointer) -> void:
 	if pointer.carried != null:
 		pointer.carried.queue_free()
 		pointer.carried = null
-		_show_carried_source(pointer.carried_block, pointer.carried_key, pointer.carried_box, pointer.carried_copy)
+		_show_carried_source(pointer.carried_block, pointer.carried_key, pointer.carried_copy)
 		if not pointer.carried_ref.is_empty(): canvas.hide_link(pointer.carried_ref, false)
 		pointer.carried_ref = {}
 		pointer.hand.unclaim(self)
@@ -3774,40 +3798,40 @@ func _drop_tokens(pointer: Pointer) -> void:
 	if not pointer.pull.is_empty(): _end_pull(pointer, false)
 
 
-## Shows again the token that a carry hid in its socket or box (D-058): a
-## drop that edits the graph rebuilds it anyway; one that doesn't (back in
-## its own socket, a default equal to it) must not leave it hidden.
-func _show_carried_source(block: int, key: String, box: String, copy: bool) -> void:
+## Shows again the token that a carry hid in its socket (D-058): a drop that
+## edits the graph rebuilds it anyway; one that doesn't (back in its own
+## socket, a default equal to it) must not leave it hidden.
+func _show_carried_source(block: int, key: String, copy: bool) -> void:
 	if copy: return
 	if block >= 0: canvas.hide_token(block, key, false)
-	if not box.is_empty(): canvas.get_shelf().hide_token(box, false)
 
 
-## The ray on the shelf's boxes (D-052): the trash deletes an unused variable,
-## the token sets its start value, the box takes a Variable wire, the plus adds a variable.
+## The ray on the variables' boxes (D-052): the trash deletes the variable,
+## the token sets its start value, the box takes a Variable wire; the grip
+## anywhere on it carries it, as a card (D-078). The start value never leaves
+## its box (D-079): it changes by its input, or by a token laid on it.
 func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: float) -> void:
 	var hand := pointer.hand
-	var shelf := canvas.get_shelf()
+	var boxes := canvas.get_boxes()
 	hand.claim(self)
 	hand.show_ray(hit, true)
 	canvas.hover_actions(-1, false, false, hand == _rig.right_hand, -1, false, -1, true)
-	shelf.hover(shelf.get_hit_index(), shelf.get_hit_part(), hand == _rig.right_hand)
-	var variable := shelf.get_hit_name()
-	var part := shelf.get_hit_part()
+	boxes.hover(boxes.get_hit_index(), boxes.get_hit_part(), hand == _rig.right_hand)
+	var variable := boxes.get_hit_name()
+	var part := boxes.get_hit_part()
 	pointer.focus_box = variable
 	if _link_kind == XREBlueprintCanvas.VARIABLE and _link_hand == hand: canvas.show_link(_link_origin(), canvas.to_local(origin + direction * hit))
 	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and not variable.is_empty():
 		_delete_consumed = true
 		_remove_box(variable)
 		return
-	if hand.grip_pressed and part == XREBlueprintShelf.TOKEN and _value_mode() != XREFeatureSettings.WINDOW:
-		_carry(pointer, shelf.box_value(variable), "", -1, variable, false)
+	if hand.grip_pressed:
+		_start_hold(pointer, canvas, -1, origin + direction * hit, false, variable)
 		return
 	if not hand.trigger_pressed: return
 	match part:
-		XREBlueprintShelf.PLUS: _ask_new_variable()
-		XREBlueprintShelf.TRASH: _remove_box(variable)
-		XREBlueprintShelf.TOKEN:
+		XREBlueprintBoxes.TRASH: _remove_box(variable)
+		XREBlueprintBoxes.TOKEN:
 			if _value_mode() == XREFeatureSettings.WINDOW:
 				parameters.show_variables()
 				_show_parameters()
@@ -3841,10 +3865,11 @@ func _wire_variable(id: int, variable: String) -> void:
 
 
 ## A wire between a box and a data input of block [param id] (D-055): a Get
-## Variable of the box goes in left of the card, wired to that input, as one edit.
-func _wire_box_to_port(variable: String, id: int, port: int) -> void:
+## Variable of the box goes in left of the card, wired to that input, as one
+## edit. With [param added], the new variable the box is for, that edit adds it too (D-078).
+func _wire_box_to_port(variable: String, id: int, port: int, added: Dictionary = {}) -> void:
 	var target := blueprint.graph.find_node(id)
-	if target.is_empty() or blueprint.graph.find_variable(variable).is_empty(): return
+	if target.is_empty() or (added.is_empty() and blueprint.graph.find_variable(variable).is_empty()): return
 	var getter := XREBlueprintGraph.make_node(0, "get_variable", Vector2.ZERO)
 	getter["params"]["variable"] = variable
 	# Inline (D-061): no card, the wire comes straight from the box; the 2D editor shows the node.
@@ -3853,50 +3878,98 @@ func _wire_box_to_port(variable: String, id: int, port: int) -> void:
 	if _pending_link and _pending_id == id and _pending_port == port: XREBlueprintLinks.set_link(getter, XREBlueprintLinks.VARIABLE, true)
 	getter["vr_depth"] = float(target.get("vr_depth", 0.0))
 	var position: Vector2 = target["position"] + Vector2(-300, 40 + 50 * port)
-	var added: int = blueprint.perform(blueprint.insert_block.bind(getter, position, {"to": id, "to_port": port}, null, "Wire Variable"), &"vr_graph")
+	var variables: Array[Dictionary] = []
+	if not added.is_empty(): variables.append(added)
+	var inserted: int = blueprint.perform(blueprint.insert_block.bind(getter, position, {"to": id, "to_port": port}, null, "Wire Variable" if added.is_empty() else "Add Variable", variables), &"vr_graph")
 	cancel_connection()
-	if added < 0: _message(blueprint.last_error)
+	if inserted < 0: _message(blueprint.last_error)
 	else:
 		_close_wire_menu()
 		_message("%s reads %s." % [XREBlueprintGraph.title(target), variable])
 
 
-## Deletes the variable of a box; one in use stays, and the wires of its users flash.
+## Deletes the variable of a box with its wires and links into ports (D-079):
+## the inline Get Variables they stand for (D-061) go too, and the ports they
+## fed get their default tokens, as one edit. A card that uses the variable —
+## a Get or Set Variable — keeps it: the message names the card, and the card
+## flashes with its wire to the box, drawn even where a link hides it.
 func _remove_box(variable: String) -> void:
-	if blueprint.perform(blueprint.remove_variable.bind(variable), &"vr_graph"):
-		_message("Variable %s removed." % variable)
+	var users := PackedStringArray()
+	var readers: Dictionary[int, bool] = {}
+	for block: Dictionary in blueprint.graph.nodes:
+		if str((block["params"] as Dictionary).get("variable", "")) != variable: continue
+		if canvas.is_inline(block): readers[int(block["id"])] = true
+		else: users.append("%s #%d" % [XREBlueprintGraph.title(block), block["id"]])
+	if not users.is_empty():
+		_message("%s is used by %s: delete that, or wire it to another box, first." % [variable, ", ".join(users)])
+		canvas.flash_variable(variable, true)
+		get_tree().create_timer(FLASH_TIME).timeout.connect(func() -> void: if is_instance_valid(canvas): canvas.flash_variable(variable, false))
 		return
-	_message(blueprint.last_error)
-	canvas.flash_variable(variable, true)
-	get_tree().create_timer(0.9).timeout.connect(func() -> void: if is_instance_valid(canvas): canvas.flash_variable(variable, false))
+	var state := blueprint.graph.snapshot()
+	state["nodes"] = (state["nodes"] as Array).filter(func(block: Dictionary) -> bool: return not readers.has(int(block["id"])))
+	state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return not readers.has(int(edge["from"])))
+	state["variables"] = (state["variables"] as Array).filter(func(entry: Dictionary) -> bool: return entry["name"] != variable)
+	_fill_sockets(state)
+	if blueprint.perform(blueprint.commit.bind("Remove Variable", state), &"vr_graph"): _message("Variable %s removed." % variable)
+	else: _message(blueprint.last_error)
 
 
-## The plus of the shelf: the keyboard for a name, then a choice of its type.
-func _ask_new_variable() -> void:
-	cancel_connection()
-	_token_edit = {"new_variable": true}
+## A new variable of [param action] from the block menu (D-078), of its type:
+## the keyboard asks its name. Its box goes where the menu was opened — the
+## point a wire was let go, or beside the menu's card — or at [param point],
+## where its row was pulled to. From a wire of a data input, that input reads it.
+func _ask_new_variable(action: Dictionary, point: Variant) -> void:
+	var at := canvas.position_from_block({"position": _menu_position(null), "vr_depth": 0.0})
+	if point is Vector3: at = point
+	elif _menu_at_point: at = _menu_point
+	var value: Variant = action["variable"]
+	_token_edit = {"new_variable": true, "value": value, "at": at, "wire": _menu_wire.duplicate() if _menu_wire.has("to") else {}}
+	if _menu_at_point: cancel_connection()
+	# Pinned to a hand, the menu stays, without the wire.
+	_dismiss_window(XREBlueprintPaletteTab, false)
+	if is_block_palette_shown():
+		_menu_at_point = false
+		block_menu.clear_pin()
 	_token_field.text = ""
-	_show_keyboard(_token_field)
+	_show_keyboard(_token_field, canvas.to_global(at))
+	_message("Type the name of the new %s variable, or Done for %s." % [type_string(typeof(value)), _free_variable_name(value)])
 
 
-func _name_new_variable(variable: String) -> void:
+## Adds the variable [method _ask_new_variable] asked for, named [param text]
+## or, with nothing typed, by its type ([method _free_variable_name]), its box
+## at the point asked, as one edit; one read by an input is wired there in it too.
+func _add_new_variable(edit: Dictionary, text: String) -> void:
+	var value: Variant = edit["value"]
+	var variable := text if not text.is_empty() else _free_variable_name(value)
 	if not variable.is_valid_identifier() or not blueprint.graph.find_variable(variable).is_empty():
 		_message("A variable needs a new name of letters, digits and _.")
 		return
-	_new_variable = variable
-	var items: Array[Dictionary] = []
-	for value: Variant in [false, 0, 0.0, "", Vector2.ZERO, Vector3.ZERO, Color.WHITE]:
-		items.append({"text": type_string(typeof(value)), "value": value, "enabled": true})
-	var plus := canvas.to_global(canvas.get_shelf().plus_position())
-	_choice_point = canvas.to_local(plus)
-	_choice.open(canvas, plus, _rig.camera.global_position, _rig.global_basis.y, [{"header": "Type of " + variable, "items": items}])
-	_message("Choose the type of %s." % variable)
+	var at: Vector3 = edit["at"]
+	var place := {"vr_position": canvas.block_position(at), "vr_depth": at.z}
+	var wire: Dictionary = edit["wire"]
+	if not wire.is_empty():
+		var added := {"name": variable, "value": value}
+		added.merge(place)
+		_wire_box_to_port(variable, int(wire["to"]), int(wire["to_port"]), added)
+	elif blueprint.perform(blueprint.add_variable.bind(variable, value, place), &"vr_graph"): _message("Variable %s: %s." % [variable, type_string(typeof(value))])
+	else: _message(blueprint.last_error)
+
+
+## The first name no variable of the graph has, for a new one of [param value]'s type: new_float, new_float_2…
+func _free_variable_name(value: Variant) -> String:
+	var base := "new_" + type_string(typeof(value)).to_lower()
+	var candidate := base
+	var index := 2
+	while not blueprint.graph.find_variable(candidate).is_empty():
+		candidate = "%s_%d" % [base, index]
+		index += 1
+	return candidate
 
 
 ## The point a Source or Variable wire starts from, in the canvas's space.
 func _link_origin() -> Vector3:
 	if _link_block >= 0: return canvas.socket_position(_link_block, _link_kind)
-	if not _link_box.is_empty(): return canvas.get_shelf().box_point(_link_box)
+	if not _link_box.is_empty(): return canvas.get_boxes().box_point(_link_box)
 	return Vector3.ZERO
 
 
@@ -3906,7 +3979,7 @@ func _start_link(id: int, kind: int, hand: XREHand) -> void:
 	_link_kind = kind
 	_link_block = id
 	_link_hand = hand
-	_message("Point at a scene object and press trigger." if kind == XREBlueprintCanvas.SOURCE else "Press trigger on a box of the shelf.")
+	_message("Point at a scene object and press trigger." if kind == XREBlueprintCanvas.SOURCE else "Press trigger on a variable's box.")
 
 
 ## What a member wire of [param block] picks on an object: "property",
@@ -4178,12 +4251,7 @@ func _choose_petal(fan: XREBlueprintPetals, item: Dictionary, hand: XREHand) -> 
 		return
 	if fan == _choice:
 		_choice.close()
-		if not _new_variable.is_empty():
-			var variable := _new_variable
-			_new_variable = ""
-			if blueprint.perform(blueprint.set_variable.bind(variable, item["value"]), &"vr_graph"): _message("Variable %s: %s." % [variable, item["text"]])
-			else: _message(blueprint.last_error)
-		else: _create_member_block(str(item["choice"]))
+		_create_member_block(str(item["choice"]))
 		return
 	if _petal_block >= 0:
 		var id := _petal_block
@@ -4598,7 +4666,6 @@ func _carry_link(pointer: Pointer, value: Dictionary, source: Dictionary, by_tri
 	pointer.carried_value = value
 	pointer.carried_key = XREBlueprintLinks.KEY
 	pointer.carried_block = -1
-	pointer.carried_box = ""
 	pointer.carried_copy = source.is_empty()
 	pointer.carried_trigger = by_trigger
 	pointer.carried_ref = source

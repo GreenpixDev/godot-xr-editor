@@ -236,10 +236,12 @@ func next_id() -> int:
 ## [code]{"from": id, "from_port": port}[/code] wires that output to the new
 ## block's first compatible input, [code]{"to": id, "to_port": port}[/code]
 ## its first compatible output to that input. A [param target] node of the
-## scene becomes its Target and is followed through renames. Returns the new
-## block's ID, or -1 if the edit was refused.
-func insert_block(block: Dictionary, position: Vector2, wire: Dictionary = {}, target: Node = null, title: String = "Add Block") -> int:
+## scene becomes its Target and is followed through renames. [param variables]
+## are new graph variables added in the same step, for a block that reads one
+## (D-078). Returns the new block's ID, or -1 if the edit was refused.
+func insert_block(block: Dictionary, position: Vector2, wire: Dictionary = {}, target: Node = null, title: String = "Add Block", variables: Array[Dictionary] = []) -> int:
 	var state := graph.snapshot()
+	(state["variables"] as Array).append_array(variables)
 	var id := next_id()
 	var added := block.duplicate(true)
 	added["id"] = id
@@ -808,6 +810,18 @@ func set_variable(name: String, value: Variant) -> bool:
 			found = true
 	if not found: (state["variables"] as Array).append({"name": name, "value": value})
 	return commit("Set Variable Default", state)
+
+
+## Adds variable [param name] starting at [param value] through graph history,
+## with the editor-only [param fields] of a view beside them, such as where the
+## headset's graph shows its box (D-078). A taken or invalid name is refused.
+func add_variable(name: String, value: Variant, fields: Dictionary = {}) -> bool:
+	if not name.is_valid_identifier() or not graph.find_variable(name).is_empty(): return _fail("A variable needs a new name of letters, digits and _.")
+	var state := graph.snapshot()
+	var variable := {"name": name, "value": value}
+	variable.merge(fields)
+	(state["variables"] as Array).append(variable)
+	return commit("Add Variable", state)
 
 
 ## Takes the start value out of variable [param name], keeping its type

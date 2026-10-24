@@ -16,7 +16,8 @@ extends RefCounted
 ## [method XREBlueprintDocument.insert_block]), [code]target[/code] (the scene
 ## node it acts on, or null), [code]inputs[/code] and [code]outputs[/code]
 ## (port types, for the pin filter) and [code]disabled[/code] (why it can't be
-## added, or empty).
+## added, or empty). A new variable's action (D-078) has no block but
+## [code]variable[/code], the value it starts with; the view adds the variable.
 
 ## Groups of actions a menu chip shows: the context object's, the library's,
 ## @GlobalScope's, the native blocks, all together.
@@ -29,6 +30,8 @@ const ALL := &"all"
 const ADVANCED_CLASSES: Array[String] = ["Node", "Object"]
 ## How many recently added actions the menu offers first.
 const RECENT_COUNT := 5
+## The start values of new variables the menu offers (D-078), one of each type.
+const NEW_VARIABLES: Array = [false, 0, 0.0, "", Vector2.ZERO, Vector3.ZERO, Color.WHITE]
 
 static var _shared: XREBlueprintActions
 
@@ -62,9 +65,14 @@ func invalidate_scripts() -> void:
 ## [code]node[/code] (the context object, or null), [code]class[/code] (its
 ## class when there is no object, as for a pin's), [code]label[/code],
 ## [code]host[/code] (the script host), [code]graph[/code], [code]pin[/code]
-## ([code]{"type", "output"}[/code] of the port a wire comes from, or empty),
-## [code]query[/code] (words that must all match) and [code]advanced[/code]
-## (whether Advanced is open). An Advanced section lists its actions only when open or searched.
+## ([code]{"type", "output"}[/code] of the port a wire comes from, or empty;
+## an input's may have [code]value_types[/code], the Variant types a new
+## variable may have to go into it, D-079, D-080),
+## [code]query[/code] (words that must all match), [code]advanced[/code]
+## (whether Advanced is open) and [code]new_variables[/code] (whether the view
+## adds new variables, D-078). An Advanced section lists its actions only when
+## open or searched. The graph's variables are a section of the native blocks,
+## and of the host's chip, whose script they belong to.
 func sections(context: Dictionary) -> Array[Dictionary]:
 	var chip: StringName = context.get("chip", CONTEXT)
 	var result: Array[Dictionary] = []
@@ -91,6 +99,7 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 			result.append(_section(base + " · inherited", _bind(_class_actions(base, true), node, dynamic, graph), context))
 			base = str(ClassDB.get_parent_class(base))
 		result.append(_section("Signals · " + label, _bind(_signal_actions(node, cls, script), node, dynamic, graph), context))
+		if chip == CONTEXT and node != null and node == host: result.append(_section("Variables", _variable_actions(graph, host, context), context))
 		result.append(_section("Library", _bind(_library_actions(cls), node, dynamic, graph), context))
 		if chip == CONTEXT:
 			var advanced: Array[Dictionary] = []
@@ -124,6 +133,7 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 			result.append(_section(group, categories[group], context))
 	if chip in [NATIVE, ALL]:
 		result.append(_section("Native", _native_actions(graph, host), context))
+		result.append(_section("Variables", _variable_actions(graph, host, context), context))
 		for title: String in ["Math", "Comparison", "Logic"]:
 			result.append(_section(title, _operator_actions(title, graph, host), context))
 	result = result.filter(func(section: Dictionary) -> bool: return not (section["actions"] as Array).is_empty() or section.get("count", 0) > 0)
@@ -452,7 +462,7 @@ func _operator_actions(title: String, graph: XREBlueprintGraph, host: Node) -> A
 	return _bind(actions, host, false, graph)
 
 
-## Branch, Value, properties, events and the graph's variables.
+## Branch, Value, properties and events.
 func _native_actions(graph: XREBlueprintGraph, host: Node) -> Array[Dictionary]:
 	var actions: Array[Dictionary] = []
 	var natives := [["branch", "Branch", "if condition", "native"], ["value", "Value", "literal constant", "native"],
@@ -463,7 +473,29 @@ func _native_actions(graph: XREBlueprintGraph, host: Node) -> Array[Dictionary]:
 	for name: String in ["ready", "boolean", "print", "delay"]:
 		var preset := _preset_action(name)
 		if not preset.is_empty(): actions.append(preset)
+	return _bind(actions, host, false, graph)
+
+
+## Get and Set of each of the graph's variables; first, if the view adds them
+## ([code]new_variables[/code] of [param context]), a new variable of each
+## type (D-078). Its only output is its value. From a wire of an input only
+## the types the view names in the pin's [code]value_types[/code] are offered
+## — an operator's operand takes those it works on (D-080) — else the input's
+## own type (D-079): the view wires the new variable there, and another type,
+## even one the input could convert, isn't what it holds. An input of any
+## value with its types named lists only the variables of those types too.
+func _variable_actions(graph: XREBlueprintGraph, host: Node, context: Dictionary) -> Array[Dictionary]:
+	var pin: Dictionary = context.get("pin", {})
+	# The types a new variable may have, or null for any.
+	var wanted: Variant = null
+	if not pin.is_empty() and not pin.get("output", true):
+		var own := XREBlueprintGraph.variant_type(int(pin["type"]))
+		if pin.has("value_types"): wanted = pin["value_types"]
+		elif own != TYPE_NIL: wanted = [own]
+	var picky := wanted is Array and int(pin["type"]) == XREBlueprintGraph.VALUE
+	var actions: Array[Dictionary] = []
 	for variable: Dictionary in graph.variables:
+		if picky and not XREBlueprintGraph.variable_type(variable) in (wanted as Array): continue
 		var type := type_string(XREBlueprintGraph.variable_type(variable))
 		var getter := XREBlueprintGraph.make_node(0, "get_variable", Vector2.ZERO)
 		getter["params"]["variable"] = variable["name"]
@@ -474,4 +506,12 @@ func _native_actions(graph: XREBlueprintGraph, host: Node) -> Array[Dictionary]:
 				"keywords": "variable get", "category": "Variables", "block": getter, "target": null, "disabled": ""})
 		actions.append({"id": "variable:set:" + variable["name"], "title": "Set " + variable["name"], "subtitle": "variable: " + type, "kind": "variable",
 				"keywords": "variable set", "category": "Variables", "block": setter, "target": null, "disabled": ""})
-	return _bind(actions, host, false, graph)
+	var result: Array[Dictionary] = []
+	for value: Variant in (NEW_VARIABLES if context.get("new_variables", false) else []):
+		if wanted is Array and not typeof(value) in (wanted as Array): continue
+		var type := type_string(typeof(value))
+		result.append({"id": "variable:new:" + type, "title": "New %s variable" % type, "subtitle": "variable: " + type, "kind": "variable",
+				"keywords": "variable new add create", "category": "Variables", "block": {}, "variable": value, "target": null,
+				"inputs": [], "outputs": [XREBlueprintGraph.port_type(typeof(value))], "disabled": ""})
+	result.append_array(_bind(actions, host, false, graph))
+	return result

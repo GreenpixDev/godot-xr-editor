@@ -1,37 +1,33 @@
 @tool
-class_name XREBlueprintShelf
+class_name XREBlueprintBoxes
 extends Node3D
-## The graph's variables as boxes on a shelf below its cards (D-052), when the
-## setting [constant XREFeatureSettings.VARIABLE_INPUT] is Boxes. Above a box
-## are its name and type; on its front a trash and the value the variable
-## starts the game with, a token as on the cards. A Get or Set Variable card
-## wires its Variable socket to its box ([XREBlueprintCanvas]). The last box is
-## a plus: a new variable. Lives in the canvas's space, built only on
-## document changes; picked analytically, as the cards are. The start value
-## is a puck even with plugs (D-065): it goes into no port, and the trigger
-## takes it anywhere on it.
+## The graph's variables as boxes among its cards (D-052, D-078), when the
+## setting [constant XREFeatureSettings.VARIABLE_INPUT] is Boxes. Each box
+## stands where it was put, as a card does ([XREBlueprintCanvas] places them);
+## a box never put anywhere stands in a row below the cards, as on the shelf
+## of D-052. Above a box are its name and type; on its front a trash and the
+## value the variable starts the game with, a token as on the cards. A Get or
+## Set Variable card wires its Variable socket to its box. New variables come
+## from the block menu. Lives in the canvas's space, built only on document
+## changes; picked analytically, as the cards are. The start value is a puck
+## even with plugs (D-065): it goes into no port, and the trigger takes it
+## anywhere on it.
 
 const BOX_SIZE := Vector3(0.11, 0.045, 0.05)
-## Centers of neighbouring boxes are this far apart; the shelf is this far below the lowest card.
+## Centers of neighbouring boxes in the row of boxes never put anywhere are
+## this far apart; the row is this far below the lowest card.
 const SPACING := 0.15
 const BELOW := 0.1
 ## Parts of a box the ray may hit.
 const BODY := 0
 const TRASH := 1
 const TOKEN := 2
-const PLUS := 3
 ## How see-through a box is, and a box whose variable is in use behind a dim trash.
 const BOX_ALPHA := 0.55
 const USED_TRASH := 0.3
 
-## Hides the token of the box of [param variable] while it is carried away (D-058).
-func hide_token(variable: String, hidden: bool = true) -> void:
-	for box: Box in _boxes:
-		if box.name == variable and box.token != null: box.token.visible = not hidden
-
-
 class Box:
-	## The variable, or empty for the plus.
+	## The variable.
 	var name := ""
 	var node: Node3D
 	var type := TYPE_NIL
@@ -60,27 +56,38 @@ var _trash_material: Material
 
 
 func _init(trash_mesh: Mesh, trash_material: Material) -> void:
-	name = "Shelf"
+	name = "Boxes"
 	_trash_mesh = trash_mesh
 	_trash_material = trash_material
 
 
-## Rebuilds the boxes of [param graph]'s variables in a row from [param origin]
-## (canvas space, the left end of the shelf); tokens in the [param style] of
+## Rebuilds the boxes of [param graph]'s variables, each at its point of
+## [param places] (canvas space, by variable); tokens in the [param style] of
 ## [constant XREFeatureSettings.VALUE_INPUT], text with Window. [param used]
 ## names the variables blocks refer to.
-func rebuild(graph: XREBlueprintGraph, origin: Vector3, style: StringName, used: Dictionary) -> void:
+func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], style: StringName, used: Dictionary) -> void:
 	for box: Box in _boxes:
 		remove_child(box.node)
 		box.node.queue_free()
 	_boxes.clear()
 	_hover_right = Vector2i(-1, -1)
 	_hover_left = Vector2i(-1, -1)
-	var index := 0
 	for variable: Dictionary in graph.variables:
-		_add_box(str(variable["name"]), variable.get("value"), XREBlueprintGraph.variable_type(variable), origin + Vector3.RIGHT * SPACING * index, style, used.has(variable["name"]), XREBlueprintTokens.variable_expression(variable))
-		index += 1
-	_add_box("", null, TYPE_NIL, origin + Vector3.RIGHT * SPACING * index, style, false)
+		var key := str(variable["name"])
+		_add_box(key, variable.get("value"), XREBlueprintGraph.variable_type(variable), places.get(key, Vector3.ZERO), style, used.has(key), XREBlueprintTokens.variable_expression(variable))
+
+
+## Moves the boxes to their points of [param places] (canvas space, by
+## variable), when only the graph's placement changed; creates nothing.
+func place(places: Dictionary[String, Vector3]) -> void:
+	for box: Box in _boxes:
+		if places.has(box.name): box.node.position = places[box.name]
+
+
+## Shows the box of [param variable] at [param point] (canvas space) without editing the graph, as it is carried (D-078).
+func move_box(variable: String, point: Vector3) -> void:
+	for box: Box in _boxes:
+		if box.name == variable: box.node.position = point
 
 
 func _add_box(variable: String, value: Variant, type: int, point: Vector3, style: StringName, used: bool, expression: String = "") -> void:
@@ -90,27 +97,15 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 	box.used = used
 	box.type = type
 	box.node = Node3D.new()
-	box.node.name = "Box_" + (variable if not variable.is_empty() else "plus")
+	box.node.name = "Box_" + variable
 	box.node.position = point
 	add_child(box.node)
 	var shape := BoxMesh.new()
 	shape.size = BOX_SIZE
-	var color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)] if not variable.is_empty() else Color(1, 1, 1)
-	color.a = BOX_ALPHA if not variable.is_empty() else 0.18
+	var color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)]
+	color.a = BOX_ALPHA
 	box.node.add_child(XRERig.create_vr_mesh(shape, XREBlueprintCanvas.material(color, true)))
 	var front := BOX_SIZE.z * 0.5 + 0.001
-	if variable.is_empty():
-		for size: Vector3 in [Vector3(0.022, 0.004, 0.002), Vector3(0.004, 0.022, 0.002)]:
-			var bar := BoxMesh.new()
-			bar.size = size
-			var visual := XRERig.create_vr_mesh(bar, XREBlueprintCanvas.material(Color.WHITE, true))
-			visual.position.z = front
-			box.node.add_child(visual)
-		var plus := XREBlueprintCanvas.label("new variable", 16)
-		plus.position = Vector3(0, BOX_SIZE.y * 0.5 + 0.016, 0)
-		box.node.add_child(plus)
-		_boxes.append(box)
-		return
 	var title := XREBlueprintCanvas.label("%s : %s" % [variable, type_string(type)], 16)
 	title.position = Vector3(0, BOX_SIZE.y * 0.5 + 0.016, 0)
 	box.node.add_child(title)
@@ -149,8 +144,6 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 	_boxes.append(box)
 
 
-## Nearest box part on the ray, in the canvas's space; -1 if none. The hit is
-## kept for [method get_hit_name] and [method get_hit_part].
 ## Makes the boxes that cover an input in use see-through, as the cards (D-066, [method XREBlueprintCanvas.fade_covering]).
 func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> void:
 	for box: Box in _boxes:
@@ -161,6 +154,8 @@ func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> voi
 		XREBlueprintFade.set_faded(box.node, faded)
 
 
+## Nearest box part on the ray, in the canvas's space; -1 if none. The hit is
+## kept for [method get_hit_name] and [method get_hit_part].
 func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float:
 	_hit = -1
 	_hit_part = BODY
@@ -174,8 +169,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		if body < 0: continue
 		nearest = body
 		_hit = index
-		_hit_part = PLUS if box.name.is_empty() else BODY
-		if box.name.is_empty(): continue
+		_hit_part = BODY
 		var trash := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.trash_point - Vector3(0.012, 0.014, 0.006), Vector3(0.024, 0.028, 0.012)), INF)
 		var token := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.token_point - box.token_size * 0.5 - Vector3(0.003, 0.003, 0.003), box.token_size + Vector3(0.006, 0.006, 0.006)), INF)
 		if trash >= 0 and trash <= nearest + BOX_SIZE.z:
@@ -190,12 +184,11 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 func get_hit_color() -> Variant:
 	if _hit < 0: return null
 	var box := _boxes[_hit]
-	if box.name.is_empty(): return Color.WHITE
 	if _hit_part == TOKEN and box.value is Color: return box.value
 	return XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)]
 
 
-## The variable of the box the last ray hit, empty for the plus or none.
+## The variable of the box the last ray hit, empty for none.
 func get_hit_name() -> String:
 	return _boxes[_hit].name if _hit >= 0 else ""
 
@@ -205,14 +198,14 @@ func has_hit() -> bool:
 	return _hit >= 0
 
 
-## The part of the box the last ray hit: [constant BODY], [constant TRASH], [constant TOKEN] or [constant PLUS].
+## The part of the box the last ray hit: [constant BODY], [constant TRASH] or [constant TOKEN].
 func get_hit_part() -> int:
 	return _hit_part
 
 
 ## Grows the part under the [param right] hand's ray, or the other's, as a
-## card's trash and plus grow; -1 for none. Each hand keeps its own, so that
-## an idle ray can't take the other's away.
+## card's trash grows; -1 for none. Each hand keeps its own, so that an idle
+## ray can't take the other's away.
 func hover(index: int, part: int, right: bool) -> void:
 	var key := Vector2i(index, part) if index >= 0 else Vector2i(-1, -1)
 	if key == (_hover_right if right else _hover_left): return
@@ -224,15 +217,15 @@ func hover(index: int, part: int, right: bool) -> void:
 		var left_part := _hover_left.y if _hover_left.x == box else -1
 		if item.trash != null: item.trash.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if TRASH in [right_part, left_part] else 1.0)
 		if item.token != null: item.token.scale = Vector3.ONE * (0.85 * XREBlueprintCanvas.SOCKET_HOVER if TOKEN in [right_part, left_part] else 0.85)
-		item.node.scale = Vector3.ONE * (1.06 if BODY in [right_part, left_part] or PLUS in [right_part, left_part] else 1.0)
+		item.node.scale = Vector3.ONE * (1.06 if BODY in [right_part, left_part] else 1.0)
 
 
-## How many boxes there are, the plus too.
+## How many boxes there are.
 func box_count() -> int:
 	return _boxes.size()
 
 
-## The variable of box [param index], empty for the plus.
+## The variable of box [param index].
 func box_name(index: int) -> String:
 	return _boxes[index].name
 
@@ -266,7 +259,7 @@ func get_hit_index() -> int:
 	return _hit
 
 
-## The centre of the box of [param variable]; the shelf's origin if it has none.
+## The centre of the box of [param variable], in the canvas's space; the origin if it has none.
 func box_point(variable: String) -> Vector3:
 	for box: Box in _boxes:
 		if box.name == variable and not variable.is_empty(): return box.node.position
@@ -286,13 +279,6 @@ func box_end(variable: String, toward: Vector3) -> Array[Vector3]:
 	for axis: int in 3:
 		if absf(along[axis]) > 0.0001: reach = minf(reach, BOX_SIZE[axis] * 0.5 / absf(along[axis]))
 	return [center + along * reach, along]
-
-
-## Where the plus box is, in the canvas's space.
-func plus_position() -> Vector3:
-	for box: Box in _boxes:
-		if box.name.is_empty(): return box.node.position
-	return position
 
 
 ## Whether a box shows [param variable].

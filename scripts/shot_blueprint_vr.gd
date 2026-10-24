@@ -276,7 +276,7 @@ func _run() -> void:
 	_document.features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
 	await _frames(6)
 	if not graph.variables.is_empty():
-		var box := _service.canvas.to_global(_service.canvas.get_shelf().box_point(str(graph.variables[0]["name"])))
+		var box := _service.canvas.to_global(_service.canvas.get_boxes().box_point(str(graph.variables[0]["name"])))
 		_look(box + _service.canvas.global_basis.z * 0.35 + Vector3(0.05, 0.08, 0), box)
 		await _shot("20_variable_box")
 	_document.features.set_value(XREFeatureSettings.VALUE_INPUT, values)

@@ -18,7 +18,8 @@ extends Node3D
 ## or plugs in the ports — in the rows of their ports or in square sockets for
 ## settings without a port; the target's member after the Target ("Target ·
 ## visible") and an event's Source; Play Animation's Finished output for its
-## wait; a Variable socket wired to its box on the shelf ([XREBlueprintShelf]).
+## wait; a Variable socket wired to its variable's box, which stands among the
+## cards and moves as they do (D-078, [XREBlueprintBoxes]).
 ##
 ## An operator (D-065: Equal and the Operator blocks) is a small card as in
 ## Unreal: no title, its inputs and their tokens on the left, its symbol in the
@@ -58,7 +59,10 @@ const PLUS_RADIUS := 0.010
 const TOUCH_RADIUS := 0.035
 ## Lift only the contact dot towards the controller; ray picking stays unchanged.
 const HIT_DOT_OFFSET := 0.012
-const COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("7be5b3"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878")]
+## Colors of the port types of [XREBlueprintGraph], as the 2D view has them:
+## execution, any value, bool, int (lime, apart from float since D-080), float
+## (sea green), text, the vectors, object, color.
+const COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("b4e05a"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878")]
 ## Dark saturated faces: events, properties/motion, flow, values, audio, animation.
 const CARD_PALETTE: Array[Color] = [Color("174479"), Color("155947"), Color("553478"), Color("323e73"), Color("785016"), Color("743351")]
 ## Faces of the native blocks; a call's face follows its function ([method card_group]).
@@ -106,6 +110,8 @@ const SYMBOL_SIZE := 44
 const WORD_SIZE := 26
 const SYMBOL_ROOM := 0.034
 const TOKEN_FACE := Color("151a26")
+## The frame of a card that keeps a variable from being deleted, while it flashes (D-079).
+const FLASH_FRAME := Color("ff6b7a")
 ## How much nearer a token's text and swatch sort than its face, in meters.
 const TOKEN_SORTING := 0.01
 ## Pixel size of the cards' labels, for measuring their text.
@@ -174,6 +180,8 @@ class Card:
 	var keep_ports := 0
 	var keep_sockets := 0
 	var look := Vector4i(-1, 0, 0, 0)
+	## It keeps a variable from being deleted: its frame flashes (D-079).
+	var flash := false
 
 class Wire:
 	var from: Card
@@ -219,6 +227,7 @@ var _hit_edge := -1
 var _edge_right := -1
 var _edge_left := -1
 var _frame_material: Material
+var _flash_frame: Material
 var _hover_right := -1
 var _hover_left := -1
 var _delete_right := -1
@@ -235,12 +244,12 @@ var _variable_mode := XREFeatureSettings.WINDOW
 ## The socket the last ray hit: its index in the card's sockets, or -1.
 var _hit_socket := -1
 var _hit_finished := false
-## The box of the shelf the last ray hit, empty for none.
+## Whether the last ray hit a variable's box.
 var _hit_box := false
 ## Sockets under each hand's ray: the card and the socket index, or -1.
 var _socket_right := Vector2i(-1, -1)
 var _socket_left := Vector2i(-1, -1)
-var _shelf: XREBlueprintShelf
+var _boxes: XREBlueprintBoxes
 ## Wires from Variable sockets to their boxes.
 var _variable_wires: Array[Dictionary] = []
 static var _token_materials: Dictionary[Color, Material] = {}
@@ -281,6 +290,7 @@ func _init() -> void:
 	_selected_material = material(Color.WHITE, true)
 	_frame_material = material(Color("65839b"), true)
 	_focus_frame = material(XREBlueprintFocus.FRAME, true)
+	_flash_frame = material(FLASH_FRAME, true)
 	var shader := Shader.new()
 	shader.code = """
 shader_type spatial;
@@ -311,8 +321,8 @@ void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 	_trash_material = material(Color("ffabb4"), true)
 	_preview = create_scene_wire(Color("ffda82"))
 	_preview.visible = false
-	_shelf = XREBlueprintShelf.new(_trash_mesh, _trash_material)
-	add_child(_shelf)
+	_boxes = XREBlueprintBoxes.new(_trash_mesh, _trash_material)
+	add_child(_boxes)
 
 
 ## Switches how cards are drawn to [param display], a value of
@@ -512,9 +522,9 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		wire.normal = wire.mesh.material_override
 		wire.lit = wire_material(color, LIT_WIRE_GROW)
 		_wires.append(wire)
-	_build_shelf(graph)
+	_build_boxes(graph)
 	for wire: Wire in inline:
-		if not _shelf.has_box(wire.variable): continue
+		if not _boxes.has_box(wire.variable): continue
 		# In its variable's color, as a wire from an output is in its source's: the
 		# port it goes into may take any value, as an operator's does (D-065).
 		var color := COLORS[XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(graph.find_variable(wire.variable)))]
@@ -600,6 +610,31 @@ func position_from_block(block: Dictionary) -> Vector3:
 	return Vector3(point.x * PIXEL_SIZE, -point.y * PIXEL_SIZE, float(block.get("vr_depth", 0.0)))
 
 
+## Where the box of each of [param graph]'s variables stands, in the canvas's
+## space (D-078): where it was put, as a card's place is kept — graph XY in
+## [code]vr_position[/code], depth in [code]vr_depth[/code]. A box never put
+## anywhere keeps its place in the shelf's row below the cards (D-052).
+func _box_places(graph: XREBlueprintGraph) -> Dictionary[String, Vector3]:
+	var left := INF
+	var low := INF
+	for card: Card in _cards:
+		left = minf(left, card.node.position.x - card.width * 0.5)
+		low = minf(low, card.node.position.y - card.height * 0.5)
+	if is_inf(left):
+		left = -0.2
+		low = 0.0
+	var row := Vector3(left + XREBlueprintBoxes.BOX_SIZE.x * 0.5, low - XREBlueprintBoxes.BELOW - XREBlueprintBoxes.BOX_SIZE.y * 0.5, 0.0)
+	var places: Dictionary[String, Vector3] = {}
+	for index: int in graph.variables.size():
+		var variable: Dictionary = graph.variables[index]
+		var placed: Variant = variable.get("vr_position")
+		if placed is Vector2:
+			var point: Vector2 = (placed as Vector2) - _offset
+			places[str(variable["name"])] = Vector3(point.x * PIXEL_SIZE, -point.y * PIXEL_SIZE, float(variable.get("vr_depth", 0.0)))
+		else: places[str(variable["name"])] = row + Vector3.RIGHT * XREBlueprintBoxes.SPACING * index
+	return places
+
+
 ## Moves the existing cards to the graph's placement when only placement changed.
 ## False means the blocks differ and [method rebuild] is needed.
 func sync_placement(graph: XREBlueprintGraph) -> bool:
@@ -614,6 +649,7 @@ func sync_placement(graph: XREBlueprintGraph) -> bool:
 		if card.id != block["id"]: return false
 		card.node.position = position_from_block(block)
 		_orient(card)
+	if _boxes.visible: _boxes.place(_box_places(graph))
 	update_wires()
 	return true
 
@@ -649,6 +685,32 @@ func preview_transform(id: int, pose: Transform3D) -> void:
 	update_wires()
 
 
+## Commits the place of the box of [param variable] (D-078), previewed by
+## [method preview_box_move], to the graph's history, as [method commit_move] a card's.
+func commit_box_move(document: XREBlueprintDocument, variable: String) -> bool:
+	if not _boxes.has_box(variable): return false
+	var point := _boxes.box_point(variable)
+	var state := document.graph.snapshot()
+	for entry: Dictionary in state["variables"]:
+		if entry["name"] != variable: continue
+		entry["vr_position"] = Vector2(point.x, -point.y) / PIXEL_SIZE + _offset
+		entry["vr_depth"] = point.z
+	return document.perform(document.commit.bind("Move Variable", state), &"vr_graph")
+
+
+## Shows the box of [param variable] at [param point] (the canvas's space) without editing the graph (D-078).
+func preview_box_move(variable: String, point: Vector3) -> void:
+	_boxes.move_box(variable, point)
+	update_wires()
+
+
+## Keeps a captured point of the box of [param variable] on the rod (D-078):
+## [param contact] (global) is where [param local_contact], a point of the
+## box, goes. A box keeps the graph's orientation, as a cuboid card does.
+func preview_box_grab(variable: String, contact: Vector3, local_contact: Vector3) -> void:
+	preview_box_move(variable, to_local(contact) - local_contact)
+
+
 ## Makes the cards, wires and boxes that cover an input in use, seen from
 ## [param eye], see-through, and gives the others back their look (D-066):
 ## the inputs are the first [param count] spheres of [param targets]
@@ -664,7 +726,7 @@ func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> voi
 		if faded == wire.faded: continue
 		wire.faded = faded
 		XREBlueprintFade.set_faded(wire.mesh, faded)
-	_shelf.fade_covering(eye, targets, count)
+	_boxes.fade_covering(eye, targets, count)
 
 
 ## Whether the card of block [param id] is see-through, covering an input (D-066).
@@ -742,10 +804,13 @@ func select_block(id: int) -> void:
 
 
 ## A selected card's frame is white, one in focus is [constant XREBlueprintFocus.FRAME]
-## with Focus on (D-072), darker out of focus with Defocus on Dim.
+## with Focus on (D-072), darker out of focus with Defocus on Dim; one that
+## keeps a variable from being deleted flashes [constant FLASH_FRAME] (D-079).
 func _paint_frame(card: Card) -> void:
-	var base := _selected_material if card.id == _selected else _focus_frame if card.look.x == XREBlueprintFocus.LIT else _frame_material
-	card.frame.material_override = XREBlueprintFocus.variant(base, card.look.x if card.look.x in [XREBlueprintFocus.DARK, XREBlueprintFocus.TOP] else XREBlueprintFocus.PLAIN)
+	var base := _flash_frame if card.flash else _selected_material if card.id == _selected else _focus_frame if card.look.x == XREBlueprintFocus.LIT else _frame_material
+	# A flash isn't darkened out of focus: it is there to be seen.
+	var paint := card.look.x if card.look.x == XREBlueprintFocus.TOP or (card.look.x == XREBlueprintFocus.DARK and not card.flash) else XREBlueprintFocus.PLAIN
+	card.frame.material_override = XREBlueprintFocus.variant(base, paint)
 
 
 ## Switches focus (D-072) to [param focus], a value of [constant XREFeatureSettings.FOCUS],
@@ -758,7 +823,7 @@ func set_focus_modes(focus: StringName, defocus: StringName) -> bool:
 	for card: Card in _cards: card.look = Vector4i(-1, 0, 0, 0)
 	for wire: Wire in _wires: wire.look = -1
 	for link: Dictionary in _variable_wires: link["look"] = -1
-	_shelf.forget_looks()
+	_boxes.forget_looks()
 	_paint_focus()
 	return true
 
@@ -798,7 +863,7 @@ func _show_link_wires() -> void:
 	for wire: Wire in _wires:
 		if wire.link != null: wire.mesh.visible = link_wire_shown(wire.to.id, wire.variable)
 	for link: Dictionary in _variable_wires:
-		if link["link"] != null: (link["mesh"] as Node3D).visible = link_wire_shown((link["card"] as Card).id, str(link["variable"]))
+		if link["link"] != null: (link["mesh"] as Node3D).visible = link["flash"] != null or link_wire_shown((link["card"] as Card).id, str(link["variable"]))
 
 
 ## Puts the cards of [param cards] (-1 for none) and the boxes of variables
@@ -856,7 +921,7 @@ func _paint_focus() -> void:
 	var any := false
 	if used:
 		for card: Card in _cards: any = any or _in_focus(card.id)
-		any = any or _shelf.has_box(_focus_box) or _shelf.has_box(_focus_other_box)
+		any = any or _boxes.has_box(_focus_box) or _boxes.has_box(_focus_other_box)
 	_focus_any = any
 	for card: Card in _cards:
 		card.focus = (XREBlueprintFocus.FOCUSED if _in_focus(card.id) else XREBlueprintFocus.OUT) if any else XREBlueprintFocus.NORMAL
@@ -865,7 +930,7 @@ func _paint_focus() -> void:
 	var boxes: Dictionary[String, int] = {}
 	if any:
 		for variable: String in [_focus_box, _focus_other_box]:
-			if _shelf.has_box(variable): boxes[variable] = XREBlueprintFocus.FOCUSED
+			if _boxes.has_box(variable): boxes[variable] = XREBlueprintFocus.FOCUSED
 	for wire: Wire in _wires:
 		var focused: bool = any and ((wire.from != null and wire.from.focus == XREBlueprintFocus.FOCUSED) or wire.to.focus == XREBlueprintFocus.FOCUSED
 				or (wire.from == null and boxes.get(wire.variable, XREBlueprintFocus.NORMAL) == XREBlueprintFocus.FOCUSED))
@@ -890,9 +955,9 @@ func _paint_focus() -> void:
 	for card: Card in _cards: _look_card(card)
 	for wire: Wire in _wires: _look_wire(wire)
 	for link: Dictionary in _variable_wires: _look_link(link)
-	for index: int in _shelf.box_count():
-		var state: int = boxes.get(_shelf.box_name(index), XREBlueprintFocus.OUT if any else XREBlueprintFocus.NORMAL)
-		_shelf.paint_box(index, state, focus_paint(state), focus_seen(state))
+	for index: int in _boxes.box_count():
+		var state: int = boxes.get(_boxes.box_name(index), XREBlueprintFocus.OUT if any else XREBlueprintFocus.NORMAL)
+		_boxes.paint_box(index, state, focus_paint(state), focus_seen(state))
 
 
 ## Keeps port [param port] of [param card] (an input if [param input]) as it
@@ -1008,9 +1073,9 @@ func is_port_hovered(id: int, port: int, input: bool) -> bool:
 ## the plus, the trash or port [param port] of card [param id] (an input if
 ## [param input]) under the ray of the [param right] hand or the other.
 ## [param edge] is the wire on that port to light ([method get_hit_edge]), or -1.
-## The shelf's box under that ray is let go too, unless [param keep_box].
+## A variable's box under that ray is let go too, unless [param keep_box].
 func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1, keep_box: bool = false) -> void:
-	if not keep_box: _shelf.hover(-1, -1, right)
+	if not keep_box: _boxes.hover(-1, -1, right)
 	hover_plus(id if plus else -1, right)
 	_hover_port(id, port, input, right)
 	_hover_edge(edge if port >= 0 else -1, right)
@@ -1051,7 +1116,7 @@ func port_edges(id: int, port: int, input: bool) -> Array[int]:
 
 ## Where [param wire] ends away from the port it is looked at from: its output's end if that port is an input.
 func _far_end(wire: Wire, input: bool) -> Vector3:
-	if input and wire.from == null: return _shelf.box_point(wire.variable)
+	if input and wire.from == null: return _boxes.box_point(wire.variable)
 	return _port_position(wire.from, wire.from_port, false) if input else _port_position(wire.to, wire.to_port, true)
 
 
@@ -1196,10 +1261,10 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_finished = socket.kind == FINISHED
 			_hit_plus = false
 			_hit_delete = false
-	if _shelf.visible:
-		var shelf := _shelf.intersect_ray(local_origin, local_direction, nearest)
-		if shelf >= 0:
-			nearest = shelf
+	if _boxes.visible:
+		var box := _boxes.intersect_ray(local_origin, local_direction, nearest)
+		if box >= 0:
+			nearest = box
 			_hit_box = true
 			_hit_id = -1
 			_hit_port = -1
@@ -1291,7 +1356,7 @@ func get_hit_socket() -> int:
 ## token's or a box's color, else the token's, the port's or the box's type
 ## color, the plus's or the trash's own, the card's face. Null for nothing.
 func get_hit_color() -> Variant:
-	if _hit_box: return _shelf.get_hit_color()
+	if _hit_box: return _boxes.get_hit_color()
 	var card := _find_card(_hit_id)
 	if card == null: return null
 	if _hit_socket >= 0 and _hit_socket < card.sockets.size():
@@ -1321,14 +1386,14 @@ func get_hit_finished() -> bool:
 	return _hit_finished
 
 
-## Whether the last ray hit a box of the shelf ([method get_shelf]).
+## Whether the last ray hit a variable's box ([method get_boxes]).
 func get_hit_box() -> bool:
 	return _hit_box
 
 
 ## The variables' boxes.
-func get_shelf() -> XREBlueprintShelf:
-	return _shelf
+func get_boxes() -> XREBlueprintBoxes:
+	return _boxes
 
 
 ## Whether output 0 of block [param id] leaves Finished: the block waits.
@@ -1531,7 +1596,7 @@ func update_wires() -> void:
 		if wire.from == null:
 			# A link's wire leaves its ring, not the port (D-074).
 			var port := wire.to.node.transform * wire.link.end if wire.link != null else _port_position(wire.to, wire.to_port, true)
-			var end := _shelf.box_end(wire.variable, port)
+			var end := _boxes.box_end(wire.variable, port)
 			wire.mesh.update_curve(end[0], end[1], port, _port_direction(wire.to, true), _front(wire.to))
 			continue
 		wire.mesh.update_curve(_port_position(wire.from, wire.from_port, false), _port_direction(wire.from, false), _port_position(wire.to, wire.to_port, true), _port_direction(wire.to, true), (_front(wire.from) + _front(wire.to)).normalized())
@@ -1540,7 +1605,7 @@ func update_wires() -> void:
 		var socket: Socket = card.sockets[link["socket"]]
 		var ring: Socket = link["link"]
 		var at := card.node.transform * (ring.end if ring != null else socket.center)
-		var end := _shelf.box_end(link["variable"], at)
+		var end := _boxes.box_end(link["variable"], at)
 		(link["mesh"] as XREGraphWire).update_curve(at, Vector3.LEFT, end[0], end[1], _front(card))
 
 
@@ -1568,12 +1633,18 @@ func update_socket_wire(wire: XREGraphWire, id: int, kind: int, end: Vector3) ->
 	wire.update_curve(socket_position(id, kind), Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
 
 
-## Lights the Variable wires to the box of [param variable] — a variable in use that can't be deleted — or puts them back.
+## Lights the cards whose Variable socket is wired to the box of
+## [param variable] — a variable in use that can't be deleted — their frames
+## and their wires, drawn even where a link hides them (D-079); or puts them back.
 func flash_variable(variable: String, lit: bool) -> void:
 	for link: Dictionary in _variable_wires:
 		if link["variable"] != variable: continue
 		link["flash"] = wire_material(Color.WHITE, LIT_WIRE_GROW * 2.0) if lit else null
 		_paint_link(link)
+		var card: Card = link["card"]
+		card.flash = lit
+		_paint_frame(card)
+	_show_link_wires()
 
 
 ## A static Target wire: from its input port, leaving left, free towards the scene object.
@@ -2248,31 +2319,23 @@ static func text_width(text: String, font_size: int) -> float:
 	return XRERig.vr_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x * LABEL_PIXEL
 
 
-## Builds the variables' boxes below the cards and the wires of the Variable sockets to them (D-052).
-func _build_shelf(graph: XREBlueprintGraph) -> void:
-	_shelf.visible = _variable_mode == XREFeatureSettings.BOXES
-	if not _shelf.visible:
-		_shelf.rebuild(XREBlueprintGraph.new(), Vector3.ZERO, _value_mode, {})
-		_shelf.visible = false
+## Builds the variables' boxes at their places (D-078) and the wires of the Variable sockets to them (D-052).
+func _build_boxes(graph: XREBlueprintGraph) -> void:
+	_boxes.visible = _variable_mode == XREFeatureSettings.BOXES
+	if not _boxes.visible:
+		_boxes.rebuild(XREBlueprintGraph.new(), {}, _value_mode, {})
+		_boxes.visible = false
 		return
-	var left := INF
-	var low := INF
-	for card: Card in _cards:
-		left = minf(left, card.node.position.x - card.width * 0.5)
-		low = minf(low, card.node.position.y - card.height * 0.5)
-	if is_inf(left):
-		left = -0.2
-		low = 0.0
 	var used: Dictionary[String, bool] = {}
 	for block: Dictionary in graph.nodes:
 		if block["kind"] in ["get_variable", "set_variable"]: used[str(block["params"]["variable"])] = true
-	_shelf.rebuild(graph, Vector3(left + XREBlueprintShelf.BOX_SIZE.x * 0.5, low - XREBlueprintShelf.BELOW - XREBlueprintShelf.BOX_SIZE.y * 0.5, 0.0), _value_mode, used)
+	_boxes.rebuild(graph, _box_places(graph), _value_mode, used)
 	for card: Card in _cards:
 		var block := graph.find_node(card.id)
 		for index: int in card.sockets.size():
 			if card.sockets[index].kind != VARIABLE: continue
 			var variable := str((block["params"] as Dictionary).get("variable", ""))
-			if not _shelf.has_box(variable): continue
+			if not _boxes.has_box(variable): continue
 			var type := card.sockets[index].type
 			var mesh := create_scene_wire(COLORS[type])
 			# A link in the socket hides its wire, faint while drawn (D-074).

@@ -33,6 +33,9 @@ const SECTION_DIM := 0.3
 const SECTION_PICKED_DIM := 0.12
 
 var actions := XREBlueprintActions.shared()
+## Whether the menu offers new variables (D-078): the headset's graph adds them
+## as boxes where they are put; the desktop has its Variables dialog for that.
+var offers_variables := false
 var search: LineEdit
 var tree: Tree
 var _chips: HFlowContainer
@@ -215,7 +218,7 @@ func refresh() -> void:
 		_pin_label.text = "%s %s" % ["From" if _pin.get("output", true) else "Into", _pin.get("label", "")]
 	tree.clear()
 	var root := tree.create_item()
-	var context := {"chip": XREBlueprintActions.CONTEXT, "host": _host, "graph": _graph, "pin": _pin, "query": search.text, "advanced": _advanced}
+	var context := {"chip": XREBlueprintActions.CONTEXT, "host": _host, "graph": _graph, "pin": _pin, "query": search.text, "advanced": _advanced, "new_variables": offers_variables}
 	if _chip < _contexts.size():
 		var chosen := _contexts[_chip]
 		context["node"] = chosen.get("node")
