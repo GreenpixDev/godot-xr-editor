@@ -208,12 +208,14 @@ edges = Array[Dictionary]([{
 "from": 1,
 "from_port": 0,
 "to": 4,
-"to_port": 0
+"to_port": 0,
+"vr_bends": PackedVector3Array(299.86, 180.22705, 0.35188752)
 }, {
 "from": 5,
 "from_port": 0,
 "to": 2,
-"to_port": 2
+"to_port": 2,
+"vr_bends": PackedVector3Array(186.72424, 336.00104, 0.2783352, 121.59836, 171.53192, 0.19775213)
 }])
 variables = Array[Dictionary]([{
 "name": "test",
