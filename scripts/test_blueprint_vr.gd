@@ -23,9 +23,22 @@ var _saved_ports := XREFeatureSettings.FLAT
 var _saved_shape := XREFeatureSettings.FLAT
 ## The same for the parameter settings (D-052), which a headset session leaves as it set them.
 var _saved_parameters: Dictionary[StringName, StringName] = {}
+## The editor's settings file, kept aside while the checks run.
+var _saved_path := ""
 const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT,
 		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
 		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE]
+## The values the checks start from: the defaults before D-076 made the author's
+## picks the defaults. Each check switches to the variant it covers.
+const BASELINE: Dictionary[StringName, StringName] = {
+	XREFeatureSettings.VALUE_INPUT: XREFeatureSettings.WINDOW, XREFeatureSettings.TARGET_INPUT: XREFeatureSettings.WINDOW,
+	XREFeatureSettings.ANIMATION_WAIT: XREFeatureSettings.FLAG, XREFeatureSettings.VARIABLE_INPUT: XREFeatureSettings.WINDOW,
+	XREFeatureSettings.TOKEN_TRAY: XREFeatureSettings.OFF, XREFeatureSettings.SCENE_CREATE: XREFeatureSettings.OFF,
+	XREFeatureSettings.CARD_PLUS: XREFeatureSettings.SHOWN, XREFeatureSettings.COLOR_INPUT: XREFeatureSettings.PICKER,
+	XREFeatureSettings.AXIS_SCALE: XREFeatureSettings.AUTO, XREFeatureSettings.FOCUS: XREFeatureSettings.OFF,
+	XREFeatureSettings.DEFOCUS: XREFeatureSettings.OFF, XREFeatureSettings.LINK_PREVIEW: XREFeatureSettings.OFF,
+	XREFeatureSettings.LINK_WIRES: XREFeatureSettings.OFF, XREFeatureSettings.LINK_CREATE: XREFeatureSettings.WIRE_BUTTON,
+}
 
 
 func _init(document: XREDocument) -> void:
@@ -70,7 +83,11 @@ func _run() -> void:
 	if scene == null:
 		get_tree().quit(1)
 		return
-	# The editor's saved variant is put back at the end; the checks expect the default billboards.
+	# The checks switch settings in memory only: the editor's saved file is never
+	# written, so a run that stops halfway leaves the author's settings as they are.
+	_saved_path = _document.features.path
+	_document.features.path = ""
+	# The editor's variant is put back at the end; the checks expect the default billboards.
 	_saved_display = _document.features.get_value(XREFeatureSettings.NODE_DISPLAY)
 	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
 	_saved_ports = _document.features.get_value(XREFeatureSettings.PORT_DISPLAY)
@@ -79,7 +96,7 @@ func _run() -> void:
 	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.FLAT)
 	for key: StringName in PARAMETER_SETTINGS:
 		_saved_parameters[key] = _document.features.get_value(key)
-		_document.features.set_value(key, XREFeatureSettings.get_default(key))
+		_document.features.set_value(key, BASELINE[key])
 	DirAccess.make_dir_recursive_absolute("res://build/blueprint_vr_tests")
 	_right = XRControllerTracker.new()
 	_right.name = &"right_hand"
@@ -373,6 +390,7 @@ func _run() -> void:
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, _saved_ports)
 	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, _saved_shape)
 	for key: StringName in PARAMETER_SETTINGS: _document.features.set_value(key, _saved_parameters[key])
+	_document.features.path = _saved_path
 	print("test_blueprint_vr: %d of %d checks failed" % [_failures, _checks])
 	get_tree().quit(1 if _failures > 0 else 0)
 
@@ -1315,7 +1333,7 @@ func _test_parameters_in_graph() -> void:
 	var saved: Dictionary[StringName, StringName] = {}
 	for key: StringName in keys:
 		saved[key] = features.get_value(key)
-		features.set_value(key, XREFeatureSettings.get_default(key))
+		features.set_value(key, BASELINE[key])
 	var history := _service.blueprint.history.get_version()
 	var graph := _service.blueprint.graph
 	_service.add_block("delay")
@@ -1705,7 +1723,7 @@ func _test_target_modes() -> void:
 	var saved_targets := features.get_value(XREFeatureSettings.TARGET_INPUT)
 	var history := _service.blueprint.history.get_version()
 	var graph := _service.blueprint.graph
-	_check(XREFeatureSettings.get_values(XREFeatureSettings.TARGET_INPUT) == [XREFeatureSettings.WINDOW, XREFeatureSettings.ON_NODE, XREFeatureSettings.SCENE, XREFeatureSettings.ADAPTER], "Targets: Window, Node, Scene and Adapter")
+	_check(XREFeatureSettings.get_values(XREFeatureSettings.TARGET_INPUT) == [XREFeatureSettings.ADAPTER, XREFeatureSettings.WINDOW, XREFeatureSettings.ON_NODE, XREFeatureSettings.SCENE], "Targets: Adapter by default (D-076), Window, Node and Scene")
 	_service.add_block("set_property")
 	await _frames()
 	var setter: int = graph.nodes.back()["id"]
@@ -1736,6 +1754,19 @@ func _test_target_modes() -> void:
 			_check(adapter_text == "visible ▸", "the adapter names the member: %s" % adapter_text)
 			var pin := adapter.get_meta(&"pin") as MeshInstance3D if adapter != null and adapter.has_meta(&"pin") else null
 			_check(pin != null and _service.canvas.to_global(start as Vector3).distance_to(pin.global_position) < 0.001, "the wire goes into a pin at the adapter's far end")
+			# Focus Front (D-075): the wire to the object keeps its shape, drawn over everything.
+			var before_points := PackedVector3Array()
+			for index: int in wire.mesh.get_point_count(): before_points.append(wire.mesh.get_point(index))
+			features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.FRONT)
+			_aim_from(_card(setter).node.global_position + _card(setter).node.global_basis.y.normalized() * 0.02, _card(setter).node.global_basis.z.normalized())
+			await _frames(3)
+			var kept := wire.mesh.get_point_count() == before_points.size()
+			for index: int in before_points.size(): kept = kept and wire.mesh.get_point(index).is_equal_approx(before_points[index])
+			_check(_service.canvas.focus_state(setter) == XREBlueprintFocus.FOCUSED and kept and wire.mesh.has_meta(&"untop") and adapter.find_children("*", "Label3D", true, false).all(func(part: Node) -> bool: return (part as Label3D).no_depth_test),
+					"with Front its wire to the object keeps its shape and is drawn over everything, the adapter too")
+			_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+			features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.OFF)
+			await _frames(3)
 	features.set_value(XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ON_NODE)
 	await _frames(4)
 	var pill := _member_pill(setter)
@@ -1895,8 +1926,8 @@ func _test_widgets_and_wires() -> void:
 	features.set_value(XREFeatureSettings.TOKEN_TRAY, saved_tray)
 
 	# Cards without the plus.
-	_check(XREFeatureSettings.get_values(XREFeatureSettings.CARD_PLUS) == [XREFeatureSettings.SHOWN, XREFeatureSettings.HIDDEN], "Plus on cards: Shown, Hidden")
-	_check(not _card(delay).plus_faces.is_empty(), "by default a card has its plus")
+	_check(XREFeatureSettings.get_values(XREFeatureSettings.CARD_PLUS) == [XREFeatureSettings.HIDDEN, XREFeatureSettings.SHOWN], "Plus on cards: Hidden by default (D-076), Shown")
+	_check(not _card(delay).plus_faces.is_empty(), "shown, a card has its plus")
 	_document.set_feature(XREFeatureSettings.CARD_PLUS, XREFeatureSettings.HIDDEN, XREDocument.Source.PANEL)
 	await _frames(4)
 	var hidden := _card(delay)
@@ -3095,7 +3126,7 @@ func _test_d068() -> void:
 func _test_d069() -> void:
 	# D-071: figures as fine as they are, the step written.
 	_check(XREBlueprintTokens.text(0.000025, "") == "0.000025" and XREBlueprintTokens.text(1.503, "") == "1.503" and XREBlueprintTokens.text(0.5, "") == "0.5" and XREBlueprintTokens.text(2.0, "") == "2" and XREBlueprintTokens.text(-0.0, "") == "0", "numbers are written as fine as they are: %s, %s" % [XREBlueprintTokens.text(0.000025, ""), XREBlueprintTokens.text(1.503, "")])
-	_check(XREFeatureSettings.get_values(XREFeatureSettings.AXIS_SCALE) == [XREFeatureSettings.AUTO, XREFeatureSettings.STICK] and XREFeatureSettings.get_default(XREFeatureSettings.AXIS_SCALE) == XREFeatureSettings.AUTO, "Axis scale: Auto, the default, or Stick")
+	_check(XREFeatureSettings.get_values(XREFeatureSettings.AXIS_SCALE) == [XREFeatureSettings.STICK, XREFeatureSettings.AUTO] and XREFeatureSettings.get_default(XREFeatureSettings.AXIS_SCALE) == XREFeatureSettings.STICK, "Axis scale: Stick, the default (D-076), or Auto")
 	var editor := _service.get("_token_editor") as XREBlueprintTokenEditor
 	editor.scale_mode = XREFeatureSettings.STICK
 	# The number line: past its end it slides on evenly (D-070), the stick scales it about the marker.
@@ -3172,10 +3203,9 @@ func _test_d072() -> void:
 	var canvas := _service.canvas
 	var history := _service.blueprint.history.get_version()
 	var saved_variables := features.get_value(XREFeatureSettings.VARIABLE_INPUT)
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.FOCUS) == XREFeatureSettings.OFF and XREFeatureSettings.get_default(XREFeatureSettings.DEFOCUS) == XREFeatureSettings.OFF
-			and XREFeatureSettings.get_values(XREFeatureSettings.DEFOCUS).size() == 3 and XREFeatureSettings.get_values(XREFeatureSettings.DEFOCUS)[1] == XREFeatureSettings.DIM
-			and XREFeatureSettings.get_values(XREFeatureSettings.FOCUS) == [XREFeatureSettings.OFF, XREFeatureSettings.ON, XREFeatureSettings.FRONT],
-			"Focus and Defocus are settings, off by default; Focus is Off, On or Front (D-073), Defocus is Off, Dim or Transparent")
+	_check(XREFeatureSettings.get_values(XREFeatureSettings.FOCUS) == [XREFeatureSettings.FRONT, XREFeatureSettings.OFF, XREFeatureSettings.ON]
+			and XREFeatureSettings.get_values(XREFeatureSettings.DEFOCUS) == [XREFeatureSettings.DIM, XREFeatureSettings.OFF, XREFeatureSettings.TRANSPARENT],
+			"Focus is Front (D-073), the default (D-076), Off or On; Defocus is Dim, the default, Off or Transparent")
 
 	# Three cards to the right of all the others: a value wired into a delay, and a delay alone below.
 	var right := -INF
@@ -3269,29 +3299,44 @@ func _test_d072() -> void:
 
 	# Focus Front (D-073): the card under the ray comes toward the user with its ports and wires, not lit.
 	var port_place := canvas.port_position(waiter, seconds, true)
-	var wire_end := wire.mesh.get_point(wire.mesh.get_point_count() - 1)
+	var wire_points := PackedVector3Array()
+	for index: int in wire.mesh.get_point_count(): wire_points.append(wire.mesh.get_point(index))
+	var ray := _rig.right_hand.get("_ray") as GeometryInstance3D
 	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.FRONT)
 	await _frames()
-	var shown := canvas.get_block_position(waiter)
-	var front := _card(waiter).node.basis.z.normalized()
-	_check(canvas.focus_state(waiter) == XREBlueprintFocus.FOCUSED and is_equal_approx(shown.distance_to(places[waiter]), XREBlueprintCanvas.FRONT_LIFT)
-			and (shown - places[waiter]).normalized().dot(front) > 0.99 and _card(waiter).mesh.material_override == _card(waiter).normal, "with Front the card under the ray comes toward the user, not lit")
-	_check(canvas.port_position(waiter, seconds, true).distance_to(port_place) > XREBlueprintCanvas.FRONT_LIFT * 0.9 and wire.mesh.get_point(wire.mesh.get_point_count() - 1).distance_to(wire_end) > XREBlueprintCanvas.FRONT_LIFT * 0.9
-			and _card(feeder).node.position.is_equal_approx(places[feeder]), "its ports and its wire with it, the card at the far end in its place")
-	var across := _card(waiter).node.basis.x.normalized()
-	var gap := canvas.to_global(places[waiter] + front * XREBlueprintCanvas.FRONT_LIFT * 0.5 - across * (_card(waiter).width * 0.5 + 0.01))
-	_check(canvas.intersect_ray(gap, canvas.global_basis * across, 0.5) >= 0.0 and canvas.get_hit_id() == waiter, "it takes the ray down to its place: it doesn't drop back under a ray it left")
-	canvas.commit_move(_service.blueprint, waiter)
-	await _frames(2)
-	var block := graph.find_node(waiter)
-	_check(is_zero_approx(float(block.get("vr_depth", 0.0))) and canvas.position_from_block(block).is_equal_approx(places[waiter])
-			and is_equal_approx(canvas.get_block_position(waiter).distance_to(places[waiter]), XREBlueprintCanvas.FRONT_LIFT), "the graph keeps its place, not where it is shown")
+	var card := _card(waiter)
+	var same := wire.mesh.get_point_count() == wire_points.size()
+	for index: int in wire_points.size(): same = same and wire.mesh.get_point(index).is_equal_approx(wire_points[index])
+	_check(canvas.focus_state(waiter) == XREBlueprintFocus.FOCUSED and canvas.get_block_position(waiter).is_equal_approx(places[waiter])
+			and canvas.port_position(waiter, seconds, true).is_equal_approx(port_place) and same, "with Front the card under the ray stays where it is, its ports and its wire keep their shape")
+	var labels := card.node.find_children("*", "Label3D", true, false)
+	_check(card.mesh.material_override == XREBlueprintFocus.variant(card.normal, XREBlueprintFocus.TOP) and card.mesh.material_override != card.normal
+			and not labels.is_empty() and (labels[0] as Label3D).no_depth_test and wire.mesh.has_meta(&"untop") and wire.mesh.material_override != wire.normal,
+			"and is drawn over everything: its materials skip the depth test, its labels and its wire too")
+	# Without the depth test its parts are drawn back to front: by how far toward its front each stands.
+	var parts := card.node.find_children("*", "GeometryInstance3D", true, false)
+	var inverse := card.node.global_transform.affine_inverse()
+	var ordered := true
+	var highest := 0.0
+	for part: Node in parts:
+		var geometry := part as GeometryInstance3D
+		highest = maxf(highest, geometry.sorting_offset)
+		var front := (inverse * geometry.global_transform * geometry.get_aabb().get_center()).z
+		for part_behind: Node in parts:
+			var second := part_behind as GeometryInstance3D
+			var other_front := (inverse * second.global_transform * second.get_aabb().get_center()).z
+			if front > other_front + 0.0005 and geometry.sorting_offset <= second.sorting_offset: ordered = false
+	_check(ordered and card.ports[seconds].sorting_offset > card.mesh.sorting_offset and (labels[0] as Label3D).sorting_offset > card.mesh.sorting_offset
+			and parts.all(func(part: Node) -> bool: return part.has_meta(&"untop")) and card.mesh.transparency > 0.0 and not _card(feeder).mesh.has_meta(&"untop"),
+			"its parts are drawn back to front — the face, then its ports, its labels — in the transparent pass, so that a panel doesn't cover it; the card at the far end of its wire as it is")
+	_check(ray != null and ray.sorting_offset > highest, "the rays are drawn over it")
 	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.OFF)
 	await _frames()
-	_check(canvas.get_block_position(waiter).is_equal_approx(places[waiter]) and canvas.port_position(waiter, seconds, true).is_equal_approx(port_place), "Focus off, it is back in its place")
+	_check(card.mesh.material_override == card.normal and not card.mesh.has_meta(&"untop") and is_zero_approx(card.mesh.sorting_offset) and is_zero_approx(card.mesh.transparency) and not (labels[0] as Label3D).has_meta(&"untop")
+			and not wire.mesh.has_meta(&"untop") and is_zero_approx(ray.sorting_offset), "Focus off, it and the rays are drawn as before")
 
 	# A variable's box: in focus with its wire; the Variable socket at its far end stays as it is.
-	# With Front it comes forward, as a card does (D-073).
+	# With Front it stays in its place, drawn over everything, and so does its wire to its card (D-075).
 	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.FRONT)
 	features.set_value(XREFeatureSettings.DEFOCUS, XREFeatureSettings.DIM)
 	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
@@ -3306,10 +3351,16 @@ func _test_d072() -> void:
 	await _frames(3)
 	var shelf := canvas.get_shelf()
 	var links := (canvas.get("_variable_wires") as Array).filter(func(link: Dictionary) -> bool: return link["variable"] == "focus_count")
+	var box_place := shelf.box_point("focus_count")
+	var link_mesh: XREGraphWire = links[0]["mesh"] if links.size() == 1 else null
+	var link_ends := PackedVector3Array([link_mesh.get_point(0), link_mesh.get_point(link_mesh.get_point_count() - 1)] if link_mesh != null else [Vector3.ZERO, Vector3.ZERO])
 	_aim_from(shelf.to_global(shelf.box_point("focus_count")) + Vector3.UP * 0.015, Vector3.BACK)
 	await _frames()
 	_check(shelf.box_focus("focus_count") == XREBlueprintFocus.FOCUSED and canvas.focus_state(getter) == XREBlueprintFocus.OUT, "the box under the ray is in focus, its card out of it")
-	_check(is_equal_approx(shelf.box_point("focus_count").z, XREBlueprintCanvas.FRONT_LIFT) and _card(getter).node.position.is_equal_approx(Vector3(right + 0.3, -0.35, 0.0)), "with Front the box comes forward, its card stays")
+	_check(shelf.box_point("focus_count").is_equal_approx(box_place) and _card(getter).node.position.is_equal_approx(Vector3(right + 0.3, -0.35, 0.0))
+			and link_mesh != null and link_mesh.get_point(0).is_equal_approx(link_ends[0]) and link_mesh.get_point(link_mesh.get_point_count() - 1).is_equal_approx(link_ends[1])
+			and link_mesh.has_meta(&"untop") and shelf.find_children("*", "MeshInstance3D", true, false).any(func(mesh: Node) -> bool: return mesh.has_meta(&"untop")),
+			"with Front the box stays in its place, drawn over everything with its wire; its card and the wire's ends where they were")
 	var socket := -1
 	for index: int in _card(getter).sockets.size():
 		if _card(getter).sockets[index].kind == XREBlueprintCanvas.VARIABLE: socket = index
@@ -3318,8 +3369,8 @@ func _test_d072() -> void:
 	_aim_from(_card(getter).node.global_position + _card(getter).node.global_basis.y.normalized() * 0.02, _card(getter).node.global_basis.z.normalized())
 	await _frames()
 	_check(canvas.focus_state(getter) == XREBlueprintFocus.FOCUSED and shelf.box_focus("focus_count") == XREBlueprintFocus.KEPT, "the ray on its card: the box at the far end of the wire stays as it is")
-	_check(is_zero_approx(shelf.box_point("focus_count").z) and is_equal_approx(_card(getter).node.position.distance_to(Vector3(right + 0.3, -0.35, 0.0)), XREBlueprintCanvas.FRONT_LIFT),
-			"and back in its place, the card forward")
+	_check(shelf.box_point("focus_count").is_equal_approx(box_place) and _card(getter).node.position.is_equal_approx(Vector3(right + 0.3, -0.35, 0.0)),
+			"the box and the card in their places")
 
 	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
 	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.OFF)
@@ -3341,11 +3392,9 @@ func _test_d074() -> void:
 	var canvas := _service.canvas
 	var history := _service.blueprint.history.get_version()
 	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
-	_check(XREFeatureSettings.get_values(XREFeatureSettings.LINK_PREVIEW) == [XREFeatureSettings.OFF, XREFeatureSettings.VARIABLES, XREFeatureSettings.OBJECTS, XREFeatureSettings.ALL]
-			and XREFeatureSettings.get_values(XREFeatureSettings.LINK_WIRES) == [XREFeatureSettings.OFF, XREFeatureSettings.ON_FOCUS, XREFeatureSettings.ON]
-			and XREFeatureSettings.get_values(XREFeatureSettings.LINK_CREATE) == [XREFeatureSettings.WIRE_BUTTON, XREFeatureSettings.PULL, XREFeatureSettings.PORT_BUTTON]
-			and XREFeatureSettings.get_default(XREFeatureSettings.LINK_PREVIEW) == XREFeatureSettings.OFF and XREFeatureSettings.get_default(XREFeatureSettings.LINK_WIRES) == XREFeatureSettings.OFF
-			and XREFeatureSettings.get_default(XREFeatureSettings.LINK_CREATE) == XREFeatureSettings.WIRE_BUTTON,
+	_check(XREFeatureSettings.get_values(XREFeatureSettings.LINK_PREVIEW) == [XREFeatureSettings.VARIABLES, XREFeatureSettings.OFF, XREFeatureSettings.OBJECTS, XREFeatureSettings.ALL]
+			and XREFeatureSettings.get_values(XREFeatureSettings.LINK_WIRES) == [XREFeatureSettings.ON_FOCUS, XREFeatureSettings.OFF, XREFeatureSettings.ON]
+			and XREFeatureSettings.get_values(XREFeatureSettings.LINK_CREATE) == [XREFeatureSettings.WIRE_BUTTON, XREFeatureSettings.PULL, XREFeatureSettings.PORT_BUTTON, XREFeatureSettings.ALWAYS],
 			"Link preview, Link wires and Link from wire are settings with the values asked for, the first by default")
 	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
 	_service.blueprint.set_variable("link_gain", 2.0)
@@ -3368,6 +3417,24 @@ func _test_d074() -> void:
 	var ref := XREBlueprintLinks.ref(getter, XREBlueprintLinks.VARIABLE, delay, seconds)
 	var front := canvas.global_basis.z.normalized()
 	_check(getter >= 0 and canvas.ref_wire(ref) != null and canvas.ref_wire(ref).visible and not XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE), "a wire from the box into Seconds, not a link")
+	# Always (D-077): a new wire to a box is a link at once, in the same edit; undo takes both back.
+	features.set_value(XREFeatureSettings.LINK_CREATE, XREFeatureSettings.ALWAYS)
+	var always_version := _service.blueprint.history.get_version()
+	_service.call("_wire_box_to_port", "link_gain", other, seconds)
+	await _frames(3)
+	var linked := canvas.inline_getter(other, seconds)
+	_check(linked >= 0 and XREBlueprintLinks.is_link(graph.find_node(linked), XREBlueprintLinks.VARIABLE) and _service.blueprint.history.get_version() == always_version + 1
+			and XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE) == false, "with Always a new wire is a link at once, as one edit; the wire made before stays a wire")
+	_service.blueprint.undo()
+	await _frames(3)
+	_check(canvas.inline_getter(other, seconds) < 0, "undo takes the wire and its link back together")
+	var plain := canvas.ref_wire(ref)
+	_aim_from(canvas.to_global(plain.get_point(plain.get_point_count() / 2)), front)
+	await _frames()
+	_check(pointer.button == null or not pointer.button.visible, "with Always the ray on a wire made before puts up no link button")
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await _frames()
+	features.set_value(XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BUTTON)
 
 	# Wire button: the ray on the wire puts a link button there; the trigger on it makes the link.
 	var mesh := canvas.ref_wire(ref)

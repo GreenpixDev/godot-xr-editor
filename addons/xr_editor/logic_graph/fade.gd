@@ -71,6 +71,11 @@ static func set_seen(node: Node, layer: StringName, seen: float) -> void:
 	for child: Node in node.get_children(): set_seen(child, layer, seen)
 
 
+## [method set_seen] for [param geometry] alone, not what is under it.
+static func set_layer(geometry: GeometryInstance3D, layer: StringName, seen: float) -> void:
+	_set_seen(geometry, layer, seen)
+
+
 static func _set_seen(geometry: GeometryInstance3D, layer: StringName, seen: float) -> void:
 	var layers: Dictionary = geometry.get_meta(&"seen") if geometry.has_meta(&"seen") else {}
 	if seen >= 1.0:

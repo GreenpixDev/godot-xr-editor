@@ -316,6 +316,8 @@ var _token_editor: XREBlueprintTokenEditor
 ## through it, the graph's through the canvas; the inputs as spheres, reused.
 var _fade := XREBlueprintFade.new()
 var _focus_targets := PackedVector4Array()
+## Whether the hands' rays are drawn over everything now.
+var _rays_on_top := false
 ## How long what the rays were on stays in focus after they left it (D-072).
 var _focus_hold := 0.0
 ## The token the Vector or the Color window edits: [code]{"block", "key", "box", "value", "start"}[/code],
@@ -514,6 +516,7 @@ func _enter_tree() -> void:
 	_document.operation_recorded.connect(_scene_operation)
 	_document.features.changed.connect(_feature_changed)
 	_document.prepare_play = prepare_play
+	blueprint.amend = _link_new_references
 	_schedule_refresh()
 
 
@@ -522,11 +525,15 @@ func _exit_tree() -> void:
 	if _pipette_hand != null: _controller(_pipette_hand).set_model_shown(true)
 	_set_ui_overlay(false)
 	_fade.release()
+	if _rays_on_top:
+		_rays_on_top = false
+		for hand: XREHand in [_rig.left_hand, _rig.right_hand]: hand.set_on_top(false)
 	if is_instance_valid(_dimmer): _dimmer.queue_free()
 	if is_instance_valid(_focus_dimmer): _focus_dimmer.queue_free()
 	cancel_connection()
 	_target_pick = -1
 	save_draft()
+	if blueprint.amend == _link_new_references: blueprint.amend = Callable()
 	blueprint.changed.disconnect(_schedule_rebuild)
 	blueprint.operation_recorded.disconnect(_graph_operation)
 	_document.selection_changed.disconnect(_selection_changed)
@@ -575,6 +582,11 @@ func _process(delta: float) -> void:
 	_update_focus()
 	_update_fade()
 	_update_graph_focus(delta)
+	# The rays over an input in use (D-061) and over what Front draws over everything (D-075).
+	var rays_on_top := _focused or canvas.is_front_focused()
+	if rays_on_top != _rays_on_top:
+		_rays_on_top = rays_on_top
+		for hand: XREHand in [_rig.left_hand, _rig.right_hand]: hand.set_on_top(rays_on_top)
 	_editor_right = {}
 	_editor_left = {}
 	_update_target_wires()
@@ -1855,7 +1867,7 @@ func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance:
 		if pointer.hand == hand and (pointer.carried != null or not pointer.pull.is_empty() or not pointer.token_key.is_empty() or not pointer.token_box.is_empty()): return true
 		# A link button, or a wire that may become a link, nearer than the panel (D-074).
 		if pointer.hand == hand and _workspace.visible and pointer.button != null and pointer.button.visible and _pill_distance(pointer.button, origin, direction) >= 0.0: return true
-	if _workspace.visible and _document.features.get_value(XREFeatureSettings.LINK_CREATE) != XREFeatureSettings.PORT_BUTTON and _link_wire_hit(origin, direction, distance) >= 0.0: return true
+	if _workspace.visible and not _document.features.get_value(XREFeatureSettings.LINK_CREATE) in [XREFeatureSettings.PORT_BUTTON, XREFeatureSettings.ALWAYS] and _link_wire_hit(origin, direction, distance) >= 0.0: return true
 	if _workspace.visible and (hand.grip_pressed or hand.trigger_pressed) and not _tray_cell(origin, direction).is_empty(): return true
 	if _workspace.visible and ((_petals.is_open() and _petals.intersect_ray(origin, direction, distance) >= 0) or (_choice.is_open() and _choice.intersect_ray(origin, direction, distance) >= 0)): return true
 	if _workspace.visible:
@@ -2304,6 +2316,7 @@ func _update_target_wires() -> void:
 		var paint := canvas.focus_paint(state)
 		var material := XREBlueprintFocus.variant(wire.lit_material if wire.lit or wire.hot else wire.normal, paint)
 		if wire.mesh.material_override != material: wire.mesh.material_override = material
+		XREBlueprintFocus.raise(wire.mesh, paint == XREBlueprintFocus.TOP)
 		var seen := canvas.focus_seen(state)
 		var look := paint * 2 + (1 if seen < 1.0 else 0)
 		if look != wire.look:
@@ -2610,8 +2623,9 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
 		_delete_consumed = true
 		if token: _reset_token(id, key)
-		# A link is a wire again (D-074): nothing of the reference is lost.
-		elif not link.is_empty(): _set_link(link, false)
+		# A link is a wire again (D-074): nothing of the reference is lost; with Always it stays a link (D-077).
+		elif not link.is_empty():
+			if not _links_only(): _set_link(link, false)
 		else: delete_block()
 
 
@@ -3194,7 +3208,6 @@ func _update_focus() -> void:
 	_focus_dimmer.visible = focus
 	_petals.set_on_top(focus and (_petal_block >= 0 or _petal_dynamic))
 	_choice.set_on_top(focus)
-	for hand: XREHand in [_rig.left_hand, _rig.right_hand]: hand.set_on_top(focus)
 
 
 ## Makes what covers the input in use see-through (D-066), every frame while
@@ -4273,6 +4286,28 @@ func _connect_member_link(id: int) -> void:
 # --- Links (D-074) ----------------------------------------------------------------------------
 
 
+## With Link from wire on Always (D-077), makes every reference an edit from the
+## headset gives a block — a variable or a scene object it had not — a link in
+## the same edit, [param state] (of [method XREBlueprintDocument.commit]): so a
+## new wire to a box or an object is a link at once, and undo takes both back.
+## A reference that stays as it was keeps its look, so a link made a wire again stays a wire.
+func _link_new_references(state: Dictionary) -> void:
+	if blueprint.operation_source != &"vr_graph" or _document.features.get_value(XREFeatureSettings.LINK_CREATE) != XREFeatureSettings.ALWAYS: return
+	for entry: Dictionary in state["nodes"]:
+		var params: Dictionary = entry["params"]
+		var before: Dictionary = blueprint.graph.find_node(int(entry["id"])).get("params", {})
+		if entry["kind"] in ["get_variable", "set_variable"] and not str(params.get("variable", "")).is_empty() and params.get("variable") != before.get("variable"):
+			XREBlueprintLinks.set_link(entry, XREBlueprintLinks.VARIABLE, true)
+		if XREBlueprintGraph.has_target(entry) and not str(params.get("target", "")).is_empty() and params.get("target") != before.get("target"):
+			XREBlueprintLinks.set_link(entry, XREBlueprintLinks.TARGET, true)
+
+
+## Whether Link from wire is on Always (D-077): links are made by themselves
+## and never become wires again, so no link or wire buttons.
+func _links_only() -> bool:
+	return _document.features.get_value(XREFeatureSettings.LINK_CREATE) == XREFeatureSettings.ALWAYS
+
+
 ## Makes the reference [param ref] (of [XREBlueprintLinks]) a link, its wire
 ## hidden, or with [param on] false a wire again, as one edit.
 func _set_link(ref: Dictionary, on: bool) -> bool:
@@ -4297,7 +4332,8 @@ func _set_link(ref: Dictionary, on: bool) -> bool:
 ## a link, one that makes it. [param point] is where the ray is on the card.
 func _update_link_button(pointer: Pointer, id: int, kind: int, link: Dictionary, point: Vector3) -> void:
 	var create := _document.features.get_value(XREFeatureSettings.LINK_CREATE)
-	if has_wire(pointer.hand): return
+	# With Always there are no buttons: every new wire is a link, and a link stays one (D-077).
+	if has_wire(pointer.hand) or create == XREFeatureSettings.ALWAYS: return
 	if not link.is_empty():
 		if create != XREFeatureSettings.PULL: _show_button(pointer, link, false, _button_above(id, point))
 		return
@@ -4447,7 +4483,7 @@ func _link_wire_hit(origin: Vector3, direction: Vector3, limit: float) -> float:
 func _point_at_link_wire(pointer: Pointer, origin: Vector3, direction: Vector3, limit: float) -> bool:
 	var create := _document.features.get_value(XREFeatureSettings.LINK_CREATE)
 	var hand := pointer.hand
-	if create == XREFeatureSettings.PORT_BUTTON or has_wire(hand) or _target_pick >= 0: return false
+	if create in [XREFeatureSettings.PORT_BUTTON, XREFeatureSettings.ALWAYS] or has_wire(hand) or _target_pick >= 0: return false
 	var hit := _link_wire_hit(origin, direction, limit)
 	if hit < 0.0: return false
 	hand.claim(self)
@@ -4609,7 +4645,8 @@ func _drop_link(pointer: Pointer, slot: Dictionary) -> void:
 	if not source.is_empty(): canvas.hide_link(source, false)
 	if slot.is_empty():
 		# Let go in the air, a link taken from its port is its wire again; a copy or the tray's just goes.
-		if not source.is_empty() and not copy: _set_link(source, false)
+		# With Always a link never becomes a wire: it goes back to its port (D-077).
+		if not source.is_empty() and not copy and not _links_only(): _set_link(source, false)
 		return
 	if not source.is_empty() and int(slot["block"]) == int(source["card"]) and int(slot["port"]) == int(source["port"]) and int(slot["kind"]) == int(source["kind"]): return
 	if str(value["link"]).is_empty(): _dock_blank_link(slot, hand)

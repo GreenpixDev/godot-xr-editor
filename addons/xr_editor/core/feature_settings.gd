@@ -86,8 +86,8 @@ const SCENE_CREATE := &"scene_create"
 const OFF := &"off"
 const ON := &"on"
 ## The plus on a card, which opens the block menu wired to its execution
-## output (D-058). Shown by default; hidden, a block is added only by a wire
-## let go in empty space (D-051) or from the Blueprints tab.
+## output (D-058). Hidden by default (D-076): a block is added by a wire let
+## go in empty space (D-051) or from the Blueprints tab.
 const CARD_PLUS := &"card_plus"
 const SHOWN := &"shown"
 const HIDDEN := &"hidden"
@@ -103,11 +103,12 @@ const AXIS_SCALE := &"axis_scale"
 const AUTO := &"auto"
 ## By the stick, up finer and down coarser, the value kept; nothing speeds on.
 const STICK := &"stick"
-## Whether what a ray is on in the graph lights up (D-072) or comes forward
-## (D-073): a card with its ports, details, adapters and wires, or a
-## variable's box with its wires.
+## Whether what a ray is on in the graph lights up (D-072) or is drawn over
+## everything in its place (D-075, after D-073 brought it forward): a card with
+## its ports, details, adapters and wires, or a variable's box with its wires.
+## The hands' rays are drawn over it.
 const FOCUS := &"focus"
-## Toward the user, out of the graph's plane.
+## Over everything, in its place.
 const FRONT := &"front"
 ## What the rest of the graph becomes while a ray is on a card or a box (D-072).
 const DEFOCUS := &"defocus"
@@ -127,13 +128,16 @@ const LINK_WIRES := &"link_wires"
 const ON_FOCUS := &"on_focus"
 ## How a wire to a variable or an object becomes a link (D-074), besides a link
 ## from the Tokens window laid on its port: a button on the wire under the ray,
-## a pull of the wire into its port by the grip, a button over its port.
+## a pull of the wire into its port by the grip, a button over its port, or
+## by itself as soon as the wire is made, with no buttons, a link never a wire again (D-077).
 const LINK_CREATE := &"link_create"
 const WIRE_BUTTON := &"wire_button"
 const PULL := &"pull"
 const PORT_BUTTON := &"port_button"
+const ALWAYS := &"always"
 
-## Every setting by key: its page, title, values (the first is the default),
+## Every setting by key: its page, title, values (the first is the default;
+## the defaults are the author's picks after the headset checks, D-076),
 ## the values' titles and a line of explanation.
 const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	NODE_DISPLAY: {
@@ -146,8 +150,8 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	PORT_DISPLAY: {
 		"category": Category.FEATURES,
 		"title": "Port display",
-		"values": [FLAT, SPHERE],
-		"labels": ["Flat", "Sphere"],
+		"values": [SPHERE, FLAT],
+		"labels": ["Sphere", "Flat"],
 		"hint": "Flat: discs on the card. Sphere: round ports standing out of it.",
 	},
 	WINDOW_SHAPE: {
@@ -160,29 +164,29 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	VALUE_INPUT: {
 		"category": Category.FEATURES,
 		"title": "Values",
-		"values": [WINDOW, PUCKS, PLUGS],
-		"labels": ["Window", "Pucks", "Plugs"],
+		"values": [PLUGS, WINDOW, PUCKS],
+		"labels": ["Plugs", "Window", "Pucks"],
 		"hint": "Window: in the block's parameters. Pucks: tokens in slots on the card. Plugs: tokens plugged into the ports.",
 	},
 	TARGET_INPUT: {
 		"category": Category.FEATURES,
 		"title": "Targets",
-		"values": [WINDOW, ON_NODE, SCENE, ADAPTER],
-		"labels": ["Window", "Node", "Scene", "Adapter"],
+		"values": [ADAPTER, WINDOW, ON_NODE, SCENE],
+		"labels": ["Adapter", "Window", "Node", "Scene"],
 		"hint": "Window: in the parameters. Others wire the Target to the object; the member shows on the card (Node), on a petal at the object (Scene) or on a plug in the port the wire leaves (Adapter).",
 	},
 	ANIMATION_WAIT: {
 		"category": Category.FEATURES,
 		"title": "Animation wait",
-		"values": [FLAG, FINISHED_PORT],
-		"labels": ["Flag", "Finished port"],
+		"values": [FINISHED_PORT, FLAG],
+		"labels": ["Finished port", "Flag"],
 		"hint": "Flag: a wait setting. Finished port: wire Finished to wait for the animation, Then not to.",
 	},
 	VARIABLE_INPUT: {
 		"category": Category.FEATURES,
 		"title": "Variables",
-		"values": [WINDOW, BOXES],
-		"labels": ["Window", "Boxes"],
+		"values": [BOXES, WINDOW],
+		"labels": ["Boxes", "Window"],
 		"hint": "Window: chosen in the parameters. Boxes: wire Get and Set Variable to a box on the shelf.",
 	},
 	TOKEN_TRAY: {
@@ -202,58 +206,58 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	CARD_PLUS: {
 		"category": Category.FEATURES,
 		"title": "Plus on cards",
-		"values": [SHOWN, HIDDEN],
-		"labels": ["Shown", "Hidden"],
+		"values": [HIDDEN, SHOWN],
+		"labels": ["Hidden", "Shown"],
 		"hint": "Shown: the plus on a card adds the next block. Hidden: add blocks by letting a wire go in empty space.",
 	},
 	COLOR_INPUT: {
 		"category": Category.FEATURES,
 		"title": "Color input",
-		"values": [PICKER, GLOBE],
-		"labels": ["2D", "3D"],
+		"values": [GLOBE, PICKER],
+		"labels": ["3D", "2D"],
 		"hint": "2D: a color picker with the hex code. 3D: a globe of colors to turn and click, R, G, B typed. Both have a pipette.",
 	},
 	AXIS_SCALE: {
 		"category": Category.FEATURES,
 		"title": "Axis scale",
-		"values": [AUTO, STICK],
-		"labels": ["Auto", "Stick"],
+		"values": [STICK, AUTO],
+		"labels": ["Stick", "Auto"],
 		"hint": "For a number's line and a vector's arrows. Auto: past an end the value speeds up, held by 0 it goes toward 0. Stick: the stick up makes the scale finer, down coarser; nothing speeds up.",
 	},
 	FOCUS: {
 		"category": Category.FEATURES,
 		"title": "Focus",
-		"values": [OFF, ON, FRONT],
-		"labels": ["Off", "On", "Front"],
-		"hint": "On: the card or variable under the ray lights up with its ports, details and wires; a port or a detail under the ray grows as well. Front: it comes toward you, out of the graph, with its ports, details, adapters and wires.",
+		"values": [FRONT, OFF, ON],
+		"labels": ["Front", "Off", "On"],
+		"hint": "On: the card or variable under the ray lights up with its ports, details and wires; a port or a detail under the ray grows as well. Front: it is drawn over everything with its ports, details, adapters and wires, staying where it is; the rays over it.",
 	},
 	DEFOCUS: {
 		"category": Category.FEATURES,
 		"title": "Defocus",
-		"values": [OFF, DIM, TRANSPARENT],
-		"labels": ["Off", "Dim", "Transparent"],
+		"values": [DIM, OFF, TRANSPARENT],
+		"labels": ["Dim", "Off", "Transparent"],
 		"hint": "While the ray is on a card or a variable, the rest of the graph stays as it is (Off), goes darker (Dim) or see-through (Transparent).",
 	},
 	LINK_PREVIEW: {
 		"category": Category.FEATURES,
 		"title": "Link preview",
-		"values": [OFF, VARIABLES, OBJECTS, ALL],
-		"labels": ["Off", "Variables", "Objects", "All"],
+		"values": [VARIABLES, OFF, OBJECTS, ALL],
+		"labels": ["Variables", "Off", "Objects", "All"],
 		"hint": "What a link in a port shows: \"link\" only (Off), the variable's name, the object's projection, or both.",
 	},
 	LINK_WIRES: {
 		"category": Category.FEATURES,
 		"title": "Link wires",
-		"values": [OFF, ON_FOCUS, ON],
-		"labels": ["Off", "On focus", "On"],
+		"values": [ON_FOCUS, OFF, ON],
+		"labels": ["On focus", "Off", "On"],
 		"hint": "The wire a link hides: never drawn (Off), drawn while the ray is on its card, its variable or the link (On focus), always drawn (On).",
 	},
 	LINK_CREATE: {
 		"category": Category.FEATURES,
 		"title": "Link from wire",
-		"values": [WIRE_BUTTON, PULL, PORT_BUTTON],
-		"labels": ["Wire button", "Pull", "Port button"],
-		"hint": "How a wire to a variable or an object becomes a link: a link button where the ray is on the wire, the grip pulling the wire into its port, or a link button over its port. A link from the Tokens window laid on the port works with each.",
+		"values": [WIRE_BUTTON, PULL, PORT_BUTTON, ALWAYS],
+		"labels": ["Wire button", "Pull", "Port button", "Always"],
+		"hint": "How a wire to a variable or an object becomes a link: a link button where the ray is on the wire, the grip pulling the wire into its port, a link button over its port, or by itself as soon as the wire is made (Always: no buttons, and a link never becomes a wire). A link from the Tokens window laid on the port works with each.",
 	},
 }
 

@@ -26,7 +26,7 @@ extends Node3D
 ##
 ## The cards and boxes a ray is on are in focus (D-072, [method set_focus]):
 ## lit with their ports, details and wires as [constant XREFeatureSettings.FOCUS]
-## says, or come toward the user with them (D-073), the rest darker or
+## says, or drawn over everything with them (D-075), the rest darker or
 ## see-through as [constant XREFeatureSettings.DEFOCUS] says.
 ##
 ## A wire to a variable's box or to a scene object may be a link (D-074,
@@ -58,10 +58,6 @@ const PLUS_RADIUS := 0.010
 const TOUCH_RADIUS := 0.035
 ## Lift only the contact dot towards the controller; ray picking stays unchanged.
 const HIT_DOT_OFFSET := 0.012
-## How far a card or a box in focus comes toward the user out of its place
-## with Focus on Front (D-073), along its front: past a cuboid's depth and the
-## tokens standing out of a face.
-const FRONT_LIFT := 0.06
 const COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("7be5b3"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878")]
 ## Dark saturated faces: events, properties/motion, flow, values, audio, animation.
 const CARD_PALETTE: Array[Color] = [Color("174479"), Color("155947"), Color("553478"), Color("323e73"), Color("785016"), Color("743351")]
@@ -178,10 +174,6 @@ class Card:
 	var keep_ports := 0
 	var keep_sockets := 0
 	var look := Vector4i(-1, 0, 0, 0)
-	## How far it stands out of its place toward the user (D-073), and the
-	## offset that adds to its node's position now: the graph keeps the place.
-	var lift := 0.0
-	var raised := Vector3.ZERO
 
 class Wire:
 	var from: Card
@@ -621,7 +613,6 @@ func sync_placement(graph: XREBlueprintGraph) -> bool:
 		var block: Dictionary = blocks[index]
 		if card.id != block["id"]: return false
 		card.node.position = position_from_block(block)
-		card.raised = Vector3.ZERO
 		_orient(card)
 	update_wires()
 	return true
@@ -632,19 +623,15 @@ func commit_move(document: XREBlueprintDocument, id: int) -> bool:
 	var card := _find_card(id)
 	if card == null: return false
 	var state := document.graph.snapshot()
-	# The card's place, without its lift in focus (D-073).
-	var place := card.node.position - card.raised
 	for block: Dictionary in state["nodes"]:
 		if block["id"] == id:
-			block["position"] = Vector2(place.x, -place.y) / PIXEL_SIZE + _offset
-			block["vr_depth"] = place.z
+			block["position"] = Vector2(card.node.position.x, -card.node.position.y) / PIXEL_SIZE + _offset
+			block["vr_depth"] = card.node.position.z
 			block.erase("vr_rotation")
 	return document.perform(document.commit.bind("Move Blocks", state), &"vr_graph")
 
 
 ## Live geometry only; a preview never modifies the resource or undo history.
-## [param point] is where the card is shown, with its lift in focus (D-073), as
-## [method get_block_position] gives it.
 func preview_move(id: int, point: Vector3) -> void:
 	var card := _find_card(id)
 	if card == null: return
@@ -653,14 +640,11 @@ func preview_move(id: int, point: Vector3) -> void:
 	update_wires()
 
 
-## Previews position and orientation without touching the graph resource;
-## [param pose] is shown, as [method get_block_transform] gives it.
+## Previews position and orientation without touching the graph resource.
 func preview_transform(id: int, pose: Transform3D) -> void:
 	var card := _find_card(id)
 	if card == null: return
 	card.node.transform = pose
-	# Shown so, it stands out of its place along its own front (D-073).
-	card.raised = pose.basis.z.normalized() * card.lift
 	_orient(card)
 	update_wires()
 
@@ -704,14 +688,10 @@ func face_user(head: Vector3) -> void:
 
 ## Billboards face the last head position square on, tilting up or down to it
 ## too, their rows level (D-061, after D-034 turned them around the vertical
-## only); cuboids keep the graph's orientation. Turned from its place, the
-## card then stands out of it along its front by its lift (D-073).
+## only); cuboids keep the graph's orientation.
 func _orient(card: Card) -> void:
-	card.node.position -= card.raised
 	if _display == XREFeatureSettings.CUBOID: card.node.basis = Basis.IDENTITY
 	elif _faces_user: card.node.global_basis = XREBlueprintPetals.face(card.node.global_position, _head_position, Vector3.UP)
-	card.raised = card.node.basis.z.normalized() * card.lift
-	card.node.position += card.raised
 
 
 ## Keeps a captured point on the rod while its upright panel faces the user.
@@ -721,8 +701,6 @@ func preview_grab(id: int, contact: Vector3, local_contact: Vector3, head: Vecto
 		var held := _find_card(id)
 		if held == null: return
 		held.node.global_transform = Transform3D(global_basis, contact - global_basis * local_contact)
-		# Where it is held is where it is shown: its place is its lift behind (D-073).
-		held.raised = held.node.basis.z.normalized() * held.lift
 		update_wires()
 		return
 	var orientation := XREBlueprintPetals.face(contact, head, Vector3.UP)
@@ -737,12 +715,10 @@ func preview_grab(id: int, contact: Vector3, local_contact: Vector3, head: Vecto
 	var card := _find_card(id)
 	if card == null: return
 	card.node.global_transform = pose
-	card.raised = card.node.basis.z.normalized() * card.lift
 	update_wires()
 
 
-## Current card pose in workspace coordinates, including a grip preview and
-## its lift in focus (D-073): where it is shown.
+## Current card pose in workspace coordinates, including a grip preview.
 func get_block_transform(id: int) -> Transform3D:
 	var card := _find_card(id)
 	return card.node.transform if card != null else Transform3D.IDENTITY
@@ -753,7 +729,7 @@ func has_block(id: int) -> bool:
 	return _find_card(id) != null
 
 
-## Current preview position of a card in workspace coordinates, with its lift in focus (D-073).
+## Current preview position of a card in workspace coordinates.
 func get_block_position(id: int) -> Vector3:
 	var card := _find_card(id)
 	return card.node.position if card != null else Vector3.ZERO
@@ -769,7 +745,7 @@ func select_block(id: int) -> void:
 ## with Focus on (D-072), darker out of focus with Defocus on Dim.
 func _paint_frame(card: Card) -> void:
 	var base := _selected_material if card.id == _selected else _focus_frame if card.look.x == XREBlueprintFocus.LIT else _frame_material
-	card.frame.material_override = XREBlueprintFocus.variant(base, XREBlueprintFocus.DARK if card.look.x == XREBlueprintFocus.DARK else XREBlueprintFocus.PLAIN)
+	card.frame.material_override = XREBlueprintFocus.variant(base, card.look.x if card.look.x in [XREBlueprintFocus.DARK, XREBlueprintFocus.TOP] else XREBlueprintFocus.PLAIN)
 
 
 ## Switches focus (D-072) to [param focus], a value of [constant XREFeatureSettings.FOCUS],
@@ -850,6 +826,7 @@ func focus_state(id: int) -> int:
 ## focus with Focus on, darker out of it with Defocus on Dim.
 func focus_paint(state: int) -> int:
 	if state == XREBlueprintFocus.FOCUSED and _focus_mode == XREFeatureSettings.ON: return XREBlueprintFocus.LIT
+	if state == XREBlueprintFocus.FOCUSED and _focus_mode == XREFeatureSettings.FRONT: return XREBlueprintFocus.TOP
 	if state == XREBlueprintFocus.OUT and _defocus_mode == XREFeatureSettings.DIM: return XREBlueprintFocus.DARK
 	return XREBlueprintFocus.PLAIN
 
@@ -859,10 +836,10 @@ func focus_seen(state: int) -> float:
 	return XREBlueprintFocus.SEEN if state == XREBlueprintFocus.OUT and _defocus_mode == XREFeatureSettings.TRANSPARENT else 1.0
 
 
-## How far what is in focus [param state] comes toward the user: [constant FRONT_LIFT]
-## in focus with Focus on Front (D-073), else 0.
-func focus_lift(state: int) -> float:
-	return FRONT_LIFT if state == XREBlueprintFocus.FOCUSED and _focus_mode == XREFeatureSettings.FRONT else 0.0
+## Whether something is drawn over everything in focus with Focus on Front
+## (D-075): then the hands' rays are drawn over it.
+func is_front_focused() -> bool:
+	return _focus_mode == XREFeatureSettings.FRONT and _focus_any
 
 
 func _in_focus(id: int) -> bool:
@@ -873,8 +850,7 @@ func _in_focus(id: int) -> bool:
 ## of focus, of the graph or of the ports a wire may end on, never every frame.
 ## In focus: the cards and boxes asked for and the wires on them. Out of it:
 ## the rest, but the far ends of those wires — a port, a socket, a box — and
-## the ports a wire being drawn may end on stay as they are. With Focus on
-## Front the cards and boxes in focus come forward, the wires on them follow (D-073).
+## the ports a wire being drawn may end on stay as they are.
 func _paint_focus() -> void:
 	var used := _focus_mode != XREFeatureSettings.OFF or _defocus_mode != XREFeatureSettings.OFF
 	var any := false
@@ -914,18 +890,9 @@ func _paint_focus() -> void:
 	for card: Card in _cards: _look_card(card)
 	for wire: Wire in _wires: _look_wire(wire)
 	for link: Dictionary in _variable_wires: _look_link(link)
-	var moved := false
 	for index: int in _shelf.box_count():
 		var state: int = boxes.get(_shelf.box_name(index), XREBlueprintFocus.OUT if any else XREBlueprintFocus.NORMAL)
 		_shelf.paint_box(index, state, focus_paint(state), focus_seen(state))
-		moved = _shelf.raise_box(index, focus_lift(state)) or moved
-	for card: Card in _cards:
-		var lift := focus_lift(card.focus)
-		if lift == card.lift: continue
-		card.lift = lift
-		_orient(card)
-		moved = true
-	if moved: update_wires()
 
 
 ## Keeps port [param port] of [param card] (an input if [param input]) as it
@@ -969,6 +936,7 @@ func _look_wire(wire: Wire) -> void:
 func _paint_wire(wire: Wire) -> void:
 	var lit := wire.edge == _edge_right or wire.edge == _edge_left
 	wire.mesh.material_override = XREBlueprintFocus.variant(wire.lit if lit else wire.normal, focus_paint(wire.focus))
+	XREBlueprintFocus.raise(wire.mesh, focus_paint(wire.focus) == XREBlueprintFocus.TOP)
 
 
 func _look_link(link: Dictionary) -> void:
@@ -987,6 +955,7 @@ func _paint_link(link: Dictionary) -> void:
 	var card: Card = link["card"]
 	var base: Material = link["flash"] if link["flash"] != null else link["lit"] if is_socket_hovered(card.id, int(link["socket"])) else link["normal"]
 	(link["mesh"] as XREGraphWire).material_override = XREBlueprintFocus.variant(base, focus_paint(int(link["focus"])))
+	XREBlueprintFocus.raise(link["mesh"] as XREGraphWire, focus_paint(int(link["focus"])) == XREBlueprintFocus.TOP)
 
 
 ## Each hand contributes hover independently, so one idle ray cannot clear the other.
@@ -1148,10 +1117,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		var card_inverse := card.node.transform.affine_inverse()
 		var card_origin := card_inverse * local_origin
 		var card_direction := card_inverse.basis * local_direction
-		# Come forward (D-073), a card takes the ray down to its place too: it
-		# doesn't drop back under a ray it moved away from.
-		var bounds := card.bounds.merge(AABB(card.bounds.position + Vector3.FORWARD * card.lift, card.bounds.size)) if card.lift > 0.0 else card.bounds
-		var body := _box_distance(card_origin, card_direction, bounds, nearest)
+		var body := _box_distance(card_origin, card_direction, card.bounds, nearest)
 		if body >= 0:
 			nearest = body
 			proximity = INF

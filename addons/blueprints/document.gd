@@ -14,6 +14,10 @@ static var _editor_clients := 0
 
 ## The input view scopes this value with perform(); automatic refreshes do not record operations.
 var operation_source: StringName = &"desktop_graph"
+## Called with every state [method commit] records, before it is checked, to
+## add to the same edit: the headset makes each new reference a link with it
+## (D-077). Empty for none.
+var amend := Callable()
 
 var graph := XREBlueprintGraph.new()
 var path := ""
@@ -386,6 +390,7 @@ func set_parameter(id: int, key: String, value: Variant, edits: Dictionary = {})
 ## Records a complete graph change. Used for group dragging too.
 func commit(title: String, state: Dictionary) -> bool:
 	last_error = ""
+	if amend.is_valid(): amend.call(state)
 	var candidate := XREBlueprintGraph.new()
 	candidate.restore(state)
 	# A wire into an operator's operand: the other's literal takes its type (D-065).
