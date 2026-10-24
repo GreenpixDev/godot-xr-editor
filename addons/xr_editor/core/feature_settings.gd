@@ -103,9 +103,12 @@ const AXIS_SCALE := &"axis_scale"
 const AUTO := &"auto"
 ## By the stick, up finer and down coarser, the value kept; nothing speeds on.
 const STICK := &"stick"
-## Whether what a ray is on in the graph lights up (D-072): a card with its
-## ports, details, adapters and wires, or a variable's box with its wires.
+## Whether what a ray is on in the graph lights up (D-072) or comes forward
+## (D-073): a card with its ports, details, adapters and wires, or a
+## variable's box with its wires.
 const FOCUS := &"focus"
+## Toward the user, out of the graph's plane.
+const FRONT := &"front"
 ## What the rest of the graph becomes while a ray is on a card or a box (D-072).
 const DEFOCUS := &"defocus"
 ## Darker.
@@ -203,9 +206,9 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	FOCUS: {
 		"category": Category.FEATURES,
 		"title": "Focus",
-		"values": [OFF, ON],
-		"labels": ["Off", "On"],
-		"hint": "On: the card or variable under the ray lights up with its ports, details and wires; a port or a detail under the ray grows as well.",
+		"values": [OFF, ON, FRONT],
+		"labels": ["Off", "On", "Front"],
+		"hint": "On: the card or variable under the ray lights up with its ports, details and wires; a port or a detail under the ray grows as well. Front: it comes toward you, out of the graph, with its ports, details, adapters and wires.",
 	},
 	DEFOCUS: {
 		"category": Category.FEATURES,

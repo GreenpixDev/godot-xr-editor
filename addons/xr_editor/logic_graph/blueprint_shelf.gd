@@ -48,6 +48,8 @@ class Box:
 	## Its focus (D-072), a state of [XREBlueprintFocus], and how it is painted now: -1 not yet.
 	var focus := XREBlueprintFocus.NORMAL
 	var look := -1
+	## How far it stands out of its place toward the user (D-073).
+	var lift := 0.0
 
 var _boxes: Array[Box] = []
 var _hit := -1
@@ -170,7 +172,8 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		# See-through over an input in use, a box doesn't take the ray (D-067).
 		if box.faded: continue
 		var local_origin := origin - box.node.position
-		var body := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(-BOX_SIZE * 0.5, BOX_SIZE), nearest)
+		# Come forward (D-073), a box takes the ray down to its place too, as a card does.
+		var body := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(-BOX_SIZE * 0.5 + Vector3.FORWARD * box.lift, BOX_SIZE + Vector3.BACK * box.lift), nearest)
 		if body < 0: continue
 		nearest = body
 		_hit = index
@@ -247,6 +250,16 @@ func paint_box(index: int, state: int, paint_as: int, seen: float) -> void:
 	box.look = look
 	XREBlueprintFocus.paint(box.node, paint_as)
 	XREBlueprintFade.set_seen(box.node, &"focus", seen)
+
+
+## Brings box [param index] [param lift] toward the user out of its place
+## (D-073), 0 back to it. False if it already stands so.
+func raise_box(index: int, lift: float) -> bool:
+	var box := _boxes[index]
+	if lift == box.lift: return false
+	box.node.position.z += lift - box.lift
+	box.lift = lift
+	return true
 
 
 ## How the box of [param variable] is in focus, a state of [XREBlueprintFocus].

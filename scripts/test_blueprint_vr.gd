@@ -3172,8 +3172,9 @@ func _test_d072() -> void:
 	var history := _service.blueprint.history.get_version()
 	var saved_variables := features.get_value(XREFeatureSettings.VARIABLE_INPUT)
 	_check(XREFeatureSettings.get_default(XREFeatureSettings.FOCUS) == XREFeatureSettings.OFF and XREFeatureSettings.get_default(XREFeatureSettings.DEFOCUS) == XREFeatureSettings.OFF
-			and XREFeatureSettings.get_values(XREFeatureSettings.DEFOCUS).size() == 3 and XREFeatureSettings.get_values(XREFeatureSettings.DEFOCUS)[1] == XREFeatureSettings.DIM,
-			"Focus and Defocus are settings, off by default; Defocus is Off, Dim or Transparent")
+			and XREFeatureSettings.get_values(XREFeatureSettings.DEFOCUS).size() == 3 and XREFeatureSettings.get_values(XREFeatureSettings.DEFOCUS)[1] == XREFeatureSettings.DIM
+			and XREFeatureSettings.get_values(XREFeatureSettings.FOCUS) == [XREFeatureSettings.OFF, XREFeatureSettings.ON, XREFeatureSettings.FRONT],
+			"Focus and Defocus are settings, off by default; Focus is Off, On or Front (D-073), Defocus is Off, Dim or Transparent")
 
 	# Three cards to the right of all the others: a value wired into a delay, and a delay alone below.
 	var right := -INF
@@ -3265,7 +3266,32 @@ func _test_d072() -> void:
 	XREBlueprintFade.set_faded(_card(other).node, false)
 	_check(_card(other).mesh.transparency == 0.0, "and then it is as it was")
 
+	# Focus Front (D-073): the card under the ray comes toward the user with its ports and wires, not lit.
+	var port_place := canvas.port_position(waiter, seconds, true)
+	var wire_end := wire.mesh.get_point(wire.mesh.get_point_count() - 1)
+	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.FRONT)
+	await _frames()
+	var shown := canvas.get_block_position(waiter)
+	var front := _card(waiter).node.basis.z.normalized()
+	_check(canvas.focus_state(waiter) == XREBlueprintFocus.FOCUSED and is_equal_approx(shown.distance_to(places[waiter]), XREBlueprintCanvas.FRONT_LIFT)
+			and (shown - places[waiter]).normalized().dot(front) > 0.99 and _card(waiter).mesh.material_override == _card(waiter).normal, "with Front the card under the ray comes toward the user, not lit")
+	_check(canvas.port_position(waiter, seconds, true).distance_to(port_place) > XREBlueprintCanvas.FRONT_LIFT * 0.9 and wire.mesh.get_point(wire.mesh.get_point_count() - 1).distance_to(wire_end) > XREBlueprintCanvas.FRONT_LIFT * 0.9
+			and _card(feeder).node.position.is_equal_approx(places[feeder]), "its ports and its wire with it, the card at the far end in its place")
+	var across := _card(waiter).node.basis.x.normalized()
+	var gap := canvas.to_global(places[waiter] + front * XREBlueprintCanvas.FRONT_LIFT * 0.5 - across * (_card(waiter).width * 0.5 + 0.01))
+	_check(canvas.intersect_ray(gap, canvas.global_basis * across, 0.5) >= 0.0 and canvas.get_hit_id() == waiter, "it takes the ray down to its place: it doesn't drop back under a ray it left")
+	canvas.commit_move(_service.blueprint, waiter)
+	await _frames(2)
+	var block := graph.find_node(waiter)
+	_check(is_zero_approx(float(block.get("vr_depth", 0.0))) and canvas.position_from_block(block).is_equal_approx(places[waiter])
+			and is_equal_approx(canvas.get_block_position(waiter).distance_to(places[waiter]), XREBlueprintCanvas.FRONT_LIFT), "the graph keeps its place, not where it is shown")
+	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.OFF)
+	await _frames()
+	_check(canvas.get_block_position(waiter).is_equal_approx(places[waiter]) and canvas.port_position(waiter, seconds, true).is_equal_approx(port_place), "Focus off, it is back in its place")
+
 	# A variable's box: in focus with its wire; the Variable socket at its far end stays as it is.
+	# With Front it comes forward, as a card does (D-073).
+	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.FRONT)
 	features.set_value(XREFeatureSettings.DEFOCUS, XREFeatureSettings.DIM)
 	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
 	_service.blueprint.set_variable("focus_count", 0)
@@ -3282,6 +3308,7 @@ func _test_d072() -> void:
 	_aim_from(shelf.to_global(shelf.box_point("focus_count")) + Vector3.UP * 0.015, Vector3.BACK)
 	await _frames()
 	_check(shelf.box_focus("focus_count") == XREBlueprintFocus.FOCUSED and canvas.focus_state(getter) == XREBlueprintFocus.OUT, "the box under the ray is in focus, its card out of it")
+	_check(is_equal_approx(shelf.box_point("focus_count").z, XREBlueprintCanvas.FRONT_LIFT) and _card(getter).node.position.is_equal_approx(Vector3(right + 0.3, -0.35, 0.0)), "with Front the box comes forward, its card stays")
 	var socket := -1
 	for index: int in _card(getter).sockets.size():
 		if _card(getter).sockets[index].kind == XREBlueprintCanvas.VARIABLE: socket = index
@@ -3290,6 +3317,8 @@ func _test_d072() -> void:
 	_aim_from(_card(getter).node.global_position + _card(getter).node.global_basis.y.normalized() * 0.02, _card(getter).node.global_basis.z.normalized())
 	await _frames()
 	_check(canvas.focus_state(getter) == XREBlueprintFocus.FOCUSED and shelf.box_focus("focus_count") == XREBlueprintFocus.KEPT, "the ray on its card: the box at the far end of the wire stays as it is")
+	_check(is_zero_approx(shelf.box_point("focus_count").z) and is_equal_approx(_card(getter).node.position.distance_to(Vector3(right + 0.3, -0.35, 0.0)), XREBlueprintCanvas.FRONT_LIFT),
+			"and back in its place, the card forward")
 
 	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
 	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.OFF)
