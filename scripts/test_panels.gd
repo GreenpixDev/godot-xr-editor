@@ -126,6 +126,9 @@ var _operation_count := 0
 var _window_before: Vector3
 var _rig_before: Vector3
 var _hold_distance := 0.0
+## Clicks on the launcher's Playtest tile, and the windows open before them.
+var _playtests := 0
+var _window_count := 0
 
 
 func _initialize() -> void:
@@ -215,6 +218,10 @@ func _initialize() -> void:
 		_test_drag_scroll,
 		_drag_list,
 		_list_glided,
+		_launcher_for_playtest,
+		_aim_at_playtest,
+		_click_playtest,
+		_playtest_requested,
 		_finish,
 	]
 
@@ -398,6 +405,12 @@ func _show_launcher() -> void:
 		_check(tile != null and _launcher.get_tile_icon(type).texture != null and _launcher.get_tile_title(type) == tab.get_title(),
 				"the launcher has an icon titled %s" % tab.get_title())
 		tab.free()
+	var playtest := _launcher.get_playtest_tile()
+	_check(playtest != null and (playtest.find_child("Icon", true, false) as TextureRect).texture != null
+			and (playtest.find_child("Title", true, false) as Label).text == XRETabLauncher.PLAYTEST_TITLE,
+			"the launcher has a Playtest icon (D-082)")
+	_check(playtest != null and playtest.get_parent() == _launcher.get_tile(XREDebugTab).get_parent()
+			and playtest.get_index() == playtest.get_parent().get_child_count() - 1, "Playtest comes after the tabs")
 	var debug := _launcher.get_tile(XREDebugTab)
 	var scene := _launcher.get_tile(XRESceneTab)
 	_check(debug.get_global_rect().position.y > scene.get_global_rect().end.y
@@ -1403,6 +1416,30 @@ func _list_glided() -> void:
 	surface.pointer_button(false)
 	_check(not surface.is_scrolling() and is_equal_approx(bar.value, top), "a drag sideways doesn't scroll: it is a press and a mouse drag")
 	surface.queue_free()
+
+
+# The launcher's Playtest tile (D-082).
+
+func _launcher_for_playtest() -> void:
+	_panels.playtest_requested.connect(func() -> void: _playtests += 1)
+	_window_count = _panels.get_windows().size()
+	_left.set_input(&"menu_button", true)
+
+
+func _aim_at_playtest() -> void:
+	_check(_launcher.is_shown(), "Menu shows the launcher for Playtest")
+	_left.set_input(&"menu_button", false)
+	_aim(_launcher, _center(_launcher.get_playtest_tile()), 1.0)
+
+
+func _click_playtest() -> void:
+	_aim(_launcher, _center(_launcher.get_playtest_tile()), 0.0)
+
+
+func _playtest_requested() -> void:
+	_check(_playtests == 1, "a click on Playtest asks to play once: %d" % _playtests)
+	_check(not _panels.is_launcher_shown(), "and hides the launcher")
+	_check(_panels.get_windows().size() == _window_count, "Playtest opens no window")
 
 
 func _finish() -> void:

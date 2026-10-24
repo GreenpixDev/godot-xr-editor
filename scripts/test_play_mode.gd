@@ -176,6 +176,11 @@ func _initialize() -> void:
 		_covering_before_game,
 		_still_covering,
 		_game_starts_once_covered,
+		_playtest,
+		_playtest_wait_1,
+		_playtest_wait_2,
+		_playtest_wait_3,
+		_playtest_started,
 		_finish,
 	]
 
@@ -441,6 +446,35 @@ func _still_covering() -> void:
 func _game_starts_once_covered() -> void:
 	_check(_operations.size() == 7 and _operations[6] == "play TOOL",
 			"and starts after %d of them: %s" % [_play_mode.transition.frames_to_cover, _operations])
+
+
+# The launcher's Playtest tile does what Y does, as an operation from a panel (D-082).
+
+func _playtest() -> void:
+	_document.playing = false
+	_play_mode.request_play(XREDocument.Source.PANEL)
+	_check(_operations.size() == 7 and _play_mode.transition.is_covering() and _play_mode.is_playing_from_vr(),
+			"Playtest covers the view first, as Y does: %s" % [_operations])
+
+
+func _playtest_wait_1() -> void:
+	pass
+
+
+func _playtest_wait_2() -> void:
+	pass
+
+
+func _playtest_wait_3() -> void:
+	pass
+
+
+func _playtest_started() -> void:
+	_check(_operations.size() == 8 and _operations[7] == "play PANEL" and _document.playing,
+			"then plays the scene, from a panel: %s" % [_operations])
+	_play_mode.request_play(XREDocument.Source.PANEL)
+	_check(_operations.size() == 9 and _operations[8] == "stop PANEL" and not _document.playing,
+			"Playtest while the game runs stops it: %s" % [_operations])
 
 
 func _finish() -> void:

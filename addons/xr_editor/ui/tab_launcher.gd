@@ -8,10 +8,14 @@ extends XREPanelSurface
 ## page, and the time. [XREPanels] shows it in front of the user on its button (D-050), dims
 ## the scene behind it, and hides it again; a click on a tile asks for that
 ## tab's window ([signal tab_chosen]). The ray on a tile grows its icon.
-## The launcher is concave and fades in and out (D-043 — D-045).
+## The launcher is concave and fades in and out (D-043 — D-045). After the
+## tabs, the Playtest tile plays the edited scene, as the play button does
+## ([signal playtest_chosen], D-082).
 
 ## Emitted when the tile of the tab of class [param type] is clicked.
 signal tab_chosen(type: GDScript)
+## Emitted when the Playtest tile is clicked.
+signal playtest_chosen
 
 ## Layout at editor scale 1, in interface pixels: tiles in the long rows, a
 ## tile and the icon on it, the space between tiles and rows, the dock's
@@ -25,8 +29,12 @@ const MARGIN := 16.0
 ## How much the icon under the ray grows.
 const HOVER_SCALE := 1.12
 const DOCK_COLOR := Color(0.08, 0.09, 0.1, 0.94)
+## The Playtest tile's icon ([XRETabIcons]) and title.
+const PLAYTEST_SYMBOL := &"playtest"
+const PLAYTEST_TITLE := "Playtest"
 
 var _tiles: Dictionary[GDScript, Button] = {}
+var _playtest: Button
 var _clock: Label
 var _clock_usec := -1000000
 
@@ -42,19 +50,25 @@ func _init(types: Array[GDScript], tabs: Array[XREPanelTab], logical_size: Vecto
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_theme_constant_override(&"separation", roundi(SPACING * layout_scale))
 	root.add_child(column)
+	var tiles: Array[Button] = []
+	for index: int in types.size():
+		var tile := _make_tile(tabs[index].get_symbol(), tabs[index].get_title(), render_scale, layout_scale)
+		tile.pressed.connect(tab_chosen.emit.bind(types[index]))
+		tiles.append(tile)
+		_tiles[types[index]] = tile
+	_playtest = _make_tile(PLAYTEST_SYMBOL, PLAYTEST_TITLE, render_scale, layout_scale)
+	_playtest.pressed.connect(playtest_chosen.emit)
+	tiles.append(_playtest)
 	var row: HBoxContainer = null
 	var in_row := 0
-	for index: int in types.size():
+	for tile: Button in tiles:
 		if row == null or row.get_child_count() == in_row:
 			row = HBoxContainer.new()
 			row.alignment = BoxContainer.ALIGNMENT_CENTER
 			row.add_theme_constant_override(&"separation", roundi(SPACING * layout_scale))
 			column.add_child(row)
 			in_row = LONG_ROW if column.get_child_count() % 2 == 1 else LONG_ROW - 1
-		var tile := _make_tile(tabs[index], render_scale, layout_scale)
-		tile.pressed.connect(tab_chosen.emit.bind(types[index]))
 		row.add_child(tile)
-		_tiles[types[index]] = tile
 
 	var dock_row := CenterContainer.new()
 	column.add_child(dock_row)
@@ -85,10 +99,11 @@ func _init(types: Array[GDScript], tabs: Array[XREPanelTab], logical_size: Vecto
 	update_clock()
 
 
-## Size of a launcher of [param count] tiles at editor scale 1, in interface pixels.
+## Size of a launcher of [param count] tabs and the Playtest tile at editor
+## scale 1, in interface pixels.
 static func size_for(count: int) -> Vector2:
 	var rows := 0
-	var left := count
+	var left := count + 1
 	while left > 0:
 		left -= LONG_ROW if rows % 2 == 0 else LONG_ROW - 1
 		rows += 1
@@ -99,6 +114,11 @@ static func size_for(count: int) -> Vector2:
 ## The tile of the tab of class [param type], or null.
 func get_tile(type: GDScript) -> Button:
 	return _tiles.get(type)
+
+
+## The Playtest tile, after the tabs' tiles.
+func get_playtest_tile() -> Button:
+	return _playtest
 
 
 ## The title under the tile of the tab of class [param type].
@@ -120,9 +140,9 @@ func update_clock() -> void:
 	_clock.text = Time.get_time_string_from_system().left(5)
 
 
-func _make_tile(tab: XREPanelTab, render_scale: float, layout_scale: float) -> Button:
+func _make_tile(symbol: StringName, title_text: String, render_scale: float, layout_scale: float) -> Button:
 	var tile := Button.new()
-	tile.name = String(tab.get_symbol()).to_pascal_case()
+	tile.name = String(symbol).to_pascal_case()
 	tile.custom_minimum_size = TILE_SIZE * layout_scale
 	for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"focus", &"disabled"]:
 		tile.add_theme_stylebox_override(state, StyleBoxEmpty.new())
@@ -133,7 +153,7 @@ func _make_tile(tab: XREPanelTab, render_scale: float, layout_scale: float) -> B
 	tile.add_child(stack)
 	var icon := TextureRect.new()
 	icon.name = "Icon"
-	icon.texture = XRETabIcons.tab(tab.get_symbol(), roundi(ICON_SIZE * HOVER_SCALE * layout_scale * render_scale))
+	icon.texture = XRETabIcons.tab(symbol, roundi(ICON_SIZE * HOVER_SCALE * layout_scale * render_scale))
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.custom_minimum_size = Vector2.ONE * ICON_SIZE * layout_scale
@@ -143,7 +163,7 @@ func _make_tile(tab: XREPanelTab, render_scale: float, layout_scale: float) -> B
 	stack.add_child(icon)
 	var title := Label.new()
 	title.name = "Title"
-	title.text = tab.get_title()
+	title.text = title_text
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	title.add_theme_color_override(&"font_color", Color.WHITE)

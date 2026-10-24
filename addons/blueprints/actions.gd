@@ -370,7 +370,7 @@ func _library_actions(cls: String) -> Array[Dictionary]:
 
 ## Whether tags were written for Blueprints.
 static func _tagged(tags: Dictionary) -> bool:
-	return tags.has("name") or tags.has("category") or tags.has("target") or tags.has("then") or tags.has("pure")
+	return tags.has("name") or tags.has("category") or tags.has("target") or tags.has("then") or tags.has("pure") or not (tags.get("break", []) as Array).is_empty()
 
 
 ## Whether [param action]'s Target may be of class [param cls].

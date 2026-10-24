@@ -19,6 +19,8 @@ extends Node3D
 ## [br]- A tile of the launcher: open that tab's window in front of the user
 ## and hide the launcher. A tab has one window at most; if it has one
 ## already, it pulses where it is, or comes to the user from out of view.
+## [br]- The launcher's Playtest tile: hide the launcher and ask to play the
+## edited scene ([signal playtest_requested], D-082).
 ## [br]- Grip with the ray on a window or on its control bar, or trigger or
 ## grip on one of its corner handles (D-040): move it while the button is
 ## held. It keeps its distance from the hand and turns to face the head; the
@@ -43,6 +45,9 @@ extends Node3D
 ## [br][br]
 ## Lives under the [XRERig], with an identity transform, after the palette
 ## (it claims the right hand on its miniatures first) and before the manipulator.
+
+## Emitted when the launcher's Playtest tile is clicked: [XREPlayMode] plays the scene.
+signal playtest_requested
 
 ## Where a window pinned to a hand lies on the forearm, in the controller's
 ## aim space, tilted as the forearm panel was before D-028.
@@ -163,6 +168,7 @@ func _init(document: XREDocument, rig: XRERig, palette: XREPalette, theme: Theme
 	_launcher.set_overlay(true)
 	# Deferred: the click on the tile is still being handled.
 	_launcher.tab_chosen.connect(_on_tab_chosen, CONNECT_DEFERRED)
+	_launcher.playtest_chosen.connect(_on_playtest_chosen, CONNECT_DEFERRED)
 	add_child(_launcher)
 	_dimmer = XREBlueprints.create_dimmer(LAUNCHER_DIM)
 	_dimmer.name = "LauncherDimmer"
@@ -656,6 +662,11 @@ func _on_tab_chosen(type: GDScript) -> void:
 	open_window(type)
 	# As an app launcher closes when an app starts; X brings it back.
 	show_launcher(false)
+
+
+func _on_playtest_chosen() -> void:
+	show_launcher(false)
+	playtest_requested.emit()
 
 
 func _update_pointer(pointer: Pointer, delta: float) -> void:

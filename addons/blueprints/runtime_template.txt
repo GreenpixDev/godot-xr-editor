@@ -105,6 +105,13 @@ func _bp_result(run: XREBlueprintRun, block_id: int) -> Variant:
 	return run.values[block_id]
 
 
+# Component [param index] of a broken value (D-084): null stays null, its error already reported.
+func _bp_component(value: Variant, index: int) -> Variant:
+	if value == null:
+		return null
+	return value[index]
+
+
 func _bp_equal(a: Variant, b: Variant) -> bool:
 	if typeof(a) != typeof(b) and not (typeof(a) in [TYPE_INT, TYPE_FLOAT] and typeof(b) in [TYPE_INT, TYPE_FLOAT]):
 		return false

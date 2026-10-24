@@ -98,6 +98,8 @@ func _run() -> void:
 	await _test_demo()
 	_test_migration()
 	await _test_calls()
+	_test_makers_and_time()
+	_test_vectors()
 	_test_insert_block()
 	_test_actions()
 	_test_operators()
@@ -971,6 +973,108 @@ func _test_calls() -> void:
 	_check(not XREBlueprintFunctions.problem(unsupported).is_empty(), "a function with an unsupported argument explains why it can't be added")
 
 
+## Make Vector2, Make Vector3, Make Color and Get Time: pure library blocks.
+func _test_makers_and_time() -> void:
+	var graph := XREBlueprintGraph.new()
+	var blocks: Array[Dictionary] = []
+	for name: String in ["make_vector2", "make_vector3", "make_color", "get_time"]:
+		var block := XREBlueprintGraph.make_call(graph.nodes.size() + 1, XREBlueprintFunctions.static_function("XREBlueprintLibrary", name), Vector2.ZERO)
+		graph.nodes.append(block)
+		blocks.append(block)
+	_check(blocks.all(func(block: Dictionary) -> bool: return XREBlueprintGraph.is_pure(block)), "makers and Get Time have no execution ports")
+	_check(graph.ports(blocks[1], true).size() == 3 and graph.ports(blocks[1], false)[0][1] == XREBlueprintGraph.port_type(TYPE_VECTOR3), "Make Vector3 takes x, y, z and gives a Vector3")
+	_check(graph.ports(blocks[2], true).size() == 4 and graph.ports(blocks[2], false)[0][1] == XREBlueprintGraph.port_type(TYPE_COLOR), "Make Color takes r, g, b, a and gives a Color")
+	_check(graph.ports(blocks[3], true).is_empty() and graph.ports(blocks[3], false)[0][1] == XREBlueprintGraph.port_type(TYPE_FLOAT), "Get Time takes nothing and gives a number")
+	(blocks[0]["params"] as Dictionary).merge({"x": 1.5, "y": -2.0}, true)
+	(blocks[1]["params"] as Dictionary).merge({"x": 1.0, "y": 2.0}, true)
+	(blocks[2]["params"] as Dictionary).merge({"r": 0.25, "g": 0.5, "b": 0.75, "a": 0.5}, true)
+	_block(graph, "value", {"value": 3})
+	_wire(graph, 5, 2, 0, 2)
+	var instance := Node.new()
+	instance.set_script(_script(graph))
+	_check(instance.call("_bp_value1") == Vector2(1.5, -2.0), "Make Vector2 builds its vector")
+	_check(instance.call("_bp_value2") == Vector3(1.0, 2.0, 3.0), "Make Vector3 builds its vector; an integer wire widens to its float input")
+	_check(instance.call("_bp_value3") == Color(0.25, 0.5, 0.75, 0.5), "Make Color builds its color")
+	var first: Variant = instance.call("_bp_value4")
+	var second: Variant = instance.call("_bp_value4")
+	_check(first is float and float(first) > 0.0 and float(second) >= float(first), "Get Time gives seconds that don't go back")
+	instance.free()
+	var actions := XREBlueprintActions.new()
+	var ids := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.LIBRARY, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
+	_check(["make_vector2", "make_vector3", "make_color", "get_time"].all(func(name: String) -> bool: return ids.has("static:XREBlueprintLibrary." + name)), "the menu's Library offers the makers and Get Time")
+
+
+func _library_call(graph: XREBlueprintGraph, name: String, params: Dictionary = {}) -> int:
+	var id := graph.nodes.size() + 1
+	var block := XREBlueprintGraph.make_call(id, XREBlueprintFunctions.static_function("XREBlueprintLibrary", name), Vector2(id * 200, 80))
+	(block["params"] as Dictionary).merge(params, true)
+	graph.nodes.append(block)
+	return id
+
+
+## Vectors (D-084): their components through Break blocks, operators on
+## vectors, and the vector math of the library.
+func _test_vectors() -> void:
+	var graph := XREBlueprintGraph.new()
+	var make := _library_call(graph, "make_vector3", {"x": 1.0, "y": 2.0, "z": 3.0})
+	var split := _library_call(graph, "break_vector3")
+	_wire(graph, make, split)
+	var outputs := graph.ports(graph.find_node(split), false)
+	_check(XREBlueprintGraph.is_pure(graph.find_node(split)) and outputs.size() == 3 and outputs[0][0] == "X" and outputs[2][0] == "Z"
+			and outputs.all(func(port: Array) -> bool: return port[1] == XREBlueprintGraph.NUMBER), "Break Vector3 is pure and gives X, Y, Z as numbers")
+	var z_plus := _operator(graph, "add", {"b": 10.0})
+	_wire(graph, split, z_plus, 2, 0)
+	_check(graph.ports(graph.find_node(z_plus), false)[0][1] == XREBlueprintGraph.NUMBER, "a component adds to a number")
+	var other := _library_call(graph, "make_vector3", {"x": 4.0, "y": 5.0, "z": 6.0})
+	var sum := _operator(graph, "add")
+	_wire(graph, make, sum, 0, 0)
+	_wire(graph, other, sum, 0, 1)
+	_check(graph.ports(graph.find_node(sum), false)[0][1] == XREBlueprintGraph.VECTOR3, "Add of two Vector3 gives a Vector3")
+	var difference := _operator(graph, "subtract")
+	_wire(graph, other, difference, 0, 0)
+	_wire(graph, make, difference, 0, 1)
+	var scaled := _operator(graph, "multiply", {"b": 2.0})
+	_wire(graph, make, scaled, 0, 0)
+	var dot := _library_call(graph, "vector3_dot")
+	_wire(graph, make, dot, 0, 0)
+	_wire(graph, other, dot, 0, 1)
+	var cross := _library_call(graph, "vector3_cross", {"a": Vector3.RIGHT, "b": Vector3.UP})
+	var length := _library_call(graph, "vector3_length", {"vector": Vector3(3, 4, 0)})
+	var normal := _library_call(graph, "vector3_normalize", {"vector": Vector3(0, 0, 5)})
+	var distance := _library_call(graph, "vector3_distance")
+	_wire(graph, make, distance, 0, 0)
+	_wire(graph, other, distance, 0, 1)
+	var flat := _library_call(graph, "break_vector2", {"vector": Vector2(7, 8)})
+	var flat_y := _operator(graph, "negate")
+	_wire(graph, flat, flat_y, 1, 0)
+	var flat_length := _library_call(graph, "vector2_length", {"vector": Vector2(6, 8)})
+	var flat_dot := _library_call(graph, "vector2_dot", {"a": Vector2(1, 2), "b": Vector2(3, 4)})
+	var flat_normal := _library_call(graph, "vector2_normalize", {"vector": Vector2(0, -2)})
+	var flat_distance := _library_call(graph, "vector2_distance", {"a": Vector2.ZERO, "b": Vector2(3, 4)})
+	var tint := _library_call(graph, "break_color", {"color": Color(0.1, 0.2, 0.3, 0.4)})
+	var alpha := _operator(graph, "multiply", {"b": 10.0})
+	_wire(graph, tint, alpha, 3, 0)
+	_check(graph.validate().is_empty(), "a graph of vectors is valid: %s" % graph.validate())
+	var instance := Node.new()
+	instance.set_script(_script(graph))
+	var value := func(id: int) -> Variant: return instance.call("_bp_value%d" % id)
+	_check(is_equal_approx(float(value.call(z_plus)), 13.0), "Break Vector3 gives Z: %s" % value.call(z_plus))
+	_check(value.call(sum) == Vector3(5, 7, 9) and value.call(difference) == Vector3(3, 3, 3) and value.call(scaled) == Vector3(2, 4, 6), "vectors add, subtract and scale")
+	_check(is_equal_approx(float(value.call(dot)), 32.0) and value.call(cross) == Vector3.BACK, "Vector3 Dot and Cross")
+	_check(is_equal_approx(float(value.call(length)), 5.0) and value.call(normal) == Vector3.BACK, "Vector3 Length and Normalize")
+	_check(is_equal_approx(float(value.call(distance)), sqrt(27.0)), "Vector3 Distance")
+	_check(is_equal_approx(float(value.call(flat_y)), -8.0), "Break Vector2 gives Y")
+	_check(is_equal_approx(float(value.call(flat_length)), 10.0) and is_equal_approx(float(value.call(flat_dot)), 11.0)
+			and value.call(flat_normal) == Vector2.UP and is_equal_approx(float(value.call(flat_distance)), 5.0), "Vector2 Length, Dot, Normalize and Distance")
+	_check(is_equal_approx(float(value.call(alpha)), 4.0), "Break Color gives A")
+	instance.free()
+	var actions := XREBlueprintActions.new()
+	var ids := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.LIBRARY, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
+	_check(["break_vector2", "break_vector3", "break_color", "vector3_cross", "vector2_distance"].all(func(name: String) -> bool: return ids.has("static:XREBlueprintLibrary." + name)), "the menu's Library offers Break and vector math")
+	var pin := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.LIBRARY, "graph": graph, "pin": {"type": XREBlueprintGraph.VECTOR3, "output": true}}))
+	_check(pin.any(func(action: Dictionary) -> bool: return action["id"] == "static:XREBlueprintLibrary.break_vector3"), "a Vector3 wire let go offers Break Vector3")
+
+
 func _test_insert_block() -> void:
 	var doc := XREBlueprintDocument.new()
 	var print_block := XREBlueprintGraph.make_node(0, "print", Vector2.ZERO)
@@ -1135,7 +1239,7 @@ func _test_actions() -> void:
 			and not offered.any(func(action: Dictionary) -> bool: return action["id"] in ["variable:new:String", "variable:new:int"]),
 			"a wire from a number input offers a new variable of its type only, not even an int it takes (D-078, D-079)")
 	var any_value := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.NATIVE, "graph": doc.graph, "new_variables": true, "pin": {"type": XREBlueprintGraph.VALUE, "output": false, "value_types": [TYPE_VECTOR3]}}))
-	_check(any_value.filter(func(action: Dictionary) -> bool: return str(action["id"]).begins_with("variable:new:")).map(func(action: Dictionary) -> String: return action["id"]) == ["variable:new:Vector3"]
+	_check(any_value.filter(func(action: Dictionary) -> bool: return str(action["id"]).begins_with("variable:new:")).map(func(action: Dictionary) -> String: return str(action["id"])) == ["variable:new:Vector3"]
 			and not any_value.any(func(action: Dictionary) -> bool: return action["id"] == "variable:get:door_open"),
 			"an input of any value offers new and existing variables of the type the view says is in it (D-079)")
 	var host_chip := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.CONTEXT, "node": scene, "host": scene, "graph": doc.graph, "new_variables": true}))

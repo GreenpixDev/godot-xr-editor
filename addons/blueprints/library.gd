@@ -15,7 +15,8 @@ extends RefCounted
 ## [br]- [code]@bp_advanced[/code] [i]args[/i]: hidden until the block shows its advanced arguments;
 ## [br]- [code]@bp_positive[/code] [i]args[/i]: numbers that must be greater than zero;
 ## [br]- [code]@bp_non_negative[/code] [i]args[/i]: numbers that may be zero but not less;
-## [br]- [code]@bp_then[/code] [i]label[/i]: the name of the execution output; [code]@bp_pure[/code]: no execution ports.
+## [br]- [code]@bp_then[/code] [i]label[/i]: the name of the execution output; [code]@bp_pure[/code]: no execution ports;
+## [br]- [code]@bp_break[/code] [i]labels[/i]: a pure result split into its components, an output each, numbers (D-084).
 ## [br]A last argument of type [XREBlueprintRun] is the event's run, passed by
 ## the block. A static [code]_validate_<function>(target, args) -> String[/code]
 ## beside a function checks a block's settings in the editor; the error it
@@ -151,6 +152,151 @@ static func tween_property(target: Node, property: String = "position", value: V
 	run.tweens.erase(tween)
 	if tween.is_valid():
 		tween.kill()
+
+
+## A Vector2 from its components.
+## @bp_name Make Vector2
+## @bp_category Vector
+## @bp_keywords vector construct compose xy point size
+## @bp_pure
+static func make_vector2(x: float = 0.0, y: float = 0.0) -> Vector2:
+	return Vector2(x, y)
+
+
+## A Vector3 from its components.
+## @bp_name Make Vector3
+## @bp_category Vector
+## @bp_keywords vector construct compose xyz position direction
+## @bp_pure
+static func make_vector3(x: float = 0.0, y: float = 0.0, z: float = 0.0) -> Vector3:
+	return Vector3(x, y, z)
+
+
+## A color from its red, green, blue and alpha, each from 0 to 1.
+## @bp_name Make Color
+## @bp_category Color
+## @bp_keywords color colour construct compose rgb rgba tint
+## @bp_pure
+static func make_color(r: float = 1.0, g: float = 1.0, b: float = 1.0, a: float = 1.0) -> Color:
+	return Color(r, g, b, a)
+
+
+## The components of a Vector2.
+## @bp_name Break Vector2
+## @bp_category Vector
+## @bp_keywords vector split components get x y
+## @bp_break X Y
+static func break_vector2(vector: Vector2 = Vector2.ZERO) -> Vector2:
+	return vector
+
+
+## The components of a Vector3.
+## @bp_name Break Vector3
+## @bp_category Vector
+## @bp_keywords vector split components get x y z
+## @bp_break X Y Z
+static func break_vector3(vector: Vector3 = Vector3.ZERO) -> Vector3:
+	return vector
+
+
+## The red, green, blue and alpha of a color, each from 0 to 1.
+## @bp_name Break Color
+## @bp_category Color
+## @bp_keywords color colour split components get rgba red green blue alpha
+## @bp_break R G B A
+static func break_color(color: Color = Color.WHITE) -> Color:
+	return color
+
+
+## The length of a Vector2.
+## @bp_name Vector2 Length
+## @bp_category Vector
+## @bp_keywords vector magnitude size norm
+## @bp_pure
+static func vector2_length(vector: Vector2 = Vector2.ZERO) -> float:
+	return vector.length()
+
+
+## The length of a Vector3.
+## @bp_name Vector3 Length
+## @bp_category Vector
+## @bp_keywords vector magnitude size norm
+## @bp_pure
+static func vector3_length(vector: Vector3 = Vector3.ZERO) -> float:
+	return vector.length()
+
+
+## A Vector2 of length 1 in the direction of [param vector]; zero stays zero.
+## @bp_name Vector2 Normalize
+## @bp_category Vector
+## @bp_keywords vector normalized unit direction
+## @bp_pure
+static func vector2_normalize(vector: Vector2 = Vector2.ZERO) -> Vector2:
+	return vector.normalized()
+
+
+## A Vector3 of length 1 in the direction of [param vector]; zero stays zero.
+## @bp_name Vector3 Normalize
+## @bp_category Vector
+## @bp_keywords vector normalized unit direction
+## @bp_pure
+static func vector3_normalize(vector: Vector3 = Vector3.ZERO) -> Vector3:
+	return vector.normalized()
+
+
+## The dot product of two Vector2.
+## @bp_name Vector2 Dot
+## @bp_category Vector
+## @bp_keywords vector dot product scalar projection angle
+## @bp_pure
+static func vector2_dot(a: Vector2 = Vector2.ZERO, b: Vector2 = Vector2.ZERO) -> float:
+	return a.dot(b)
+
+
+## The dot product of two Vector3.
+## @bp_name Vector3 Dot
+## @bp_category Vector
+## @bp_keywords vector dot product scalar projection angle
+## @bp_pure
+static func vector3_dot(a: Vector3 = Vector3.ZERO, b: Vector3 = Vector3.ZERO) -> float:
+	return a.dot(b)
+
+
+## The cross product of two Vector3: perpendicular to both.
+## @bp_name Vector3 Cross
+## @bp_category Vector
+## @bp_keywords vector cross product perpendicular normal
+## @bp_pure
+static func vector3_cross(a: Vector3 = Vector3.ZERO, b: Vector3 = Vector3.ZERO) -> Vector3:
+	return a.cross(b)
+
+
+## The distance between two points as Vector2.
+## @bp_name Vector2 Distance
+## @bp_category Vector
+## @bp_keywords vector distance between points far
+## @bp_pure
+static func vector2_distance(a: Vector2 = Vector2.ZERO, b: Vector2 = Vector2.ZERO) -> float:
+	return a.distance_to(b)
+
+
+## The distance between two points as Vector3.
+## @bp_name Vector3 Distance
+## @bp_category Vector
+## @bp_keywords vector distance between points far
+## @bp_pure
+static func vector3_distance(a: Vector3 = Vector3.ZERO, b: Vector3 = Vector3.ZERO) -> float:
+	return a.distance_to(b)
+
+
+## Seconds of real time since the game started. Pause and
+## [member Engine.time_scale] don't slow it, unlike Delay.
+## @bp_name Get Time
+## @bp_category Time
+## @bp_keywords time seconds clock elapsed now ticks
+## @bp_pure
+static func get_time() -> float:
+	return Time.get_ticks_usec() / 1000000.0
 
 
 static func _validate_play_animation(target: Node, args: Dictionary) -> String:

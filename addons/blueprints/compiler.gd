@@ -160,6 +160,8 @@ static func _wired(graph: XREBlueprintGraph, block: Dictionary, port: int) -> St
 		if edge["to"] == block["id"] and edge["to_port"] == port:
 			var source := graph.find_node(edge["from"])
 			if source["kind"] == "signal": return "_bp_argument(run, %d, %d, %d)" % [edge["from"], edge["from_port"] - 1, block["id"]]
+			if source["kind"] == "call" and not ((source["function"] as Dictionary).get("break", []) as Array).is_empty():
+				return "_bp_component(_bp_value%d(run), %d)" % [edge["from"], edge["from_port"]]
 			return "_bp_value%d(run)" % edge["from"]
 	return ""
 

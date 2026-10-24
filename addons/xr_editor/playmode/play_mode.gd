@@ -18,6 +18,8 @@ extends Node
 ## editor asks for a new session as soon as the game's process is gone.
 ## [br]- Y in the editor while a game runs: stop the game. This is the way
 ## back from a game that runs without taking the headset.
+## [br]- The launcher's Playtest tile does what Y does in the editor
+## ([method request_play], D-082); the operation's source is then the panel.
 ## [br][br]
 ## On a standalone headset the game replaces the editor's process (D-018).
 ## Before it starts, the editor leaves the edited scene and the rig's transform
@@ -85,6 +87,8 @@ var _rig: XRERig
 var _message: Label3D
 var _message_until_usec := 0
 var _state := _State.IDLE
+## Who asked for the game that starts or runs: Y, or a panel's Playtest.
+var _source := XREDocument.Source.TOOL
 var _focused := false
 ## The button was seen up while the editor had the headset.
 var _armed := false
@@ -154,6 +158,7 @@ func _process(_delta: float) -> void:
 		_armed = true
 	elif _armed:
 		_armed = false
+		_source = XREDocument.Source.TOOL
 		_on_button_pressed(now)
 
 	if _state == _State.COVERING and transition.is_covered():
@@ -215,6 +220,14 @@ func is_playing_from_vr() -> bool:
 	return _state != _State.IDLE
 
 
+## Plays the edited scene, or stops the game that runs, as Y does in the
+## editor; [param source] names who asked, as the operation's source. For the
+## launcher's Playtest tile (D-082).
+func request_play(source: XREDocument.Source) -> void:
+	_source = source
+	_on_button_pressed(Time.get_ticks_usec())
+
+
 ## The short message in front of the user, or an empty string if none is
 ## shown. The loading screen has its own text: [member transition].
 func get_message() -> String:
@@ -223,7 +236,7 @@ func get_message() -> String:
 
 func _on_button_pressed(now: int) -> void:
 	if _document.is_playing():
-		_document.stop_playing(XREDocument.Source.TOOL)
+		_document.stop_playing(_source)
 		_state = _State.IDLE
 		_show("Game stopped.")
 		return
@@ -262,7 +275,7 @@ func _start_game(now: int) -> void:
 	_state = _State.STARTING
 	_play_usec = now
 	_in_play_call = true
-	var error := _document.play(XREDocument.Source.TOOL, separate)
+	var error := _document.play(_source, separate)
 	_in_play_call = false
 	if separate:
 		# Comes back in _take_headset_back(), right away if the game didn't start.
@@ -296,7 +309,7 @@ func _play_replacing_editor(now: int) -> void:
 	_state = _State.STARTING
 	_play_usec = now
 	_in_play_call = true
-	var error := _document.play(XREDocument.Source.TOOL, true)
+	var error := _document.play(_source, true)
 	_in_play_call = false
 	if error != OK:
 		_state = _State.IDLE

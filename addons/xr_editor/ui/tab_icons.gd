@@ -49,6 +49,9 @@ stroke-linecap="round"/>"""],
 M83.8 83.8L89.5 89.5M44.2 44.2L38.5 38.5"/></g>"""],
 	&"debug": ["#ff7a85", "#d93a4f", """<path d="M20 68H42L52 44L66 92L78 56L86 68H108" fill="none" stroke="#fff"
 stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>"""],
+	# The launcher's Playtest tile (D-082): a play triangle, rounded as the other glyphs.
+	&"playtest": ["#7be07b", "#2f9e4a", """<path d="M50 36Q44 32 44 40V88Q44 96 50 92L90 68Q96 64 90 60Z" fill="#fff"
+stroke="#fff" stroke-width="6" stroke-linejoin="round"/>"""],
 }
 ## Glyphs for buttons: the launcher's library, a window, a pin, close.
 const GLYPHS: Dictionary[StringName, String] = {

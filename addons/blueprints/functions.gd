@@ -15,7 +15,8 @@ extends RefCounted
 ## [code]description[/code], [code]keywords[/code], [code]args[/code],
 ## [code]return[/code] (a Variant type, TYPE_NIL for none or Variant) and
 ## [code]returns[/code] (whether there is a result), [code]return_class[/code],
-## [code]pure[/code] (no execution ports), [code]awaits[/code] (a script
+## [code]pure[/code] (no execution ports), [code]break[/code] (labels of
+## the outputs a pure result is split into, D-084), [code]awaits[/code] (a script
 ## function, possibly a coroutine), [code]vararg[/code] with [code]extra[/code]
 ## arguments, [code]then[/code] (the execution output's label),
 ## [code]targets[/code] (classes the Target may be), [code]script[/code] and
@@ -179,13 +180,13 @@ static func global_script(global_name: String) -> Script:
 ## [code]target[/code], [code]target_types[/code], [code]literal[/code],
 ## [code]advanced[/code], [code]positive[/code], [code]non_negative[/code], [code]providers[/code],
 ## [code]type_of[/code], [code]then[/code], [code]pure[/code], [code]hide[/code],
-## and [code]coroutine[/code] if its body awaits.
+## [code]break[/code], and [code]coroutine[/code] if its body awaits.
 static func script_tags(script: Script, name: String) -> Dictionary:
 	var key := script.resource_path + ":" + name
 	var source := script.source_code
 	if _tag_cache.has(key) and _tag_cache[key].get("_source_size", -1) == source.length():
 		return _tag_cache[key]
-	var tags := {"_source_size": source.length(), "literal": [], "advanced": [], "positive": [], "non_negative": [], "target_types": [], "providers": {}, "type_of": {}}
+	var tags := {"_source_size": source.length(), "literal": [], "advanced": [], "positive": [], "non_negative": [], "target_types": [], "break": [], "providers": {}, "type_of": {}}
 	var lines := source.split("\n")
 	for index: int in lines.size():
 		var line := lines[index].strip_edges()
@@ -211,7 +212,7 @@ static func script_tags(script: Script, name: String) -> Dictionary:
 				"target":
 					if not rest.is_empty():
 						tags["target"] = rest[0]
-				"literal", "advanced", "positive", "non_negative", "target_types":
+				"literal", "advanced", "positive", "non_negative", "target_types", "break":
 					(tags[tag] as Array).append_array(Array(rest))
 				"provider":
 					if rest.size() >= 2:
@@ -298,6 +299,11 @@ static func _complete(signature: Dictionary, info: Dictionary, tags: Dictionary)
 	signature["extra"] = extra
 	signature["then"] = tags.get("then", "Then")
 	signature["advanced_shown"] = false
+	# A broken result is read component by component: the function is pure.
+	var broken: Array = tags.get("break", [])
+	if not broken.is_empty() and signature["returns"]:
+		signature["break"] = broken.duplicate()
+		signature["pure"] = true
 	if not signature["returns"]: signature["pure"] = false
 	if tags.get("hide", false): signature["hidden"] = true
 	return signature
@@ -388,6 +394,9 @@ static func ports(signature: Dictionary, property_type: int) -> Array:
 	for index: int in int(signature.get("extra", 0)):
 		inputs.append([title_of(extra_key(index)), XREBlueprintGraph.VALUE, extra_key(index)])
 	inputs.append_array(advanced)
-	if signature.get("returns", false):
+	var broken: Array = signature.get("break", [])
+	for label: Variant in broken:
+		outputs.append([str(label), XREBlueprintGraph.NUMBER])
+	if signature.get("returns", false) and broken.is_empty():
 		outputs.append(["Result", XREBlueprintGraph.port_type(int(signature["return"]))])
 	return [inputs, outputs]

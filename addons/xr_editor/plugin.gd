@@ -120,6 +120,7 @@ func _add_tools(rig: XRERig) -> void:
 	_play_mode = XREPlayMode.new(document, _session, rig)
 	_play_mode.name = "XREPlayMode"
 	rig.add_child(_play_mode)
+	_panels.playtest_requested.connect(_play_mode.request_play.bind(XREDocument.Source.PANEL))
 
 
 func _exit_tree() -> void:
