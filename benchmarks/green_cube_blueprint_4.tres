@@ -213,7 +213,8 @@ nodes = Array[Dictionary]([{
 },
 "position": Vector2(304.58844, 405.68085),
 "vr_depth": 0.85105735,
-"vr_inline": true
+"vr_inline": true,
+"vr_links": ["variable"]
 }])
 edges = Array[Dictionary]([{
 "from": 1,
@@ -256,11 +257,6 @@ edges = Array[Dictionary]([{
 "to": 10,
 "to_port": 1
 }, {
-"from": 12,
-"from_port": 0,
-"to": 11,
-"to_port": 1
-}, {
 "from": 10,
 "from_port": 0,
 "to": 7,
@@ -275,6 +271,11 @@ edges = Array[Dictionary]([{
 "from_port": 1,
 "to": 3,
 "to_port": 0
+}, {
+"from": 12,
+"from_port": 0,
+"to": 11,
+"to_port": 1
 }])
 variables = Array[Dictionary]([{
 "name": "test",
