@@ -1,6 +1,6 @@
 # Подводные камни OpenXR, Quest, SteamVR и Windows
 
-Вынесено из AGENTS.md. Читать при работе с XR-сессией, нативной частью, автономным шлемом, play-mode и панелями в шлеме. Общие подводные камни Godot 4.7 остались в AGENTS.md.
+Вынесено из CLAUDE.md. Читать при работе с XR-сессией, нативной частью, автономным шлемом, play-mode и панелями в шлеме. Общие подводные камни Godot 4.7 остались в CLAUDE.md.
 
 - **OpenXR в редакторе** (по исходникам 4.7.2, `modules/openxr`, и логам запусков на Quest 2 по Link 2026-10-05; контроль — обычная XR-игра на том же 4.7.2 — работает):
   - Godot рассчитывает на один `xrWaitFrame` (`XRServer::_process`) на одну отрисовку (`xrBeginFrame`/`xrEndFrame` внутри `RenderingServer::draw()`) в каждой итерации главного цикла. Редактор это нарушает дважды: low-processor mode пропускает отрисовку, а окна прогресса (`ProgressDialog::_update_ui`, при старте — «Project initialization») и ещё несколько мест вызывают `Main::iteration()` изнутри итерации. Вложенный `xrWaitFrame` приходит до начала внешнего кадра; рантайм Meta ждёт ~30 с, отвечает `XR_ERROR_RUNTIME_FAILURE` и теряет сессию. Нативный `XREEditorFrameLoop` выключает low-processor mode после каждого ожидания и перед каждым ожиданием дорисовывает неначатый кадр через `RenderingServer.force_draw()`; после этого движок печатает безвредные `CALL_ORDER_INVALID` внешней отрисовки. GDScript возвращает low-processor mode только после конца сессии;

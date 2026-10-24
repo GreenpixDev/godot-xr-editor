@@ -1,6 +1,6 @@
 # Замеры кадра
 
-Вынесено из AGENTS.md.
+Вынесено из CLAUDE.md.
 
 Замер кадра (Link на 90 Гц): `godot --path . --editor --xr-mode on --log-file logs/xr_bench.log res://benchmarks/empty.tscn -- --xre-benchmark` → надеть шлем; замер ждёт состояния FOCUSED, идёт ~4 мин (сегменты ABBA: UI открыт / скрыт / скрыт / открыт) и сам закрывает редактор. Меню и диалоги редактора во время замера не трогать: это отдельные окна, они сбивают темп кадров. Тот же замер есть в Project → Tools (в русском интерфейсе — Проект → Инструменты) → «XR Editor: Measure Frame Time», без автозакрытия. Результаты — в `benchmarks/results/`. Метрики и их смысл — в `gdextension/src/frame_timer.h` и в docstring `frametime_report.py`.
 
