@@ -112,7 +112,8 @@ nodes = Array[Dictionary]([{
 },
 "position": Vector2(214.84705, 288.206),
 "vr_depth": 0.2524506,
-"vr_inline": true
+"vr_inline": true,
+"vr_links": ["variable"]
 }, {
 "function": {
 "advanced_shown": false,
@@ -156,7 +157,8 @@ nodes = Array[Dictionary]([{
 "target": "."
 },
 "position": Vector2(700.1491, 324.1491),
-"vr_depth": 0.5666662
+"vr_depth": 0.5666662,
+"vr_links": ["target"]
 }, {
 "id": 7,
 "kind": "set_variable",
