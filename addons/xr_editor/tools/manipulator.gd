@@ -26,9 +26,10 @@ extends Node
 ## hand lets go, the other holds on at its own point, so a node can be passed
 ## from hand to hand.
 ## [br]- Trigger of a holding hand: inverts snapping, like Ctrl on the desktop.
-## [br]- A on the right controller: delete the selection, as Delete on the
-## desktop, without asking. A node being held is put back first, so that
-## undo brings it back where the grab found it.
+## [br]- The delete action (X on the left controller, D-087): delete the
+## selection, as Delete on the desktop, without asking; A undoes it
+## ([XREUndo]). A node being held is put back first, so that undo brings it
+## back where the grab found it.
 ## [br][br]
 ## A hand another tool has claimed ([method XREHand.claim]), like the right
 ## hand touching the [XREPalette] or pointing at a panel ([XREPanels]), is left

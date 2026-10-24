@@ -124,6 +124,9 @@ var _trigger: Area3D
 var _left_aim := Transform3D(Basis.IDENTITY, Vector3(-0.2, -0.3, -0.3))
 var _operation_count := 0
 var _window_before: Vector3
+## Where the windows were before a history check (D-087), and where the FileSystem window was.
+var _layout_before: Dictionary = {}
+var _files_transform := Transform3D.IDENTITY
 var _rig_before: Vector3
 var _hold_distance := 0.0
 ## Clicks on the launcher's Playtest tile, and the windows open before them.
@@ -222,6 +225,18 @@ func _initialize() -> void:
 		_aim_at_playtest,
 		_click_playtest,
 		_playtest_requested,
+		_test_window_history,
+		_launcher_in_history,
+		_open_from_launcher,
+		_undo_open_window,
+		_close_by_x,
+		_closed_by_x,
+		_pin_files,
+		_undo_pin,
+		_take_files,
+		_carry_files,
+		_files_carried,
+		_files_moved,
 		_finish,
 	]
 
@@ -948,25 +963,31 @@ func _test_controls_store(path: String) -> void:
 			"the runtime picks the layout")
 	store.runtime_layout = XREFeatureSettings.STEAMVR
 	_check(store.get_layout() == XREFeatureSettings.STEAMVR, "the runtime's layout is in use until one is picked")
-	_check(store.get_binding(delete) == &"right_a" and store.get_binding(XREFeatureSettings.PLAY) == &"left_y"
-			and store.get_binding(XREFeatureSettings.LAUNCHER) == &"left_x" and store.get_binding(XREFeatureSettings.SPEED) == &"left_stick",
-			"SteamVR binds the buttons the tools had: its dashboard has the left Menu")
+	_check(store.get_binding(delete) == &"left_x" and store.get_binding(XREFeatureSettings.PLAY) == &"left_y"
+			and store.get_binding(XREFeatureSettings.LAUNCHER) == &"right_stick" and store.get_binding(XREFeatureSettings.SPEED) == &"left_stick",
+			"SteamVR's dashboard has the left Menu, and X deletes: the launcher is on the right stick (D-087)")
+	_check(store.get_binding(XREFeatureSettings.UNDO) == &"right_a" and store.get_binding(XREFeatureSettings.REDO) == &"right_b"
+			and XREFeatureSettings.preset_binding(XREFeatureSettings.HORIZON_LINK, XREFeatureSettings.UNDO) == &"right_a"
+			and XREFeatureSettings.preset_binding(XREFeatureSettings.HORIZON_OS, XREFeatureSettings.REDO) == &"right_b"
+			and XREFeatureSettings.preset_binding(XREFeatureSettings.NON_VR, XREFeatureSettings.DELETE) == &"left_x",
+			"every preset undoes by A, redoes by B and deletes by X")
 	_check(XREFeatureSettings.preset_binding(XREFeatureSettings.HORIZON_LINK, XREFeatureSettings.LAUNCHER) == &"left_menu"
 			and XREFeatureSettings.preset_binding(XREFeatureSettings.HORIZON_OS, XREFeatureSettings.LAUNCHER) == &"left_menu",
 			"Meta's runtimes open the launcher with the left Menu")
 	var events: Array[StringName] = []
 	store.changed.connect(func(key: StringName) -> void: events.append(key))
-	_check(not store.set_binding(delete, &"right_a") and not store.set_binding(delete, &"no_such_button")
+	_check(not store.set_binding(delete, &"left_x") and not store.set_binding(delete, &"no_such_button")
 			and not store.set_binding(&"no_such_action", &"right_b") and not store.set_layout(&"no_such_layout"),
 			"unknown names and the binding in use are refused")
 	_check(store.set_binding(delete, &"right_b") and events == [XREFeatureSettings.CONTROLS], "a new binding is set and announced")
 	_check(store.get_layout() == XREFeatureSettings.CUSTOM, "rebinding in a preset switches to the custom layout")
 	_check(store.get_binding(delete) == &"right_b" and store.get_binding(XREFeatureSettings.PLAY) == &"left_y"
-			and store.get_binding(XREFeatureSettings.LAUNCHER) == &"left_x" and store.get_binding(XREFeatureSettings.SPEED) == &"left_stick",
-			"the other bindings carry over to the custom layout")
+			and store.get_binding(XREFeatureSettings.LAUNCHER) == &"right_stick" and store.get_binding(XREFeatureSettings.SPEED) == &"left_stick"
+			and store.get_binding(XREFeatureSettings.UNDO) == &"right_a" and store.get_binding(XREFeatureSettings.REDO) == &"left_x",
+			"the other bindings carry over to the custom layout, redo to the button delete gave up")
 	_check(store.set_binding(XREFeatureSettings.PLAY, &"right_b") and store.get_binding(XREFeatureSettings.PLAY) == &"right_b"
 			and store.get_binding(delete) == &"left_y", "a button another action had goes to the one given up")
-	_check(store.set_layout(XREFeatureSettings.HORIZON_OS) and store.get_binding(delete) == &"right_a"
+	_check(store.set_layout(XREFeatureSettings.HORIZON_OS) and store.get_binding(delete) == &"left_x"
 			and store.get_binding(XREFeatureSettings.PLAY) == &"left_y" and store.get_binding(XREFeatureSettings.LAUNCHER) == &"left_menu",
 			"a preset has its own bindings")
 	_check(store.set_layout(XREFeatureSettings.CUSTOM) and store.get_binding(delete) == &"left_y"
@@ -979,7 +1000,7 @@ func _test_controls_store(path: String) -> void:
 	var fresh := XREFeatureSettings.new(path)
 	fresh.runtime_layout = XREFeatureSettings.HORIZON_OS
 	_check(fresh.get_layout() == XREFeatureSettings.HORIZON_OS and fresh.set_layout(XREFeatureSettings.CUSTOM)
-			and fresh.get_binding(delete) == &"right_a", "custom starts as a copy of the layout in use")
+			and fresh.get_binding(delete) == &"left_x", "custom starts as a copy of the layout in use")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	_check(XREFeatureSettings.button_hand(&"right_b") == &"right_hand" and XREFeatureSettings.button_input(&"left_stick") == &"primary_click"
 			and XREFeatureSettings.button_label(&"left_y") == "Left Y", "a button knows its hand, input and name")
@@ -1062,13 +1083,13 @@ func _controls_page() -> void:
 	var row := tab.get_binding_button(delete).get_parent()
 	_check(row.get_child(0) is Label and (row.get_child(0) as Label).text == XREFeatureSettings.ACTION_TITLES[delete]
 			and row.get_child(1) == tab.get_binding_button(delete), "an action's name is on the left, its binding on the right")
-	_check(tab.get_binding_glyph(delete) == &"right_a" and tab.get_binding_text(delete) == "Right A",
+	_check(tab.get_binding_glyph(delete) == &"left_x" and tab.get_binding_text(delete) == "Left X",
 			"the binding shows the button's icon and name")
 	_operation_count = _operations.size()
 	tab.get_binding_button(delete).pressed.emit()
 	_check(tab.get_capturing() == delete and tab.get_binding_text(delete) == XRESettingsTab.PRESS_TEXT
 			and tab.get_binding_glyph(delete) == &"", "a click on the binding waits for a button")
-	_check(_operations.size() == _operation_count and features.get_binding(delete) == &"right_a", "waiting changes nothing yet")
+	_check(_operations.size() == _operation_count and features.get_binding(delete) == &"left_x", "waiting changes nothing yet")
 	_right.set_input(&"by_button", true)
 
 
@@ -1098,7 +1119,7 @@ func _controls_page_released() -> void:
 	_check(tab.get_capturing() == &"" and tab.get_binding_text(XREFeatureSettings.SPEED) == "Left stick click",
 			"a second click stops waiting")
 	tab.get_layout_button(XREFeatureSettings.STEAMVR).pressed.emit()
-	_check(features.get_binding(delete) == &"right_a" and _operations.back() == "set_layout PANEL []", "a click on a preset picks it, as one operation")
+	_check(features.get_binding(delete) == &"left_x" and _operations.back() == "set_layout PANEL []", "a click on a preset picks it, as one operation")
 	features.set_layout(XREFeatureSettings.HORIZON_LINK)
 	_settings_tab().select_page(XREFeatureSettings.Category.FEATURES)
 
@@ -1239,12 +1260,12 @@ func _objects_ray_on_window() -> void:
 func _objects_box_taken() -> void:
 	_check(_palette.get_held() is CSGBox3D and _panels.get_held_window(_rig.right_hand) == null,
 			"grip on a miniature in front of its window takes the thing out, not the window")
-	_right.set_input(&"ax_button", true)
+	_left.set_input(&"ax_button", true)
 
 
 func _objects_closed() -> void:
-	_check(_palette.get_held() == null, "A throws it away")
-	_right.set_input(&"ax_button", false)
+	_check(_palette.get_held() == null, "X throws it away")
+	_left.set_input(&"ax_button", false)
 	_pose(_right, _rig.right_hand.global_transform, 0.0, 0.0)
 	_panels.call("_close_window", _panels.find_window(XREObjectsTab))
 	_check(_palette.get("_host") == null, "closing the window takes the miniatures away")
@@ -1440,6 +1461,113 @@ func _playtest_requested() -> void:
 	_check(_playtests == 1, "a click on Playtest asks to play once: %d" % _playtests)
 	_check(not _panels.is_launcher_shown(), "and hides the launcher")
 	_check(_panels.get_windows().size() == _window_count, "Playtest opens no window")
+
+
+# D-087: the launcher shown and windows opened, closed by ×, pinned and moved are undone and redone.
+
+func _files_window() -> XREPanelWindow:
+	return _panels.find_window(XREFileSystemTab)
+
+
+## Every window's transform and pin, as the panels keep them for undo.
+func _layout() -> Dictionary:
+	return _panels.call("_layout")
+
+
+## Whether every window of [param before] but [param skip]'s is where it was.
+func _same_layout(before: Dictionary, skip: Script = null) -> bool:
+	var now := _layout()
+	for type: Variant in before:
+		if type == skip:
+			continue
+		if not now.has(type):
+			return false
+		var was: Dictionary = before[type]
+		var is_now: Dictionary = now[type]
+		if was["pin"] != is_now["pin"] or (was["pin"] == XREPanelWindow.Pin.WINDOW and not (was["transform"] as Transform3D).is_equal_approx(is_now["transform"])):
+			return false
+	return true
+
+
+func _test_window_history() -> void:
+	_pose(_right, Transform3D(Basis.IDENTITY, Vector3(0.2, -0.3, -0.3)), 0.0, 0.0)
+	_pose(_left, _left_aim, 0.0, 0.0)
+	if _files_window() != null:
+		_panels.call("_close_window", _files_window())
+	_document.history.clear()
+	_left.set_input(&"menu_button", true)
+
+
+func _launcher_in_history() -> void:
+	_left.set_input(&"menu_button", false)
+	_check(_panels.is_launcher_shown() and _document.history.get_undo_name() == "Launcher",
+			"the launcher shown is a step: %s" % _document.history.get_undo_name())
+	_check(_document.undo(XREDocument.Source.TOOL) and not _panels.is_launcher_shown(), "undo hides it")
+	_check(_document.redo(XREDocument.Source.TOOL) and _panels.is_launcher_shown(), "redo shows it again")
+
+
+func _open_from_launcher() -> void:
+	_layout_before = _layout()
+	_panels.call("_on_tab_chosen", XREFileSystemTab)
+	var window := _files_window()
+	_check(window != null and not _panels.is_launcher_shown(), "a tab chosen opens its window and hides the launcher")
+	_check(_document.history.get_undo_name() == "Open %s" % window.tab.get_title(), "opening is a step: %s" % _document.history.get_undo_name())
+	_files_transform = window.transform
+
+
+func _undo_open_window() -> void:
+	_check(_document.undo(XREDocument.Source.TOOL) and _files_window() == null, "undo closes the window opened")
+	_check(_same_layout(_layout_before), "and puts back the windows that made room for it")
+	_check(not _document.undo(XREDocument.Source.TOOL) and not _panels.is_launcher_shown(),
+			"the launcher, hidden by the tile, isn't shown again: its step is dropped, and there is nothing left")
+	_check(_document.redo(XREDocument.Source.TOOL) and _files_window() != null and _files_window().transform.is_equal_approx(_files_transform),
+			"redo opens the window again where it was")
+
+
+func _close_by_x() -> void:
+	_files_window().close_requested.emit()
+
+
+func _closed_by_x() -> void:
+	_check(_files_window() == null and _document.history.get_undo_name().begins_with("Close "),
+			"× closes the window as a step: %s" % _document.history.get_undo_name())
+	_check(_document.undo(XREDocument.Source.TOOL) and _files_window() != null and _files_window().transform.is_equal_approx(_files_transform)
+			and not _files_window().is_pinned(), "undo opens it again where it was")
+
+
+func _pin_files() -> void:
+	_layout_before = _layout()
+	_panels.call("_pin_by_user", _files_window(), XREPanelWindow.Pin.RIGHT_HAND)
+	_check(_files_window().pin == XREPanelWindow.Pin.RIGHT_HAND and _document.history.get_undo_name().begins_with("Pin "),
+			"pinning is a step: %s" % _document.history.get_undo_name())
+
+
+func _undo_pin() -> void:
+	_check(_document.undo(XREDocument.Source.TOOL) and not _files_window().is_pinned() and _files_window().transform.is_equal_approx(_files_transform),
+			"undo makes it a window again where it was")
+	_check(_same_layout(_layout_before), "and the window pinned there before goes back to the forearm")
+
+
+func _take_files() -> void:
+	var window := _files_window()
+	window.stop_pulse()
+	_aim(window, window.size_px * 0.5, 0.0, 1.0)
+
+
+func _carry_files() -> void:
+	_check(_panels.get_held_window(_rig.right_hand) == _files_window(), "grip on the window takes it")
+	_pose(_right, _rig.right_hand.global_transform.translated(Vector3(0.3, 0.1, 0.0)), 0.0, 1.0)
+
+
+func _files_carried() -> void:
+	_pose(_right, _rig.right_hand.global_transform, 0.0, 0.0)
+
+
+func _files_moved() -> void:
+	_check(not _files_window().transform.is_equal_approx(_files_transform) and _document.history.get_undo_name().begins_with("Move "),
+			"a window moved is a step: %s" % _document.history.get_undo_name())
+	_check(_document.undo(XREDocument.Source.TOOL) and _files_window().transform.is_equal_approx(_files_transform), "undo puts it back")
+	_panels.call("_close_window", _files_window())
 
 
 func _finish() -> void:

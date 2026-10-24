@@ -139,6 +139,10 @@ const ALWAYS := &"always"
 ## drawn as before and the bends a graph has are kept but not shown; on, a
 ## wire goes through its bends, and trigger or grip on it adds and drags them.
 const WIRE_BENDS := &"wire_bends"
+## Whether undo in the headset ([XREHistory], D-087) puts back the selection
+## of scene objects too, a step of its own each time it changes, as Blender's
+## does; off, it doesn't, as the desktop editor's Ctrl+Z doesn't.
+const UNDO_SELECTION := &"undo_selection"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076),
@@ -270,6 +274,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"labels": ["Off", "On"],
 		"hint": "On: trigger or grip on a wire drags a bend out of it, on a knot moves the bend; Delete on a knot removes it.",
 	},
+	UNDO_SELECTION: {
+		"category": Category.FEATURES,
+		"title": "Undo selection",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: undo puts back what was selected too, a step of its own each time the selection changes. Off: selecting isn't undone, as on the desktop.",
+	},
 }
 
 ## Key [signal changed] carries when the controls layout or a binding changed.
@@ -294,10 +305,15 @@ const DELETE := &"delete"
 const LAUNCHER := &"launcher"
 const PLAY := &"play"
 const SPEED := &"speed"
-const ACTIONS: Array[StringName] = [LAUNCHER, PLAY, DELETE, SPEED]
+## Undo and redo in the headset ([XREUndo], D-087).
+const UNDO := &"undo"
+const REDO := &"redo"
+const ACTIONS: Array[StringName] = [LAUNCHER, PLAY, UNDO, REDO, DELETE, SPEED]
 const ACTION_TITLES: Dictionary[StringName, String] = {
 	LAUNCHER: "Open the launcher",
 	PLAY: "Play / stop (hold in game: back)",
+	UNDO: "Undo",
+	REDO: "Redo",
 	DELETE: "Delete the selection",
 	SPEED: "Change flying speed",
 }
@@ -318,15 +334,16 @@ const BUTTONS: Dictionary[StringName, Dictionary] = {
 	&"right_stick": {"hand": &"right_hand", "input": &"primary_click", "label": "Right stick click", "glyph": "RS"},
 }
 
-## Bindings of the presets, by layout. On Meta's runtimes the launcher is on
-## the left Menu button, as Meta's own apps open their menus; SteamVR keeps
-## that button for its dashboard, so there the launcher stays on X. Without a
-## headset the keys are Tab, Y, E and Shift.
+## Bindings of the presets, by layout. A undoes and B redoes, X deletes
+## (D-087). On Meta's runtimes the launcher is on the left Menu button, as
+## Meta's own apps open their menus; SteamVR keeps that button for its
+## dashboard, and X deletes, so there the launcher is on the right stick's
+## click. Without a headset the keys are Tab, Y, E, B, X and Shift.
 const _PRESETS: Dictionary[StringName, Dictionary] = {
-	HORIZON_LINK: {LAUNCHER: &"left_menu", PLAY: &"left_y", DELETE: &"right_a", SPEED: &"left_stick"},
-	STEAMVR: {LAUNCHER: &"left_x", PLAY: &"left_y", DELETE: &"right_a", SPEED: &"left_stick"},
-	HORIZON_OS: {LAUNCHER: &"left_menu", PLAY: &"left_y", DELETE: &"right_a", SPEED: &"left_stick"},
-	NON_VR: {LAUNCHER: &"left_menu", PLAY: &"left_y", DELETE: &"right_a", SPEED: &"left_stick"},
+	HORIZON_LINK: {LAUNCHER: &"left_menu", PLAY: &"left_y", UNDO: &"right_a", REDO: &"right_b", DELETE: &"left_x", SPEED: &"left_stick"},
+	STEAMVR: {LAUNCHER: &"right_stick", PLAY: &"left_y", UNDO: &"right_a", REDO: &"right_b", DELETE: &"left_x", SPEED: &"left_stick"},
+	HORIZON_OS: {LAUNCHER: &"left_menu", PLAY: &"left_y", UNDO: &"right_a", REDO: &"right_b", DELETE: &"left_x", SPEED: &"left_stick"},
+	NON_VR: {LAUNCHER: &"left_menu", PLAY: &"left_y", UNDO: &"right_a", REDO: &"right_b", DELETE: &"left_x", SPEED: &"left_stick"},
 }
 
 const _SECTION := "features"
@@ -499,6 +516,27 @@ func set_binding(action: StringName, button: StringName) -> bool:
 	bindings[action] = button
 	_custom = bindings
 	_layout = CUSTOM
+	_save()
+	changed.emit(CONTROLS)
+	return true
+
+
+## The layout the user picked and their bindings, for [method set_controls]
+## to put back: undo of a pick or a rebinding (D-087).
+func get_controls() -> Dictionary:
+	return {"layout": _layout, "custom": _custom.duplicate()}
+
+
+## Puts back the controls [method get_controls] gave and saves them. False,
+## and nothing changed, if they are the ones in use.
+func set_controls(controls: Dictionary) -> bool:
+	var custom: Dictionary[StringName, StringName] = {}
+	custom.assign(controls.get("custom", {}))
+	var layout: StringName = controls.get("layout", &"")
+	if layout == _layout and custom == _custom:
+		return false
+	_layout = layout
+	_custom = custom
 	_save()
 	changed.emit(CONTROLS)
 	return true

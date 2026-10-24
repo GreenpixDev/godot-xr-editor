@@ -180,16 +180,21 @@ func _switch_back_lets_go() -> void:
 	_key(XRESimulator.SWITCH_HAND_KEY, false)
 	_key(XRESimulator.BUTTON_KEYS[&"left_menu"], true)
 	_key(XRESimulator.BUTTON_KEYS[&"right_a"], true)
+	_key(XRESimulator.BUTTON_KEYS[&"right_b"], true)
+	_key(XRESimulator.BUTTON_KEYS[&"left_x"], true)
 	_key(KEY_W, true)
 	_key(KEY_D, true)
 
 
 func _keys_are_buttons() -> void:
 	_check(_rig.is_action_pressed(_features, XREFeatureSettings.LAUNCHER), "Tab opens the launcher in the NonVR layout")
-	_check(_rig.is_action_pressed(_features, XREFeatureSettings.DELETE) and _rig.right_hand.ax_pressed, "E is the right A: delete")
+	_check(_rig.is_action_pressed(_features, XREFeatureSettings.UNDO) and _rig.right_hand.ax_pressed, "E is the right A: undo")
+	_check(_rig.is_action_pressed(_features, XREFeatureSettings.REDO), "B is the right B: redo")
+	_check(_rig.is_action_pressed(_features, XREFeatureSettings.DELETE) and _rig.left_hand.ax_pressed, "X is the left X: delete")
 	_check(not _rig.is_action_held(_features, XREFeatureSettings.PLAY), "Y is up")
 	_check(_rig.left_hand.get_vector2(&"primary").is_equal_approx(Vector2(1.0, 1.0)), "W and D tilt the left stick forward and right")
-	for key: Key in [XRESimulator.BUTTON_KEYS[&"left_menu"], XRESimulator.BUTTON_KEYS[&"right_a"], KEY_W, KEY_D]:
+	for key: Key in [XRESimulator.BUTTON_KEYS[&"left_menu"], XRESimulator.BUTTON_KEYS[&"right_a"], XRESimulator.BUTTON_KEYS[&"right_b"],
+			XRESimulator.BUTTON_KEYS[&"left_x"], KEY_W, KEY_D]:
 		_key(key, false)
 
 

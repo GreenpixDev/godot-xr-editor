@@ -27,6 +27,7 @@ var _panels: XREPanels
 var _blueprints: XREBlueprints
 var _manipulator: XREManipulator
 var _play_mode: XREPlayMode
+var _undo: XREUndo
 var _launcher: XREStandaloneLauncher
 var _benchmark: XREFrameBenchmark
 var _handoff: XREHandoffBenchmark
@@ -121,6 +122,10 @@ func _add_tools(rig: XRERig) -> void:
 	_play_mode.name = "XREPlayMode"
 	rig.add_child(_play_mode)
 	_panels.playtest_requested.connect(_play_mode.request_play.bind(XREDocument.Source.PANEL))
+	# Last: what the tools record in a frame is in the history before A or B reads it.
+	_undo = XREUndo.new(document, rig)
+	_undo.name = "XREUndo"
+	rig.add_child(_undo)
 
 
 func _exit_tree() -> void:
@@ -158,6 +163,11 @@ func _forget_tools() -> void:
 	_blueprints = null
 	_manipulator = null
 	_play_mode = null
+	_undo = null
+	# What the history would put back in the panels and the graph went with them.
+	if document != null:
+		document.history.forget(XREHistory.Kind.VIEW)
+		document.history.forget(XREHistory.Kind.GRAPH)
 
 
 ## Opens the VR view without a headset, or closes it (D-057).

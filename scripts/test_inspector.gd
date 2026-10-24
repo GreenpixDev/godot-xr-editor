@@ -3,7 +3,8 @@ extends Node
 ## Test of the panels' parts that need a running editor: the inspector tab
 ## with the editor's own EditorInspector, editing a node of the open scene
 ## through XREInspectorProxy and XREPluginDocument into the editor's undo
-## history, and XREPluginDocument opening scenes and listing files. The plugin
+## history, and XREPluginDocument opening scenes and listing files, and undo
+## and redo in the headset through the editor's own Undo and Redo (D-087). The plugin
 ## starts it in an editor run with "-- --xre-test-inspector" (scripts/check.sh)
 ## and it quits the editor when done. Prints "test_inspector: FAILED ..." for
 ## every failed check and a summary line at the end. Undoes its edits and
@@ -25,12 +26,15 @@ var _window: XREPanelWindow
 var _tab: XREInspectorTab
 var _sun: DirectionalLight3D
 var _energy_before := 0.0
+## A node the headset adds and deletes, undone and redone (D-087).
+var _added: Node3D
 
 
 func _init(document: XREDocument) -> void:
 	name = "XRETestInspector"
 	_document = document
 	_steps = [_wait_for_scene, _open_window, _inspector_shown, _drag_value, _open_other_scene, _other_scene_opened,
+			_undo_value, _add_node, _undo_add, _remove_node, _undo_remove, _edit_on_desktop, _open_for_undo, _undo_open,
 			_test_files, _finish]
 
 
@@ -167,6 +171,88 @@ func _other_scene_opened() -> void:
 	var shown: Object = _tab.get_proxy().get_target() if _tab.get_proxy() != null else null
 	_check(shown == (selection[0] if selection.size() == 1 else null),
 			"the inspector follows the selection of the scene switched to: %s, %s" % [shown, selection])
+	_next()
+
+
+## D-087: a value set in the inspector is put back by the headset's undo,
+## through the editor's own Undo, and made again by its redo.
+func _undo_value() -> void:
+	_document.history.clear()
+	var energy := _property_editor(&"light_energy")
+	energy.emit_changed(&"light_energy", 2.5)
+	_window.pointer_released.emit()
+	_check(_document.history.get_undo_name() == "Set light_energy", "the edit is a step of the headset's history: %s" % _document.history.get_undo_name())
+	_operations.clear()
+	_check(_document.undo(XREDocument.Source.TOOL) and is_equal_approx(_sun.light_energy, _energy_before),
+			"undo in the headset puts the value back: %f" % _sun.light_energy)
+	_check(_operations == ["undo TOOL []"], "undo is one operation: %s" % [_operations])
+	_check(_history().has_redo() and _history().get_action_name(_history().get_current_action() + 1) == "XR: Set light_energy",
+			"through the editor's history, which can redo it")
+	_check(_document.redo(XREDocument.Source.TOOL) and is_equal_approx(_sun.light_energy, 2.5), "redo sets it again: %f" % _sun.light_energy)
+	_check(_history().get_current_action_name() == "XR: Set light_energy", "the editor's history has it done again")
+	_check(_document.undo(XREDocument.Source.TOOL) and is_equal_approx(_sun.light_energy, _energy_before), "undo once more")
+	_next()
+
+
+func _add_node() -> void:
+	_added = Node3D.new()
+	_added.name = "XREUndoCheck"
+	_document.add_node(_added, _document.get_scene_root(), XREDocument.Source.TOOL)
+	_check(_added.get_parent() == _document.get_scene_root() and _document.history.get_undo_name() == "Add XREUndoCheck",
+			"a node added is a step: %s" % _document.history.get_undo_name())
+	_next()
+
+
+func _undo_add() -> void:
+	_check(_document.undo(XREDocument.Source.TOOL) and _added.get_parent() == null, "undo takes the added node out")
+	_check(_document.redo(XREDocument.Source.TOOL) and _added.get_parent() == _document.get_scene_root() and _added.owner == _document.get_scene_root(),
+			"redo puts it back in the scene, owned by it")
+	_next()
+
+
+func _remove_node() -> void:
+	_document.remove_nodes([_added], XREDocument.Source.TOOL)
+	_check(_added.get_parent() == null and _document.history.get_undo_name() == "Remove XREUndoCheck", "deleting is a step")
+	_next()
+
+
+func _undo_remove() -> void:
+	_check(_document.undo(XREDocument.Source.TOOL) and _added.get_parent() == _document.get_scene_root(), "undo brings the deleted node back")
+	_check(_document.undo(XREDocument.Source.TOOL) and _added.get_parent() == null, "and the undo before takes the added one out")
+	_check(_document.history.get_undo_name().is_empty(), "nothing is left to undo: %s" % _document.history.get_undo_name())
+	_next()
+
+
+## An edit on the desktop leaves the headset's changes of the scene behind:
+## the editor's Undo would undo that edit first.
+func _edit_on_desktop() -> void:
+	_document.history.clear()
+	var energy := _property_editor(&"light_energy")
+	energy.emit_changed(&"light_energy", 2.5)
+	_window.pointer_released.emit()
+	_check(_document.history.can_undo(), "the headset's edit is to undo")
+	var manager := EditorInterface.get_editor_undo_redo()
+	manager.create_action("Desktop edit")
+	manager.add_do_property(_sun, &"light_energy", _energy_before)
+	manager.add_undo_property(_sun, &"light_energy", 2.5)
+	manager.commit_action()
+	_check(not _document.history.can_undo() and not _document.undo(XREDocument.Source.TOOL),
+			"after an edit on the desktop the headset has nothing of the scene to undo")
+	_check(is_equal_approx(_sun.light_energy, _energy_before), "the desktop's edit stays")
+	_next()
+
+
+func _open_for_undo() -> void:
+	_check(_document.open_scene(OTHER_SCENE, XREDocument.Source.PANEL) == OK, "a scene opens again")
+	_next()
+
+
+func _undo_open() -> void:
+	_check(_document.undo(XREDocument.Source.TOOL) and _document.get_scene_root().scene_file_path == SCENE,
+			"undo goes back to the scene edited before")
+	_check(_document.redo(XREDocument.Source.TOOL) and _document.get_scene_root().scene_file_path == OTHER_SCENE,
+			"redo opens the other one again")
+	_check(_document.undo(XREDocument.Source.TOOL) and _document.get_scene_root().scene_file_path == SCENE, "and back")
 	_next()
 
 

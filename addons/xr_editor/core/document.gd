@@ -11,7 +11,10 @@ extends RefCounted
 ## (see docs/decisions.md, D-002).
 ##
 ## Every operation names its [enum Source] and is reported through
-## [signal operation_recorded] (docs/decisions.md, D-009).
+## [signal operation_recorded] (docs/decisions.md, D-009). What the user does
+## in the headset is recorded in [member history] as well, to undo and redo
+## there (D-087): implementations record their changes of the scene, this
+## class the switches of the settings and, if asked to, of the selection.
 
 ## Emitted when the set of selected nodes changes, from VR or from the desktop.
 signal selection_changed
@@ -25,7 +28,8 @@ signal blueprint_bindings_changed
 ## effect. [param operation] names it ([code]&"select"[/code],
 ## [code]&"transform"[/code], [code]&"set_property"[/code], [code]&"add_node"[/code],
 ## [code]&"remove_nodes"[/code], [code]&"save"[/code], [code]&"open_scene"[/code],
-## [code]&"play"[/code], [code]&"stop"[/code]); [param time_usec] is
+## [code]&"play"[/code], [code]&"stop"[/code], [code]&"undo"[/code],
+## [code]&"redo"[/code]); [param time_usec] is
 ## [method Time.get_ticks_usec] at that moment. Previews are not operations.
 signal operation_recorded(operation: StringName, source: Source, nodes: Array[Node], time_usec: int)
 
@@ -43,6 +47,35 @@ var prepare_play: Callable
 ## Variants of features under study (D-039), shared by every tool and panel.
 ## Read them here; switch them with [method set_feature].
 var features := XREFeatureSettings.new()
+## What was done in the headset, to undo and redo there (D-087).
+var history := XREHistory.new()
+
+
+## Puts back the latest step of [member history] and records one
+## [code]&"undo"[/code] operation; the editor's log gets the step's name.
+## False, and nothing recorded, if there is nothing to undo or it can't be undone now.
+func undo(source: Source) -> bool:
+	if not _may_replay():
+		return false
+	var step := history.undo()
+	if step.is_empty():
+		return false
+	print("XR Editor: undo ", step)
+	_record(&"undo", source, [])
+	return true
+
+
+## Makes again the step of [member history] undone last and records one
+## [code]&"redo"[/code] operation, as [method undo] does.
+func redo(source: Source) -> bool:
+	if not _may_replay():
+		return false
+	var step := history.redo()
+	if step.is_empty():
+		return false
+	print("XR Editor: redo ", step)
+	_record(&"redo", source, [])
+	return true
 
 
 ## Switches feature setting [param key] to [param value] ([XREFeatureSettings])
@@ -50,10 +83,12 @@ var features := XREFeatureSettings.new()
 ## the new value, so that each participant's session shows the variant used.
 ## False, and nothing recorded, if the value is unknown or already set.
 func set_feature(key: StringName, value: StringName, source: Source) -> bool:
-	if not features.set_value(key, value):
+	var before := features.get_value(key)
+	if not _switch_feature(key, value):
 		return false
-	print("XR Editor: feature %s = %s" % [key, value])
 	_record(&"set_feature", source, [])
+	history.record(XREHistory.Kind.SETTINGS, "Set %s" % XREFeatureSettings.DEFINITIONS[key]["title"],
+			_switch_feature.bind(key, before), _switch_feature.bind(key, value))
 	return true
 
 
@@ -61,10 +96,12 @@ func set_feature(key: StringName, value: StringName, source: Source) -> bool:
 ## and records one [code]&"set_layout"[/code] operation. False if it is unknown
 ## or already in use.
 func set_controls_layout(layout: StringName, source: Source) -> bool:
+	var before := features.get_controls()
 	if not features.set_layout(layout):
 		return false
 	print("XR Editor: controls layout = %s" % layout)
 	_record(&"set_layout", source, [])
+	history.record(XREHistory.Kind.SETTINGS, "Controls layout", _switch_controls.bind(before), _switch_controls.bind(features.get_controls()))
 	return true
 
 
@@ -72,10 +109,12 @@ func set_controls_layout(layout: StringName, source: Source) -> bool:
 ## operation. A preset layout in use becomes the custom one with every other
 ## binding as it was ([method XREFeatureSettings.set_binding]).
 func set_binding(action: StringName, button: StringName, source: Source) -> bool:
+	var before := features.get_controls()
 	if not features.set_binding(action, button):
 		return false
 	print("XR Editor: binding %s = %s, layout %s" % [action, button, features.get_layout()])
 	_record(&"set_binding", source, [])
+	history.record(XREHistory.Kind.SETTINGS, "Bind %s" % XREFeatureSettings.ACTION_TITLES[action], _switch_controls.bind(before), _switch_controls.bind(features.get_controls()))
 	return true
 
 
@@ -97,7 +136,9 @@ func record_graph_operation(operation: StringName, source: Source) -> void:
 @abstract func get_selection() -> Array[Node]
 
 
-## Replaces the current selection. Selection is not recorded in undo history.
+## Replaces the current selection. Selection is not recorded in the editor's
+## undo history; it is in [member history] with
+## [constant XREFeatureSettings.UNDO_SELECTION] on ([method _remember_selection]).
 @abstract func select(nodes: Array[Node], source: Source) -> void
 
 
@@ -214,3 +255,59 @@ static func is_scene_file(path: String) -> bool:
 ## Reports an operation; every implementation calls it once per operation.
 func _record(operation: StringName, source: Source, nodes: Array[Node]) -> void:
 	operation_recorded.emit(operation, source, nodes, Time.get_ticks_usec())
+
+
+## Whether a step of [member history] may be put back or made again now. The
+## editor refuses to undo while a mouse button is down ([XREPluginDocument]).
+func _may_replay() -> bool:
+	return true
+
+
+## Records the change of the selection from [param before] to the one now in
+## [member history], when [constant XREFeatureSettings.UNDO_SELECTION] asks
+## for it (D-087). Implementations call it from [method select].
+func _remember_selection(before: Array[Node]) -> void:
+	if features.get_value(XREFeatureSettings.UNDO_SELECTION) != XREFeatureSettings.ON:
+		return
+	var after := get_selection()
+	if after == before:
+		return
+	history.record(XREHistory.Kind.SELECTION, "Select", _reselect.bind(before), _reselect.bind(after))
+
+
+## Selects those of [param nodes] still in the scene, for undo and redo of the
+## selection: no [code]&"select"[/code] operation, the [code]&"undo"[/code] is one.
+func _reselect(nodes: Array[Node]) -> bool:
+	var root := get_scene_root()
+	var kept: Array[Node] = []
+	# A node of a scene closed since is freed.
+	for item: Variant in nodes:
+		var node := item as Node if is_instance_valid(item) else null
+		if node != null and root != null and (node == root or root.is_ancestor_of(node)):
+			kept.append(node)
+	if kept == get_selection():
+		return false
+	_set_selection(kept)
+	return true
+
+
+## Selects [param nodes] without an operation. The default goes through
+## [method select]; the editor's document selects them itself.
+func _set_selection(nodes: Array[Node]) -> void:
+	select(nodes, Source.TOOL)
+
+
+## Sets feature [param key] to [param value], for a switch, its undo and its redo; the editor's log gets the value.
+func _switch_feature(key: StringName, value: StringName) -> bool:
+	if not features.set_value(key, value):
+		return false
+	print("XR Editor: feature %s = %s" % [key, value])
+	return true
+
+
+## Puts back the controls [param controls] ([method XREFeatureSettings.get_controls]), for undo and redo.
+func _switch_controls(controls: Dictionary) -> bool:
+	if not features.set_controls(controls):
+		return false
+	print("XR Editor: controls layout = %s" % features.get_layout())
+	return true

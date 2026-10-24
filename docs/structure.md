@@ -5,14 +5,16 @@
 ```
 addons/xr_editor/          плагин (всё, что поставляется)
   plugin.cfg, plugin.gd    точка входа EditorPlugin; владеет XREDocument
-  core/                    XREDocument и его реализации; варианты фич для сравнения (XREFeatureSettings, D-039)
+  core/                    XREDocument и его реализации; варианты фич для сравнения (XREFeatureSettings, D-039);
+                           история шлема для отмены и повтора (XREHistory, D-087)
   xr/                      XR-сессия в процессе редактора (XRESession), риг (XRERig), контроллер: луч и кнопки (XREHand),
                            модель контроллера по профилю OpenXR с движущимися кнопками (XREControllerModel);
                            автономный шлем (D-018): общее для редактора и игры (XREStandalone), открыть VR из 2D-панели (XREStandaloneLauncher);
                            VR-вид без шлема в окне, клавиатура и мышь вместо контроллеров (XRESimulator, D-057)
   xr/controller_models/    glTF контроллеров из WebXR Input Profiles, папка на контроллер (D-010)
   tools/                   инструменты VR-слоя: манипуляция и удаление (XREManipulator), снап (XRESnap), обводка рёбер выбора и наведения (XREOutline, рёбра меша — XREEdgeMesh) с запасной рамкой (XREBoundsBox),
-                           значки нод без геометрии — пока света (XREIcons), полёт и поворот стиками (XRELocomotion)
+                           значки нод без геометрии — пока света (XREIcons), полёт и поворот стиками (XRELocomotion),
+                           отмена и повтор кнопками A и B (XREUndo, D-087)
   ui/                      меню в шлеме: палитра объектов в окне Objects (XREPalette, XREObjectsTab, D-045); панели (XREPanels): хост с вводом от луча (XREPanelSurface),
                            лаунчер вкладок по X как Navigator Meta (XRETabLauncher, XRETabIcons, D-041, D-042), окна с угловыми ручками и Control Bar
                            с закреплением на руке (XREPanelWindow, D-040 — D-042), вкладки сцены, инспектора с прокси документа,
@@ -47,6 +49,7 @@ scripts/test_controller_model.gd  headless-тест выбора модели к
 scripts/test_play_mode.gd  headless-тест play-mode: кнопка, возврат, аргументы игры (для check.sh)
 scripts/test_panels.gd     headless-тест панелей: панель на руке, окна, вкладки, прокси инспектора (для check.sh)
 scripts/test_simulator.gd  headless-тест VR-вида без шлема: клавиши и мышь → голова, руки, кнопки; раскладка NonVR (для check.sh)
+scripts/test_history.gd    headless-тест истории шлема: шаги, отмена настроек и выделения, кнопки A и B (для check.sh)
 scripts/test_inspector.gd  тест инспектора в шлеме внутри headless-редактора; плагин запускает его по `-- --xre-test-inspector` (для check.sh)
 scripts/test_blueprints.gd        тесты графа, сохранения, undo/redo, компиляции и выполнения Blueprints (для check.sh)
 scripts/test_blueprint_editor.gd  тест Blueprints внутри редактора: граф, назначение скрипта и история сцены (для check.sh)
