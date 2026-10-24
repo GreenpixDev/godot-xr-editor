@@ -73,6 +73,19 @@ const PARAMETERS_LIFT := 0.05
 ## A ray gone off the graph keeps what it was on in focus this long, in
 ## seconds (D-072): passing between two cards, the graph doesn't flash.
 const FOCUS_HOLD := 0.15
+## A link button (D-074) stays this long, in seconds, after the ray left what
+## put it up, for the ray to reach it; it stands this far above a port or a
+## link, and this much nearer the head than a wire, in meters.
+const BUTTON_HOLD := 0.5
+const BUTTON_RISE := 0.028
+const BUTTON_LEAD := 0.012
+## A wire pulled at least this part of the way into its port becomes a link (D-074).
+const PULL_DONE := 0.5
+## How many parts of an object, and nodes under it, its projection on a link takes at most.
+const PROJECTION_PARTS := 24
+const PROJECTION_NODES := 200
+## What the ray on a link says (D-074).
+const LINK_HINT := "click: another one  ·  grip: move, let go in the air: a wire"
 
 class Pointer:
 	var hand: XREHand
@@ -166,6 +179,23 @@ class Pointer:
 	## and a variable's box, empty for none.
 	var focus := -1
 	var focus_box := ""
+	## Links (D-074). The link button this hand's ray put up — on a wire, over a
+	## port or by a link —, the ref of [XREBlueprintLinks] it acts on, whether
+	## it makes a link or takes one back to its wire, where it stands (global)
+	## and how long it stays without the ray.
+	var button: Node3D
+	var button_ref: Dictionary = {}
+	var button_make := true
+	var button_point := Vector3.ZERO
+	var button_hold := 0.0
+	## A wire the grip pulls into its port: its ref, where on the ray it was
+	## taken and how far, and its mesh, hidden meanwhile.
+	var pull: Dictionary = {}
+	var pull_start := Vector3.ZERO
+	var pull_distance := 0.0
+	var pull_wire: XREGraphWire
+	## Where a carried link came from, as a ref; empty from the tray.
+	var carried_ref: Dictionary = {}
 
 class Marker:
 	var host: Node
@@ -200,6 +230,8 @@ class TargetWire:
 	var lit_material: Material
 	## How it, its petal and its stem are painted for the focus (D-072): -1 not yet.
 	var look := -1
+	## Its block's target is a link (D-074): the wire is hidden, or drawn faint, from the link's ring.
+	var link := false
 
 var blueprint: XREBlueprintDocument
 var canvas: XREBlueprintCanvas
@@ -266,6 +298,14 @@ var _link_box := ""
 var _link_hand: XREHand
 ## Play Animation's output 0 a wire is drawn from: 1 Finished, 0 Then, -1 another port.
 var _pending_finished := -1
+## The wire drawn from an input ends on a variable's box as a link (D-074):
+## it was a link, or a link from the tray was laid on that input.
+var _pending_link := false
+## The linkable wire the last [method _link_wire_hit] met, as a ref, and where (global).
+var _wire_ref: Dictionary = {}
+var _wire_point := Vector3.ZERO
+## Meshes baked from CSG objects for the projections on links, by the object's instance id; forgotten on a scene edit.
+var _projection_meshes: Dictionary[int, Mesh] = {}
 ## The token typed on the keyboard, or a new variable's name ([member _token_field]).
 var _token_field: LineEdit
 var _token_edit: Dictionary = {}
@@ -364,6 +404,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	canvas.set_parameter_modes(document.features.get_value(XREFeatureSettings.VALUE_INPUT), document.features.get_value(XREFeatureSettings.TARGET_INPUT),
 			document.features.get_value(XREFeatureSettings.ANIMATION_WAIT), document.features.get_value(XREFeatureSettings.VARIABLE_INPUT))
 	canvas.set_focus_modes(document.features.get_value(XREFeatureSettings.FOCUS), document.features.get_value(XREFeatureSettings.DEFOCUS))
+	canvas.set_link_modes(document.features.get_value(XREFeatureSettings.LINK_PREVIEW), document.features.get_value(XREFeatureSettings.LINK_WIRES))
 	_workspace.add_child(canvas)
 	_petals = XREBlueprintPetals.new()
 	add_child(_petals)
@@ -528,6 +569,7 @@ func _process(delta: float) -> void:
 		pointer.focus_box = ""
 		_update_pointer(pointer, delta)
 		_keyboard.poll_trigger(pointer.hand, pointer.surface == _keyboard and _keyboard.is_shown())
+	_update_buttons(delta)
 	if _token_editor.is_interactive(): _token_editor.light(_editor_right if not _editor_right.is_empty() else _editor_left)
 	_place_window_widgets()
 	_update_focus()
@@ -1283,6 +1325,7 @@ func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int
 			var state := blueprint.graph.snapshot()
 			var edges: Array = state["edges"]
 			var wire: Dictionary = edges[detached]
+			var source := blueprint.graph.find_node(wire["from"])
 			edges.remove_at(detached)
 			_drop_orphan_inlines(state)
 			_fill_sockets(state)
@@ -1291,6 +1334,8 @@ func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int
 			_pending_port = port
 			_pending_input = input
 			_pending_hand = hand
+			# A link to a variable taken off its port goes to the next box as a link (D-074).
+			_pending_link = input and canvas.is_inline(source) and XREBlueprintLinks.is_link(source, XREBlueprintLinks.VARIABLE)
 			canvas.highlight_ports(canvas.port_type(_pending_id, _pending_port, _pending_input), not _pending_input)
 			_message("Wire detached. Trigger on a port reconnects it; on empty space removes it.")
 			return true
@@ -1298,6 +1343,7 @@ func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int
 		_pending_port = port
 		_pending_input = input
 		_pending_hand = hand
+		_pending_link = false
 		canvas.highlight_ports(canvas.port_type(id, port, input), not input)
 		_message("Press trigger on a compatible port. The same port or empty space cancels the wire.")
 		return true
@@ -1348,6 +1394,7 @@ func cancel_connection() -> void:
 	_pending_input = false
 	_pending_hand = null
 	_pending_finished = -1
+	_pending_link = false
 	_link_kind = -1
 	_link_block = -1
 	_link_box = ""
@@ -1435,6 +1482,9 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		if hand.get_claimant() == self: hand.unclaim(self)
 	if pointer.carried != null:
 		_update_carried(pointer)
+		return
+	if not pointer.pull.is_empty():
+		_update_pull(pointer)
 		return
 	if pointer.arrow_axis >= 0:
 		_update_arrow(pointer, delta)
@@ -1595,8 +1645,11 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			if tilt != 0: surface.pointer_scroll(tilt * XREPanels.SCROLL_SPEED * delta)
 		return
 	_leave(pointer)
+	# A link button stands in front of what put it up (D-074): it takes the ray first.
+	if _workspace.visible and _point_at_button(pointer, origin, direction, canvas_hit): return
 	if _workspace.visible and not fan_first and _point_at_petals(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0, delta): return
 	if _workspace.visible and _point_at_stem(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0): return
+	if _workspace.visible and _point_at_link_wire(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0): return
 	if _workspace.visible:
 		var hit := canvas_hit
 		if _pending_hand == hand: _preview_connection(origin + direction * (hit if hit >= 0 else 0.8), canvas.get_hit_id() if hit >= 0 else -1, canvas.get_hit_port() if hit >= 0 else -1, canvas.get_hit_input())
@@ -1799,7 +1852,10 @@ func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance:
 	if _keyboard.is_shown() and _keyboard.intersect_ray(origin, direction, INF) >= 0: return true
 	if hand.grip_pressed and touch_block(hand) >= 0: return true
 	for pointer: Pointer in _pointers:
-		if pointer.hand == hand and (pointer.carried != null or not pointer.token_key.is_empty() or not pointer.token_box.is_empty()): return true
+		if pointer.hand == hand and (pointer.carried != null or not pointer.pull.is_empty() or not pointer.token_key.is_empty() or not pointer.token_box.is_empty()): return true
+		# A link button, or a wire that may become a link, nearer than the panel (D-074).
+		if pointer.hand == hand and _workspace.visible and pointer.button != null and pointer.button.visible and _pill_distance(pointer.button, origin, direction) >= 0.0: return true
+	if _workspace.visible and _document.features.get_value(XREFeatureSettings.LINK_CREATE) != XREFeatureSettings.PORT_BUTTON and _link_wire_hit(origin, direction, distance) >= 0.0: return true
 	if _workspace.visible and (hand.grip_pressed or hand.trigger_pressed) and not _tray_cell(origin, direction).is_empty(): return true
 	if _workspace.visible and ((_petals.is_open() and _petals.intersect_ray(origin, direction, distance) >= 0) or (_choice.is_open() and _choice.intersect_ray(origin, direction, distance) >= 0)): return true
 	if _workspace.visible:
@@ -1861,6 +1917,7 @@ func _scene_changed() -> void:
 		if pointer.held != null: _finish_hold(pointer, false)
 	cancel_connection()
 	_target_pick = -1
+	_projection_meshes.clear()
 	_root = _document.get_scene_root()
 	_picker.scenario = get_viewport().find_world_3d().scenario
 	blueprint.update_active_scene(_root)
@@ -1871,6 +1928,8 @@ func _scene_changed() -> void:
 
 func _scene_operation(operation: StringName, source: XREDocument.Source, _nodes: Array[Node], _time_usec: int) -> void:
 	if operation in [&"assign_blueprint", &"detach_blueprint", &"remove_nodes", &"add_node"]: _schedule_refresh()
+	# An object may have changed its shape: its projection on a link is baked again (D-074).
+	_projection_meshes.clear()
 	# An object selected by pointing at it in the headset, not one added or picked on the desktop (D-063).
 	if operation == &"select" and source == XREDocument.Source.TOOL: _follow_selection.call_deferred()
 
@@ -1893,6 +1952,19 @@ func _feature_changed(key: StringName) -> void:
 		return
 	if key in [XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS]:
 		canvas.set_focus_modes(_document.features.get_value(XREFeatureSettings.FOCUS), _document.features.get_value(XREFeatureSettings.DEFOCUS))
+		return
+	if key in [XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES]:
+		# The wires show or hide at once; another preview draws the links again (D-074).
+		if not canvas.set_link_modes(_document.features.get_value(XREFeatureSettings.LINK_PREVIEW), _document.features.get_value(XREFeatureSettings.LINK_WIRES)): return
+		_finish_holds()
+		for pointer: Pointer in _pointers: _drop_tokens(pointer)
+		canvas.rebuild(blueprint.graph)
+		_schedule_rebuild()
+		return
+	if key == XREFeatureSettings.LINK_CREATE:
+		for pointer: Pointer in _pointers:
+			_hide_button(pointer)
+			if not pointer.pull.is_empty(): _end_pull(pointer, false)
 		return
 	if key in [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT, XREFeatureSettings.VARIABLE_INPUT]:
 		var features := _document.features
@@ -2176,8 +2248,11 @@ func _rebuild_target_wires() -> void:
 		wire.mesh = canvas.create_scene_wire(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
 		wire.normal = wire.mesh.material_override
 		wire.lit_material = XREBlueprintCanvas.wire_material(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT], XREBlueprintCanvas.LIT_WIRE_GROW)
+		# A link hides the wire, faint while drawn; its member is on the link, not on a petal (D-074).
+		wire.link = scene_mode and XREBlueprintLinks.is_link(block, XREBlueprintLinks.TARGET)
+		if wire.link: XREBlueprintFade.set_seen(wire.mesh, &"link", XREBlueprintCanvas.LINK_SEEN)
 		var member_key := XREBlueprintTokens.member_key(block)
-		if XREBlueprintTokens.member_on_stem(mode) and not member_key.is_empty():
+		if XREBlueprintTokens.member_on_stem(mode) and not member_key.is_empty() and not wire.link:
 			# The member's petal, on a stem from the object, on the user's side of it;
 			# unset, it says what to pick, and the trigger on it opens the object's petals (D-057).
 			var member := str((block["params"] as Dictionary).get(member_key, ""))
@@ -2210,11 +2285,15 @@ func _rebuild_target_wires() -> void:
 			wire.bounds = XREPicker.get_local_bounds(anchor)
 		_target_wires.append(wire)
 	_update_target_wires()
+	_fill_link_heads()
 
 
 func _update_target_wires() -> void:
 	for wire: TargetWire in _target_wires:
 		wire.mesh.visible = _workspace.visible and blueprint.scene_context_active() and is_instance_valid(wire.target) and wire.target.is_inside_tree() and is_instance_valid(wire.anchor) and wire.anchor.is_inside_tree()
+		# A link's wire only as Link wires says (D-074); a wire pulled into its port is the pull's preview meanwhile.
+		if wire.mesh.visible and wire.link: wire.mesh.visible = canvas.link_wire_shown(wire.id)
+		if wire.mesh.visible and _is_pulled(wire.mesh): wire.mesh.visible = false
 		if wire.label != null:
 			wire.label.visible = wire.mesh.visible
 			wire.stem.visible = wire.mesh.visible
@@ -2258,8 +2337,8 @@ func _update_target_wires() -> void:
 			var along := pill - end
 			wire.stem.global_transform = Transform3D(Basis(Quaternion(Vector3.UP, along.normalized())) * Basis.from_scale(Vector3(1.0, maxf(along.length(), 0.001), 1.0)), end + along * 0.5)
 			end = pill - facing.x * wire.width * 0.5 * growth
-		# With an adapter in the port (D-059) the wire leaves the adapter's far end.
-		var adapter_end: Variant = canvas.adapter_end(wire.id)
+		# With an adapter in the port (D-059) the wire leaves the adapter's far end, a link's from its ring (D-074).
+		var adapter_end: Variant = canvas.link_end(wire.id, XREBlueprintLinks.TARGET) if wire.link else canvas.adapter_end(wire.id)
 		if adapter_end is Vector3: canvas.update_adapter_wire(wire.mesh, wire.id, adapter_end as Vector3, canvas.to_local(end))
 		elif wire.source: canvas.update_socket_wire(wire.mesh, wire.id, XREBlueprintCanvas.SOURCE, canvas.to_local(end))
 		else: canvas.update_scene_wire(wire.mesh, wire.id, wire.port, canvas.to_local(end))
@@ -2406,7 +2485,9 @@ func _take_from_tray(pointer: Pointer, origin: Vector3, direction: Vector3) -> b
 	var cell := _tray_cell(origin, direction)
 	if cell.is_empty(): return false
 	_leave(pointer)
-	_carry(pointer, cell["value"], cell["key"], -1, "", true, pointer.hand.trigger_pressed and not pointer.hand.grip_pressed)
+	var by_trigger := pointer.hand.trigger_pressed and not pointer.hand.grip_pressed
+	if XREBlueprintLinks.is_link_value(cell["value"]): _carry_link(pointer, cell["value"], {}, by_trigger)
+	else: _carry(pointer, cell["value"], cell["key"], -1, "", true, by_trigger)
 	return true
 
 
@@ -2429,12 +2510,18 @@ func _update_tray_tokens() -> void:
 		_tray_tokens.clear()
 		for index: int in values.size():
 			var key := token_tray.get_key(index)
-			var width := XREBlueprintTokens.width(XREBlueprintTokens.text(values[index], key))
-			var token := XREBlueprintCanvas.make_token(values[index], key, width, plug, false, false)
+			var token: Node3D
+			if key == XREBlueprintLinks.KEY:
+				# A link that stands for nothing yet, white (D-074); laid on a port it takes that port's wire, or asks for a box.
+				token = XREBlueprintCanvas.make_link("link", XREBlueprintTokens.width("link"), XREBlueprintGraph.EXEC)
+				token.set_meta(&"shift", float(token.get_meta(&"extent")) * 0.5)
+			else:
+				var width := XREBlueprintTokens.width(XREBlueprintTokens.text(values[index], key))
+				token = XREBlueprintCanvas.make_token(values[index], key, width, plug, false, false)
+				token.set_meta(&"shift", (XREBlueprintCanvas.PLUG_GAP + width) * 0.5 if plug else 0.0)
+				token.set_meta(&"extent", XREBlueprintCanvas.PLUG_GAP + width + XREBlueprintCanvas.PORT_RADIUS if plug else width)
 			token.top_level = true
 			token.set_meta(&"plug", plug)
-			token.set_meta(&"shift", (XREBlueprintCanvas.PLUG_GAP + width) * 0.5 if plug else 0.0)
-			token.set_meta(&"extent", XREBlueprintCanvas.PLUG_GAP + width + XREBlueprintCanvas.PORT_RADIUS if plug else width)
 			add_child(token)
 			_tray_tokens.append(token)
 		_tray_dirty = false
@@ -2472,9 +2559,11 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	pointer.focus = id
 	canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), right, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1)
 	canvas.hover_socket(id, socket, right)
+	var link := canvas.get_hit_link() if kind == XREBlueprintCanvas.LINK else {}
+	_update_link_button(pointer, id, kind, link, origin + direction * hit)
 	# The wire to the scene object thickens under the ray on its Target port,
 	# its adapter or name, or the event's Source (D-061).
-	var on_target := kind in [XREBlueprintCanvas.MEMBER, XREBlueprintCanvas.SOURCE]
+	var on_target: bool = kind in [XREBlueprintCanvas.MEMBER, XREBlueprintCanvas.SOURCE] or (not link.is_empty() and link["key"] == XREBlueprintLinks.TARGET)
 	if not on_target and canvas.get_hit_port() >= 0 and canvas.get_hit_input():
 		on_target = canvas.get_hit_port() == XREBlueprintGraph.target_port(blueprint.graph.find_node(id))
 	if on_target:
@@ -2488,6 +2577,10 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		var at := canvas.to_global(canvas.socket_position(id, XREBlueprintCanvas.MEMBER))
 		_token_editor.show_hint(Transform3D(XREPanels.facing(at, _rig.camera.global_position, _rig.global_basis.y), at), MEMBER_HINT)
 		_hint_frame = Engine.get_process_frames()
+	elif not link.is_empty() and _token_editor.mode in [&"", XREBlueprintTokenEditor.HINT]:
+		var at := origin + direction * hit
+		_token_editor.show_hint(Transform3D(XREPanels.facing(at, _rig.camera.global_position, _rig.global_basis.y), at), LINK_HINT)
+		_hint_frame = Engine.get_process_frames()
 	_filter_tray(id, socket, key if token else "")
 	if not _member_link.is_empty() and _member_hand == hand:
 		canvas.show_link(canvas.to_local(_member_link["anchor_global"]), canvas.to_local(origin + direction * hit))
@@ -2496,11 +2589,13 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	if hand.grip_pressed:
 		if token and _value_mode() != XREFeatureSettings.WINDOW:
 			_carry(pointer, canvas.token_value(id, key), key, id, "", false)
+		elif not link.is_empty(): _carry_link(pointer, _link_value(link, canvas.get_hit_link_value()), link)
 		else: _start_hold(pointer, canvas, id, origin + direction * hit)
 	elif hand.trigger_pressed:
 		if canvas.get_hit_plus(): _show_block_palette(id)
 		elif canvas.get_hit_delete(): delete_block(id)
 		elif token: _start_turn(pointer, id, key, "", origin + direction * hit)
+		elif not link.is_empty(): _retarget_link(link, hand)
 		elif kind == XREBlueprintCanvas.SOURCE: _start_link(id, XREBlueprintCanvas.SOURCE, hand)
 		elif kind == XREBlueprintCanvas.VARIABLE:
 			if _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty(): _wire_variable(id, _link_box)
@@ -2515,6 +2610,8 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
 		_delete_consumed = true
 		if token: _reset_token(id, key)
+		# A link is a wire again (D-074): nothing of the reference is lost.
+		elif not link.is_empty(): _set_link(link, false)
 		else: delete_block()
 
 
@@ -3543,7 +3640,7 @@ func _update_carried(pointer: Pointer) -> void:
 	var direction := -hand.global_basis.z.normalized()
 	var distance := 0.35
 	var hit := canvas.intersect_ray(origin, direction, 5.0) if _workspace.visible else -1.0
-	var target := _dock_target(hit)
+	var target := _link_dock(hit) if pointer.carried_key == XREBlueprintLinks.KEY else _dock_target(hit)
 	if hit >= 0: distance = maxf(hit - 0.01, 0.05)
 	canvas.hover_socket(target.get("block", -1), canvas.get_hit_socket() if target.has("block") else -1, hand == _rig.right_hand)
 	var point := origin + direction * distance
@@ -3575,6 +3672,9 @@ func _dock_target(hit: float) -> Dictionary:
 
 
 func _drop_carried(pointer: Pointer, target: Dictionary) -> void:
+	if pointer.carried_key == XREBlueprintLinks.KEY:
+		_drop_link(pointer, target)
+		return
 	var value: Variant = pointer.carried_value
 	var source_block := pointer.carried_block
 	var source_key := pointer.carried_key
@@ -3654,8 +3754,11 @@ func _drop_tokens(pointer: Pointer) -> void:
 		pointer.carried.queue_free()
 		pointer.carried = null
 		_show_carried_source(pointer.carried_block, pointer.carried_key, pointer.carried_box, pointer.carried_copy)
+		if not pointer.carried_ref.is_empty(): canvas.hide_link(pointer.carried_ref, false)
+		pointer.carried_ref = {}
 		pointer.hand.unclaim(self)
 		_schedule_rebuild()
+	if not pointer.pull.is_empty(): _end_pull(pointer, false)
 
 
 ## Shows again the token that a carry hid in its socket or box (D-058): a
@@ -3733,6 +3836,8 @@ func _wire_box_to_port(variable: String, id: int, port: int) -> void:
 	getter["params"]["variable"] = variable
 	# Inline (D-061): no card, the wire comes straight from the box; the 2D editor shows the node.
 	getter["vr_inline"] = true
+	# From a link, or from a link of the tray laid on the port, it stays a link (D-074).
+	if _pending_link and _pending_id == id and _pending_port == port: XREBlueprintLinks.set_link(getter, XREBlueprintLinks.VARIABLE, true)
 	getter["vr_depth"] = float(target.get("vr_depth", 0.0))
 	var position: Vector2 = target["position"] + Vector2(-300, 40 + 50 * port)
 	var added: int = blueprint.perform(blueprint.insert_block.bind(getter, position, {"to": id, "to_port": port}, null, "Wire Variable"), &"vr_graph")
@@ -4162,3 +4267,532 @@ func _connect_member_link(id: int) -> void:
 		cancel_connection()
 		_message("%s · %s" % [XREBlueprintGraph.title(block), item["text"]])
 	else: _message(blueprint.last_error)
+
+
+
+# --- Links (D-074) ----------------------------------------------------------------------------
+
+
+## Makes the reference [param ref] (of [XREBlueprintLinks]) a link, its wire
+## hidden, or with [param on] false a wire again, as one edit.
+func _set_link(ref: Dictionary, on: bool) -> bool:
+	var state := blueprint.graph.snapshot()
+	var found := false
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] != int(ref["block"]): continue
+		XREBlueprintLinks.set_link(entry, str(ref["key"]), on)
+		found = true
+	if not found: return false
+	for pointer: Pointer in _pointers: _hide_button(pointer)
+	if not blueprint.perform(blueprint.commit.bind("Make Link" if on else "Unlink", state), &"vr_graph"):
+		_message(blueprint.last_error)
+		return false
+	_message("A link now: its wire is hidden; Settings → Link wires shows it." if on else "The link is a wire again.")
+	return true
+
+
+## The link button of [param pointer]'s ray on card [param id] (D-074): by a
+## link [param link] under the ray, one that takes it back to its wire; with
+## Link from wire on Port button, over a port or socket whose wire may become
+## a link, one that makes it. [param point] is where the ray is on the card.
+func _update_link_button(pointer: Pointer, id: int, kind: int, link: Dictionary, point: Vector3) -> void:
+	var create := _document.features.get_value(XREFeatureSettings.LINK_CREATE)
+	if has_wire(pointer.hand): return
+	if not link.is_empty():
+		if create != XREFeatureSettings.PULL: _show_button(pointer, link, false, _button_above(id, point))
+		return
+	if create != XREFeatureSettings.PORT_BUTTON: return
+	var ref := _linkable_at(id, kind)
+	if ref.is_empty(): return
+	_show_button(pointer, ref, true, _button_above(id, canvas.to_global(canvas.ref_point(ref))))
+
+
+## Over [param point] on card [param id], toward the head: where a link button stands.
+func _button_above(id: int, point: Vector3) -> Vector3:
+	var up := (canvas.global_basis * canvas.get_block_transform(id).basis.y).normalized()
+	return point + up * BUTTON_RISE + (_rig.camera.global_position - point).normalized() * BUTTON_LEAD
+
+
+## The reference on card [param id] under the last ray whose wire may become a
+## link (D-074): a port fed from a variable's box, a Target, a Source or a
+## Variable wired to its object or box, and not a link yet; empty for none.
+func _linkable_at(id: int, kind: int) -> Dictionary:
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty(): return {}
+	var port := canvas.get_hit_port()
+	var target_port := XREBlueprintGraph.target_port(block)
+	var ref: Dictionary = {}
+	if kind == XREBlueprintCanvas.SOURCE or (kind == XREBlueprintCanvas.MEMBER and block["kind"] == "signal"):
+		ref = XREBlueprintLinks.ref(id, XREBlueprintLinks.TARGET, id, -1, XREBlueprintCanvas.SOURCE)
+	elif kind == XREBlueprintCanvas.MEMBER or (kind < 0 and port >= 0 and canvas.get_hit_input() and port == target_port):
+		ref = XREBlueprintLinks.ref(id, XREBlueprintLinks.TARGET, id, target_port, -1)
+	elif kind == XREBlueprintCanvas.VARIABLE:
+		ref = XREBlueprintLinks.ref(id, XREBlueprintLinks.VARIABLE, id, -1, XREBlueprintCanvas.VARIABLE)
+		if canvas.ref_wire(ref) == null: return {}
+	elif kind < 0 and port >= 0 and canvas.get_hit_input():
+		var getter := canvas.inline_getter(id, port)
+		if getter < 0: return {}
+		ref = XREBlueprintLinks.ref(getter, XREBlueprintLinks.VARIABLE, id, port, -1)
+	if ref.is_empty(): return {}
+	if ref["key"] == XREBlueprintLinks.TARGET:
+		var wire := _target_wire_of(id)
+		if wire == null or wire.link: return {}
+	elif XREBlueprintLinks.is_link(blueprint.graph.find_node(int(ref["block"])), XREBlueprintLinks.VARIABLE): return {}
+	return ref
+
+
+## The wire to the scene object of block [param id], or null.
+func _target_wire_of(id: int) -> TargetWire:
+	for wire: TargetWire in _target_wires:
+		if wire.id == id: return wire
+	return null
+
+
+## Puts up [param pointer]'s link button at [param point] (global) for
+## [param ref]: "link" to make it a link with [param make], else "wire".
+func _show_button(pointer: Pointer, ref: Dictionary, make: bool, point: Vector3) -> void:
+	var text := "link" if make else "wire"
+	if pointer.button == null or str(pointer.button.get_meta(&"text", "")) != text:
+		if pointer.button != null: pointer.button.queue_free()
+		pointer.button = XREBlueprintPetals.make_pill(text)
+		pointer.button.name = "LinkButton"
+		pointer.button.set_meta(&"text", text)
+		pointer.button.top_level = true
+		add_child(pointer.button)
+	pointer.button_ref = ref
+	pointer.button_make = make
+	pointer.button_point = point
+	pointer.button_hold = BUTTON_HOLD
+	pointer.button.visible = true
+
+
+func _hide_button(pointer: Pointer) -> void:
+	pointer.button_ref = {}
+	pointer.button_hold = 0.0
+	if pointer.button != null: pointer.button.visible = false
+
+
+## Turns the link buttons to the head where they stand; one the rays left
+## [constant BUTTON_HOLD] ago goes. Every frame, without allocating.
+func _update_buttons(delta: float) -> void:
+	var head := _rig.camera.global_position
+	for pointer: Pointer in _pointers:
+		if pointer.button == null or not pointer.button.visible: continue
+		pointer.button_hold -= delta
+		if pointer.button_hold <= 0.0 or not _workspace.visible:
+			_hide_button(pointer)
+			continue
+		var grown := 1.15 if pointer.button.get_meta(&"hot", false) else 1.0
+		pointer.button.global_transform = Transform3D(XREBlueprintPetals.face(pointer.button_point, head, Vector3.UP) * Basis.from_scale(Vector3.ONE * grown), pointer.button_point)
+		pointer.button.set_meta(&"hot", false)
+
+
+## Where the ray from [param origin] along [param direction] meets the link
+## button [param pill], in units of [param direction], or -1.
+func _pill_distance(pill: Node3D, origin: Vector3, direction: Vector3) -> float:
+	var inverse := pill.global_transform.affine_inverse()
+	var local_origin := inverse * origin
+	var local_direction := inverse.basis * direction
+	if absf(local_direction.z) < 0.000001: return -1.0
+	var along := -local_origin.z / local_direction.z
+	if along < 0.0: return -1.0
+	var at := local_origin + local_direction * along
+	var margin := 0.006
+	if absf(at.x) > float(pill.get_meta(&"width")) * 0.5 + margin or absf(at.y) > XREBlueprintPetals.PILL_HEIGHT * 0.5 + margin: return -1.0
+	return along
+
+
+## The ray on [param pointer]'s link button: it grows and stays; the trigger
+## makes its link or takes it back to its wire. False if the ray is not on it,
+## or [param canvas_hit] — a card's — is nearer.
+func _point_at_button(pointer: Pointer, origin: Vector3, direction: Vector3, canvas_hit: float) -> bool:
+	if pointer.button == null or not pointer.button.visible or pointer.button_ref.is_empty() or has_wire(pointer.hand): return false
+	var hit := _pill_distance(pointer.button, origin, direction)
+	if hit < 0.0 or (canvas_hit >= 0.0 and hit > canvas_hit + 0.03): return false
+	var hand := pointer.hand
+	hand.claim(self)
+	hand.show_ray(hit, true)
+	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
+	canvas.hover_socket(-1, -1, hand == _rig.right_hand)
+	pointer.focus = int(pointer.button_ref["card"])
+	pointer.button_hold = BUTTON_HOLD
+	pointer.button.set_meta(&"hot", true)
+	if hand.trigger_pressed: _set_link(pointer.button_ref, pointer.button_make)
+	return true
+
+
+## The nearest drawn wire that may become a link — from a variable's box, or
+## to a scene object — on the ray within [param limit], not a link yet: its
+## distance, or -1; [member _wire_ref] and [member _wire_point] say which and where.
+func _link_wire_hit(origin: Vector3, direction: Vector3, limit: float) -> float:
+	_wire_ref = {}
+	var nearest := canvas.intersect_link_wire(origin, direction, limit)
+	if nearest >= 0.0:
+		_wire_ref = canvas.get_wire_ref()
+		_wire_point = canvas.get_wire_point()
+	for wire: TargetWire in _target_wires:
+		if wire.link or not wire.mesh.visible: continue
+		var hit := wire.mesh.intersect_ray(origin, direction, XREBlueprintCanvas.WIRE_REACH, nearest if nearest >= 0.0 else limit, XREBlueprintCanvas.WIRE_MARGIN)
+		if hit < 0.0: continue
+		nearest = hit
+		_wire_ref = XREBlueprintLinks.ref(wire.id, XREBlueprintLinks.TARGET, wire.id, -1 if wire.source else wire.port, XREBlueprintCanvas.SOURCE if wire.source else -1)
+		_wire_point = origin + direction * hit
+	return nearest
+
+
+## The ray on a wire that may become a link, nearer than [param limit] (D-074):
+## with Link from wire on Wire button a link button stands where the ray is on
+## it; on Pull the grip takes the wire to pull it into its port. False with
+## Port button, or with no such wire on the ray.
+func _point_at_link_wire(pointer: Pointer, origin: Vector3, direction: Vector3, limit: float) -> bool:
+	var create := _document.features.get_value(XREFeatureSettings.LINK_CREATE)
+	var hand := pointer.hand
+	if create == XREFeatureSettings.PORT_BUTTON or has_wire(hand) or _target_pick >= 0: return false
+	var hit := _link_wire_hit(origin, direction, limit)
+	if hit < 0.0: return false
+	hand.claim(self)
+	hand.show_ray(hit, true)
+	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
+	canvas.hover_socket(-1, -1, hand == _rig.right_hand)
+	pointer.focus = int(_wire_ref["card"])
+	if create == XREFeatureSettings.WIRE_BUTTON: _show_button(pointer, _wire_ref, true, _wire_point + (_rig.camera.global_position - _wire_point).normalized() * BUTTON_LEAD)
+	elif hand.grip_pressed: _start_pull(pointer, _wire_ref, hit)
+	return true
+
+
+## The grip takes the wire of [param ref] at [param distance] along the ray, to pull it into its port.
+func _start_pull(pointer: Pointer, ref: Dictionary, distance: float) -> void:
+	var hand := pointer.hand
+	pointer.pull = ref
+	pointer.pull_distance = distance
+	pointer.pull_start = hand.global_position - hand.global_basis.z.normalized() * distance
+	pointer.pull_wire = _ref_mesh(ref)
+	if pointer.pull_wire != null: pointer.pull_wire.visible = false
+	hand.claim(self)
+	_message("Pull the wire into its port and let go: it becomes a link.")
+
+
+## The mesh the wire of [param ref] is drawn as, or null.
+func _ref_mesh(ref: Dictionary) -> XREGraphWire:
+	if ref["key"] == XREBlueprintLinks.VARIABLE: return canvas.ref_wire(ref)
+	var wire := _target_wire_of(int(ref["card"]))
+	return wire.mesh if wire != null else null
+
+
+## Whether a hand pulls [param mesh] into its port now.
+func _is_pulled(mesh: XREGraphWire) -> bool:
+	for pointer: Pointer in _pointers:
+		if pointer.pull_wire == mesh and not pointer.pull.is_empty(): return true
+	return false
+
+
+## Where the wire of [param ref] goes into its card, in the canvas's space: its
+## port, its Source or Variable socket, an adapter's far end.
+func _ref_start(ref: Dictionary) -> Vector3:
+	if ref["key"] == XREBlueprintLinks.TARGET:
+		var end: Variant = canvas.adapter_end(int(ref["card"]))
+		if end is Vector3: return end
+	return canvas.ref_point(ref)
+
+
+## The wire follows the grip from its port; let go most of the way to the
+## port ([constant PULL_DONE]), it becomes a link, else it is as it was.
+func _update_pull(pointer: Pointer) -> void:
+	var hand := pointer.hand
+	var point := hand.global_position - hand.global_basis.z.normalized() * pointer.pull_distance
+	var port := canvas.to_global(_ref_start(pointer.pull))
+	var progress := 1.0 - point.distance_to(port) / maxf(pointer.pull_start.distance_to(port), 0.01)
+	canvas.show_link(canvas.to_local(port), canvas.to_local(point))
+	hand.show_ray(pointer.pull_distance, true)
+	pointer.focus = int(pointer.pull["card"])
+	if hand.get_has_tracking_data() and hand.grip_held: return
+	_end_pull(pointer, hand.get_has_tracking_data() and progress >= PULL_DONE)
+
+
+func _end_pull(pointer: Pointer, commit: bool) -> void:
+	var ref := pointer.pull
+	pointer.pull = {}
+	if pointer.pull_wire != null and ref["key"] == XREBlueprintLinks.VARIABLE: pointer.pull_wire.visible = true
+	pointer.pull_wire = null
+	canvas.hide_connection()
+	pointer.hand.unclaim(self)
+	pointer.hand.show_ray(XREHand.RAY_LENGTH, false)
+	if commit: _set_link(ref, true)
+	else: _message("The wire stays a wire: pull it all the way into its port.")
+
+
+## The trigger on a link (D-074): a wire from its port or socket, as from a
+## wired one, to another box or object; what it ends on is a link too.
+func _retarget_link(ref: Dictionary, hand: XREHand) -> void:
+	var card := int(ref["card"])
+	var kind := int(ref["kind"])
+	if kind == XREBlueprintCanvas.VARIABLE or kind == XREBlueprintCanvas.SOURCE:
+		_start_link(card, kind, hand)
+		return
+	var port := int(ref["port"])
+	var edges := canvas.port_edges(card, port, true)
+	click_port(card, port, true, hand, edges[0] if not edges.is_empty() else -1)
+
+
+## What a link [param ref] carried away holds: its variable, or the target path
+## [param value] — as [method XREBlueprintCanvas.get_hit_link_value] says.
+static func _link_value(ref: Dictionary, value: String) -> Dictionary:
+	return XREBlueprintLinks.of_variable(value) if ref["key"] == XREBlueprintLinks.VARIABLE else XREBlueprintLinks.of_target(value)
+
+
+## The grip, or the trigger with [param by_trigger], carries the link
+## [param value]: from the tray with no [param source], else the link of
+## [param source] itself, which leaves its port at once (D-058), or a copy by a
+## grip of the other hand. Let go in a port it goes there; in the air a link
+## from a port is a wire again.
+func _carry_link(pointer: Pointer, value: Dictionary, source: Dictionary, by_trigger: bool = false) -> void:
+	var what := str(value["link"])
+	var text := "link"
+	var type := XREBlueprintGraph.EXEC
+	if what == XREBlueprintLinks.VARIABLE:
+		text = str(value["name"])
+		type = XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(blueprint.graph.find_variable(text)))
+	elif what == XREBlueprintLinks.TARGET:
+		var path := str(value["path"])
+		text = "self" if path in [".", ""] else path.get_file()
+		type = XREBlueprintGraph.OBJECT
+	pointer.carried = XREBlueprintCanvas.make_link(text, XREBlueprintTokens.width(text), type)
+	pointer.carried.top_level = true
+	add_child(pointer.carried)
+	pointer.carried_value = value
+	pointer.carried_key = XREBlueprintLinks.KEY
+	pointer.carried_block = -1
+	pointer.carried_box = ""
+	pointer.carried_copy = source.is_empty()
+	pointer.carried_trigger = by_trigger
+	pointer.carried_ref = source
+	pointer.hand.claim(self)
+	if not source.is_empty(): canvas.hide_link(source, true)
+	_update_carried(pointer)
+
+
+## Where a link dropped now would go, from the last ray [param hit] (D-074):
+## [code]{"block", "port", "kind"}[/code] — an input port, a Source or a
+## Variable socket, a link's place — or empty.
+func _link_dock(hit: float) -> Dictionary:
+	if hit < 0.0 or canvas.get_hit_box(): return {}
+	var id := canvas.get_hit_id()
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty(): return {}
+	var kind := canvas.get_hit_socket_kind()
+	match kind:
+		XREBlueprintCanvas.LINK:
+			var ring := canvas.get_hit_link()
+			return {"block": id, "port": ring["port"], "kind": ring["kind"]}
+		XREBlueprintCanvas.SOURCE, XREBlueprintCanvas.VARIABLE:
+			return {"block": id, "port": -1, "kind": kind}
+		XREBlueprintCanvas.MEMBER:
+			if block["kind"] == "signal": return {"block": id, "port": -1, "kind": XREBlueprintCanvas.SOURCE}
+			return {"block": id, "port": XREBlueprintGraph.target_port(block), "kind": -1}
+		XREBlueprintCanvas.TOKEN:
+			if canvas.get_hit_socket_port() >= 0: return {"block": id, "port": canvas.get_hit_socket_port(), "kind": -1}
+	if canvas.get_hit_port() >= 0 and canvas.get_hit_input(): return {"block": id, "port": canvas.get_hit_port(), "kind": -1}
+	return {}
+
+
+## Lets go of [param pointer]'s carried link over [param slot] ([method _link_dock]).
+func _drop_link(pointer: Pointer, slot: Dictionary) -> void:
+	var value: Dictionary = pointer.carried_value
+	var source := pointer.carried_ref
+	var copy := pointer.carried_copy
+	var hand := pointer.hand
+	pointer.carried.queue_free()
+	pointer.carried = null
+	pointer.carried_ref = {}
+	hand.unclaim(self)
+	hand.show_ray(XREHand.RAY_LENGTH, false)
+	if not source.is_empty(): canvas.hide_link(source, false)
+	if slot.is_empty():
+		# Let go in the air, a link taken from its port is its wire again; a copy or the tray's just goes.
+		if not source.is_empty() and not copy: _set_link(source, false)
+		return
+	if not source.is_empty() and int(slot["block"]) == int(source["card"]) and int(slot["port"]) == int(source["port"]) and int(slot["kind"]) == int(source["kind"]): return
+	if str(value["link"]).is_empty(): _dock_blank_link(slot, hand)
+	else: _dock_link(value, slot, {} if copy else source)
+
+
+## A link from the tray laid on [param slot] (D-074): the wire there to a
+## variable's box or a scene object becomes a link; on a free input, a wire
+## from it waits for a box, whose link it then is.
+func _dock_blank_link(slot: Dictionary, hand: XREHand) -> void:
+	var id := int(slot["block"])
+	var port := int(slot["port"])
+	var kind := int(slot["kind"])
+	var block := blueprint.graph.find_node(id)
+	if kind == XREBlueprintCanvas.SOURCE or (kind < 0 and port >= 0 and port == XREBlueprintGraph.target_port(block)):
+		if not XREBlueprintTokens.targets_in_scene(_document.features.get_value(XREFeatureSettings.TARGET_INPUT)):
+			_message("Links to objects need Targets on Node, Scene or Adapter.")
+			return
+		if kind < 0 and blueprint.target_is_connected(id):
+			_message("A wire from a block brings this Target: links stand for objects of the scene.")
+			return
+		_set_link(XREBlueprintLinks.ref(id, XREBlueprintLinks.TARGET, id, port, kind), true)
+		return
+	if _document.features.get_value(XREFeatureSettings.VARIABLE_INPUT) != XREFeatureSettings.BOXES:
+		_message("Links to variables need Variables on Boxes.")
+		return
+	if kind == XREBlueprintCanvas.VARIABLE:
+		_set_link(XREBlueprintLinks.ref(id, XREBlueprintLinks.VARIABLE, id, -1, kind), true)
+		if str((block["params"] as Dictionary).get("variable", "")).is_empty(): _start_link(id, kind, hand)
+		return
+	var getter := canvas.inline_getter(id, port)
+	if getter >= 0:
+		_set_link(XREBlueprintLinks.ref(getter, XREBlueprintLinks.VARIABLE, id, port, -1), true)
+		return
+	for edge: Dictionary in blueprint.graph.edges:
+		if edge["to"] == id and edge["to_port"] == port:
+			_message("A wire from a block comes in here: links stand for variables and objects.")
+			return
+	cancel_connection()
+	_pending_id = id
+	_pending_port = port
+	_pending_input = true
+	_pending_hand = hand
+	_pending_link = true
+	canvas.highlight_ports(canvas.port_type(id, port, true), false)
+	_message("Press trigger on a variable's box: its link goes in this port.")
+
+
+## A link of a variable or an object [param value] let go on [param slot]
+## (D-074): the slot reads that variable or targets that object through a link,
+## as one edit; moved from [param source] (empty for a copy), it leaves there
+## what a token leaves — a port's default, a socket's wire.
+func _dock_link(value: Dictionary, slot: Dictionary, source: Dictionary) -> void:
+	var id := int(slot["block"])
+	var port := int(slot["port"])
+	var kind := int(slot["kind"])
+	var block := blueprint.graph.find_node(id)
+	var target_slot := kind == XREBlueprintCanvas.SOURCE or (kind < 0 and port >= 0 and port == XREBlueprintGraph.target_port(block))
+	if value["link"] == XREBlueprintLinks.TARGET:
+		if not target_slot:
+			_message("An object's link goes into a Target or a Source.")
+			return
+		var node := blueprint.resolve_target(str(value["path"]))
+		if node == null:
+			_message("The link's object is not in this scene.")
+			return
+		if kind < 0 and blueprint.target_is_connected(id):
+			_message("A wire from a block brings this Target: links stand for objects of the scene.")
+			return
+		var edits := {id: {XREBlueprintLinks.FIELD: XREBlueprintLinks.field_with(block, XREBlueprintLinks.TARGET, true)}}
+		if not source.is_empty() and int(source["block"]) != id:
+			edits[int(source["block"])] = {XREBlueprintLinks.FIELD: XREBlueprintLinks.field_with(blueprint.graph.find_node(int(source["block"])), str(source["key"]), false)}
+		if blueprint.perform(blueprint.choose_target.bind(id, node, edits), &"vr_graph"): _message("A link to %s." % node.name)
+		else: _message(blueprint.last_error)
+		return
+	var variable_name := str(value["name"])
+	var variable := blueprint.graph.find_variable(variable_name)
+	if variable.is_empty() or _document.features.get_value(XREFeatureSettings.VARIABLE_INPUT) != XREFeatureSettings.BOXES:
+		_message("Links to variables need Variables on Boxes.")
+		return
+	var state := blueprint.graph.snapshot()
+	if kind == XREBlueprintCanvas.VARIABLE:
+		for entry: Dictionary in state["nodes"]:
+			if entry["id"] != id: continue
+			entry["params"]["variable"] = variable_name
+			if entry["kind"] == "set_variable": entry["params"]["value"] = variable.get("value", XREBlueprintSchema.default_value(XREBlueprintGraph.variable_type(variable)))
+			XREBlueprintLinks.set_link(entry, XREBlueprintLinks.VARIABLE, true)
+	elif kind < 0 and port >= 0 and not target_slot:
+		if not XREBlueprintGraph.ports_compatible(XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(variable)), canvas.port_type(id, port, true)):
+			_message("%s doesn't fit there." % variable_name)
+			return
+		# As a token takes a wire's place (D-066): what came into the port goes.
+		state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return not (edge["to"] == id and edge["to_port"] == port))
+		var getter := XREBlueprintGraph.make_node(blueprint.next_id(), "get_variable", (block["position"] as Vector2) + Vector2(-300, 40 + 50 * port))
+		getter["params"]["variable"] = variable_name
+		getter["vr_inline"] = true
+		getter["vr_depth"] = float(block.get("vr_depth", 0.0))
+		XREBlueprintLinks.set_link(getter, XREBlueprintLinks.VARIABLE, true)
+		(state["nodes"] as Array).append(getter)
+		(state["edges"] as Array).append({"from": getter["id"], "from_port": 0, "to": id, "to_port": port})
+	else:
+		_message("A variable's link goes into a port of its type or a Variable.")
+		return
+	if not source.is_empty():
+		if source["key"] == XREBlueprintLinks.VARIABLE and int(source["kind"]) < 0:
+			# Its Get Variable goes with it; the port it fed gets its default token (D-059).
+			var getter_id := int(source["block"])
+			state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return edge["from"] != getter_id)
+		else:
+			for entry: Dictionary in state["nodes"]:
+				if entry["id"] == int(source["block"]): XREBlueprintLinks.set_link(entry, str(source["key"]), false)
+	_drop_orphan_inlines(state)
+	_fill_sockets(state)
+	if blueprint.perform(blueprint.commit.bind("Move Link" if not source.is_empty() else "Dock Link", state), &"vr_graph"): _message("A link to %s." % variable_name)
+	else: _message(blueprint.last_error)
+
+
+## Puts the projections of their objects in the rings of the target links that
+## wait for one (D-074): once for each ring, as the canvas is built.
+func _fill_link_heads() -> void:
+	for item: Array in canvas.target_heads():
+		var inside: Node3D = item[1]
+		if inside.get_child_count() > 0: continue
+		var target := blueprint.target_node(int(item[0]))
+		if target is Node3D: _project(target as Node3D, inside)
+
+
+## A projection of [param target] in [param inside]: the meshes of its own
+## geometry and of its children's, CSG baked, a light's icon, in their colours
+## and shaded as wires are, fitted to a link's ring. Built from nodes and
+## meshes the scene has; nothing of the scene changes (invariant 1).
+func _project(target: Node3D, inside: Node3D) -> void:
+	var inverse := target.global_transform.affine_inverse()
+	var holder := Node3D.new()
+	holder.name = "Projection"
+	var bounds := AABB()
+	var found := false
+	var pending: Array[Node] = [target]
+	var visited := 0
+	while not pending.is_empty() and holder.get_child_count() < PROJECTION_PARTS and visited < PROJECTION_NODES:
+		var node: Node = pending.pop_back()
+		visited += 1
+		pending.append_array(node.get_children())
+		var spatial := node as Node3D
+		if spatial == null or not spatial.visible: continue
+		var mesh: Mesh
+		var color := Color.WHITE
+		var local := inverse * spatial.global_transform
+		if node is CSGShape3D:
+			var shape := node as CSGShape3D
+			if not shape.is_root_shape(): continue
+			var key := shape.get_instance_id()
+			if not _projection_meshes.has(key): _projection_meshes[key] = shape.bake_static_mesh()
+			mesh = _projection_meshes[key]
+			var paint: Material = shape.material_override
+			# A box's, a sphere's… material: each primitive has its own property, not their base class.
+			if paint == null and shape is CSGPrimitive3D: paint = shape.get(&"material") as Material
+			color = _albedo(paint, color)
+		elif node is MeshInstance3D:
+			var instance := node as MeshInstance3D
+			mesh = instance.mesh
+			if mesh != null and mesh.get_surface_count() > 0: color = _albedo(instance.get_active_material(0), color)
+		elif node is Light3D:
+			mesh = XREIcons.mesh_for(StringName(node.get_class()))
+			color = (node as Light3D).light_color
+			local = local * Transform3D(Basis.from_scale(Vector3.ONE * 0.1), Vector3.ZERO)
+		if mesh == null: continue
+		var part := XRERig.create_vr_mesh(mesh, XREBlueprintCanvas.wire_material(color))
+		part.transform = local
+		holder.add_child(part)
+		var box := local * mesh.get_aabb()
+		bounds = bounds.merge(box) if found else box
+		found = true
+	var largest := maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z))
+	if not found or largest < 0.0001:
+		holder.free()
+		return
+	var fit := XREBlueprintCanvas.LINK_RING * 1.3 / largest
+	holder.transform = Transform3D(Basis.from_scale(Vector3.ONE * fit), -bounds.get_center() * fit)
+	inside.add_child(holder)
+
+
+## The colour [param material] paints in, or [param fallback] for one without an albedo.
+static func _albedo(material: Material, fallback: Color) -> Color:
+	var standard := material as BaseMaterial3D
+	return Color(standard.albedo_color, 1.0) if standard != null else fallback

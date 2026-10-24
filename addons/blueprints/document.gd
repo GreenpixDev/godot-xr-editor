@@ -363,10 +363,16 @@ func disconnect_blocks(from: int, from_port: int, to: int, to_port: int) -> void
 	commit("Disconnect Ports", state)
 
 
-## Edits a parameter, preserving the previous value for undo.
-func set_parameter(id: int, key: String, value: Variant) -> bool:
+## Edits a parameter, preserving the previous value for undo. [param edits]
+## sets fields of blocks in the same edit, [code]{id: {field: value}}[/code],
+## a null value erasing the field: the headset's links move with a target (D-074).
+func set_parameter(id: int, key: String, value: Variant, edits: Dictionary = {}) -> bool:
 	var state := graph.snapshot()
 	for block: Dictionary in state["nodes"]:
+		var fields: Dictionary = edits.get(block["id"], {})
+		for field: String in fields:
+			if fields[field] == null: block.erase(field)
+			else: block[field] = fields[field]
 		if block["id"] == id:
 			block["params"][key] = value
 			if key in ["target", "property", "signal"] or key in _provider_keys(block):
@@ -646,13 +652,14 @@ func set_target_member(id: int, node: Node, key: String, member: String, anchor:
 
 
 ## Selects a target from the scene tree. No edited scene node is mutated.
-func choose_target(id: int, node: Node) -> bool:
+## [param edits] sets fields of blocks in the same edit ([method set_parameter]).
+func choose_target(id: int, node: Node, edits: Dictionary = {}) -> bool:
 	var host := get_host()
 	if host == null: return _fail("Choose the script host first.")
 	if not scene_nodes().has(node): return _fail("The target is outside the edited scene.")
 	var problem := XREBlueprintSchema.target_kind_problem(graph.find_node(id), node)
 	if not problem.is_empty(): return _fail(problem)
-	if not set_parameter(id, "target", str(host.get_path_to(node))): return false
+	if not set_parameter(id, "target", str(host.get_path_to(node)), edits): return false
 	if node != host:
 		_targets[id] = weakref(node)
 		_bound_paths[id] = str(host.get_path_to(node))

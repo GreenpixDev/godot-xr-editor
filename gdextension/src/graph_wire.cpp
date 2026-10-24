@@ -8,6 +8,7 @@
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
+#include <godot_cpp/variant/transform3d.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -81,6 +82,8 @@ void XREGraphWire::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("update_curve", "start", "start_direction", "end", "end_direction", "front"), &XREGraphWire::update_curve, DEFVAL(Vector3()));
 	ClassDB::bind_method(D_METHOD("get_point_count"), &XREGraphWire::get_point_count);
 	ClassDB::bind_method(D_METHOD("get_point", "index"), &XREGraphWire::get_point);
+	ClassDB::bind_method(D_METHOD("intersect_ray", "origin", "direction", "radius", "maximum", "margin"), &XREGraphWire::intersect_ray, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("get_hit_fraction"), &XREGraphWire::get_hit_fraction);
 	BIND_CONSTANT(SAMPLES);
 	BIND_CONSTANT(SIDES);
 }
@@ -145,5 +148,42 @@ void XREGraphWire::update_curve(const Vector3 &p_start, const Vector3 &p_start_d
 
 int XREGraphWire::get_point_count() const { return built ? SAMPLES : 0; }
 Vector3 XREGraphWire::get_point(int p_index) const { ERR_FAIL_INDEX_V(p_index, get_point_count(), Vector3()); return points[p_index]; }
+
+real_t XREGraphWire::intersect_ray(const Vector3 &p_origin, const Vector3 &p_direction, real_t p_radius, real_t p_maximum, real_t p_margin) {
+	hit_fraction = -1.0f;
+	if (!built || !is_visible_in_tree() || p_direction.length_squared() < 1e-12f) { return -1.0f; }
+	// In the wire's own space; the ray's parameter is the same in both.
+	const Transform3D inverse = get_global_transform().affine_inverse();
+	const Vector3 origin = inverse.xform(p_origin);
+	const Vector3 direction = inverse.basis.xform(p_direction);
+	const real_t radius = p_radius * direction.length() / p_direction.length();
+	if (!get_custom_aabb().grow(radius).intersects_segment(origin, origin + direction * p_maximum)) { return -1.0f; }
+	const real_t along = direction.length_squared();
+	const real_t last = real_t(SAMPLES - 1);
+	real_t nearest = -1.0f;
+	for (int i = 0; i < SAMPLES - 1; i++) {
+		const real_t middle = (real_t(i) + 0.5f) / last;
+		if (middle < p_margin || middle > 1.0f - p_margin) { continue; }
+		const Vector3 start = points[i];
+		const Vector3 segment = points[i + 1] - start;
+		const real_t span = segment.length_squared();
+		const Vector3 offset = origin - start;
+		// Closest points of the ray and the segment: the segment's parameter first, then the ray's for it, then back.
+		const real_t cross = direction.dot(segment);
+		const real_t denominator = along * span - cross * cross;
+		real_t s = denominator > 1e-12f ? (along * segment.dot(offset) - cross * direction.dot(offset)) / denominator : 0.0f;
+		s = std::clamp(s, 0.0f, 1.0f);
+		real_t t = std::clamp((cross * s - direction.dot(offset)) / along, 0.0f, p_maximum);
+		if (span > 1e-12f) { s = std::clamp((cross * t + segment.dot(offset)) / span, 0.0f, 1.0f); }
+		const Vector3 gap = origin + direction * t - (start + segment * s);
+		if (gap.length_squared() > radius * radius) { continue; }
+		if (nearest >= 0.0f && t >= nearest) { continue; }
+		nearest = t;
+		hit_fraction = (real_t(i) + s) / last;
+	}
+	return nearest;
+}
+
+real_t XREGraphWire::get_hit_fraction() const { return hit_fraction; }
 
 } // namespace xre

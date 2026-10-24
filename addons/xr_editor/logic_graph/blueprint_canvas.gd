@@ -28,6 +28,13 @@ extends Node3D
 ## lit with their ports, details and wires as [constant XREFeatureSettings.FOCUS]
 ## says, or come toward the user with them (D-073), the rest darker or
 ## see-through as [constant XREFeatureSettings.DEFOCUS] says.
+##
+## A wire to a variable's box or to a scene object may be a link (D-074,
+## [XREBlueprintLinks]): a plug in its port with a ring at its far end, the
+## variable's name or the object's projection on it as
+## [constant XREFeatureSettings.LINK_PREVIEW] says, and the wire hidden — or
+## drawn faint from the ring, in focus or always, as
+## [constant XREFeatureSettings.LINK_WIRES] says ([method set_link_modes]).
 
 const PIXEL_SIZE := 0.0009
 const CARD_WIDTH := 0.26
@@ -77,6 +84,16 @@ const FINISHED := 2
 const SOURCE := 3
 const VARIABLE := 4
 const MEMBER := 5
+## A link in a port or in a Source or Variable socket (D-074).
+const LINK := 6
+## The outer radius of a link's ring, in meters, and how much of the wire a
+## link hides is seen while it is drawn: faint, it reads as a link's.
+const LINK_RING := 0.012
+const LINK_SEEN := 0.5
+## How near the ray must pass a wire to be on it, in meters, and how much of
+## a wire at each end is left to its ports (D-074).
+const WIRE_REACH := 0.012
+const WIRE_MARGIN := 0.1
 ## A puck's depth on the card, a plug's, how far left of the port a plug's
 ## body is, and how faint a token is under a wire.
 const PUCK_DEPTH := 0.008
@@ -116,6 +133,12 @@ class Socket:
 	var value: Variant
 	## The visual's scale when not under a ray.
 	var base_scale := Vector3.ONE
+	## A link's (D-074): the block whose field holds it, the socket it is in
+	## (-1 a port, [constant SOURCE], [constant VARIABLE]), and where the wire
+	## it hides leaves it, in its card's space.
+	var flag_block := -1
+	var link_kind := -1
+	var end := Vector3.ZERO
 
 class Card:
 	var id: int
@@ -170,6 +193,9 @@ class Wire:
 	## A wire straight from a variable's box (D-061): [member from] is null and
 	## this names the variable of the inline Get Variable it stands for.
 	var variable := ""
+	## That inline Get Variable's block, and its link in the port (D-074), the wire hidden.
+	var getter := -1
+	var link: Socket
 	var mesh: XREGraphWire
 	var normal: Material
 	var lit: Material
@@ -246,6 +272,17 @@ var _focus_box := ""
 var _focus_other_box := ""
 var _focus_any := false
 var _focus_frame: Material
+## Links (D-074): the settings [constant XREFeatureSettings.LINK_PREVIEW] and
+## [constant XREFeatureSettings.LINK_WIRES]; the inputs whose wire from a
+## variable's box is a link, [code](card, port) → {"variable", "getter", "type"}[/code];
+## the linkable wire the last [method intersect_link_wire] hit, as a ref of [XREBlueprintLinks], and where.
+var _link_preview := XREFeatureSettings.OFF
+var _link_wires := XREFeatureSettings.OFF
+var _linked_inputs: Dictionary[Vector2i, Dictionary] = {}
+var _wire_ref: Dictionary = {}
+var _wire_point := Vector3.ZERO
+static var _ring_mesh: TorusMesh
+static var _ring_fill: CylinderMesh
 
 
 func _init() -> void:
@@ -387,6 +424,14 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		remove_child(wire["mesh"])
 		(wire["mesh"] as Node).queue_free()
 	_variable_wires.clear()
+	# The ports an inline Get Variable's link is in (D-074): the card that has the port shows it.
+	_linked_inputs.clear()
+	for edge: Dictionary in graph.edges:
+		var source := graph.find_node(edge["from"])
+		if not is_inline(source) or not XREBlueprintLinks.is_link(source, XREBlueprintLinks.VARIABLE): continue
+		var variable := str((source["params"] as Dictionary).get("variable", ""))
+		_linked_inputs[Vector2i(edge["to"], edge["to_port"])] = {"variable": variable, "getter": source["id"],
+				"type": XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(graph.find_variable(variable)))}
 	for block: Dictionary in graph.nodes:
 		# An inline Get Variable is no card: its wire comes from the variable's box (D-061).
 		if is_inline(block): continue
@@ -466,6 +511,8 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			var source := graph.find_node(edge["from"])
 			if is_inline(source):
 				wire.variable = str((source["params"] as Dictionary).get("variable", ""))
+				wire.getter = source["id"]
+				if _linked_inputs.has(Vector2i(wire.to.id, wire.to_port)): wire.link = _link_socket(wire.to, wire.to_port, -1)
 				inline.append(wire)
 			continue
 		var color := COLORS[wire.from.output_types[wire.from_port]]
@@ -482,10 +529,13 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		wire.mesh = create_scene_wire(color)
 		wire.normal = wire.mesh.material_override
 		wire.lit = wire_material(color, LIT_WIRE_GROW)
+		# Drawn at all, the wire a link hides is faint (D-074).
+		if wire.link != null: XREBlueprintFade.set_seen(wire.mesh, &"link", LINK_SEEN)
 		_wires.append(wire)
 	update_wires()
 	select_block(_selected)
 	_paint_focus()
+	_show_link_wires()
 
 
 ## How wide an operator's card is (D-065): its ports and the widest token on
@@ -742,6 +792,39 @@ func get_focus_modes() -> Array[StringName]:
 	return [_focus_mode, _defocus_mode]
 
 
+## Switches links (D-074) to [param preview], a value of [constant XREFeatureSettings.LINK_PREVIEW],
+## which takes effect on the next [method rebuild], and [param wires], one of
+## [constant XREFeatureSettings.LINK_WIRES], which does at once. True if a rebuild is needed.
+func set_link_modes(preview: StringName, wires: StringName) -> bool:
+	_link_wires = wires
+	_show_link_wires()
+	if preview == _link_preview: return false
+	_link_preview = preview
+	return true
+
+
+## The link settings, as [method set_link_modes] takes them.
+func get_link_modes() -> Array[StringName]:
+	return [_link_preview, _link_wires]
+
+
+## Whether the wire a link on card [param id] hides is drawn now, by
+## [constant XREFeatureSettings.LINK_WIRES]: always, never, or while the card —
+## or the box of its [param variable], if it has one — is in focus (D-072).
+func link_wire_shown(id: int, variable: String = "") -> bool:
+	if _link_wires == XREFeatureSettings.ON: return true
+	if _link_wires != XREFeatureSettings.ON_FOCUS: return false
+	return _in_focus(id) or (not variable.is_empty() and (variable == _focus_box or variable == _focus_other_box))
+
+
+## Shows or hides the wires links hide, as [method link_wire_shown] says.
+func _show_link_wires() -> void:
+	for wire: Wire in _wires:
+		if wire.link != null: wire.mesh.visible = link_wire_shown(wire.to.id, wire.variable)
+	for link: Dictionary in _variable_wires:
+		if link["link"] != null: (link["mesh"] as Node3D).visible = link_wire_shown((link["card"] as Card).id, str(link["variable"]))
+
+
 ## Puts the cards of [param cards] (-1 for none) and the boxes of variables
 ## [param box] and [param other_box] (empty for none) in focus, with their
 ## ports, details and wires, and the rest of the graph out of it (D-072);
@@ -753,6 +836,7 @@ func set_focus(cards: Vector3i, box: String = "", other_box: String = "") -> voi
 	_focus_box = box
 	_focus_other_box = other_box
 	_paint_focus()
+	_show_link_wires()
 
 
 ## How block [param id] is in focus: [constant XREBlueprintFocus.FOCUSED],
@@ -1479,7 +1563,8 @@ func hide_connection() -> void:
 func update_wires() -> void:
 	for wire: Wire in _wires:
 		if wire.from == null:
-			var port := _port_position(wire.to, wire.to_port, true)
+			# A link's wire leaves its ring, not the port (D-074).
+			var port := wire.to.node.transform * wire.link.end if wire.link != null else _port_position(wire.to, wire.to_port, true)
 			var end := _shelf.box_end(wire.variable, port)
 			wire.mesh.update_curve(end[0], end[1], port, _port_direction(wire.to, true), _front(wire.to))
 			continue
@@ -1487,7 +1572,8 @@ func update_wires() -> void:
 	for link: Dictionary in _variable_wires:
 		var card: Card = link["card"]
 		var socket: Socket = card.sockets[link["socket"]]
-		var at := card.node.transform * socket.center
+		var ring: Socket = link["link"]
+		var at := card.node.transform * (ring.end if ring != null else socket.center)
 		var end := _shelf.box_end(link["variable"], at)
 		(link["mesh"] as XREGraphWire).update_curve(at, Vector3.LEFT, end[0], end[1], _front(card))
 
@@ -1605,7 +1691,20 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 			var shown := XREBlueprintGraph.port_type(graph.operand_type(block, spec[2])) if card.compact and spec[1] == XREBlueprintGraph.VALUE and wired.has(index) else -1
 			var text := _add_port(card, spec, index, true, row, shown)
 			var key: String = spec[2] if spec.size() > 2 else ""
-			if key == "target" and XREBlueprintTokens.adapter(_target_mode) and block["kind"] != "signal":
+			var linked: Dictionary = _linked_inputs.get(Vector2i(card.id, index), {})
+			var target_link: bool = key == "target" and block["kind"] != "signal" and XREBlueprintTokens.targets_in_scene(_target_mode) \
+					and XREBlueprintLinks.is_link(block, XREBlueprintLinks.TARGET) and not wired.has(index)
+			if not linked.is_empty():
+				# The wire from the variable's box is a link in the port (D-074).
+				var variable := str(linked["variable"])
+				_add_link(card, _row_point(card, row, true), XREBlueprintLinks.VARIABLE, linked["type"], variable if XREBlueprintLinks.shows_name(_link_preview) else "link",
+						int(linked["getter"]), index, -1, variable)
+			elif target_link and XREBlueprintTokens.adapter(_target_mode):
+				_add_adapter(card, block, _row_point(card, row, true), true, index)
+			elif target_link:
+				_add_target_link(card, block, _row_point(card, row, true), index, -1)
+				if not member_key.is_empty(): _add_member(card, text, member_key, str(params.get(member_key, "")), block)
+			elif key == "target" and XREBlueprintTokens.adapter(_target_mode) and block["kind"] != "signal":
 				if not wired.has(index): _add_adapter(card, block, _row_point(card, row, true))
 			elif key == "target" and not member_key.is_empty() and block["kind"] != "signal":
 				_add_member(card, text, member_key, str(params.get(member_key, "")), block)
@@ -1626,14 +1725,21 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 			_add_token(card, key, params.get(key), -1, row, text, occupied, false, true, XREBlueprintTokens.expression_of(block, key))
 		elif entry.has("source"):
 			var text := _add_virtual(card, SOURCE, "signal", "Source", XREBlueprintGraph.OBJECT, row, true)
+			var linked := XREBlueprintLinks.is_link(block, XREBlueprintLinks.TARGET)
+			if linked and XREBlueprintTokens.adapter(_target_mode): _add_adapter(card, block, _row_point(card, row, true), true, -1)
+			elif linked: _add_target_link(card, block, _row_point(card, row, true), -1, SOURCE)
 			if XREBlueprintTokens.member_on_card(_target_mode): _add_member(card, text, "signal", str(params.get("signal", "")), block)
-			elif XREBlueprintTokens.adapter(_target_mode): _add_adapter(card, block, _row_point(card, row, true))
+			elif XREBlueprintTokens.adapter(_target_mode) and not linked: _add_adapter(card, block, _row_point(card, row, true))
 		elif entry.has("variable"):
 			var variable := graph.find_variable(str(params.get("variable", "")))
 			var type := XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(variable)) if not variable.is_empty() else XREBlueprintGraph.VALUE
 			var text := _add_virtual(card, VARIABLE, "variable", "Variable", type, row, true)
 			# No name by the socket (D-061): the wire goes to the variable's box, which has it.
 			if variable.is_empty(): _add_member(card, text, "", "choose a box", block)
+			elif XREBlueprintLinks.is_link(block, XREBlueprintLinks.VARIABLE):
+				var variable_name := str(variable["name"])
+				_add_link(card, _row_point(card, row, true), XREBlueprintLinks.VARIABLE, type, variable_name if XREBlueprintLinks.shows_name(_link_preview) else "link",
+						card.id, -1, VARIABLE, variable_name)
 	for row: int in right.size():
 		var entry := right[row]
 		if entry.has("port"):
@@ -1697,7 +1803,9 @@ func _add_member(card: Card, after: Label3D, key: String, member: String, block:
 ## [param point], in the colour of objects, with the member's name on it; the
 ## wire to the object leaves its far end ([method adapter_end]). It is a member
 ## socket: the trigger on it opens the object's petals, as the name does.
-func _add_adapter(card: Card, block: Dictionary, point: Vector3) -> void:
+## With [param link] its pin is a link's ring (D-074), a link socket of input
+## [param port] (-1 for an event's Source), and the wire to the object is hidden.
+func _add_adapter(card: Card, block: Dictionary, point: Vector3, link: bool = false, port: int = -1) -> void:
 	var shown := XREBlueprintTokens.adapter_text(block)
 	var width := XREBlueprintTokens.width(shown)
 	var plug := make_token(null, "", width, true, false, false, XREBlueprintGraph.OBJECT, shown)
@@ -1717,6 +1825,30 @@ func _add_adapter(card: Card, block: Dictionary, point: Vector3) -> void:
 	# object's colour, where the wire to the object goes in.
 	var depth := PLUG_DEPTH * 0.5
 	var edge := -PLUG_GAP - width
+	if link:
+		# A link's ring past the adapter's end instead of its pin (D-074): the object's
+		# projection in it, or "link"; the wire it hides leaves its far side.
+		var head := _make_link_head(XREBlueprintGraph.OBJECT, "" if XREBlueprintLinks.shows_projection(_link_preview) else "link")
+		head.position = Vector3(edge - LINK_RING + 0.002, 0, depth)
+		plug.add_child(head)
+		if XREBlueprintLinks.shows_projection(_link_preview): head.set_meta(&"projection", true)
+		card.sockets.append(socket)
+		var ring := Socket.new()
+		ring.kind = LINK
+		ring.key = XREBlueprintLinks.TARGET
+		ring.type = XREBlueprintGraph.OBJECT
+		ring.port = port
+		ring.link_kind = SOURCE if block["kind"] == "signal" else -1
+		ring.flag_block = card.id
+		ring.center = Vector3(point.x + head.position.x, point.y, card.face + depth)
+		ring.size = Vector3(LINK_RING * 2.0 + 0.006, LINK_RING * 2.0 + 0.006, PLUG_DEPTH + 0.004)
+		ring.visual = head
+		ring.base_scale = head.scale
+		ring.value = str((block["params"] as Dictionary).get("target", "."))
+		ring.end = Vector3(point.x + head.position.x - LINK_RING, point.y, card.face + depth)
+		plug.set_meta(&"adapter_end", ring.end)
+		card.sockets.append(ring)
+		return
 	var pin_x := edge - PLUG_GAP - PORT_RADIUS
 	var neck := CylinderMesh.new()
 	neck.top_radius = 0.0045
@@ -1755,6 +1887,225 @@ func adapter_end(id: int) -> Variant:
 ## A static wire from the adapter of block [param id], leaving left, free towards the scene object.
 func update_adapter_wire(wire: XREGraphWire, id: int, start: Vector3, end: Vector3) -> void:
 	wire.update_curve(start, Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
+
+
+## The link of [param block]'s target (D-074) in its input [param port] or its
+## Source socket ([param kind]): its object's name or "link" on it, and a ring
+## for the object's projection, which [XREBlueprints] puts in ([method target_heads]).
+func _add_target_link(card: Card, block: Dictionary, point: Vector3, port: int, kind: int) -> void:
+	_add_link(card, point, XREBlueprintLinks.TARGET, XREBlueprintGraph.OBJECT, XREBlueprintLinks.target_text(block, _link_preview, _target_mode),
+			card.id, port, kind, str((block["params"] as Dictionary).get("target", ".")), XREBlueprintLinks.shows_projection(_link_preview))
+
+
+## A link (D-074) at [param point], the port of input [param port] or the
+## socket of [param kind]: a plug saying [param text] in the colour of
+## [param type], with a ring at its far end, where the wire it hides leaves.
+## Its socket names the reference of [param key] held by block
+## [param flag_block], [param value] — a variable's name or a target path.
+## With [param projection] its ring waits for the object's projection.
+func _add_link(card: Card, point: Vector3, key: String, type: int, text: String, flag_block: int, port: int, kind: int, value: String, projection: bool = false) -> void:
+	var width := XREBlueprintTokens.width(text)
+	var link := make_link(text, width, type)
+	link.position = Vector3(point.x, point.y, card.face)
+	card.node.add_child(link)
+	if projection: (link.get_meta(&"head") as Node3D).set_meta(&"projection", true)
+	var socket := Socket.new()
+	socket.kind = LINK
+	socket.key = key
+	socket.type = type
+	socket.port = port
+	socket.link_kind = kind
+	socket.flag_block = flag_block
+	# The pill and the ring; the plug's cap is left to the port it is in.
+	var extent := width + LINK_RING * 2.0
+	socket.center = Vector3(point.x - PLUG_GAP - extent * 0.5, point.y, card.face + PLUG_DEPTH * 0.5)
+	socket.size = Vector3(extent + 0.006, 0.026 + 0.006, PLUG_DEPTH + 0.004)
+	socket.visual = link
+	socket.base_scale = link.scale
+	socket.text = link.get_meta(&"text") as Label3D
+	socket.value = value
+	socket.end = link.position + (link.get_meta(&"end") as Vector3)
+	card.sockets.append(socket)
+
+
+## A link's mesh (D-074): a plug as a token's ([method make_token]), saying
+## [param text], [param width] wide, in the colour of [param type], and its
+## ring past the far end. Its ring's node is its "head" metadata, where the wire
+## it hides leaves its "end", how far it reaches its "extent", its label its "text".
+static func make_link(text: String, width: float, type: int) -> Node3D:
+	var link := make_token(null, "", width, true, false, false, type, text)
+	link.name = "Link"
+	var head := _make_link_head(type)
+	head.position = Vector3(-PLUG_GAP - width - LINK_RING + 0.002, 0, PLUG_DEPTH * 0.5)
+	link.add_child(head)
+	link.set_meta(&"head", head)
+	link.set_meta(&"end", head.position + Vector3.LEFT * LINK_RING)
+	link.set_meta(&"extent", PLUG_GAP + width + LINK_RING * 2.0)
+	return link
+
+
+## A link's ring in the colour of [param type], facing +Z on a dark disc, and
+## [param text] in it if any. Its "inside" metadata is the node a projection goes in.
+static func _make_link_head(type: int, text: String = "") -> Node3D:
+	if _ring_mesh == null:
+		_ring_mesh = TorusMesh.new()
+		_ring_mesh.inner_radius = LINK_RING * 0.72
+		_ring_mesh.outer_radius = LINK_RING
+		_ring_mesh.rings = 24
+		_ring_mesh.ring_segments = 8
+		_ring_fill = CylinderMesh.new()
+		_ring_fill.top_radius = LINK_RING * 0.8
+		_ring_fill.bottom_radius = LINK_RING * 0.8
+		_ring_fill.height = 0.001
+		_ring_fill.radial_segments = 20
+	var head := Node3D.new()
+	head.name = "LinkHead"
+	var ring := XRERig.create_vr_mesh(_ring_mesh, _token_shaded(COLORS[type]))
+	ring.rotation.x = PI * 0.5
+	head.add_child(ring)
+	var fill := XRERig.create_vr_mesh(_ring_fill, _token_material(TOKEN_FACE))
+	fill.rotation.x = PI * 0.5
+	fill.position.z = -0.001
+	head.add_child(fill)
+	var inside := Node3D.new()
+	inside.name = "Inside"
+	inside.position.z = LINK_RING * 0.5
+	head.add_child(inside)
+	head.set_meta(&"inside", inside)
+	if not text.is_empty():
+		var word := label(text, 13)
+		word.position.z = 0.0012
+		word.sorting_offset = TOKEN_SORTING
+		head.add_child(word)
+	return head
+
+
+## The rings of target links waiting for their object's projection (D-074):
+## [code][block id, node to put it in][/code] for each; a ring filled once has children.
+func target_heads() -> Array[Array]:
+	var heads: Array[Array] = []
+	for card: Card in _cards:
+		for socket: Socket in card.sockets:
+			if socket.kind != LINK or socket.key != XREBlueprintLinks.TARGET: continue
+			var head := socket.visual if socket.visual.has_meta(&"inside") else socket.visual.get_meta(&"head") as Node3D
+			if head.has_meta(&"projection"): heads.append([card.id, head.get_meta(&"inside")])
+	return heads
+
+
+## Where the wire that the link of [param key] on block [param id] hides
+## leaves it, in the canvas's space; null without one.
+func link_end(id: int, key: String) -> Variant:
+	var card := _find_card(id)
+	if card == null: return null
+	for socket: Socket in card.sockets:
+		if socket.kind == LINK and socket.key == key: return card.node.transform * socket.end
+	return null
+
+
+## The link socket of [param card] in input [param port] or in the socket of [param kind], or null.
+func _link_socket(card: Card, port: int, kind: int) -> Socket:
+	for socket: Socket in card.sockets:
+		if socket.kind == LINK and socket.port == port and socket.link_kind == kind: return socket
+	return null
+
+
+## Hides the link of [param ref] while it is carried away (D-058, D-074), or shows it again.
+func hide_link(ref: Dictionary, hidden: bool) -> void:
+	var card := _find_card(int(ref["card"]))
+	var socket := _link_socket(card, int(ref["port"]), int(ref["kind"])) if card != null else null
+	if socket != null: socket.visual.visible = not hidden
+
+
+## The inline Get Variable (D-061) whose wire comes into input [param port] of block [param id], or -1.
+func inline_getter(id: int, port: int) -> int:
+	for wire: Wire in _wires:
+		if wire.from == null and wire.to.id == id and wire.to_port == port: return wire.getter
+	return -1
+
+
+## The link the last ray hit, as a ref of [XREBlueprintLinks], or empty.
+func get_hit_link() -> Dictionary:
+	var card := _find_card(_hit_id)
+	if card == null or _hit_socket < 0 or _hit_socket >= card.sockets.size() or card.sockets[_hit_socket].kind != LINK: return {}
+	var socket := card.sockets[_hit_socket]
+	return XREBlueprintLinks.ref(socket.flag_block, socket.key, card.id, socket.port, socket.link_kind)
+
+
+## What the link the last ray hit stands for: a variable's name or a target path; empty for none.
+func get_hit_link_value() -> String:
+	var card := _find_card(_hit_id)
+	if card == null or _hit_socket < 0 or _hit_socket >= card.sockets.size() or card.sockets[_hit_socket].kind != LINK: return ""
+	return str(card.sockets[_hit_socket].value)
+
+
+## The input port of the socket the last ray hit — a token's or a link's — or -1.
+func get_hit_socket_port() -> int:
+	var card := _find_card(_hit_id)
+	return card.sockets[_hit_socket].port if card != null and _hit_socket >= 0 and _hit_socket < card.sockets.size() else -1
+
+
+## Where the reference [param ref] goes into its card, in the canvas's space:
+## its input port or its Source or Variable socket (D-074).
+func ref_point(ref: Dictionary) -> Vector3:
+	var card := _find_card(int(ref["card"]))
+	if card == null: return Vector3.ZERO
+	if int(ref["kind"]) in [SOURCE, VARIABLE]: return socket_position(card.id, int(ref["kind"]))
+	return _port_position(card, int(ref["port"]), true) if int(ref["port"]) >= 0 else card.node.position
+
+
+## The wire the variable reference [param ref] is drawn as — from a box to a
+## port or to a Variable socket — or null (D-074); a target's is [XREBlueprints]'s.
+func ref_wire(ref: Dictionary) -> XREGraphWire:
+	if ref["key"] != XREBlueprintLinks.VARIABLE: return null
+	if int(ref["kind"]) == VARIABLE:
+		for link: Dictionary in _variable_wires:
+			if (link["card"] as Card).id == int(ref["card"]): return link["mesh"]
+		return null
+	for wire: Wire in _wires:
+		if wire.getter == int(ref["block"]): return wire.mesh
+	return null
+
+
+## The nearest drawn wire from a variable's box — to a port or to a Variable
+## socket — that is not a link yet, on the ray from [param origin] along
+## [param direction] (global) within [param maximum] (D-074): its distance, or
+## -1. [method get_wire_ref] and [method get_wire_point] say which and where.
+## Target wires are [XREBlueprints]'s. The wires test the ray natively
+## ([method XREGraphWire.intersect_ray]): it may run every frame.
+func intersect_link_wire(origin: Vector3, direction: Vector3, maximum: float) -> float:
+	_wire_ref = {}
+	if not is_visible_in_tree(): return -1.0
+	var nearest := maximum
+	var found: XREGraphWire
+	for wire: Wire in _wires:
+		if wire.variable.is_empty() or wire.link != null or not wire.mesh.visible: continue
+		var hit := wire.mesh.intersect_ray(origin, direction, WIRE_REACH, nearest, WIRE_MARGIN)
+		if hit < 0.0: continue
+		nearest = hit
+		found = wire.mesh
+		_wire_ref = XREBlueprintLinks.ref(wire.getter, XREBlueprintLinks.VARIABLE, wire.to.id, wire.to_port, -1)
+	for link: Dictionary in _variable_wires:
+		var mesh: XREGraphWire = link["mesh"]
+		if link["link"] != null or not mesh.visible: continue
+		var hit := mesh.intersect_ray(origin, direction, WIRE_REACH, nearest, WIRE_MARGIN)
+		if hit < 0.0: continue
+		nearest = hit
+		found = mesh
+		var card: Card = link["card"]
+		_wire_ref = XREBlueprintLinks.ref(card.id, XREBlueprintLinks.VARIABLE, card.id, -1, VARIABLE)
+	if found == null: return -1.0
+	_wire_point = origin + direction * nearest
+	return nearest
+
+
+## The ref of the wire the last [method intersect_link_wire] hit, or empty.
+func get_wire_ref() -> Dictionary:
+	return _wire_ref
+
+
+## Where the last [method intersect_link_wire] met its wire, global.
+func get_wire_point() -> Vector3:
+	return _wire_point
 
 
 ## A token of [param value] for parameter [param key]: a puck in a slot at the
@@ -1958,8 +2309,11 @@ func _build_shelf(graph: XREBlueprintGraph) -> void:
 			if not _shelf.has_box(variable): continue
 			var type := card.sockets[index].type
 			var mesh := create_scene_wire(COLORS[type])
+			# A link in the socket hides its wire, faint while drawn (D-074).
+			var ring := _link_socket(card, -1, VARIABLE)
+			if ring != null: XREBlueprintFade.set_seen(mesh, &"link", LINK_SEEN)
 			_variable_wires.append({"card": card, "socket": index, "variable": variable, "mesh": mesh, "normal": mesh.material_override, "lit": wire_material(COLORS[type], LIT_WIRE_GROW),
-					"flash": null, "focus": XREBlueprintFocus.NORMAL, "look": -1})
+					"flash": null, "focus": XREBlueprintFocus.NORMAL, "look": -1, "link": ring})
 
 
 func _add_frame(card: Card, size: Vector3, cuboid: bool) -> void:

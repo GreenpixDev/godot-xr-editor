@@ -28,6 +28,13 @@ public:
 	void update_curve(const godot::Vector3 &p_start, const godot::Vector3 &p_start_direction, const godot::Vector3 &p_end, const godot::Vector3 &p_end_direction, const godot::Vector3 &p_front);
 	int get_point_count() const;
 	godot::Vector3 get_point(int p_index) const;
+	/// Where the ray from [param p_origin] along [param p_direction] (global) first passes
+	/// within [param p_radius] meters of the curve, in units of [param p_direction] up to
+	/// [param p_maximum], or -1; [param p_margin] of the curve at each end is left out, where
+	/// it goes into its ports. Allocates nothing: it may run every frame.
+	godot::real_t intersect_ray(const godot::Vector3 &p_origin, const godot::Vector3 &p_direction, godot::real_t p_radius, godot::real_t p_maximum, godot::real_t p_margin);
+	/// How far along the curve the last [method intersect_ray] hit it, 0 at its start to 1 at its end, or -1.
+	godot::real_t get_hit_fraction() const;
 
 protected:
 	static void _bind_methods();
@@ -40,6 +47,7 @@ private:
 	uint32_t normal_offset = 0;
 	uint32_t normal_stride = 0;
 	bool built = false;
+	godot::real_t hit_fraction = -1.0f;
 	godot::Vector3 last_start;
 	godot::Vector3 last_start_direction;
 	godot::Vector3 last_end;

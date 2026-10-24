@@ -25,7 +25,7 @@ var _saved_shape := XREFeatureSettings.FLAT
 var _saved_parameters: Dictionary[StringName, StringName] = {}
 const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT,
 		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
-		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS]
+		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE]
 
 
 func _init(document: XREDocument) -> void:
@@ -285,6 +285,7 @@ func _run() -> void:
 	await _test_d068()
 	await _test_d069()
 	await _test_d072()
+	await _test_d074()
 	_check(_service.blueprint.operation_source == &"desktop_graph", "VR command source scope is restored")
 	_service.parameters.call("_set_parameter", print_id, "value", "VR test")
 	await _frames()
@@ -3327,6 +3328,216 @@ func _test_d072() -> void:
 	await get_tree().create_timer(XREBlueprints.FOCUS_HOLD * 2.0).timeout
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	await _frames(3)
+
+
+## D-074: links. A wire from a variable's box or to a scene object becomes a
+## link in its port — by the button on the wire, by pulling the wire into its
+## port, by the button over the port, or by a link from the tray laid on it —
+## its wire hidden or drawn as Link wires says, its name or projection as Link
+## preview says; a link moves, and let go in the air it is a wire again.
+func _test_d074() -> void:
+	var features := _document.features
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var history := _service.blueprint.history.get_version()
+	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
+	_check(XREFeatureSettings.get_values(XREFeatureSettings.LINK_PREVIEW) == [XREFeatureSettings.OFF, XREFeatureSettings.VARIABLES, XREFeatureSettings.OBJECTS, XREFeatureSettings.ALL]
+			and XREFeatureSettings.get_values(XREFeatureSettings.LINK_WIRES) == [XREFeatureSettings.OFF, XREFeatureSettings.ON_FOCUS, XREFeatureSettings.ON]
+			and XREFeatureSettings.get_values(XREFeatureSettings.LINK_CREATE) == [XREFeatureSettings.WIRE_BUTTON, XREFeatureSettings.PULL, XREFeatureSettings.PORT_BUTTON]
+			and XREFeatureSettings.get_default(XREFeatureSettings.LINK_PREVIEW) == XREFeatureSettings.OFF and XREFeatureSettings.get_default(XREFeatureSettings.LINK_WIRES) == XREFeatureSettings.OFF
+			and XREFeatureSettings.get_default(XREFeatureSettings.LINK_CREATE) == XREFeatureSettings.WIRE_BUTTON,
+			"Link preview, Link wires and Link from wire are settings with the values asked for, the first by default")
+	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
+	_service.blueprint.set_variable("link_gain", 2.0)
+	var right := -INF
+	for card: XREBlueprintCanvas.Card in canvas.get("_cards") as Array: right = maxf(right, card.node.position.x + card.width * 0.5)
+	_service.add_block("delay")
+	await _frames()
+	var delay: int = graph.nodes.back()["id"]
+	_service.add_block("delay")
+	await _frames()
+	var other: int = graph.nodes.back()["id"]
+	for item: Array in [[delay, Vector3(right + 0.6, 0.1, 0.0)], [other, Vector3(right + 0.6, -0.3, 0.0)]]:
+		canvas.preview_move(int(item[0]), item[1])
+		canvas.commit_move(_service.blueprint, int(item[0]))
+		await _frames()
+	var seconds := graph.input_port(graph.find_node(delay), "seconds")
+	_service.call("_wire_box_to_port", "link_gain", delay, seconds)
+	await _frames(3)
+	var getter := canvas.inline_getter(delay, seconds)
+	var ref := XREBlueprintLinks.ref(getter, XREBlueprintLinks.VARIABLE, delay, seconds)
+	var front := canvas.global_basis.z.normalized()
+	_check(getter >= 0 and canvas.ref_wire(ref) != null and canvas.ref_wire(ref).visible and not XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE), "a wire from the box into Seconds, not a link")
+
+	# Wire button: the ray on the wire puts a link button there; the trigger on it makes the link.
+	var mesh := canvas.ref_wire(ref)
+	var middle := canvas.to_global(mesh.get_point(mesh.get_point_count() / 2))
+	_aim_from(middle, front)
+	await _frames()
+	_check(pointer.button != null and pointer.button.visible and pointer.button_make and pointer.button_ref.get("block") == getter, "the ray on the wire puts up a link button")
+	await _click_from(pointer.button.global_position, front)
+	await _frames(2)
+	_check(XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE) and &"make_link" in _operations, "its trigger makes the wire a link, as a logged edit")
+	var link := _link_socket(delay)
+	_check(link != null and link.text != null and link.text.text == "link" and link.port == seconds, "the link is in Seconds and says link with Link preview Off")
+	_check(not canvas.ref_wire(ref).visible, "its wire is hidden with Link wires Off")
+	_check(_service.blueprint.build(), "the graph with a link still builds")
+
+	# Link preview Variables: the variable's name; Link wires On: the wire drawn, faint, from the link's ring.
+	features.set_value(XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.VARIABLES)
+	features.set_value(XREFeatureSettings.LINK_WIRES, XREFeatureSettings.ON)
+	await _frames(3)
+	link = _link_socket(delay)
+	mesh = canvas.ref_wire(ref)
+	_check(link != null and link.text.text == "link_gain", "with Link preview Variables it says the variable's name")
+	_check(mesh.visible and is_equal_approx(mesh.transparency, 1.0 - XREBlueprintCanvas.LINK_SEEN), "with Link wires On its wire is drawn, faint")
+	var ring := _card(delay).node.transform * link.end
+	_check(mesh.get_point(mesh.get_point_count() - 1).distance_to(ring) < 0.002, "from the link's ring")
+	features.set_value(XREFeatureSettings.LINK_WIRES, XREFeatureSettings.ON_FOCUS)
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await get_tree().create_timer(XREBlueprints.FOCUS_HOLD * 2.0).timeout
+	await _frames(2)
+	_check(not canvas.ref_wire(ref).visible, "On focus: hidden while the ray is elsewhere")
+	_aim_from(_card(delay).node.global_position + _card(delay).node.global_basis.y.normalized() * 0.02, _card(delay).node.global_basis.z.normalized())
+	await _frames(2)
+	_check(canvas.ref_wire(ref).visible, "drawn while the ray is on its card")
+
+	# By the link, a button takes it back to its wire.
+	var link_point := _card(delay).node.global_transform * link.center
+	_aim_from(link_point, _card(delay).node.global_basis.z.normalized())
+	await _frames()
+	_check(pointer.button != null and pointer.button.visible and not pointer.button_make, "the ray on a link puts up a wire button")
+	await _click_from(pointer.button.global_position, _card(delay).node.global_basis.z.normalized())
+	await _frames(2)
+	_check(not XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE) and _link_socket(delay) == null and &"unlink" in _operations, "its trigger makes the link a wire again")
+	features.set_value(XREFeatureSettings.LINK_WIRES, XREFeatureSettings.OFF)
+
+	# Pull: the grip on the wire, the hand to its port, let go: a link; let go where it was taken: still a wire.
+	features.set_value(XREFeatureSettings.LINK_CREATE, XREFeatureSettings.PULL)
+	await _frames()
+	mesh = canvas.ref_wire(ref)
+	middle = canvas.to_global(mesh.get_point(mesh.get_point_count() / 2))
+	_aim_from(middle, front)
+	await _frames()
+	_check(pointer.button == null or not pointer.button.visible, "with Pull no button on the wire")
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	_check(not pointer.pull.is_empty() and not mesh.visible, "the grip takes the wire, which follows the hand")
+	_right.set_input(&"grip", 0.0)
+	await _frames(2)
+	_check(not XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE) and pointer.pull.is_empty() and canvas.ref_wire(ref).visible, "let go where it was taken, it stays a wire")
+	_aim_from(middle, front)
+	await _frames()
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	_aim_from(canvas.to_global(canvas.port_position(delay, seconds, true)), front)
+	await _frames()
+	_right.set_input(&"grip", 0.0)
+	await _frames(2)
+	_check(XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE), "pulled into its port and let go, it is a link")
+	_service.call("_set_link", ref, false)
+	await _frames(2)
+
+	# Port button: the ray on the port puts the button over it.
+	features.set_value(XREFeatureSettings.LINK_CREATE, XREFeatureSettings.PORT_BUTTON)
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await _frames()
+	mesh = canvas.ref_wire(ref)
+	_aim_from(canvas.to_global(canvas.port_position(delay, seconds, true)), _card(delay).node.global_basis.z.normalized())
+	await _frames()
+	var over := pointer.button.global_position - canvas.to_global(canvas.port_position(delay, seconds, true)) if pointer.button != null else Vector3.ZERO
+	_check(pointer.button != null and pointer.button.visible and pointer.button_make and over.dot(_card(delay).node.global_basis.y.normalized()) > 0.01, "with Port button the ray on the port puts up a link button over it")
+	await _click_from(pointer.button.global_position, _card(delay).node.global_basis.z.normalized())
+	await _frames(2)
+	_check(XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE), "its trigger makes the link")
+	_check(float(_service.call("_link_wire_hit", middle + front * 0.4, -front, 1.0)) < 0.0, "a link's hidden wire is not on the ray")
+
+	# Let go in the air, a link carried away from its port is a wire again.
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await _frames()
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	_service.call("_carry_link", pointer, XREBlueprintLinks.of_variable("link_gain"), XREBlueprintLinks.ref(getter, XREBlueprintLinks.VARIABLE, delay, seconds))
+	await _frames()
+	_check(pointer.carried != null and not _link_socket(delay).visual.visible, "the grip carries the link itself: its port shows none")
+	_right.set_input(&"grip", 0.0)
+	await _frames(2)
+	_check(pointer.carried == null and not XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE) and canvas.inline_getter(delay, seconds) == getter, "let go in the air it is the wire again")
+
+	# A link from the tray: on a wired port it takes the wire; on a free one it waits for a box.
+	_check(_service.token_tray.get_values().any(func(value: Variant) -> bool: return XREBlueprintLinks.is_link_value(value)), "the tray has a link")
+	_service.call("_dock_blank_link", {"block": delay, "port": seconds, "kind": -1}, _rig.right_hand)
+	await _frames(2)
+	_check(XREBlueprintLinks.is_link(graph.find_node(getter), XREBlueprintLinks.VARIABLE), "laid on a port wired from a box, it makes that wire a link")
+	var other_seconds := graph.input_port(graph.find_node(other), "seconds")
+	_service.call("_dock_blank_link", {"block": other, "port": other_seconds, "kind": -1}, _rig.right_hand)
+	_check(_service.get("_pending_id") == other and _service.get("_pending_link") == true, "laid on a free port, a wire from it waits for a box")
+	_service.call("_wire_box_to_port", "link_gain", other, other_seconds)
+	await _frames(2)
+	var other_getter := canvas.inline_getter(other, other_seconds)
+	_check(other_getter >= 0 and XREBlueprintLinks.is_link(graph.find_node(other_getter), XREBlueprintLinks.VARIABLE), "the box it ends on is read through a link")
+
+	# Moved to another port, a link leaves its own port the default token.
+	_service.call("_set_link", XREBlueprintLinks.ref(other_getter, XREBlueprintLinks.VARIABLE, other, other_seconds), false)
+	await _frames(2)
+	_service.call("_dock_link", XREBlueprintLinks.of_variable("link_gain"), {"block": other, "port": other_seconds, "kind": -1}, XREBlueprintLinks.ref(getter, XREBlueprintLinks.VARIABLE, delay, seconds))
+	await _frames(2)
+	_check(canvas.inline_getter(delay, seconds) < 0 and graph.find_node(getter).is_empty() and (graph.find_node(delay)["params"] as Dictionary).has("seconds"), "moved away, the link takes its Get Variable along; its port gets its default")
+	var moved := canvas.inline_getter(other, other_seconds)
+	_check(moved >= 0 and XREBlueprintLinks.is_link(graph.find_node(moved), XREBlueprintLinks.VARIABLE) and graph.find_node(other_getter).is_empty(), "the port it goes into reads the variable through it")
+
+	# An object's link: the Target wire hidden, the object's projection in the ring.
+	features.set_value(XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ON_NODE)
+	features.set_value(XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.ALL)
+	var cube: Node3D
+	for found: Node in _document.get_scene_root().find_children("*", "CSGShape3D", true, false):
+		if (found as CSGShape3D).is_root_shape() and found != _host:
+			cube = found as Node3D
+			break
+	_service.add_block("set_property")
+	await _frames()
+	var setter: int = graph.nodes.back()["id"]
+	canvas.preview_move(setter, Vector3(right + 0.6, -0.7, 0.0))
+	canvas.commit_move(_service.blueprint, setter)
+	if cube != null: _service.blueprint.choose_target(setter, cube)
+	await _frames(3)
+	var target_port := XREBlueprintGraph.target_port(graph.find_node(setter))
+	var target_wire := _service.call("_target_wire_of", setter) as XREBlueprints.TargetWire
+	_check(cube != null and target_wire != null and target_wire.mesh.visible and not target_wire.link, "Set Property wired to a cube of the scene")
+	_aim_from(canvas.to_global(canvas.port_position(setter, target_port, true)), _card(setter).node.global_basis.z.normalized())
+	await _frames()
+	_check(pointer.button != null and pointer.button.visible and pointer.button_make and pointer.button_ref.get("key") == XREBlueprintLinks.TARGET, "the ray on its Target puts up a link button")
+	await _click_from(pointer.button.global_position, _card(setter).node.global_basis.z.normalized())
+	await _frames(3)
+	target_wire = _service.call("_target_wire_of", setter) as XREBlueprints.TargetWire
+	var target_link := _link_socket(setter)
+	_check(XREBlueprintLinks.is_link(graph.find_node(setter), XREBlueprintLinks.TARGET) and target_wire != null and target_wire.link and not target_wire.mesh.visible, "its trigger makes the Target a link, its wire hidden")
+	var projection := (target_link.visual.get_meta(&"head") as Node3D).get_meta(&"inside") as Node3D if target_link != null else null
+	_check(cube != null and target_link != null and target_link.text.text == cube.name and projection != null and projection.get_child_count() == 1 and projection.get_child(0).get_child_count() > 0,
+			"with Link preview All it says the object's name and has its projection in its ring")
+	_check(_service.blueprint.validate_scene().is_empty() and _service.blueprint.build(), "a Target link builds")
+	features.set_value(XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ADAPTER)
+	await _frames(3)
+	target_link = _link_socket(setter)
+	_check(target_link != null and target_link.visual.has_meta(&"inside") and canvas.link_end(setter, XREBlueprintLinks.TARGET) is Vector3, "with Targets on Adapter the link's ring is at the adapter's end")
+
+	features.set_value(XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.OFF)
+	features.set_value(XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BUTTON)
+	features.set_value(XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.WINDOW)
+	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.WINDOW)
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await _frames()
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames(3)
+
+
+## The link socket of the card of block [param id], or null.
+func _link_socket(id: int) -> XREBlueprintCanvas.Socket:
+	var card := _card(id)
+	if card == null: return null
+	for socket: XREBlueprintCanvas.Socket in card.sockets:
+		if socket.kind == XREBlueprintCanvas.LINK: return socket
+	return null
 
 
 ## The face of a card's body material.

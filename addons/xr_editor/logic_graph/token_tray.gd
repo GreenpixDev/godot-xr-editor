@@ -1,7 +1,7 @@
 @tool
 class_name XREBlueprintTokenTray
 extends ScrollContainer
-## The ready tokens of the Tokens window (D-052, D-055): Recent, Numbers,
+## The ready tokens of the Tokens window (D-052, D-055): Recent, Links (D-074), Numbers,
 ## Yes/No, Colors, Vectors, Modes and Text, four to a row (D-058: bigger). The cells are
 ## frames; [XREBlueprints] hangs a solid token in front of each, as the
 ## Objects window has its miniatures (D-045). The trigger or the grip on a
@@ -17,6 +17,8 @@ const CELL_SIZE := Vector2(116.0, 76.0)
 const RECENT_COUNT := 5
 const CELL_COLOR := Color(1.0, 1.0, 1.0, 0.07)
 const SECTIONS: Array[Array] = [
+	# A link that stands for nothing yet (D-074): laid on a port, it takes that port's wire, or asks for a box.
+	["Links", [{"link": ""}]],
 	["Numbers", [0.5, 1.0, 2.0, 5.0, 0, 1, 10, 100]],
 	["Yes / No", [true, false]],
 	["Colors", [Color("ffffff"), Color("7be5b3"), Color("e8879b"), Color("f2d878"), Color("89adff"), Color("ffb070"), Color("000000")]],
@@ -118,7 +120,7 @@ func _rebuild() -> void:
 		grid.add_theme_constant_override(&"v_separation", 6)
 		_column.add_child(grid)
 		for value: Variant in section[1]:
-			var key := "policy" if section[0] == "Modes" else ""
+			var key := "policy" if section[0] == "Modes" else XREBlueprintLinks.KEY if section[0] == "Links" else ""
 			var cell := PanelContainer.new()
 			cell.custom_minimum_size = CELL_SIZE
 			cell.mouse_filter = Control.MOUSE_FILTER_IGNORE

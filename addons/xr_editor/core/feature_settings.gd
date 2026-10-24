@@ -115,6 +115,23 @@ const DEFOCUS := &"defocus"
 const DIM := &"dim"
 ## See-through.
 const TRANSPARENT := &"transparent"
+## Links (D-074): a detail in a port that stands for a variable or a scene
+## object, its wire to the variable's box or the object hidden. What a link
+## shows: "link" only, or the variable's name, or the object's projection.
+const LINK_PREVIEW := &"link_preview"
+const VARIABLES := &"variables"
+const OBJECTS := &"objects"
+const ALL := &"all"
+## When the wires links hide are drawn: never, while their card, box or link is in focus, always.
+const LINK_WIRES := &"link_wires"
+const ON_FOCUS := &"on_focus"
+## How a wire to a variable or an object becomes a link (D-074), besides a link
+## from the Tokens window laid on its port: a button on the wire under the ray,
+## a pull of the wire into its port by the grip, a button over its port.
+const LINK_CREATE := &"link_create"
+const WIRE_BUTTON := &"wire_button"
+const PULL := &"pull"
+const PORT_BUTTON := &"port_button"
 
 ## Every setting by key: its page, title, values (the first is the default),
 ## the values' titles and a line of explanation.
@@ -216,6 +233,27 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [OFF, DIM, TRANSPARENT],
 		"labels": ["Off", "Dim", "Transparent"],
 		"hint": "While the ray is on a card or a variable, the rest of the graph stays as it is (Off), goes darker (Dim) or see-through (Transparent).",
+	},
+	LINK_PREVIEW: {
+		"category": Category.FEATURES,
+		"title": "Link preview",
+		"values": [OFF, VARIABLES, OBJECTS, ALL],
+		"labels": ["Off", "Variables", "Objects", "All"],
+		"hint": "What a link in a port shows: \"link\" only (Off), the variable's name, the object's projection, or both.",
+	},
+	LINK_WIRES: {
+		"category": Category.FEATURES,
+		"title": "Link wires",
+		"values": [OFF, ON_FOCUS, ON],
+		"labels": ["Off", "On focus", "On"],
+		"hint": "The wire a link hides: never drawn (Off), drawn while the ray is on its card, its variable or the link (On focus), always drawn (On).",
+	},
+	LINK_CREATE: {
+		"category": Category.FEATURES,
+		"title": "Link from wire",
+		"values": [WIRE_BUTTON, PULL, PORT_BUTTON],
+		"labels": ["Wire button", "Pull", "Port button"],
+		"hint": "How a wire to a variable or an object becomes a link: a link button where the ray is on the wire, the grip pulling the wire into its port, or a link button over its port. A link from the Tokens window laid on the port works with each.",
 	},
 }
 

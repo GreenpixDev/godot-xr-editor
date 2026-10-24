@@ -533,6 +533,8 @@ func validate() -> PackedStringArray:
 			errors.append("Block #%s has invalid VR rotation." % id)
 		if block.has("vr_anchor") and (not block["vr_anchor"] is Vector3 or not (block["vr_anchor"] as Vector3).is_finite()):
 			errors.append("Block #%s has invalid VR anchor." % id)
+		if block.has("vr_links") and not block["vr_links"] is Array:
+			errors.append("Block #%s has invalid VR links." % id)
 		var params: Dictionary = block["params"]
 		if kind == "call":
 			errors.append_array(_validate_call(block))
