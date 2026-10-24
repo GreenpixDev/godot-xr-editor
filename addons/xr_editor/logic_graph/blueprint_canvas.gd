@@ -19,6 +19,12 @@ extends Node3D
 ## settings without a port; the target's member after the Target ("Target ·
 ## visible") and an event's Source; Play Animation's Finished output for its
 ## wait; a Variable socket wired to its box on the shelf ([XREBlueprintShelf]).
+##
+## With [constant XREFeatureSettings.WIRE_BENDS] on ([method set_bends_shown],
+## D-064) a wire goes smoothly through its bends, drawn as knots, one tube from
+## each bend to the next; the ray picks wires and knots too, behind ports and
+## the cards' buttons. A drag previews bends here and [method commit_bends]
+## keeps them as one edit.
 
 const PIXEL_SIZE := 0.0009
 const CARD_WIDTH := 0.26
@@ -76,6 +82,15 @@ const MEMBER_COLOR := Color("dcc8fa")
 const TOKEN_FACE := Color("151a26")
 ## Pixel size of the cards' labels, for measuring their text.
 const LABEL_PIXEL := 0.0007
+## Bent wires (D-064): a knot's radius; how near the ray must pass a wire or a
+## knot to take it; how far out of a port the wire's direction at the first
+## or the last bend is measured from.
+const KNOT_RADIUS := 0.005
+const WIRE_HIT_RADIUS := 0.01
+const KNOT_HIT_RADIUS := 0.012
+const BEND_LEAD := 0.05
+## Keys of links ([method link_key]) start here, above any edge's index.
+const LINK_KEYS := 1 << 20
 
 ## A socket of a card that is not one of its block's ports (D-052).
 class Socket:
@@ -121,19 +136,34 @@ class Card:
 	var waits := false
 	var finished := -1
 
+## A wire that bends (D-064): a graph's edge, or a link — a block's wire to
+## its object in the scene, or from its Variable socket to the variable's box.
 class Wire:
 	var from: Card
 	var to: Card
 	var from_port: int
 	var to_port: int
-	## Index of the wire's edge in the graph's edges.
+	## Index of the wire's edge in the graph's edges; a link's key ([method link_key]).
 	var edge: int
+	## A link's block, whose [member stored] keeps its bends; -1 for an edge,
+	## whose own [code]vr_bends[/code] do. A Variable link's socket on [member from].
+	var owner := -1
+	var stored := "vr_bends"
+	var socket := -1
 	## A wire straight from a variable's box (D-061): [member from] is null and
 	## this names the variable of the inline Get Variable it stands for.
 	var variable := ""
 	var mesh: XREGraphWire
 	var normal: Material
 	var lit: Material
+	## Where the wire bends (D-064), in the canvas's space, from its output to
+	## its input: its edge's bends, or a drag's preview of them. An Array, not
+	## a packed one: a drag moves a bend in place every frame without a copy.
+	var bends: Array[Vector3] = []
+	## The tubes drawn: [member mesh] up to the first bend, then one after each
+	## bend shown; and a knot at each. Only [member mesh] while bends are off.
+	var pieces: Array[XREGraphWire] = []
+	var knots: Array[MeshInstance3D] = []
 
 var _cards: Array[Card] = []
 var _wires: Array[Wire] = []
@@ -180,8 +210,10 @@ var _hit_box := false
 var _socket_right := Vector2i(-1, -1)
 var _socket_left := Vector2i(-1, -1)
 var _shelf: XREBlueprintShelf
-## Wires from Variable sockets to their boxes.
-var _variable_wires: Array[Dictionary] = []
+## Links (D-064): wires from Variable sockets to their boxes, rebuilt with the
+## cards; wires of blocks to the scene, which [XREBlueprints] adds and removes.
+var _variable_links: Array[Wire] = []
+var _scene_links: Array[Wire] = []
 static var _token_materials: Dictionary[Color, Material] = {}
 ## Ports under each hand's ray: the card and the index in [member Card.ports], or -1.
 var _port_right := Vector2i(-1, -1)
@@ -192,6 +224,21 @@ var _compatible_input := false
 var _head_position := Vector3.ZERO
 var _view_transform := Transform3D.IDENTITY
 static var _wire_shader: Shader
+## Wires bend ([constant XREFeatureSettings.WIRE_BENDS], D-064).
+var _bends_shown := false
+var _knot_mesh: SphereMesh
+## What each hand's ray is on: a wire's edge and its knot, -1 for the wire
+## itself; -1, -1 for none. A white knot marks where taking the wire adds a bend.
+var _bend_right := Vector2i(-1, -1)
+var _bend_left := Vector2i(-1, -1)
+var _ghost_right: MeshInstance3D
+var _ghost_left: MeshInstance3D
+## The wire the last ray hit: its edge, its knot (-1 for the tube), the point
+## on it, and how many bends come before that point: where a new bend goes.
+var _hit_wire := -1
+var _hit_bend := -1
+var _hit_wire_point := Vector3.ZERO
+var _hit_piece := -1
 
 
 func _init() -> void:
@@ -229,6 +276,17 @@ void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 	_preview.visible = false
 	_shelf = XREBlueprintShelf.new(_trash_mesh, _trash_material)
 	add_child(_shelf)
+	_knot_mesh = SphereMesh.new()
+	_knot_mesh.radius = KNOT_RADIUS
+	_knot_mesh.height = KNOT_RADIUS * 2.0
+	_knot_mesh.radial_segments = 12
+	_knot_mesh.rings = 6
+	var ghost_material := wire_material(Color.WHITE)
+	_ghost_right = XRERig.create_vr_mesh(_knot_mesh, ghost_material)
+	_ghost_left = XRERig.create_vr_mesh(_knot_mesh, ghost_material)
+	for ghost: MeshInstance3D in [_ghost_right, _ghost_left]:
+		ghost.visible = false
+		add_child(ghost)
 
 
 ## Switches how cards are drawn to [param display], a value of
@@ -260,6 +318,20 @@ func set_plus_shown(shown: bool) -> bool:
 	if shown == _plus_shown: return false
 	_plus_shown = shown
 	return true
+
+
+## Whether wires bend ([constant XREFeatureSettings.WIRE_BENDS], D-064): drawn
+## through their bends, which the ray takes. Off, wires are drawn as before
+## and the graph keeps their bends. True if that changed, for a rebuild.
+func set_bends_shown(shown: bool) -> bool:
+	if shown == _bends_shown: return false
+	_bends_shown = shown
+	return true
+
+
+## Whether wires bend ([method set_bends_shown]).
+func get_bends_shown() -> bool:
+	return _bends_shown
 
 
 ## How ports are drawn: a value of [constant XREFeatureSettings.PORT_DISPLAY].
@@ -313,11 +385,15 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	for card: Card in _cards:
 		remove_child(card.node)
 		card.node.queue_free()
-	for wire: Wire in _wires:
-		remove_child(wire.mesh)
-		wire.mesh.queue_free()
+	for wire: Wire in _wires: _free_wire(wire)
+	for link: Wire in _variable_links: _free_wire(link)
 	_cards.clear()
 	_wires.clear()
+	_variable_links.clear()
+	_bend_right = Vector2i(-1, -1)
+	_bend_left = Vector2i(-1, -1)
+	_ghost_right.visible = false
+	_ghost_left.visible = false
 	_hover_right = -1
 	_hover_left = -1
 	_delete_right = -1
@@ -328,10 +404,6 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	_socket_left = Vector2i(-1, -1)
 	_edge_right = -1
 	_edge_left = -1
-	for wire: Dictionary in _variable_wires:
-		remove_child(wire["mesh"])
-		(wire["mesh"] as Node).queue_free()
-	_variable_wires.clear()
 	for block: Dictionary in graph.nodes:
 		# An inline Get Variable is no card: its wire comes from the variable's box (D-061).
 		if is_inline(block): continue
@@ -402,21 +474,111 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 				wire.variable = str((source["params"] as Dictionary).get("variable", ""))
 				inline.append(wire)
 			continue
-		var color := COLORS[wire.from.output_types[wire.from_port]]
-		wire.mesh = create_scene_wire(color)
-		wire.normal = wire.mesh.material_override
-		wire.lit = wire_material(color, LIT_WIRE_GROW)
+		_add_wire(wire, COLORS[wire.from.output_types[wire.from_port]], edge)
 		_wires.append(wire)
 	_build_shelf(graph)
 	for wire: Wire in inline:
 		if not _shelf.has_box(wire.variable): continue
-		var color := COLORS[wire.to.input_types[wire.to_port]]
-		wire.mesh = create_scene_wire(color)
-		wire.normal = wire.mesh.material_override
-		wire.lit = wire_material(color, LIT_WIRE_GROW)
+		_add_wire(wire, COLORS[wire.to.input_types[wire.to_port]], graph.edges[wire.edge])
 		_wires.append(wire)
 	update_wires()
 	select_block(_selected)
+
+
+## Gives [param wire] its tube in [param color] and the bends that
+## [param entry] — its edge, or a link's block — keeps under [member Wire.stored].
+func _add_wire(wire: Wire, color: Color, entry: Dictionary) -> void:
+	wire.mesh = create_scene_wire(color)
+	wire.normal = wire.mesh.material_override
+	wire.lit = wire_material(color, LIT_WIRE_GROW)
+	wire.pieces.append(wire.mesh)
+	wire.bends = _bends_of(entry, wire.stored)
+	_fit_pieces(wire)
+
+
+func _free_wire(wire: Wire) -> void:
+	for piece: XREGraphWire in wire.pieces:
+		remove_child(piece)
+		piece.queue_free()
+	for knot: MeshInstance3D in wire.knots:
+		remove_child(knot)
+		knot.queue_free()
+
+
+## The key of a link (D-064): of block [param id]'s wire to the scene, or with
+## [param variable] of its wire from its Variable socket to the variable's box.
+static func link_key(id: int, variable: bool = false) -> int:
+	return LINK_KEYS + id * 2 + (1 if variable else 0)
+
+
+## Adds the wire of block [param id] to its object in the scene (D-064): from
+## its Target port, its adapter or its Source, as [XREBlueprints] lays it with
+## [method update_scene_wire] and the others. It bends as an edge does, with
+## the bends [param block] keeps; [method remove_scene_link] takes it away.
+func add_scene_link(block: Dictionary, color: Color) -> Wire:
+	var link := Wire.new()
+	link.owner = block["id"]
+	link.edge = link_key(link.owner)
+	link.stored = XREBlueprintGraph.SCENE_BENDS
+	_add_wire(link, color, block)
+	_scene_links.append(link)
+	return link
+
+
+func remove_scene_link(link: Wire) -> void:
+	_free_wire(link)
+	_scene_links.erase(link)
+
+
+## Shows or hides [param link], every tube and knot of it.
+func set_link_shown(link: Wire, shown: bool) -> void:
+	if link.mesh.visible == shown: return
+	for piece: XREGraphWire in link.pieces: piece.visible = shown
+	for knot: MeshInstance3D in link.knots: knot.visible = shown
+
+
+## Draws [param wire] with [param shown]: its normal or its lit material, or another.
+func light_wire(wire: Wire, shown: Material) -> void:
+	if wire.mesh.material_override == shown: return
+	for piece: XREGraphWire in wire.pieces: piece.material_override = shown
+	for knot: MeshInstance3D in wire.knots: knot.material_override = shown
+
+
+## The bends of [param entry] — an edge, or a link's block — under [param key]
+## in the canvas's space (D-064): stored as a block's place is, graph X and Y with VR depth.
+func _bends_of(entry: Dictionary, key: String = "vr_bends") -> Array[Vector3]:
+	var bends: Array[Vector3] = []
+	var stored: Variant = entry.get(key)
+	if stored is PackedVector3Array:
+		for point: Vector3 in stored as PackedVector3Array:
+			var at := Vector2(point.x, point.y) - _offset
+			bends.append(Vector3(at.x * PIXEL_SIZE, -at.y * PIXEL_SIZE, point.z))
+	return bends
+
+
+## Gives [param wire] a tube after each bend and a knot at each while bends are
+## shown, none while they are off. Only on document changes and when a drag
+## adds or takes off a bend, never every frame.
+func _fit_pieces(wire: Wire) -> void:
+	var count := wire.bends.size() if _bends_shown else 0
+	while wire.knots.size() > count:
+		var knot := wire.knots.pop_back() as MeshInstance3D
+		remove_child(knot)
+		knot.queue_free()
+		var piece := wire.pieces.pop_back() as XREGraphWire
+		remove_child(piece)
+		piece.queue_free()
+	while wire.knots.size() < count:
+		var piece := create_scene_wire(Color.WHITE)
+		piece.material_override = wire.mesh.material_override
+		piece.visible = wire.mesh.visible
+		wire.pieces.append(piece)
+		var knot := XRERig.create_vr_mesh(_knot_mesh, wire.mesh.material_override)
+		knot.visible = wire.mesh.visible
+		add_child(knot)
+		wire.knots.append(knot)
+	# Knots may stand for other bends now: the rays light theirs again.
+	_clear_bend_hover()
 
 
 ## Whether [param block] is an inline Get Variable (D-061): a wire from a
@@ -452,8 +614,9 @@ func position_from_block(block: Dictionary) -> Vector3:
 	return Vector3(point.x * PIXEL_SIZE, -point.y * PIXEL_SIZE, float(block.get("vr_depth", 0.0)))
 
 
-## Moves the existing cards to the graph's placement when only placement changed.
-## False means the blocks differ and [method rebuild] is needed.
+## Moves the existing cards to the graph's placement, and bends its wires as
+## it does (D-064), when only placement changed. False means the blocks differ
+## and [method rebuild] is needed.
 func sync_placement(graph: XREBlueprintGraph) -> bool:
 	if graph.structure_key() != _structure: return false
 	var blocks: Array[Dictionary] = []
@@ -466,8 +629,18 @@ func sync_placement(graph: XREBlueprintGraph) -> bool:
 		if card.id != block["id"]: return false
 		card.node.position = position_from_block(block)
 		_orient(card)
+	for wire: Wire in _wires: _reload_bends(graph, wire)
+	for link: Wire in _variable_links: _reload_bends(graph, link)
+	for link: Wire in _scene_links: _reload_bends(graph, link)
 	update_wires()
 	return true
+
+
+## Gives [param wire] the bends [param graph] keeps for it, on its edge or its link's block.
+func _reload_bends(graph: XREBlueprintGraph, wire: Wire) -> void:
+	var entry: Dictionary = graph.find_node(wire.owner) if wire.owner >= 0 else (graph.edges[wire.edge] if wire.edge < graph.edges.size() else {})
+	wire.bends = _bends_of(entry, wire.stored)
+	_fit_pieces(wire)
 
 
 ## Commits one spatial move to the shared graph history after previewing its geometry.
@@ -611,13 +784,14 @@ func is_port_hovered(id: int, port: int, input: bool) -> bool:
 ## Both hands contribute action hover independently, using cached card visuals:
 ## the plus, the trash or port [param port] of card [param id] (an input if
 ## [param input]) under the ray of the [param right] hand or the other.
-## [param edge] is the wire on that port to light ([method get_hit_edge]), or -1.
+## [param edge] is the wire to light: the one on that port ([method get_hit_edge])
+## or the one the ray is on ([method get_hit_wire]), or -1.
 ## The shelf's box under that ray is let go too, unless [param keep_box].
 func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1, keep_box: bool = false) -> void:
 	if not keep_box: _shelf.hover(-1, -1, right)
 	hover_plus(id if plus else -1, right)
 	_hover_port(id, port, input, right)
-	_hover_edge(edge if port >= 0 else -1, right)
+	_hover_edge(edge, right)
 	var hovered := id if trash else -1
 	if (right and _delete_right == hovered) or (not right and _delete_left == hovered): return
 	if right: _delete_right = hovered
@@ -630,8 +804,15 @@ func _hover_edge(edge: int, right: bool) -> void:
 	if edge == (_edge_right if right else _edge_left): return
 	if right: _edge_right = edge
 	else: _edge_left = edge
-	for wire: Wire in _wires:
-		wire.mesh.material_override = wire.lit if wire.edge == _edge_right or wire.edge == _edge_left else wire.normal
+	for wire: Wire in _wires: light_wire(wire, wire.lit if is_edge_lit(wire.edge) else wire.normal)
+	# Wires to the scene are lit by [XREBlueprints], which asks [method is_edge_lit].
+	_light_variable_links()
+
+
+## A Variable link is lit with its socket or itself under a ray (D-061, D-064).
+func _light_variable_links() -> void:
+	for link: Wire in _variable_links:
+		light_wire(link, link.lit if is_socket_hovered(link.from.id, link.socket) or is_edge_lit(link.edge) else link.normal)
 
 
 ## Whether the wire of graph edge [param edge] is lit under a ray.
@@ -710,6 +891,9 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 	_hit_socket = -1
 	_hit_finished = false
 	_hit_box = false
+	_hit_wire = -1
+	_hit_bend = -1
+	_hit_piece = -1
 	if not is_visible_in_tree(): return -1.0
 	var inverse := global_transform.affine_inverse()
 	var local_origin := inverse * origin
@@ -799,6 +983,14 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_finished = socket.kind == FINISHED
 			_hit_plus = false
 			_hit_delete = false
+	# A wire in front of a card's face takes the ray from it; ports, sockets and
+	# the cards' buttons keep it. Not while a wire is drawn: it ends on ports.
+	var drawing := _preview.visible or _compatible_type >= 0
+	if _bends_shown and not drawing and _hit_port < 0 and _hit_socket < 0 and not _hit_plus and not _hit_delete:
+		var wire_hit := _intersect_wires(local_origin, local_direction, nearest)
+		if wire_hit >= 0:
+			nearest = wire_hit
+			_hit_id = -1
 	if _shelf.visible:
 		var shelf := _shelf.intersect_ray(local_origin, local_direction, nearest)
 		if shelf >= 0:
@@ -809,6 +1001,8 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_socket = -1
 			_hit_plus = false
 			_hit_delete = false
+			_hit_wire = -1
+			_hit_bend = -1
 			return nearest
 	if _hit_port >= 0 and _hit_finished:
 		# Finished picks the wire of output 0 only while it leaves Finished.
@@ -828,7 +1022,84 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			# Bands from the port's top down, one per wire.
 			var band := floori((1.0 - clampf(_hit_height, -1.0, 1.0)) * 0.5 * edges.size())
 			_hit_edge = edges[clampi(band, 0, edges.size() - 1)]
-	return nearest if _hit_id >= 0 else -1.0
+	return nearest if _hit_id >= 0 or _hit_wire >= 0 else -1.0
+
+
+## The nearest wire or knot the ray passes within [constant WIRE_HIT_RADIUS] or
+## [constant KNOT_HIT_RADIUS] of, nearer than [param maximum], in the canvas's
+## space (D-064); -1 for none. Each tube's bounds sort out the wires far from
+## the ray first. A knot on the wire the ray is on wins over its tube.
+func _intersect_wires(origin: Vector3, direction: Vector3, maximum: float) -> float:
+	var nearest := _intersect_tubes(_wires, origin, direction, maximum)
+	nearest = _intersect_tubes(_variable_links, origin, direction, nearest)
+	nearest = _intersect_tubes(_scene_links, origin, direction, nearest)
+	var reach := minf(nearest + KNOT_HIT_RADIUS * 2.0, maximum) if _hit_wire >= 0 else maximum
+	var knot_hit := _intersect_knots(_wires, origin, direction, reach, INF)
+	knot_hit = _intersect_knots(_variable_links, origin, direction, reach, knot_hit)
+	knot_hit = _intersect_knots(_scene_links, origin, direction, reach, knot_hit)
+	if knot_hit < INF: return knot_hit
+	return nearest if _hit_wire >= 0 else -1.0
+
+
+## The nearest tube of [param wires] the ray passes near, nearer than
+## [param nearest], which is returned if none is: it notes what it hits.
+func _intersect_tubes(wires: Array[Wire], origin: Vector3, direction: Vector3, nearest: float) -> float:
+	for wire: Wire in wires:
+		if not wire.mesh.visible: continue
+		for index: int in wire.pieces.size():
+			var piece := wire.pieces[index]
+			if _box_distance(origin, direction, piece.custom_aabb.grow(WIRE_HIT_RADIUS), nearest) < 0: continue
+			var from := piece.get_point(0)
+			for sample: int in range(1, piece.get_point_count()):
+				var to := piece.get_point(sample)
+				var closest := _ray_segment(origin, direction, from, to)
+				var on_wire := from.lerp(to, closest.y)
+				if closest.x < nearest and (origin + direction * closest.x).distance_squared_to(on_wire) <= WIRE_HIT_RADIUS * WIRE_HIT_RADIUS:
+					nearest = closest.x
+					_hit_wire = wire.edge
+					_hit_piece = index
+					_hit_wire_point = on_wire
+				from = to
+	return nearest
+
+
+## The nearest knot of [param wires] the ray passes near, no farther than
+## [param reach] and nearer than [param nearest], which is returned if none is.
+func _intersect_knots(wires: Array[Wire], origin: Vector3, direction: Vector3, reach: float, nearest: float) -> float:
+	for wire: Wire in wires:
+		if not wire.mesh.visible: continue
+		for index: int in wire.knots.size():
+			var center := wire.bends[index]
+			var along := maxf((center - origin).dot(direction) / direction.length_squared(), 0.0)
+			var radius := KNOT_HIT_RADIUS * wire.knots[index].scale.x
+			if along > reach or along >= nearest or (origin + direction * along).distance_squared_to(center) > radius * radius: continue
+			nearest = along
+			_hit_wire = wire.edge
+			_hit_bend = index
+			_hit_piece = index
+			_hit_wire_point = center
+	return nearest
+
+
+## Where the ray from [param origin] along [param direction] passes nearest to
+## the segment from [param a] to [param b]: the ray's parameter, not behind its
+## origin, and the segment's, 0 at [param a] to 1 at [param b].
+static func _ray_segment(origin: Vector3, direction: Vector3, a: Vector3, b: Vector3) -> Vector2:
+	var along := b - a
+	var offset := a - origin
+	var dd := direction.dot(direction)
+	var du := direction.dot(along)
+	var uu := along.dot(along)
+	var dw := direction.dot(offset)
+	var uw := along.dot(offset)
+	var denominator := dd * uu - du * du
+	var s := clampf((dw * du - uw * dd) / denominator, 0.0, 1.0) if denominator > 1e-12 else 0.0
+	var t := (dw + s * du) / dd
+	if t < 0.0:
+		# The segment lies behind the origin: its point nearest the origin.
+		t = 0.0
+		s = clampf(-uw / uu, 0.0, 1.0) if uu > 1e-12 else 0.0
+	return Vector2(t, s)
 
 
 static func _box_distance(origin: Vector3, direction: Vector3, bounds: AABB, maximum: float) -> float:
@@ -996,9 +1267,7 @@ func hover_socket(id: int, socket: int, right: bool) -> void:
 			if item.kind in [FINISHED, SOURCE, VARIABLE]: item.visual.scale = item.base_scale * (HOVER_SCALE if hovered else 1.0)
 			else: item.visual.scale = item.base_scale * (SOCKET_HOVER if hovered else 1.0)
 	# The wire of a Variable socket under a ray thickens, as a port's does (D-061).
-	for link: Dictionary in _variable_wires:
-		var lit := is_socket_hovered((link["card"] as Card).id, int(link["socket"]))
-		(link["mesh"] as XREGraphWire).material_override = link["lit"] if lit else link["normal"]
+	_light_variable_links()
 
 
 ## Whether socket [param socket] of block [param id] is under a hand's ray.
@@ -1115,19 +1384,235 @@ func hide_connection() -> void:
 
 ## Updates existing mesh transforms after a card preview; creates no geometry.
 func update_wires() -> void:
-	for wire: Wire in _wires:
-		if wire.from == null:
-			var port := _port_position(wire.to, wire.to_port, true)
-			var end := _shelf.box_end(wire.variable, port)
-			wire.mesh.update_curve(end[0], end[1], port, _port_direction(wire.to, true), _front(wire.to))
-			continue
-		wire.mesh.update_curve(_port_position(wire.from, wire.from_port, false), _port_direction(wire.from, false), _port_position(wire.to, wire.to_port, true), _port_direction(wire.to, true), (_front(wire.from) + _front(wire.to)).normalized())
-	for link: Dictionary in _variable_wires:
-		var card: Card = link["card"]
-		var socket: Socket = card.sockets[link["socket"]]
-		var at := card.node.transform * socket.center
-		var end := _shelf.box_end(link["variable"], at)
-		(link["mesh"] as XREGraphWire).update_curve(at, Vector3.LEFT, end[0], end[1], _front(card))
+	for wire: Wire in _wires: _update_wire(wire)
+	for link: Wire in _variable_links: _update_variable_link(link)
+
+
+## Lays the wire of [param link]'s Variable socket to its variable's box.
+func _update_variable_link(link: Wire) -> void:
+	var at := link.from.node.transform * link.from.sockets[link.socket].center
+	var end := _shelf.box_end(link.variable, at)
+	_lay(link, at, Vector3.LEFT, end[0], end[1], _front(link.from))
+
+
+## Lays [param wire] from its output, or its variable's box, to its input.
+func _update_wire(wire: Wire) -> void:
+	if wire.owner >= 0:
+		# A link: the Variable one lays itself; [XREBlueprints] lays those to the scene.
+		if wire.socket >= 0: _update_variable_link(wire)
+		return
+	var end := _port_position(wire.to, wire.to_port, true)
+	var end_direction := _port_direction(wire.to, true)
+	var start: Vector3
+	var start_direction: Vector3
+	var front: Vector3
+	if wire.from == null:
+		var box := _shelf.box_end(wire.variable, end)
+		start = box[0]
+		start_direction = box[1]
+		front = _front(wire.to)
+	else:
+		start = _port_position(wire.from, wire.from_port, false)
+		start_direction = _port_direction(wire.from, false)
+		front = (_front(wire.from) + _front(wire.to)).normalized()
+	_lay(wire, start, start_direction, end, end_direction, front)
+
+
+## Lays [param wire] from [param start], leaving along [param start_direction],
+## to [param end], arriving from [param end_direction] (zero: free), as
+## [method XREGraphWire.update_curve] does. Bent (D-064), a tube runs to each
+## bend and on to the next, with no loop: at a bend the wire runs from the
+## point before it towards the point after it, the first and the last measured
+## [constant BEND_LEAD] out of their ends, so it goes through the knot without a corner.
+func _lay(wire: Wire, start: Vector3, start_direction: Vector3, end: Vector3, end_direction: Vector3, front: Vector3) -> void:
+	var count := wire.knots.size()
+	if count == 0:
+		wire.mesh.update_curve(start, start_direction, end, end_direction, front)
+		return
+	var from := start
+	var from_direction := start_direction
+	for index: int in count:
+		var point := wire.bends[index]
+		var before: Vector3 = start + start_direction * BEND_LEAD if index == 0 else wire.bends[index - 1]
+		var after: Vector3 = end + end_direction * BEND_LEAD if index == count - 1 else wire.bends[index + 1]
+		var tangent := (after - before).normalized()
+		wire.pieces[index].update_curve(from, from_direction, point, -tangent, Vector3.ZERO)
+		wire.knots[index].position = point
+		from = point
+		from_direction = tangent
+	wire.pieces[count].update_curve(from, from_direction, end, end_direction, Vector3.ZERO)
+
+
+## The wire the last ray hit (D-064): its graph edge or a link's key ([method link_key]), or -1.
+func get_hit_wire() -> int:
+	return _hit_wire
+
+
+## The knot the last ray hit on [method get_hit_wire]: its bend, or -1 for the tube.
+func get_hit_bend() -> int:
+	return _hit_bend
+
+
+## Where the last ray met [method get_hit_wire], in the canvas's space: its knot's center or the point on its tube.
+func get_hit_wire_point() -> Vector3:
+	return _hit_wire_point
+
+
+## How many bends of [method get_hit_wire] come before [method get_hit_wire_point]: where a bend added there goes.
+func get_hit_piece() -> int:
+	return _hit_piece
+
+
+## How many bends the wire of graph edge [param edge] is drawn with now.
+func bend_count(edge: int) -> int:
+	var wire := _find_wire(edge)
+	return wire.bends.size() if wire != null else 0
+
+
+## Where the wire of graph edge [param edge] bends now, in the canvas's space: a copy.
+func wire_bends(edge: int) -> Array[Vector3]:
+	var bends: Array[Vector3] = []
+	var wire := _find_wire(edge)
+	if wire != null: bends.assign(wire.bends)
+	return bends
+
+
+## The tubes the wire of graph edge [param edge] is drawn with, from its output.
+func wire_pieces(edge: int) -> Array[XREGraphWire]:
+	var pieces: Array[XREGraphWire] = []
+	var wire := _find_wire(edge)
+	if wire != null: pieces.assign(wire.pieces)
+	return pieces
+
+
+## The knot of bend [param bend] of the wire of graph edge [param edge], or null.
+func wire_knot(edge: int, bend: int) -> MeshInstance3D:
+	var wire := _find_wire(edge)
+	return wire.knots[bend] if wire != null and bend >= 0 and bend < wire.knots.size() else null
+
+
+## Adds a bend at [param point] to the wire of graph edge [param edge], as its
+## bend number [param index], until [method commit_bends] or [method reset_bends]:
+## the graph is unchanged. Returns the new bend's index; -1 while bends are off
+## or the wire has [constant XREBlueprintGraph.MAX_BENDS].
+func insert_bend(edge: int, index: int, point: Vector3) -> int:
+	var wire := _find_wire(edge)
+	if wire == null or not _bends_shown or wire.bends.size() >= XREBlueprintGraph.MAX_BENDS: return -1
+	index = clampi(index, 0, wire.bends.size())
+	wire.bends.insert(index, point)
+	_fit_pieces(wire)
+	_update_wire(wire)
+	return index
+
+
+## Moves bend [param index] of the wire of graph edge [param edge] to [param point]:
+## a drag's preview, every frame, which allocates nothing.
+func preview_bend(edge: int, index: int, point: Vector3) -> void:
+	var wire := _find_wire(edge)
+	if wire == null or index < 0 or index >= wire.bends.size(): return
+	wire.bends[index] = point
+	_update_wire(wire)
+
+
+## Takes bend [param index] off the wire of graph edge [param edge], or all its
+## bends with -1, until [method commit_bends] or [method reset_bends].
+func remove_bend(edge: int, index: int = -1) -> void:
+	var wire := _find_wire(edge)
+	if wire == null or index >= wire.bends.size(): return
+	if index < 0: wire.bends.clear()
+	else: wire.bends.remove_at(index)
+	_fit_pieces(wire)
+	_update_wire(wire)
+
+
+## Draws the wire of graph edge [param edge] with the bends [param graph] has: ends a preview.
+func reset_bends(graph: XREBlueprintGraph, edge: int) -> void:
+	var wire := _find_wire(edge)
+	if wire == null: return
+	_reload_bends(graph, wire)
+	_update_wire(wire)
+
+
+## Keeps the bends the wire of graph edge [param edge], or link of that key,
+## is drawn with in the graph — on the edge or the link's block — as one edit
+## called [param title]; false if the document refused it.
+func commit_bends(document: XREBlueprintDocument, edge: int, title: String) -> bool:
+	var wire := _find_wire(edge)
+	if wire == null: return false
+	var state := document.graph.snapshot()
+	var entry: Dictionary = {}
+	if wire.owner < 0:
+		var edges: Array = state["edges"]
+		if edge < edges.size(): entry = edges[edge]
+	else:
+		for block: Dictionary in state["nodes"]:
+			if block["id"] == wire.owner: entry = block
+	if entry.is_empty(): return false
+	if wire.bends.is_empty():
+		entry.erase(wire.stored)
+	else:
+		var stored := PackedVector3Array()
+		for point: Vector3 in wire.bends:
+			var at := Vector2(point.x, -point.y) / PIXEL_SIZE + _offset
+			stored.append(Vector3(at.x, at.y, point.z))
+		entry[wire.stored] = stored
+	return document.perform(document.commit.bind(title, state), &"vr_graph")
+
+
+## Shows what the ray of the [param right] hand, or the other's, is on
+## (D-064): bend [param bend] of the wire of graph edge [param edge] grows its
+## knot; with bend -1 a white knot marks [param point], where taking the wire
+## adds a bend; edge -1 for neither.
+func hover_bend(edge: int, bend: int, point: Vector3, right: bool) -> void:
+	var ghost := _ghost_right if right else _ghost_left
+	ghost.visible = edge >= 0 and bend < 0
+	if ghost.visible: ghost.position = point
+	var key := Vector2i(edge, bend)
+	var before := _bend_right if right else _bend_left
+	if key == before: return
+	if right: _bend_right = key
+	else: _bend_left = key
+	_scale_knot(before)
+	_scale_knot(key)
+
+
+## Whether knot [param bend] of the wire of graph edge [param edge] is under a hand's ray.
+func is_bend_hovered(edge: int, bend: int) -> bool:
+	return bend >= 0 and (Vector2i(edge, bend) == _bend_right or Vector2i(edge, bend) == _bend_left)
+
+
+## Whether the white knot of where a bend would go shows under the [param right] hand's ray, or the other's.
+func is_ghost_shown(right: bool) -> bool:
+	return (_ghost_right if right else _ghost_left).visible
+
+
+func _scale_knot(key: Vector2i) -> void:
+	var knot := wire_knot(key.x, key.y)
+	if knot != null: knot.scale = Vector3.ONE * (HOVER_SCALE if is_bend_hovered(key.x, key.y) else 1.0)
+
+
+## Lets go of the knots the rays lit: they may stand for other bends now.
+func _clear_bend_hover() -> void:
+	var right := _bend_right
+	var left := _bend_left
+	_bend_right = Vector2i(-1, -1)
+	_bend_left = Vector2i(-1, -1)
+	_scale_knot(right)
+	_scale_knot(left)
+
+
+## The wire of graph edge [param edge], or the link of that key.
+func _find_wire(edge: int) -> Wire:
+	var found := _find_in(_wires, edge)
+	if found == null: found = _find_in(_variable_links, edge)
+	if found == null: found = _find_in(_scene_links, edge)
+	return found
+
+
+static func _find_in(wires: Array[Wire], edge: int) -> Wire:
+	for wire: Wire in wires:
+		if wire.edge == edge: return wire
+	return null
 
 
 ## Creates one reusable native tube; permanent, preview and scene wires share it.
@@ -1150,22 +1635,19 @@ func show_link(from: Vector3, to: Vector3) -> void:
 
 
 ## A static wire from socket [param kind] of block [param id] — an event's Source — towards the scene object.
-func update_socket_wire(wire: XREGraphWire, id: int, kind: int, end: Vector3) -> void:
-	wire.update_curve(socket_position(id, kind), Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
+func update_socket_wire(link: Wire, id: int, kind: int, end: Vector3) -> void:
+	_lay(link, socket_position(id, kind), Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
 
 
 ## Lights the Variable wires to the box of [param variable] — a variable in use that can't be deleted — or puts them back.
 func flash_variable(variable: String, lit: bool) -> void:
-	for link: Dictionary in _variable_wires:
-		if link["variable"] != variable: continue
-		var card: Card = link["card"]
-		var color := COLORS[card.sockets[link["socket"]].type]
-		(link["mesh"] as XREGraphWire).material_override = wire_material(Color.WHITE, LIT_WIRE_GROW * 2.0) if lit else wire_material(color)
+	for link: Wire in _variable_links:
+		if link.variable == variable: light_wire(link, wire_material(Color.WHITE, LIT_WIRE_GROW * 2.0) if lit else link.normal)
 
 
-## A static Target wire: from its input port, leaving left, free towards the scene object.
-func update_scene_wire(wire: XREGraphWire, id: int, port: int, end: Vector3) -> void:
-	wire.update_curve(port_position(id, port, true), port_direction(id, true), end, Vector3.ZERO, _front(_find_card(id)))
+## A static Target wire ([method add_scene_link]): from its input port, leaving left, free towards the scene object.
+func update_scene_wire(link: Wire, id: int, port: int, end: Vector3) -> void:
+	_lay(link, port_position(id, port, true), port_direction(id, true), end, Vector3.ZERO, _front(_find_card(id)))
 
 
 func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1) -> Label3D:
@@ -1383,8 +1865,8 @@ func adapter_end(id: int) -> Variant:
 
 
 ## A static wire from the adapter of block [param id], leaving left, free towards the scene object.
-func update_adapter_wire(wire: XREGraphWire, id: int, start: Vector3, end: Vector3) -> void:
-	wire.update_curve(start, Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
+func update_adapter_wire(link: Wire, id: int, start: Vector3, end: Vector3) -> void:
+	_lay(link, start, Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
 
 
 ## A token of [param value] for parameter [param key]: a puck in a slot at the
@@ -1583,9 +2065,15 @@ func _build_shelf(graph: XREBlueprintGraph) -> void:
 			if card.sockets[index].kind != VARIABLE: continue
 			var variable := str((block["params"] as Dictionary).get("variable", ""))
 			if not _shelf.has_box(variable): continue
-			var type := card.sockets[index].type
-			var mesh := create_scene_wire(COLORS[type])
-			_variable_wires.append({"card": card, "socket": index, "variable": variable, "mesh": mesh, "normal": mesh.material_override, "lit": wire_material(COLORS[type], LIT_WIRE_GROW)})
+			var link := Wire.new()
+			link.from = card
+			link.socket = index
+			link.variable = variable
+			link.owner = card.id
+			link.edge = link_key(card.id, true)
+			link.stored = XREBlueprintGraph.VARIABLE_BENDS
+			_add_wire(link, COLORS[card.sockets[index].type], block)
+			_variable_links.append(link)
 
 
 func _add_frame(card: Card, size: Vector3, cuboid: bool) -> void:

@@ -493,7 +493,7 @@ func _run() -> void:
 				var radial := vertices[index] - graph_wire.mesh.get_point(ring)
 				layout_ok = layout_ok and absf(radial.length() - radius) < 0.0003 and normals[index].dot(radial.normalized()) > 0.99
 	_check(layout_ok, "tube vertices and octahedral normals match the server's vertex layout")
-	var scene_wire := canvas.create_scene_wire(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
+	var scene_wire := canvas.add_scene_link(route_graph.find_node(2), XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
 	canvas.update_scene_wire(scene_wire, 2, 0, Vector3(0.54, -0.35, -0.5))
 	_camera.position = Vector3(0.35, 0.18, 2)
 	_camera.look_at(Vector3.ZERO)

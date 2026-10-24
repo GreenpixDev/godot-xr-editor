@@ -82,6 +82,7 @@ func _script(graph: XREBlueprintGraph) -> GDScript:
 func _run() -> void:
 	_test_validation()
 	_test_document()
+	_test_wire_bends()
 	_test_all_blocks_compile()
 	await _test_execution()
 	await _test_signal_and_tween()
@@ -224,6 +225,49 @@ func _test_document() -> void:
 	_check(restored.graph.find_node(2)["params"]["value"] == "recover me", "recovery preserves edits")
 	restored.clear_recovery(recovery)
 	_check(not FileAccess.file_exists(recovery), "explicit discard removes recovery file")
+
+
+## The bends the VR editor keeps on a connection (D-064): placement, as a
+## block's place is; checked, saved, undone, ignored by the compiler and by disconnecting.
+func _test_wire_bends() -> void:
+	var doc := XREBlueprintDocument.new()
+	doc.add_block("print", Vector2(300, 80))
+	_check(doc.connect_blocks(1, 0, 2, 0), "a wire to bend")
+	var plain := doc.graph.structure_key()
+	var code: String = XREBlueprintCompiler.compile(doc.graph)["code"]
+	var state := doc.graph.snapshot()
+	var bends := PackedVector3Array([Vector3(150, -40, 0.25), Vector3(250, 160, -0.125)])
+	(state["edges"] as Array)[0]["vr_bends"] = bends
+	_check(doc.commit("Bend Wire", state) and doc.graph.edges[0].get("vr_bends") == bends, "a wire's bends are an edit of the graph")
+	_check(doc.graph.structure_key() == plain, "bends are placement: the structure a view draws is the same")
+	_check(XREBlueprintCompiler.compile(doc.graph)["code"] == code, "the compiler ignores bends")
+	DirAccess.make_dir_recursive_absolute("res://build/blueprint_tests")
+	var path := "res://build/blueprint_tests/bends.tres"
+	_check(doc.save_graph(path), "a bent graph saves")
+	var loaded := XREBlueprintDocument.new()
+	_check(loaded.open_graph(path) and loaded.graph.edges[0].get("vr_bends") is PackedVector3Array and loaded.graph.edges[0]["vr_bends"] == bends, "bends load back as they were")
+	doc.undo()
+	_check(not doc.graph.edges[0].has("vr_bends"), "undo straightens the wire")
+	doc.redo()
+	var too_many := PackedVector3Array()
+	too_many.resize(XREBlueprintGraph.MAX_BENDS + 1)
+	var graph := XREBlueprintGraph.new()
+	for bad: Variant in [PackedVector3Array([Vector3(NAN, 0, 0)]), [Vector3.ZERO], Vector3.ZERO, too_many]:
+		graph.restore(doc.graph.snapshot())
+		graph.edges[0]["vr_bends"] = bad
+		_check(not graph.validate().is_empty(), "invalid bends are rejected: %s" % [bad])
+		for key: String in [XREBlueprintGraph.SCENE_BENDS, XREBlueprintGraph.VARIABLE_BENDS]:
+			graph.restore(doc.graph.snapshot())
+			graph.nodes[1][key] = bad
+			_check(not graph.validate().is_empty(), "and on a block's own wire: %s %s" % [key, bad])
+	# A block keeps the bends of its wire to the scene and of its Variable socket's wire.
+	state = doc.graph.snapshot()
+	(state["nodes"] as Array)[1][XREBlueprintGraph.SCENE_BENDS] = PackedVector3Array([Vector3(10, 20, 0.5)])
+	(state["nodes"] as Array)[1][XREBlueprintGraph.VARIABLE_BENDS] = PackedVector3Array([Vector3(-10, 20, 0.5)])
+	_check(doc.commit("Bend Wire", state) and doc.graph.structure_key() == plain, "a block's own bends are placement too")
+	_check(XREBlueprintCompiler.compile(doc.graph)["code"] == code, "and the compiler ignores them")
+	doc.disconnect_blocks(1, 0, 2, 0)
+	_check(doc.graph.edges.is_empty(), "disconnecting takes a bent wire off too")
 
 
 func _test_all_blocks_compile() -> void:

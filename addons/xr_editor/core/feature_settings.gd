@@ -91,6 +91,10 @@ const ON := &"on"
 const CARD_PLUS := &"card_plus"
 const SHOWN := &"shown"
 const HIDDEN := &"hidden"
+## Bends of logic graph wires, as waypoints in draw.io (D-064). Off, wires are
+## drawn as before and the bends a graph has are kept but not shown; on, a
+## wire goes through its bends, and trigger or grip on it adds and drags them.
+const WIRE_BENDS := &"wire_bends"
 
 ## Every setting by key: its page, title, values (the first is the default),
 ## the values' titles and a line of explanation.
@@ -164,6 +168,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [SHOWN, HIDDEN],
 		"labels": ["Shown", "Hidden"],
 		"hint": "Shown: the plus on a card adds the next block. Hidden: add blocks by letting a wire go in empty space.",
+	},
+	WIRE_BENDS: {
+		"category": Category.FEATURES,
+		"title": "Wire bends",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: trigger or grip on a wire drags a bend out of it, on a knot moves the bend; Delete on a knot removes it.",
 	},
 }
 
