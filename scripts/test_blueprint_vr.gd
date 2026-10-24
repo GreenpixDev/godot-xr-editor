@@ -27,7 +27,7 @@ var _saved_parameters: Dictionary[StringName, StringName] = {}
 var _saved_path := ""
 const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT,
 		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
-		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE]
+		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS]
 ## The values the checks start from: the defaults before D-076 made the author's
 ## picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
@@ -38,6 +38,7 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.AXIS_SCALE: XREFeatureSettings.AUTO, XREFeatureSettings.FOCUS: XREFeatureSettings.OFF,
 	XREFeatureSettings.DEFOCUS: XREFeatureSettings.OFF, XREFeatureSettings.LINK_PREVIEW: XREFeatureSettings.OFF,
 	XREFeatureSettings.LINK_WIRES: XREFeatureSettings.OFF, XREFeatureSettings.LINK_CREATE: XREFeatureSettings.WIRE_BUTTON,
+	XREFeatureSettings.WIRE_BENDS: XREFeatureSettings.OFF,
 }
 
 
@@ -304,6 +305,7 @@ func _run() -> void:
 	await _test_d072()
 	await _test_d074()
 	await _test_d078()
+	await _test_wire_bends()
 	_check(_service.blueprint.operation_source == &"desktop_graph", "VR command source scope is restored")
 	_service.parameters.call("_set_parameter", print_id, "value", "VR test")
 	await _frames()
@@ -2178,8 +2180,8 @@ func _test_links_and_focus() -> void:
 	for index: int in _card(getter).sockets.size():
 		if _card(getter).sockets[index].kind == XREBlueprintCanvas.VARIABLE: variable_socket = index
 	_service.canvas.hover_socket(getter, variable_socket, true)
-	var link := (_service.canvas.get("_variable_wires") as Array).filter(func(item: Dictionary) -> bool: return item["card"] == _card(getter))
-	_check(not link.is_empty() and (link[0]["mesh"] as XREGraphWire).material_override == link[0]["lit"], "the ray on the Variable socket lights its wire to the box")
+	var link := (_service.canvas.get("_variable_links") as Array).filter(func(item: XREBlueprintCanvas.Wire) -> bool: return item.from == _card(getter))
+	_check(not link.is_empty() and (link[0] as XREBlueprintCanvas.Wire).mesh.material_override == (link[0] as XREBlueprintCanvas.Wire).lit, "the ray on the Variable socket lights its wire to the box")
 	_service.canvas.hover_socket(-1, -1, true)
 
 	# The adapter: the ray on it lights its wire; its trigger picks a member with all else dimmed.
@@ -2540,6 +2542,233 @@ func _test_d063() -> void:
 	_check(_service.blueprint.path == path, "and the host's graph opens again")
 	_document.remove_nodes([other], XREDocument.Source.PANEL)
 	await _frames(3)
+
+
+## Points the right ray at [param point], a point of the canvas, from the head's side, 0.4 m away.
+func _aim_at_wire(point: Vector3) -> Vector3:
+	var at := _service.canvas.to_global(point)
+	var front := (_rig.camera.global_position - at).normalized()
+	_aim_from(at, front)
+	return front
+
+
+## The point of graph edge [param edge]'s wire halfway along its tube number [param piece], in the canvas's space.
+func _wire_middle(edge: int, piece: int = 0) -> Vector3:
+	var pieces := _service.canvas.wire_pieces(edge)
+	return pieces[piece].get_point(XREGraphWire.SAMPLES / 2) if piece < pieces.size() else Vector3.ZERO
+
+
+## Presses the right [param button] — trigger or grip — at the wire's point
+## [param point], drags it by [param offset] across the ray, and lets go.
+func _drag_wire(point: Vector3, offset: Vector3, button: StringName = &"trigger") -> void:
+	var front := _aim_at_wire(point)
+	await _frames()
+	_right.set_input(button, 1.0)
+	await _frames()
+	var at := _service.canvas.to_global(point)
+	for step: int in range(1, 6):
+		_aim_from(at + offset * (step / 5.0), front)
+		await _frames(1)
+	await _frames()
+	_right.set_input(button, 0.0)
+	await _frames()
+
+
+## Presses the delete button (A) with the right ray at the wire's point [param point].
+func _delete_at_wire(point: Vector3) -> void:
+	_aim_at_wire(point)
+	await _frames()
+	_right.set_input(&"ax_button", true)
+	await _frames()
+	_right.set_input(&"ax_button", false)
+	await _frames()
+
+
+## D-081: wires bend while Wire bends is on, as edges in draw.io — trigger or
+## grip on a wire drags a bend out of it, on a knot moves the bend, the delete
+## button takes bends off, never the selected block; off, the ray passes
+## through wires as before.
+func _test_wire_bends() -> void:
+	var features := _document.features
+	var history := _service.blueprint.history.get_version()
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	_service.add_block("print")
+	await _frames()
+	var from: int = graph.nodes.back()["id"]
+	_service.add_block("print")
+	await _frames()
+	var to: int = graph.nodes.back()["id"]
+	# Below the other cards and nearer the head, so that nothing is in front of the wire.
+	canvas.preview_move(from, Vector3(-0.25, -0.7, 0.25))
+	canvas.commit_move(_service.blueprint, from)
+	canvas.preview_move(to, Vector3(0.25, -0.62, 0.25))
+	canvas.commit_move(_service.blueprint, to)
+	await _frames()
+	_check(_service.click_port(from, 0, false) and _service.click_port(to, 0, true), "a wire to bend")
+	await _frames()
+	_service.close_parameters()
+	_service.close_block_palette()
+	_service.select_block(from, false)
+	await _frames()
+	var edge := graph.edges.size() - 1
+	_check(graph.edges[edge]["from"] == from and graph.edges[edge]["to"] == to, "the wire is the last edge")
+
+	# Off, as before: the wire takes no ray.
+	_check(features.get_value(XREFeatureSettings.WIRE_BENDS) == XREFeatureSettings.OFF and not canvas.get_bends_shown(), "Wire bends is off by default")
+	_aim_at_wire(_wire_middle(edge))
+	await _frames()
+	_check(not canvas.is_ghost_shown(true) and not canvas.is_edge_lit(edge), "off, the ray on a wire neither lights it nor marks a bend")
+
+	_check(_document.set_feature(XREFeatureSettings.WIRE_BENDS, XREFeatureSettings.ON, XREDocument.Source.PANEL) and _operations.back() == &"set_feature", "Wire bends switches on, in the log")
+	await _frames()
+	_check(canvas.get_bends_shown(), "the open graph bends its wires")
+	var middle := _wire_middle(edge)
+	_aim_at_wire(middle)
+	await _frames()
+	_check(canvas.is_ghost_shown(true) and canvas.is_edge_lit(edge), "on, the ray on a wire thickens it and marks where a bend would go")
+
+	# Trigger: a new bend dragged out of the wire, kept as one edit.
+	var front := _aim_at_wire(middle)
+	var up := (Vector3.UP - front * front.dot(Vector3.UP)).normalized()
+	var at := canvas.to_global(middle)
+	var version := _service.blueprint.history.get_version()
+	_operations.clear()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_check(_service.is_holding(_rig.right_hand), "a bend in hand holds the hand, as a card does")
+	for step: int in range(1, 6):
+		_aim_from(at + up * (0.12 * step / 5.0), front)
+		await _frames(1)
+	await _frames()
+	_check(_service.blueprint.history.get_version() == version, "dragging previews without history")
+	_check(canvas.bend_count(edge) == 1 and canvas.wire_knot(edge, 0) != null and canvas.wire_knot(edge, 0).global_position.distance_to(at + up * 0.12) < 0.02, "the new bend follows the ray's end")
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	var bends: PackedVector3Array = graph.edges[edge].get("vr_bends", PackedVector3Array())
+	_check(_service.blueprint.history.get_version() == version + 1 and bends.size() == 1 and &"bend_wire" in _operations, "let go, the bend is one edit in the log: %s" % [_operations])
+	var knot := canvas.to_global(canvas.wire_bends(edge)[0])
+	_check(knot.distance_to(at + up * 0.12) < 0.02, "it stays where it was let go")
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await _frames()
+	_check(_rig.right_hand.is_free_for(self) and not _service.is_holding(_rig.right_hand), "the hand is let go with it")
+
+	# A click without a drag adds nothing.
+	version = _service.blueprint.history.get_version()
+	_aim_at_wire(_wire_middle(edge, 1))
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(_service.blueprint.history.get_version() == version and canvas.bend_count(edge) == 1, "a click on a wire adds no bend")
+
+	# Grip on the knot moves it; undo puts it back.
+	var knot_point := canvas.wire_bends(edge)[0]
+	_aim_at_wire(knot_point)
+	await _frames()
+	_check(canvas.is_bend_hovered(edge, 0) and not canvas.is_ghost_shown(true), "the knot under the ray grows, no new bend is marked")
+	var down := -up * 0.08
+	await _drag_wire(knot_point, down, &"grip")
+	_check(canvas.bend_count(edge) == 1 and _service.blueprint.history.get_version() == version + 1, "grip on the knot moves the bend, one edit")
+	_check(canvas.to_global(canvas.wire_bends(edge)[0]).distance_to(knot + down) < 0.02, "to where the grip let it go")
+	_service.blueprint.undo()
+	await _frames()
+	_check(canvas.to_global(canvas.wire_bends(edge)[0]).distance_to(knot) < 0.001, "undo puts the bend back")
+	_service.blueprint.redo()
+	await _frames()
+	_check(canvas.to_global(canvas.wire_bends(edge)[0]).distance_to(knot + down) < 0.02, "redo moves it again")
+	var pieces := canvas.wire_pieces(edge)
+	_check(pieces.size() == 2 and pieces[0].get_point(0).is_equal_approx(canvas.port_position(from, 0, false)) and pieces[1].get_point(XREGraphWire.SAMPLES - 1).is_equal_approx(canvas.port_position(to, 0, true)), "the bent wire still runs from port to port")
+
+	# The delete button: a knot, then all bends; never the selected block.
+	var blocks := graph.nodes.size()
+	await _drag_wire(_wire_middle(edge, 1), up * 0.1)
+	_check(canvas.bend_count(edge) == 2, "a second bend")
+	_operations.clear()
+	await _delete_at_wire(canvas.wire_bends(edge)[1])
+	_check(canvas.bend_count(edge) == 1 and (graph.edges[edge]["vr_bends"] as PackedVector3Array).size() == 1 and &"remove_bend" in _operations, "the delete button on a knot takes that bend off")
+	await _drag_wire(_wire_middle(edge, 1), up * 0.1)
+	await _delete_at_wire(_wire_middle(edge, 0))
+	_check(canvas.bend_count(edge) == 0 and not graph.edges[edge].has("vr_bends") and &"straighten_wire" in _operations, "on the wire it takes all its bends off")
+	await _delete_at_wire(_wire_middle(edge, 0))
+	_check(graph.nodes.size() == blocks and not graph.find_node(from).is_empty(), "on a straight wire it deletes nothing, not the selected block")
+
+	# While a wire is drawn, wires take no ray.
+	await _drag_wire(_wire_middle(edge), up * 0.1)
+	_check(_service.click_port(to, 0, false, _rig.right_hand), "a new wire is drawn")
+	_aim_at_wire(_wire_middle(edge, 1))
+	await _frames()
+	_check(not canvas.is_ghost_shown(true) and not canvas.is_edge_lit(edge), "a wire being drawn passes over other wires")
+	_service.cancel_connection()
+	await _frames()
+
+	# A block's wire to its object in the scene bends too, its bends kept on the block.
+	_service.add_block("set_property")
+	await _frames()
+	var setter: int = graph.nodes.back()["id"]
+	canvas.preview_move(setter, Vector3(0.0, -0.45, 0.3))
+	canvas.commit_move(_service.blueprint, setter)
+	_service.blueprint.choose_target(setter, _host)
+	_service.close_parameters()
+	_service.close_block_palette()
+	await _frames(4)
+	var target_wire := _target_wire(setter)
+	_check(target_wire != null and target_wire.canvas_wire != null and target_wire.mesh == target_wire.canvas_wire.mesh, "the Target wire to the object is a link of the canvas")
+	if target_wire != null:
+		var key := target_wire.canvas_wire.edge
+		var on_link := target_wire.canvas_wire.pieces[0].get_point(XREGraphWire.SAMPLES / 2)
+		_aim_at_wire(on_link)
+		await _frames()
+		_check(canvas.is_edge_lit(key) and canvas.is_ghost_shown(true), "the ray on a Target wire marks a bend: lit %s, ghost %s" % [canvas.is_edge_lit(key), canvas.is_ghost_shown(true)])
+		_check(target_wire.mesh.material_override == target_wire.lit_material, "and thickens the wire")
+		# A wire that may become a link (D-074) bends too: Link from wire on Wire button puts its button above it, off the ray.
+		var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
+		var lifted := pointer.button.global_position - canvas.to_global(on_link) if pointer.button != null else Vector3.ZERO
+		_check(pointer.button != null and pointer.button.visible and pointer.button_make and lifted.dot(Vector3.UP) > XREBlueprintPetals.PILL_HEIGHT * 0.5,
+				"with Wire button the link button stands above the wire, off the ray")
+		version = _service.blueprint.history.get_version()
+		await _drag_wire(on_link, up * 0.1)
+		var kept: Variant = graph.find_node(setter).get(XREBlueprintGraph.SCENE_BENDS)
+		_check(_service.blueprint.history.get_version() == version + 1 and kept is PackedVector3Array and (kept as PackedVector3Array).size() == 1, "dragged, it keeps its bend on its block, in one edit")
+		_check(not XREBlueprintLinks.is_link(graph.find_node(setter), XREBlueprintLinks.TARGET), "the trigger on the wire bends it and makes no link")
+		target_wire = _target_wire(setter)
+		_check(target_wire != null and target_wire.canvas_wire.knots.size() == 1, "the Target wire bends there")
+		_service.blueprint.undo()
+		await _frames()
+		target_wire = _target_wire(setter)
+		_check(not graph.find_node(setter).has(XREBlueprintGraph.SCENE_BENDS) and target_wire != null and target_wire.canvas_wire.knots.is_empty(), "undo straightens it")
+		# Pull: the grip pulls the wire into its port (D-074), the trigger still bends it.
+		features.set_value(XREFeatureSettings.LINK_CREATE, XREFeatureSettings.PULL)
+		await _frames()
+		_aim_at_wire(on_link)
+		await _frames()
+		_right.set_input(&"grip", 1.0)
+		await _frames()
+		target_wire = _target_wire(setter)
+		_check(not pointer.pull.is_empty() and pointer.bend_edge < 0 and target_wire != null and not target_wire.mesh.visible, "with Pull the grip on the wire pulls it into its port, no bend")
+		_right.set_input(&"grip", 0.0)
+		await _frames(2)
+		_check(pointer.pull.is_empty() and not XREBlueprintLinks.is_link(graph.find_node(setter), XREBlueprintLinks.TARGET), "let go where it was taken, it stays a wire")
+		version = _service.blueprint.history.get_version()
+		await _drag_wire(on_link, up * 0.1)
+		_check(_service.blueprint.history.get_version() == version + 1 and graph.find_node(setter).has(XREBlueprintGraph.SCENE_BENDS), "with Pull the trigger still bends it")
+		_service.blueprint.undo()
+		await _frames()
+		features.set_value(XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BUTTON)
+		await _frames()
+
+	# Off again: drawn as before, the bends kept.
+	_check(_document.set_feature(XREFeatureSettings.WIRE_BENDS, XREFeatureSettings.OFF, XREDocument.Source.PANEL), "Wire bends switches off")
+	await _frames()
+	_check(canvas.wire_pieces(edge).size() == 1 and canvas.wire_knot(edge, 0) == null and graph.edges[edge].has("vr_bends"), "off, one tube again, the graph keeps the bend")
+	_aim_at_wire(_wire_middle(edge))
+	await _frames()
+	_check(not canvas.is_ghost_shown(true) and not canvas.is_edge_lit(edge), "and the ray passes through the wire")
+	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
+	await _frames()
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
 
 
 ## Clicks the right trigger at [param point], from [param front].
@@ -3352,9 +3581,9 @@ func _test_d072() -> void:
 	_service.call("_wire_variable", getter, "focus_count")
 	await _frames(3)
 	var shelf := canvas.get_boxes()
-	var links := (canvas.get("_variable_wires") as Array).filter(func(link: Dictionary) -> bool: return link["variable"] == "focus_count")
+	var links := (canvas.get("_variable_links") as Array).filter(func(link: XREBlueprintCanvas.Wire) -> bool: return link.variable == "focus_count")
 	var box_place := shelf.box_point("focus_count")
-	var link_mesh: XREGraphWire = links[0]["mesh"] if links.size() == 1 else null
+	var link_mesh: XREGraphWire = (links[0] as XREBlueprintCanvas.Wire).mesh if links.size() == 1 else null
 	var link_ends := PackedVector3Array([link_mesh.get_point(0), link_mesh.get_point(link_mesh.get_point_count() - 1)] if link_mesh != null else [Vector3.ZERO, Vector3.ZERO])
 	_aim_from(shelf.to_global(shelf.box_point("focus_count")) + Vector3.UP * 0.015, Vector3.BACK)
 	await _frames()
@@ -3366,7 +3595,7 @@ func _test_d072() -> void:
 	var socket := -1
 	for index: int in _card(getter).sockets.size():
 		if _card(getter).sockets[index].kind == XREBlueprintCanvas.VARIABLE: socket = index
-	_check(links.size() == 1 and int(links[0]["focus"]) == XREBlueprintFocus.FOCUSED and socket >= 0 and not _card(getter).sockets[socket].visual.has_meta(&"unpainted")
+	_check(links.size() == 1 and (links[0] as XREBlueprintCanvas.Wire).focus == XREBlueprintFocus.FOCUSED and socket >= 0 and not _card(getter).sockets[socket].visual.has_meta(&"unpainted")
 			and _face(_card(getter).mesh.material_override).r < _face(_card(getter).normal).r * 0.5, "its wire is in focus; the Variable socket it goes into stays as it is on its darker card")
 	_aim_from(_card(getter).node.global_position + _card(getter).node.global_basis.y.normalized() * 0.02, _card(getter).node.global_basis.z.normalized())
 	await _frames()

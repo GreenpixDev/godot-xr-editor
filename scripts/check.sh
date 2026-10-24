@@ -36,7 +36,8 @@ run --editor --quit-after 60       # runs the plugin's _enter_tree / _exit_tree
 # Tests the inspector tab and XREPluginDocument in an editor (scripts/test_inspector.gd); quits when done.
 run --editor --quit-after 3000 res://benchmarks/manipulation_check.tscn -- --xre-test-inspector
 run --editor --quit-after 3000 res://benchmarks/blueprint_door.tscn -- --xre-test-blueprint-editor
-run --editor --quit-after 3000 res://benchmarks/play_check.tscn -- --xre-test-blueprint-vr
+# The headset's graph test outgrew 3000 frames with the wire bends (D-081); it quits when done.
+run --editor --quit-after 8000 res://benchmarks/play_check.tscn -- --xre-test-blueprint-vr
 
 if grep -E "SCRIPT ERROR|ERROR:|WARNING:|: FAILED" "$log"; then
 	echo "check: FAILED" >&2

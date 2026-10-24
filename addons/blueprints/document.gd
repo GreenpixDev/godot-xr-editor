@@ -362,10 +362,11 @@ func connect_blocks(from: int, from_port: int, to: int, to_port: int) -> bool:
 	return commit("Connect Ports", state)
 
 
-## Disconnects a specific wire.
+## Disconnects a specific wire, with whatever the VR editor keeps on it (its bends, D-081).
 func disconnect_blocks(from: int, from_port: int, to: int, to_port: int) -> void:
 	var state := graph.snapshot()
-	(state["edges"] as Array).erase({"from": from, "from_port": from_port, "to": to, "to_port": to_port})
+	state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool:
+		return not (edge["from"] == from and edge["from_port"] == from_port and edge["to"] == to and edge["to_port"] == to_port))
 	commit("Disconnect Ports", state)
 
 

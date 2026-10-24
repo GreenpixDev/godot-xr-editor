@@ -135,6 +135,10 @@ const WIRE_BUTTON := &"wire_button"
 const PULL := &"pull"
 const PORT_BUTTON := &"port_button"
 const ALWAYS := &"always"
+## Bends of logic graph wires, as waypoints in draw.io (D-081). Off, wires are
+## drawn as before and the bends a graph has are kept but not shown; on, a
+## wire goes through its bends, and trigger or grip on it adds and drags them.
+const WIRE_BENDS := &"wire_bends"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076),
@@ -258,6 +262,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [WIRE_BUTTON, PULL, PORT_BUTTON, ALWAYS],
 		"labels": ["Wire button", "Pull", "Port button", "Always"],
 		"hint": "How a wire to a variable or an object becomes a link: a link button where the ray is on the wire, the grip pulling the wire into its port, a link button over its port, or by itself as soon as the wire is made (Always: no buttons, and a link never becomes a wire). A link from the Tokens window laid on the port works with each.",
+	},
+	WIRE_BENDS: {
+		"category": Category.FEATURES,
+		"title": "Wire bends",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: trigger or grip on a wire drags a bend out of it, on a knot moves the bend; Delete on a knot removes it.",
 	},
 }
 

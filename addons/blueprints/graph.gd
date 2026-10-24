@@ -12,9 +12,22 @@ extends Resource
 ## value or a call of a function of the Blueprint library
 ## ([XREBlueprintLibrary]) or of @GlobalScope. Version 2 graphs migrate in
 ## memory ([method upgrade]).
+##
+## A connection may keep the bends the VR editor drew it with (D-081):
+## [code]vr_bends[/code], a [PackedVector3Array] from its output to its input,
+## each X and Y in graph coordinates as a block's [code]position[/code] and Z
+## its VR depth in meters as [code]vr_depth[/code]. A block keeps those of its
+## own wires so: [constant SCENE_BENDS], [constant VARIABLE_BENDS]. The
+## compiler and GraphEdit ignore them.
 
 const FORMAT_VERSION := 3
 const MAX_NODES := 256
+## Most bends one wire keeps (D-081).
+const MAX_BENDS := 16
+## Bends of a block's wire to its object in the scene, from its Target port,
+## adapter or Source, and of its Variable socket's wire to the variable's box (D-081).
+const SCENE_BENDS := "vr_scene_bends"
+const VARIABLE_BENDS := "vr_variable_bends"
 const EXEC := 0
 const VALUE := 1
 const BOOLEAN := 2
@@ -78,7 +91,9 @@ func snapshot() -> Dictionary:
 	return {"nodes": nodes.duplicate(true), "edges": edges.duplicate(true), "variables": variables.duplicate(true), "host_path": host_path, "scene_path": scene_path, "format_version": format_version, "vr_placed": vr_placed, "vr_workspace": vr_workspace, "vr_center": vr_center}
 
 
-## Everything a view draws except block placement: equal keys mean an edit only moved blocks.
+## Everything a view draws except placement — of blocks, of variables' boxes
+## (D-078) and of wires' bends (D-081): equal keys mean an edit only moved
+## blocks or boxes or bent wires.
 func structure_key() -> Array:
 	var blocks: Array = []
 	for block: Dictionary in nodes:
@@ -87,7 +102,14 @@ func structure_key() -> Array:
 		shape.erase("vr_depth")
 		shape.erase("vr_rotation")
 		shape.erase("vr_anchor")
+		shape.erase(SCENE_BENDS)
+		shape.erase(VARIABLE_BENDS)
 		blocks.append(shape)
+	var wires: Array = []
+	for edge: Dictionary in edges:
+		var shape := edge.duplicate()
+		shape.erase("vr_bends")
+		wires.append(shape)
 	# A variable's box placed in the headset's graph (D-078) is placement too.
 	var kept: Array = []
 	for variable: Dictionary in variables:
@@ -95,7 +117,7 @@ func structure_key() -> Array:
 		shape.erase("vr_position")
 		shape.erase("vr_depth")
 		kept.append(shape)
-	return [blocks, edges.duplicate(true), kept, host_path, scene_path, vr_placed, vr_workspace, vr_center]
+	return [blocks, wires, kept, host_path, scene_path, vr_placed, vr_workspace, vr_center]
 
 
 ## Applies one complete edit and notifies every view of this resource.
@@ -577,6 +599,8 @@ func validate() -> PackedStringArray:
 			errors.append("Block #%s has invalid VR anchor." % id)
 		if block.has("vr_links") and not block["vr_links"] is Array:
 			errors.append("Block #%s has invalid VR links." % id)
+		for key: String in [SCENE_BENDS, VARIABLE_BENDS]:
+			if block.has(key) and not _valid_bends(block[key]): errors.append("Block #%s has invalid VR bends." % id)
 		var params: Dictionary = block["params"]
 		if kind == "call":
 			errors.append_array(_validate_call(block))
@@ -621,6 +645,8 @@ func validate() -> PackedStringArray:
 		if not _valid_edge_shape(edge):
 			errors.append("A connection has invalid endpoints or ports.")
 			continue
+		if edge.has("vr_bends") and not _valid_bends(edge["vr_bends"]):
+			errors.append("A connection has invalid VR bends.")
 		var from_block := find_node(edge["from"])
 		var to_block := find_node(edge["to"])
 		var outputs := ports(from_block, false)
@@ -699,6 +725,14 @@ func _validate_call(block: Dictionary) -> PackedStringArray:
 			if params.has(XREBlueprintFunctions.extra_key(index)) and not is_literal(params.get(XREBlueprintFunctions.extra_key(index))):
 				errors.append("Block #%d: invalid %s." % [id, XREBlueprintFunctions.extra_key(index)])
 	return errors
+
+
+## Bends of a connection (D-081): finite points, at most [constant MAX_BENDS].
+static func _valid_bends(bends: Variant) -> bool:
+	if not bends is PackedVector3Array or (bends as PackedVector3Array).size() > MAX_BENDS: return false
+	for point: Vector3 in bends as PackedVector3Array:
+		if not point.is_finite(): return false
+	return true
 
 
 func _valid_edge_shape(edge: Dictionary) -> bool:

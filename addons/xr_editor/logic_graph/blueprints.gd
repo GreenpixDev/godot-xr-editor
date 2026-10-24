@@ -199,6 +199,20 @@ class Pointer:
 	var pull_wire: XREGraphWire
 	## Where a carried link came from, as a ref; empty from the tray.
 	var carried_ref: Dictionary = {}
+	## A wire's bend dragged (D-081): the wire's graph edge, -1 for none, and the
+	## bend; whether the drag added it; whether the trigger holds it, not the
+	## grip; where it was taken and its offset from the rod's end, which is the
+	## card's rod ([member distance] and on); whether it has left that point by
+	## [constant LINE_START] yet.
+	var bend_edge := -1
+	var bend_index := -1
+	var bend_new := false
+	var bend_trigger := false
+	var bend_start := Vector3.ZERO
+	var bend_offset := Vector3.ZERO
+	var bend_moved := false
+	## The frame this hand's ray was last on a wire: after it, the knot it lit is let go.
+	var wire_frame := -1
 
 class Marker:
 	var host: Node
@@ -211,6 +225,9 @@ class TargetWire:
 	var port: int
 	var target: Node
 	var anchor: Node3D
+	## The canvas's wire drawn ([method XREBlueprintCanvas.add_scene_link]),
+	## which bends (D-081), and its tube from the card, up to its first bend.
+	var canvas_wire: XREBlueprintCanvas.Wire
 	var mesh: XREGraphWire
 	## Where the wire's stem grows from on its target, in the target's space,
 	## and the petal of its member there, on a stem from that point, where the
@@ -404,6 +421,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	canvas = XREBlueprintCanvas.new()
 	canvas.set_display(document.features.get_value(XREFeatureSettings.NODE_DISPLAY))
 	canvas.set_plus_shown(document.features.get_value(XREFeatureSettings.CARD_PLUS) == XREFeatureSettings.SHOWN)
+	canvas.set_bends_shown(document.features.get_value(XREFeatureSettings.WIRE_BENDS) == XREFeatureSettings.ON)
 	canvas.set_port_display(document.features.get_value(XREFeatureSettings.PORT_DISPLAY))
 	canvas.set_parameter_modes(document.features.get_value(XREFeatureSettings.VALUE_INPUT), document.features.get_value(XREFeatureSettings.TARGET_INPUT),
 			document.features.get_value(XREFeatureSettings.ANIMATION_WAIT), document.features.get_value(XREFeatureSettings.VARIABLE_INPUT))
@@ -578,6 +596,8 @@ func _process(delta: float) -> void:
 		pointer.focus_box = ""
 		_update_pointer(pointer, delta)
 		_keyboard.poll_trigger(pointer.hand, pointer.surface == _keyboard and _keyboard.is_shown())
+		# A ray off the wires this frame lets go of the knot it lit (D-081).
+		if pointer.wire_frame != Engine.get_process_frames(): canvas.hover_bend(-1, -1, Vector3.ZERO, pointer.hand == _rig.right_hand)
 	_update_buttons(delta)
 	if _token_editor.is_interactive(): _token_editor.light(_editor_right if not _editor_right.is_empty() else _editor_left)
 	_place_window_widgets()
@@ -796,6 +816,7 @@ func show_graph() -> void:
 func close_graph() -> void:
 	for pointer: Pointer in _pointers:
 		if pointer.held != null: _finish_hold(pointer, true)
+	_cancel_bends()
 	if not save_draft(): return
 	for pointer: Pointer in _pointers: _leave(pointer)
 	cancel_connection()
@@ -1253,10 +1274,10 @@ func _dismiss_window(type: GDScript, always: bool) -> void:
 	else: window_dismissed.emit(type, always)
 
 
-## Whether [param hand] holds a card or a window of the graph.
+## Whether [param hand] holds a card or a window of the graph, or drags a wire's bend (D-081).
 func is_holding(hand: XREHand) -> bool:
 	for pointer: Pointer in _pointers:
-		if pointer.hand == hand: return pointer.held != null
+		if pointer.hand == hand: return pointer.held != null or pointer.bend_edge >= 0
 	return false
 
 
@@ -1513,6 +1534,9 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	if pointer.swallow and not (hand.trigger_held and hand.get_has_tracking_data()):
 		pointer.swallow = false
 		if hand.get_claimant() == self: hand.unclaim(self)
+	if pointer.bend_edge >= 0:
+		_update_bend(pointer)
+		return
 	if pointer.carried != null:
 		_update_carried(pointer)
 		return
@@ -1543,20 +1567,8 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		elif not (hand.trigger_held if pointer.by_trigger else hand.grip_held): _finish_hold(pointer, true)
 		else:
 			if on_rod:
-				var physical := _rig.hand_pose(hand, pointer.depth_uses_grip).origin
-				if not pointer.touched:
-					# Only the hand's motion along the rod, relative to the body, reels the
-					# card; moving across the rod (sideways, up, down) keeps its length.
-					# The rod direction is averaged over the frame, which makes a swing
-					# around the body with the rod pointing outwards exactly length-preserving.
-					var offset := _body_offset(physical)
-					var along := (_rig.global_basis.inverse() * -hand.global_basis.z).normalized()
-					var mean := along + pointer.along
-					if mean.is_zero_approx(): mean = along
-					pointer.distance = maxf(XREManipulator.TOUCH_RADIUS, pointer.distance + (offset - pointer.body_offset).dot(mean.normalized()) * (pointer.gain - 1.0))
-					pointer.body_offset = offset
-					pointer.along = along
-				var contact := physical if pointer.touched else hand.global_position - hand.global_basis.z.normalized() * pointer.distance
+				if not pointer.touched: _reel(pointer)
+				var contact := _rig.hand_pose(hand, pointer.depth_uses_grip).origin if pointer.touched else hand.global_position - hand.global_basis.z.normalized() * pointer.distance
 				if pointer.box.is_empty(): canvas.preview_grab(pointer.block, contact, pointer.grab_point, _rig.camera.global_position)
 				else: canvas.preview_box_grab(pointer.box, contact, pointer.grab_point)
 				if pointer.touched: hand.hide_ray()
@@ -1686,12 +1698,15 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	if _workspace.visible and _point_at_button(pointer, origin, direction, canvas_hit): return
 	if _workspace.visible and not fan_first and _point_at_petals(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0, delta): return
 	if _workspace.visible and _point_at_stem(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0): return
-	if _workspace.visible and _point_at_link_wire(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0): return
+	if _workspace.visible and _point_at_link_wire(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0, canvas_hit >= 0 and canvas.get_hit_wire() >= 0): return
 	if _workspace.visible:
 		var hit := canvas_hit
 		if _pending_hand == hand: _preview_connection(origin + direction * (hit if hit >= 0 else 0.8), canvas.get_hit_id() if hit >= 0 else -1, canvas.get_hit_port() if hit >= 0 else -1, canvas.get_hit_input())
 		if hit >= 0 and canvas.get_hit_box():
 			_point_at_box(pointer, origin, direction, hit)
+			return
+		if hit >= 0 and canvas.get_hit_wire() >= 0:
+			_point_at_wire(pointer, hit)
 			return
 		if hit >= 0:
 			_point_at_card(pointer, origin, direction, hit)
@@ -1848,6 +1863,21 @@ func _body_reach(point: Vector3) -> float:
 func _body_offset(point: Vector3) -> Vector3:
 	var to_rig := _rig.global_transform.affine_inverse()
 	return to_rig * point - to_rig * (_rig.camera.global_transform * NECK_FROM_EYES)
+
+
+## Reels the rod of [param pointer] — a far card's or box's (D-036, D-037, D-078), a bend's
+## (D-081): only the hand's motion along the rod, relative to the body,
+## changes its length; moving across the rod (sideways, up, down) keeps it.
+## The rod direction is averaged over the frame, which makes a swing around
+## the body with the rod pointing outwards exactly length-preserving.
+func _reel(pointer: Pointer) -> void:
+	var offset := _body_offset(_rig.hand_pose(pointer.hand, pointer.depth_uses_grip).origin)
+	var along := (_rig.global_basis.inverse() * -pointer.hand.global_basis.z).normalized()
+	var mean := along + pointer.along
+	if mean.is_zero_approx(): mean = along
+	pointer.distance = maxf(XREManipulator.TOUCH_RADIUS, pointer.distance + (offset - pointer.body_offset).dot(mean.normalized()) * (pointer.gain - 1.0))
+	pointer.body_offset = offset
+	pointer.along = along
 
 
 func _finish_hold(pointer: Pointer, commit: bool) -> void:
@@ -2016,6 +2046,7 @@ func _feature_changed(key: StringName) -> void:
 		if not canvas.set_parameter_modes(features.get_value(XREFeatureSettings.VALUE_INPUT), features.get_value(XREFeatureSettings.TARGET_INPUT),
 				features.get_value(XREFeatureSettings.ANIMATION_WAIT), features.get_value(XREFeatureSettings.VARIABLE_INPUT)): return
 		_finish_holds()
+		_cancel_bends()
 		for pointer: Pointer in _pointers: _drop_tokens(pointer)
 		cancel_connection()
 		_petals.close()
@@ -2029,8 +2060,10 @@ func _feature_changed(key: StringName) -> void:
 	if key == XREFeatureSettings.NODE_DISPLAY: switched = canvas.set_display(value)
 	elif key == XREFeatureSettings.PORT_DISPLAY: switched = canvas.set_port_display(value)
 	elif key == XREFeatureSettings.CARD_PLUS: switched = canvas.set_plus_shown(value == XREFeatureSettings.SHOWN)
+	elif key == XREFeatureSettings.WIRE_BENDS: switched = canvas.set_bends_shown(value == XREFeatureSettings.ON)
 	if not switched: return
 	_finish_holds()
+	_cancel_bends()
 	cancel_connection()
 	canvas.rebuild(blueprint.graph)
 	_schedule_rebuild()
@@ -2063,6 +2096,7 @@ func _rebuild() -> void:
 	if not is_inside_tree(): return
 	for pointer: Pointer in _pointers:
 		if pointer.held != null: _finish_hold(pointer, false)
+	_cancel_bends()
 	# A move or its undo keeps every card: rebuilding them all hitches on the headset.
 	if not canvas.sync_placement(blueprint.graph): canvas.rebuild(blueprint.graph)
 	_rebuild_target_wires()
@@ -2264,8 +2298,7 @@ func _set_ui_overlay(enabled: bool) -> void:
 
 func _rebuild_target_wires() -> void:
 	for wire: TargetWire in _target_wires:
-		canvas.remove_child(wire.mesh)
-		wire.mesh.queue_free()
+		canvas.remove_scene_link(wire.canvas_wire)
 		if wire.label != null:
 			wire.label.queue_free()
 			wire.stem.queue_free()
@@ -2291,12 +2324,13 @@ func _rebuild_target_wires() -> void:
 		wire.source = source
 		# The wire ends where its member was picked on the object (D-052), else at the object's origin.
 		if block.get("vr_anchor") is Vector3 and anchor == target: wire.point = block["vr_anchor"]
-		wire.mesh = canvas.create_scene_wire(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
-		wire.normal = wire.mesh.material_override
-		wire.lit_material = XREBlueprintCanvas.wire_material(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT], XREBlueprintCanvas.LIT_WIRE_GROW)
+		wire.canvas_wire = canvas.add_scene_link(block, XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
+		wire.mesh = wire.canvas_wire.mesh
+		wire.normal = wire.canvas_wire.normal
+		wire.lit_material = wire.canvas_wire.lit
 		# A link hides the wire, faint while drawn; its member is on the link, not on a petal (D-074).
 		wire.link = scene_mode and XREBlueprintLinks.is_link(block, XREBlueprintLinks.TARGET)
-		if wire.link: XREBlueprintFade.set_seen(wire.mesh, &"link", XREBlueprintCanvas.LINK_SEEN)
+		if wire.link: canvas.set_wire_seen(wire.canvas_wire, &"link", XREBlueprintCanvas.LINK_SEEN)
 		var member_key := XREBlueprintTokens.member_key(block)
 		if XREBlueprintTokens.member_on_stem(mode) and not member_key.is_empty() and not wire.link:
 			# The member's petal, on a stem from the object, on the user's side of it;
@@ -2336,26 +2370,27 @@ func _rebuild_target_wires() -> void:
 
 func _update_target_wires() -> void:
 	for wire: TargetWire in _target_wires:
-		wire.mesh.visible = _workspace.visible and blueprint.scene_context_active() and is_instance_valid(wire.target) and wire.target.is_inside_tree() and is_instance_valid(wire.anchor) and wire.anchor.is_inside_tree()
+		var shown := _workspace.visible and blueprint.scene_context_active() and is_instance_valid(wire.target) and wire.target.is_inside_tree() and is_instance_valid(wire.anchor) and wire.anchor.is_inside_tree()
 		# A link's wire only as Link wires says (D-074); a wire pulled into its port is the pull's preview meanwhile.
-		if wire.mesh.visible and wire.link: wire.mesh.visible = canvas.link_wire_shown(wire.id)
-		if wire.mesh.visible and _is_pulled(wire.mesh): wire.mesh.visible = false
+		if shown and wire.link: shown = canvas.link_wire_shown(wire.id)
+		if shown and _is_pulled(wire.mesh): shown = false
+		canvas.set_wire_shown(wire.canvas_wire, shown)
 		if wire.label != null:
 			wire.label.visible = wire.mesh.visible
 			wire.stem.visible = wire.mesh.visible
 			wire.dot.visible = wire.mesh.visible
 		if not wire.mesh.visible: continue
-		# Lit or darker with its card's focus, see-through out of it, its petal and stem too (D-072).
+		# Lit or darker with its card's focus, see-through out of it, its petal and stem too (D-072);
+		# thicker on its port (D-061) and under a ray on the wire itself (D-081), every tube and knot of it.
 		var state := canvas.focus_state(wire.id)
 		var paint := canvas.focus_paint(state)
-		var material := XREBlueprintFocus.variant(wire.lit_material if wire.lit or wire.hot else wire.normal, paint)
-		if wire.mesh.material_override != material: wire.mesh.material_override = material
-		XREBlueprintFocus.raise(wire.mesh, paint == XREBlueprintFocus.TOP)
+		canvas.light_wire(wire.canvas_wire, XREBlueprintFocus.variant(wire.lit_material if wire.lit or wire.hot or canvas.is_edge_lit(wire.canvas_wire.edge) else wire.normal, paint))
+		canvas.raise_wire(wire.canvas_wire, paint == XREBlueprintFocus.TOP)
 		var seen := canvas.focus_seen(state)
 		var look := paint * 2 + (1 if seen < 1.0 else 0)
 		if look != wire.look:
 			wire.look = look
-			XREBlueprintFade.set_seen(wire.mesh, &"focus", seen)
+			canvas.set_wire_seen(wire.canvas_wire, &"focus", seen)
 			if wire.label != null:
 				for part: Node3D in [wire.label, wire.stem, wire.dot]:
 					XREBlueprintFocus.paint(part, paint)
@@ -2386,9 +2421,9 @@ func _update_target_wires() -> void:
 			end = pill - facing.x * wire.width * 0.5 * growth
 		# With an adapter in the port (D-059) the wire leaves the adapter's far end, a link's from its ring (D-074).
 		var adapter_end: Variant = canvas.link_end(wire.id, XREBlueprintLinks.TARGET) if wire.link else canvas.adapter_end(wire.id)
-		if adapter_end is Vector3: canvas.update_adapter_wire(wire.mesh, wire.id, adapter_end as Vector3, canvas.to_local(end))
-		elif wire.source: canvas.update_socket_wire(wire.mesh, wire.id, XREBlueprintCanvas.SOURCE, canvas.to_local(end))
-		else: canvas.update_scene_wire(wire.mesh, wire.id, wire.port, canvas.to_local(end))
+		if adapter_end is Vector3: canvas.update_adapter_wire(wire.canvas_wire, wire.id, adapter_end as Vector3, canvas.to_local(end))
+		elif wire.source: canvas.update_socket_wire(wire.canvas_wire, wire.id, XREBlueprintCanvas.SOURCE, canvas.to_local(end))
+		else: canvas.update_scene_wire(wire.canvas_wire, wire.id, wire.port, canvas.to_local(end))
 
 
 ## The block a wire to the scene is drawn from: its Target port, or an event's Source.
@@ -2661,6 +2696,119 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		elif not link.is_empty():
 			if not _links_only(): _set_link(link, false)
 		else: delete_block()
+
+
+## The ray on a wire while wires bend (D-081), as on an edge in draw.io: the
+## wire thickens, and its knot under the ray grows, or a white knot marks
+## where a bend would go. Trigger or grip takes that knot, or a new bend
+## there, and drags it; the delete button takes the knot off, or all the
+## wire's bends, and never the selected block.
+func _point_at_wire(pointer: Pointer, hit: float) -> void:
+	var hand := pointer.hand
+	var right := hand == _rig.right_hand
+	var edge := canvas.get_hit_wire()
+	var bend := canvas.get_hit_bend()
+	hand.claim(self)
+	hand.show_ray(hit, true)
+	canvas.hover_actions(-1, false, false, right, -1, false, edge)
+	canvas.hover_socket(-1, -1, right)
+	canvas.hover_bend(edge, bend, canvas.get_hit_wire_point(), right)
+	pointer.wire_frame = Engine.get_process_frames()
+	if hand.trigger_pressed or hand.grip_pressed:
+		_start_bend(pointer, edge, bend, hit, not hand.grip_pressed)
+	elif hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
+		_delete_consumed = true
+		_unbend(edge, bend)
+
+
+## Takes bend [param bend] of the wire of graph edge [param edge] in
+## [param pointer]'s hand, or adds one where its ray is on the wire with -1, on
+## a rod as a far card's ([method _reel]); held by the trigger if
+## [param by_trigger], otherwise by the grip. One hand drags a wire at a time.
+func _start_bend(pointer: Pointer, edge: int, bend: int, hit: float, by_trigger: bool) -> void:
+	for other: Pointer in _pointers:
+		if other != pointer and other.bend_edge == edge: return
+	var hand := pointer.hand
+	var on_ray := hand.global_position - hand.global_basis.z.normalized() * hit
+	var index := bend if bend >= 0 else canvas.insert_bend(edge, canvas.get_hit_piece(), canvas.get_hit_wire_point())
+	if index < 0:
+		_message("A wire takes at most %d bends." % XREBlueprintGraph.MAX_BENDS)
+		return
+	pointer.bend_edge = edge
+	pointer.bend_index = index
+	pointer.bend_new = bend < 0
+	pointer.bend_trigger = by_trigger
+	pointer.bend_start = canvas.to_global(canvas.get_hit_wire_point())
+	pointer.bend_offset = pointer.bend_start - on_ray
+	pointer.bend_moved = false
+	pointer.distance = hit
+	pointer.depth_uses_grip = _rig.has_grip_pose(hand)
+	var physical := _rig.hand_pose(hand, pointer.depth_uses_grip).origin
+	pointer.body_offset = _body_offset(physical)
+	pointer.along = (_rig.global_basis.inverse() * -hand.global_basis.z).normalized()
+	pointer.gain = maxf(_body_reach(on_ray) / maxf(_body_reach(physical), XREManipulator.MIN_REACH), 1.0)
+	hand.claim(self)
+
+
+## Drags the bend [param pointer] holds on its rod; let go, keeps it as one
+## edit, Bend Wire, if it left the point it was taken at; a lost hand puts it back.
+func _update_bend(pointer: Pointer) -> void:
+	var hand := pointer.hand
+	if not hand.get_has_tracking_data() or (pointer.depth_uses_grip and not _rig.has_grip_pose(hand)):
+		_end_bend(pointer, false)
+		return
+	if not (hand.trigger_held if pointer.bend_trigger else hand.grip_held):
+		_end_bend(pointer, true)
+		return
+	if hand == _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE) and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE):
+		# The delete button takes off the knot in hand, as any knot, not the selected block.
+		_delete_consumed = true
+		var edge := pointer.bend_edge
+		var index := pointer.bend_index
+		var kept := not pointer.bend_new
+		_end_bend(pointer, false)
+		if kept: _unbend(edge, index)
+		return
+	_reel(pointer)
+	var point := hand.global_position - hand.global_basis.z.normalized() * pointer.distance + pointer.bend_offset
+	# A click is no drag: a bend not moved is not kept.
+	if not pointer.bend_moved and point.distance_to(pointer.bend_start) > LINE_START: pointer.bend_moved = true
+	if pointer.bend_moved: canvas.preview_bend(pointer.bend_edge, pointer.bend_index, canvas.to_local(point))
+	hand.show_ray(pointer.distance, true)
+	var right := hand == _rig.right_hand
+	canvas.hover_actions(-1, false, false, right, -1, false, pointer.bend_edge)
+	canvas.hover_bend(pointer.bend_edge, pointer.bend_index, Vector3.ZERO, right)
+	pointer.wire_frame = Engine.get_process_frames()
+
+
+## Lets go of the bend [param pointer] drags: kept in the graph if it moved
+## and [param commit], otherwise the wire is drawn as the graph has it.
+func _end_bend(pointer: Pointer, commit: bool) -> void:
+	var edge := pointer.bend_edge
+	pointer.bend_edge = -1
+	pointer.bend_index = -1
+	pointer.hand.show_ray(XREHand.RAY_LENGTH, false)
+	pointer.hand.unclaim(self)
+	if commit and pointer.bend_moved and canvas.commit_bends(blueprint, edge, "Bend Wire"): return
+	canvas.reset_bends(blueprint.graph, edge)
+
+
+## Puts back the bends being dragged: the graph or the canvas changes under them.
+func _cancel_bends() -> void:
+	for pointer: Pointer in _pointers:
+		if pointer.bend_edge >= 0: _end_bend(pointer, false)
+
+
+## Takes bend [param bend] off the wire of graph edge [param edge], or all its
+## bends with -1, as one edit: Remove Bend or Straighten Wire.
+func _unbend(edge: int, bend: int) -> void:
+	if canvas.bend_count(edge) == 0:
+		_message("Drag the wire with trigger or grip to bend it.")
+		return
+	for pointer: Pointer in _pointers:
+		if pointer.bend_edge == edge: return
+	canvas.remove_bend(edge, bend)
+	if not canvas.commit_bends(blueprint, edge, "Remove Bend" if bend >= 0 else "Straighten Wire"): canvas.reset_bends(blueprint.graph, edge)
 
 
 ## Dims the tray's tokens that don't fit the socket under a ray, once it changes; empty [param key] for none.
@@ -4536,7 +4684,7 @@ func _link_wire_hit(origin: Vector3, direction: Vector3, limit: float) -> float:
 		_wire_point = canvas.get_wire_point()
 	for wire: TargetWire in _target_wires:
 		if wire.link or not wire.mesh.visible: continue
-		var hit := wire.mesh.intersect_ray(origin, direction, XREBlueprintCanvas.WIRE_REACH, nearest if nearest >= 0.0 else limit, XREBlueprintCanvas.WIRE_MARGIN)
+		var hit := canvas.intersect_wire(wire.canvas_wire, origin, direction, nearest if nearest >= 0.0 else limit)
 		if hit < 0.0: continue
 		nearest = hit
 		_wire_ref = XREBlueprintLinks.ref(wire.id, XREBlueprintLinks.TARGET, wire.id, -1 if wire.source else wire.port, XREBlueprintCanvas.SOURCE if wire.source else -1)
@@ -4548,12 +4696,30 @@ func _link_wire_hit(origin: Vector3, direction: Vector3, limit: float) -> float:
 ## with Link from wire on Wire button a link button stands where the ray is on
 ## it; on Pull the grip takes the wire to pull it into its port. False with
 ## Port button, or with no such wire on the ray.
-func _point_at_link_wire(pointer: Pointer, origin: Vector3, direction: Vector3, limit: float) -> bool:
+## [param bent]: the canvas's ray is on a wire while wires bend (D-081). The
+## wire is then the bends' as well: looked for a little past that hit, it puts
+## up its link button above the wire, as over a port, and false lets the bends
+## have the ray — trigger and grip drag a bend —, but on Pull the grip still
+## pulls it into its port.
+func _point_at_link_wire(pointer: Pointer, origin: Vector3, direction: Vector3, limit: float, bent: bool = false) -> bool:
 	var create := _document.features.get_value(XREFeatureSettings.LINK_CREATE)
 	var hand := pointer.hand
 	if create in [XREFeatureSettings.PORT_BUTTON, XREFeatureSettings.ALWAYS] or has_wire(hand) or _target_pick >= 0: return false
-	var hit := _link_wire_hit(origin, direction, limit)
+	var hit := _link_wire_hit(origin, direction, limit + XREBlueprintCanvas.WIRE_REACH * 2.0 if bent else limit)
 	if hit < 0.0: return false
+	if bent:
+		pointer.focus = int(_wire_ref["card"])
+		if create == XREFeatureSettings.WIRE_BUTTON:
+			# On the wire the button would take the ray from it, and the trigger would make a link, not
+			# a bend: it stands up across the ray, so that a ray from above doesn't foreshorten the rise.
+			var up := Vector3.UP - direction * direction.dot(Vector3.UP)
+			up = up.normalized() if not up.is_zero_approx() else canvas.global_basis.y.normalized()
+			_show_button(pointer, _wire_ref, true, _wire_point + up * BUTTON_RISE - direction * BUTTON_LEAD)
+		elif hand.grip_pressed:
+			hand.show_ray(hit, true)
+			_start_pull(pointer, _wire_ref, hit)
+			return true
+		return false
 	hand.claim(self)
 	hand.show_ray(hit, true)
 	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
@@ -4571,16 +4737,25 @@ func _start_pull(pointer: Pointer, ref: Dictionary, distance: float) -> void:
 	pointer.pull_distance = distance
 	pointer.pull_start = hand.global_position - hand.global_basis.z.normalized() * distance
 	pointer.pull_wire = _ref_mesh(ref)
-	if pointer.pull_wire != null: pointer.pull_wire.visible = false
+	if pointer.pull_wire != null: _show_ref_wire(ref, false)
 	hand.claim(self)
 	_message("Pull the wire into its port and let go: it becomes a link.")
 
 
-## The mesh the wire of [param ref] is drawn as, or null.
+## The mesh the wire of [param ref] is drawn as, or null: up to its first bend (D-081).
 func _ref_mesh(ref: Dictionary) -> XREGraphWire:
 	if ref["key"] == XREBlueprintLinks.VARIABLE: return canvas.ref_wire(ref)
 	var wire := _target_wire_of(int(ref["card"]))
 	return wire.mesh if wire != null else null
+
+
+## Shows or hides the wire of [param ref], every tube and knot of it (D-081).
+func _show_ref_wire(ref: Dictionary, shown: bool) -> void:
+	if ref["key"] == XREBlueprintLinks.VARIABLE:
+		canvas.show_ref_wire(ref, shown)
+		return
+	var wire := _target_wire_of(int(ref["card"]))
+	if wire != null: canvas.set_wire_shown(wire.canvas_wire, shown)
 
 
 ## Whether a hand pulls [param mesh] into its port now.
@@ -4616,7 +4791,7 @@ func _update_pull(pointer: Pointer) -> void:
 func _end_pull(pointer: Pointer, commit: bool) -> void:
 	var ref := pointer.pull
 	pointer.pull = {}
-	if pointer.pull_wire != null and ref["key"] == XREBlueprintLinks.VARIABLE: pointer.pull_wire.visible = true
+	if pointer.pull_wire != null and ref["key"] == XREBlueprintLinks.VARIABLE: _show_ref_wire(ref, true)
 	pointer.pull_wire = null
 	canvas.hide_connection()
 	pointer.hand.unclaim(self)
