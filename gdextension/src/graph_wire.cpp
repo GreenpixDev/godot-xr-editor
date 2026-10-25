@@ -20,9 +20,13 @@ namespace xre {
 
 namespace {
 constexpr int VERTICES = XREGraphWire::SAMPLES * XREGraphWire::SIDES;
-// Handle length relative to the span, as GraphEdit's curvature; bounded so short links
-// still bend out of their ports and long ones do not balloon.
+// Handle length relative to how far the wire runs along its end's direction, as GraphEdit's
+// curvature on the horizontal distance: a wire mostly upright or in depth leaves its port in a
+// short hook and runs on straight, rather than swinging out sideways by half its length.
+// Never under HANDLE_SPAN of the whole length, so that it still visibly leaves its port sideways.
+// Bounded so short links still bend out of their ports and long ones do not balloon.
 constexpr real_t HANDLE = 0.5f;
+constexpr real_t HANDLE_SPAN = 0.15f;
 constexpr real_t HANDLE_MIN = 0.03f;
 constexpr real_t HANDLE_MAX = 0.3f;
 // How far a back edge loops towards the user, per meter it runs backwards.
@@ -99,13 +103,17 @@ void XREGraphWire::update_curve(const Vector3 &p_start, const Vector3 &p_start_d
 	last_end_direction = p_end_direction;
 	last_front = p_front;
 
-	const real_t handle = std::clamp(p_start.distance_to(p_end) * HANDLE, HANDLE_MIN, HANDLE_MAX);
+	const Vector3 span = p_end - p_start;
 	const Vector3 start_direction = p_start_direction.normalized();
-	const real_t backwards = std::max(real_t(0), (p_start - p_end).dot(start_direction));
+	const Vector3 end_direction = p_end_direction.normalized();
+	const real_t least = span.length() * HANDLE_SPAN;
+	const real_t start_handle = std::clamp(std::max(std::abs(span.dot(start_direction)) * HANDLE, least), HANDLE_MIN, HANDLE_MAX);
+	const real_t end_handle = std::clamp(std::max(std::abs(span.dot(end_direction)) * HANDLE, least), HANDLE_MIN, HANDLE_MAX);
+	const real_t backwards = std::max(real_t(0), -span.dot(start_direction));
 	const Vector3 loop = p_front.normalized() * std::min(backwards * LOOP, LOOP_MAX);
 	const Vector3 a = p_start;
-	const Vector3 b = p_start + start_direction * handle + loop;
-	const Vector3 c = p_end + p_end_direction.normalized() * handle + loop;
+	const Vector3 b = p_start + start_direction * start_handle + loop;
+	const Vector3 c = p_end + end_direction * end_handle + loop;
 	const Vector3 d = p_end;
 
 	uint8_t *bytes = vertex_bytes.ptrw();

@@ -907,7 +907,7 @@ func preview_box_move(variable: String, point: Vector3) -> void:
 
 ## Keeps a captured point of the box of [param variable] on the rod (D-078):
 ## [param contact] (global) is where [param local_contact], a point of the
-## box, goes. A box keeps the graph's orientation, as a cuboid card does.
+## box, goes, in the graph's orientation; the box turns to the head about its center (D-090).
 func preview_box_grab(variable: String, contact: Vector3, local_contact: Vector3) -> void:
 	preview_box_move(variable, to_local(contact) - local_contact)
 
@@ -942,13 +942,15 @@ func is_faded(id: int) -> bool:
 	return card != null and card.faded
 
 
-## Turns flat cards towards the head without moving their centers or editing the graph.
-## Cuboids stay as they are; the head is kept for a switch back to billboards.
+## Turns flat cards towards the head without moving their centers or editing the graph,
+## and the variables' boxes with them (D-090). Cuboids stay as they are, and so
+## do the boxes then; the head is kept for a switch back to billboards.
 func face_user(head: Vector3) -> void:
 	if _faces_user and head.is_equal_approx(_head_position) and global_transform.is_equal_approx(_view_transform): return
 	_faces_user = true
 	_head_position = head
 	_view_transform = global_transform
+	_boxes.face(head, _display != XREFeatureSettings.CUBOID)
 	if _display == XREFeatureSettings.CUBOID: return
 	for card: Card in _cards:
 		_orient(card)
@@ -1831,15 +1833,21 @@ func _port_position(card: Card, port: int, input: bool, finished: int = -1) -> V
 	return card.node.transform * (center + Vector3.BACK * PORT_DEPTH * visual.scale.z)
 
 
-## Wires leave outputs rightwards and enter inputs from the left, as in GraphEdit. The graph's
-## horizontal, not the card's: a card turned towards the head would tip its wires behind others.
+## Wires leave outputs rightwards and enter inputs from the left, as in GraphEdit: the card's
+## own sides (D-090), so that a card turned towards the head — seen from the side or from behind
+## the graph — sends its wires out of the side its ports are on, not along the graph's horizontal.
 func port_direction(id: int, input: bool) -> Vector3:
 	var card := _find_card(id)
 	return _port_direction(card, input) if card != null else Vector3.ZERO
 
 
-static func _port_direction(_card: Card, input: bool) -> Vector3:
-	return Vector3.LEFT if input else Vector3.RIGHT
+static func _port_direction(card: Card, input: bool) -> Vector3:
+	return -_side(card) if input else _side(card)
+
+
+## The card's right, along its rows: the graph's with cuboids, turned with a billboard.
+static func _side(card: Card) -> Vector3:
+	return card.node.basis.x.normalized() if card != null else Vector3.RIGHT
 
 
 ## The side of the card its ports face; back edges loop out this way.
@@ -1881,7 +1889,7 @@ func show_socket_link(id: int, kind: int, end: Vector3) -> void:
 	if card == null: return
 	for socket: Socket in card.sockets:
 		if socket.kind == kind:
-			_preview.update_curve(card.node.transform * socket.center, Vector3.LEFT, end, Vector3.ZERO, _front(card))
+			_preview.update_curve(card.node.transform * socket.center, -_side(card), end, Vector3.ZERO, _front(card))
 			_preview.visible = true
 			return
 
@@ -1903,7 +1911,7 @@ func _update_variable_link(link: Wire) -> void:
 	# A link's wire leaves its ring, not the socket (D-074).
 	var at := link.from.node.transform * (link.link.end if link.link != null else link.from.sockets[link.socket].center)
 	var end := _boxes.box_end(link.variable, at)
-	_lay(link, at, Vector3.LEFT, end[0], end[1], _front(link.from))
+	_lay(link, at, -_side(link.from), end[0], end[1], _front(link.from))
 
 
 ## Lays [param wire] from its output, or its variable's box, to its input.
@@ -2149,7 +2157,8 @@ func show_link(from: Vector3, to: Vector3) -> void:
 
 ## A static wire from socket [param kind] of block [param id] — an event's Source — towards the scene object.
 func update_socket_wire(link: Wire, id: int, kind: int, end: Vector3) -> void:
-	_lay(link, socket_position(id, kind), Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
+	var card := _find_card(id)
+	_lay(link, socket_position(id, kind), -_side(card), end, Vector3.ZERO, _front(card))
 
 
 ## Lights the cards whose Variable socket is wired to the box of
@@ -2441,7 +2450,8 @@ func adapter_end(id: int) -> Variant:
 
 ## A static wire from the adapter of block [param id], leaving left, free towards the scene object.
 func update_adapter_wire(link: Wire, id: int, start: Vector3, end: Vector3) -> void:
-	_lay(link, start, Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
+	var card := _find_card(id)
+	_lay(link, start, -_side(card), end, Vector3.ZERO, _front(card))
 
 
 ## The link of [param block]'s target (D-074) in its input [param port] or its
@@ -2668,8 +2678,10 @@ func intersect_link_wire(origin: Vector3, direction: Vector3, maximum: float) ->
 ## takes it (D-074): natively, on each of its tubes (D-081); -1 for nowhere.
 func intersect_wire(wire: Wire, origin: Vector3, direction: Vector3, maximum: float) -> float:
 	var found := -1.0
+	# The ends of a bent wire's tubes are its knots, not ports: they keep no margin (D-090).
+	var margin := WIRE_MARGIN if wire.pieces.size() == 1 else 0.0
 	for piece: XREGraphWire in wire.pieces:
-		var hit := piece.intersect_ray(origin, direction, WIRE_REACH, maximum, WIRE_MARGIN)
+		var hit := piece.intersect_ray(origin, direction, WIRE_REACH, maximum, margin)
 		if hit < 0.0: continue
 		maximum = hit
 		found = hit
@@ -2870,6 +2882,8 @@ func _build_boxes(graph: XREBlueprintGraph) -> void:
 	var used: Dictionary[String, bool] = {}
 	for block: Dictionary in graph.nodes:
 		if block["kind"] in ["get_variable", "set_variable"]: used[str(block["params"]["variable"])] = true
+	# Turned as the cards are, with the display they are rebuilt for (D-090).
+	_boxes.face(_head_position, _faces_user and _display != XREFeatureSettings.CUBOID)
 	_boxes.rebuild(graph, _box_places(graph), _value_mode, used)
 	for card: Card in _cards:
 		var block := graph.find_node(card.id)

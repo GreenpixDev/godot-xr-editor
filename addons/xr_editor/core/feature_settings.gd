@@ -129,12 +129,17 @@ const ON_FOCUS := &"on_focus"
 ## How a wire to a variable or an object becomes a link (D-074), besides a link
 ## from the Tokens window laid on its port: a button on the wire under the ray,
 ## a pull of the wire into its port by the grip, a button over its port, or
-## by itself as soon as the wire is made, with no buttons, a link never a wire again (D-077).
+## by itself as soon as the wire is made, with no buttons, a link never a wire again (D-077),
+## or a menu the trigger held on the wire opens: Link, or a bend added or taken off (D-090).
 const LINK_CREATE := &"link_create"
 const WIRE_BUTTON := &"wire_button"
 const PULL := &"pull"
 const PORT_BUTTON := &"port_button"
 const ALWAYS := &"always"
+const WIRE_MENU := &"wire_menu"
+## Whether a new wire to a variable or an object that has more than one wire
+## or link already, and that runs far, becomes a link by itself (D-090).
+const AUTO_LINK := &"auto_link"
 ## Bends of logic graph wires, as waypoints in draw.io (D-081). On (the
 ## default since D-089), a wire goes through its bends, and trigger or grip on
 ## it adds and drags them; off, wires are drawn as before and the bends a
@@ -269,9 +274,16 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	LINK_CREATE: {
 		"category": Category.FEATURES,
 		"title": "Link from wire",
-		"values": [WIRE_BUTTON, PULL, PORT_BUTTON, ALWAYS],
-		"labels": ["Wire button", "Pull", "Port button", "Always"],
-		"hint": "How a wire to a variable or an object becomes a link: a link button where the ray is on the wire, the grip pulling the wire into its port, a link button over its port, or by itself as soon as the wire is made (Always: no buttons, and a link never becomes a wire). A link from the Tokens window laid on the port works with each.",
+		"values": [WIRE_BUTTON, PULL, PORT_BUTTON, ALWAYS, WIRE_MENU],
+		"labels": ["Wire button", "Pull", "Port button", "Always", "Wire menu"],
+		"hint": "How a wire to a variable or an object becomes a link: a link button where the ray is on the wire, the grip pulling the wire into its port, a link button over its port, by itself as soon as the wire is made (Always: no buttons, and a link never becomes a wire), or a menu the trigger held on the wire opens (Wire menu: Link or Point; on a point, Delete point; let go on one to do it). A link from the Tokens window laid on the port works with each.",
+	},
+	AUTO_LINK: {
+		"category": Category.FEATURES,
+		"title": "Auto link",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: a new wire to a variable or an object that has more than one wire or link already becomes a link by itself if it runs farther than half a meter.",
 	},
 	WIRE_BENDS: {
 		"category": Category.FEATURES,

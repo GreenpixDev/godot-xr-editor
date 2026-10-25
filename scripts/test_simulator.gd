@@ -23,6 +23,8 @@ func _initialize() -> void:
 		_look_right,
 		_beam_off,
 		_beam_on,
+		_beam_over_everything,
+		_beam_as_before,
 		_trigger,
 		_grip,
 		_switch_while_gripping,
@@ -131,6 +133,20 @@ func _beam_off() -> void:
 
 func _beam_on() -> void:
 	_check(_simulator.get_beam() != null, "V turns it on again")
+	_rig.right_hand.set_on_top(true)
+
+
+## With the ray over everything, the beam is drawn as late as the ray, after a window over everything, as the block palette (D-090).
+func _beam_over_everything() -> void:
+	var beam := _simulator.get_beam()
+	_check(beam != null and beam.sorting_offset == _rig.right_hand.get_ray_sorting() and beam.sorting_offset > XREPanelSurface.OVER_FOCUS_SORTING,
+			"the beam is drawn over everything with the ray, after a window drawn over everything")
+	_rig.right_hand.set_on_top(false)
+
+
+func _beam_as_before() -> void:
+	var beam := _simulator.get_beam()
+	_check(beam != null and beam.sorting_offset == 0.0, "and as before once the ray is")
 	_mouse(MOUSE_BUTTON_LEFT, true)
 
 
