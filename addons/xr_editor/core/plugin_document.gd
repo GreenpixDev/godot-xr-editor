@@ -29,6 +29,8 @@ var _game_pid := 0
 var _scene_menu_found: PopupMenu
 ## This document is changing the editor's undo history: what it hears of it meanwhile is its own.
 var _changing := false
+## Process frame the edited scene last changed in ([method _scene_switched_this_frame]), or -1.
+var _scene_changed_frame := -1
 
 
 func _init(plugin: EditorPlugin) -> void:
@@ -186,6 +188,8 @@ func open_scene(path: String, source: Source) -> Error:
 		return ERR_FILE_NOT_FOUND
 	var previous := get_scene_root()
 	var before := previous.scene_file_path if previous != null else ""
+	if before != path and _scene_switched_this_frame():
+		return ERR_BUSY
 	if not _switch_scene(path) and (previous == null or before != path):
 		return FAILED
 	_record(&"open_scene", source, [get_scene_root()])
@@ -322,7 +326,17 @@ func get_snap() -> XRESnap:
 
 
 func _on_scene_changed(_scene_root: Node) -> void:
+	_scene_changed_frame = Engine.get_process_frames()
 	scene_changed.emit()
+
+
+## Whether the edited scene changed in this frame, on the desktop or here.
+## Godot 4.7.2 can't switch scenes again until the frame's deferred calls
+## have run: a switch has the Scene dock scroll to each selected node's
+## TreeItem later, and the next switch frees those items first, a use after
+## free that crashes the editor (D-090). So one switch a frame.
+func _scene_switched_this_frame() -> bool:
+	return _scene_changed_frame == Engine.get_process_frames()
 
 
 ## Commits the action [param undo_redo] is building and records it in
@@ -404,9 +418,13 @@ func _on_editor_history_changed() -> void:
 		history.forget(XREHistory.Kind.SCENE)
 
 
-## The editor doesn't undo while a mouse button is down; nor does the headset then.
+## The editor doesn't undo while a mouse button is down; nor does the headset
+## then. Nor in a frame the edited scene changed in: the step may switch
+## scenes again ([method _scene_switched_this_frame]). It waits in the
+## history meanwhile; a step makes at most one switch, as it holds one frame's changes.
 func _may_replay() -> bool:
-	return Input.get_mouse_button_mask() & (MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE) == 0
+	return Input.get_mouse_button_mask() & (MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE) == 0 \
+			and not _scene_switched_this_frame()
 
 
 func _set_selection(nodes: Array[Node]) -> void:
@@ -417,10 +435,12 @@ func _set_selection(nodes: Array[Node]) -> void:
 
 
 ## Edits the scene saved at [param path], opening it or switching to its tab,
-## for [method open_scene], its undo and its redo. False if it is edited already or can't be opened.
+## for [method open_scene], its undo and its redo. False if it is edited
+## already, can't be opened or the edited scene changed in this frame.
 func _switch_scene(path: String) -> bool:
 	var root := get_scene_root()
-	if path.is_empty() or (root != null and root.scene_file_path == path) or not ResourceLoader.exists(path):
+	if path.is_empty() or (root != null and root.scene_file_path == path) or not ResourceLoader.exists(path) \
+			or _scene_switched_this_frame():
 		return false
 	_changing = true
 	EditorInterface.open_scene_from_path(path)

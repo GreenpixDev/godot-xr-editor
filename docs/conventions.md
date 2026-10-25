@@ -41,4 +41,6 @@
 - `--log-file` не создаёт папку: без `logs/` лог молча не пишется.
 - В headless рендер — заглушка: AABB мешей пустые, `RenderingServer.instances_cull_ray` их не находит, пикер ничего не видит. Тестовые сцены задают `custom_aabb` (`scripts/test_tools.gd`). `TriangleMesh` и CSG работают.
 - `EditorUndoRedoManager` не даёт скрипту ни `undo()`, ни `redo()`. Вызов их у `UndoRedo` из `get_history_undo_redo` расходится со стеками менеджера: Ctrl+Z и док History потом отменяют не то. Отмена из шлема выбирает пункт Scene → Undo (id 13) или Redo (id 14) сигналом `id_pressed` (D-087). В тестах прямые вызовы допустимы.
+- `EditorInspector` хранит голый указатель на то, что редактирует, и разыменует его в следующем `edit()`: RefCounted (прокси) освобождать только после `edit()` другого объекта или `edit(null)` (D-090).
+- Две смены сцены редактора за кадр (`open_scene_from_path`, при выделении) — use after free и SIGSEGV в 4.7.2: док Scene откладывает `scroll_to_item` с `TreeItem*`, а вторая смена очищает дерево. Одна смена за кадр (D-090).
 - Свёрнутое окно редактора усыпляет главный цикл (`OS::add_frame_delay` при `window_can_draw() == false`): в VR не сворачивать, фокус терять можно.

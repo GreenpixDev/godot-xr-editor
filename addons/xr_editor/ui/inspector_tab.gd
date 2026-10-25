@@ -95,12 +95,16 @@ func _refresh() -> void:
 	_inspector.visible = true
 	if _proxy == null or _proxy.get_target() != node:
 		end_edit()
-		_proxy = XREInspectorProxy.new(_document, node)
-		_inspector.edit(_proxy)
+		# The inspector holds a raw pointer to what it edits and touches it in
+		# edit(): the old proxy must outlive the switch, or that is a use after
+		# free, and a double free of the proxy (D-090).
+		var proxy := XREInspectorProxy.new(_document, node)
+		_inspector.edit(proxy)
+		_proxy = proxy
 
 
 ## Commits what was set and stops editing, so that a hidden inspector doesn't
-## refresh its values.
+## refresh its values. The inspector lets go of the proxy before it is freed.
 func _let_go() -> void:
 	end_edit()
 	if _inspector != null:
