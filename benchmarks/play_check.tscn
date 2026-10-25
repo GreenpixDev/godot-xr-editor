@@ -2,7 +2,8 @@
 
 [ext_resource type="Script" uid="uid://u2perwrhiqlm" path="res://benchmarks/play_check.gd" id="1_script"]
 [ext_resource type="Script" uid="uid://dudskovnhoyfb" path="res://benchmarks/red_cube_blueprint.generated.gd" id="2_qwb6r"]
-[ext_resource type="Script" uid="uid://borgs34avaern" path="res://benchmarks/green_cube_blueprint_4.generated.gd" id="3_c5342"]
+[ext_resource type="Script" uid="uid://spy28y0x3thh" path="res://benchmarks/green_cube_blueprint_8.generated.gd" id="3_c5342"]
+[ext_resource type="Script" uid="uid://dgt5cvja2u4gi" path="res://benchmarks/blue_cube_blueprint_2.generated.gd" id="4_un8li"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_material"]
 
@@ -46,6 +47,7 @@ transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 
 shadow_enabled = true
 
 [node name="Floor" type="MeshInstance3D" parent="." unique_id=1171004458]
+transform = Transform3D(0.9998961, -0.005016669, -0.013523251, 0.0050746053, 0.99997807, 0.004257913, 0.0135015845, -0.0043261684, 0.9998995, 0.0017753243, -0.004160732, 0.0124672055)
 mesh = SubResource("floor_mesh")
 surface_material_override/0 = SubResource("grey")
 
@@ -55,20 +57,22 @@ size = Vector3(1.2, 0.05, 0.6)
 material = SubResource("wood")
 
 [node name="RedCube" type="MeshInstance3D" parent="." unique_id=1317528540]
-transform = Transform3D(0.9233415, -0.07409765, 0.37676245, 0.045419533, 0.9953917, 0.08445262, -0.38128397, -0.060866322, 0.9224524, -0.033768803, 0.82263565, -0.45550734)
+transform = Transform3D(0.9989139, -0.031806316, 0.034047812, 0.029161254, 0.99671525, 0.07555147, -0.036339074, -0.0744766, 0.99656063, -0.2459081, 0.8140785, -0.49158078)
 mesh = SubResource("cube_mesh")
 surface_material_override/0 = SubResource("red")
 script = ExtResource("2_qwb6r")
 metadata/_xre_blueprint = "res://benchmarks/red_cube_blueprint.tres"
 
 [node name="GreenCube" type="MeshInstance3D" parent="." unique_id=867898308]
-transform = Transform3D(0.9994264, 0.014317249, 0.030676655, -0.015355073, 0.9993072, 0.03386228, -0.03017065, -0.0343138, 0.9989546, 0.26011112, 0.9083628, -0.50202113)
+transform = Transform3D(0.9996638, -0.02204642, -0.013619702, 0.022866275, 0.9977304, 0.06331129, 0.012193078, -0.06360132, 0.9978998, 0.00751261, 0.964058, -0.5096164)
 mesh = SubResource("cube_mesh")
 surface_material_override/0 = SubResource("green")
 script = ExtResource("3_c5342")
-metadata/_xre_blueprint = "res://benchmarks/green_cube_blueprint_4.tres"
+metadata/_xre_blueprint = "res://benchmarks/green_cube_blueprint_8.tres"
 
 [node name="BlueCube" type="MeshInstance3D" parent="." unique_id=747555017]
-transform = Transform3D(0.9998164, -0.01704937, -0.008745119, 0.017588805, 0.9976745, 0.0658479, 0.0076021105, -0.0659896, 0.9977913, 0.2838829, 0.80116606, -0.5008966)
+transform = Transform3D(0.8408451, -0.50656617, 0.19071002, 0.46791732, 0.5031612, -0.7265552, 0.27209044, 0.70015645, 0.6601116, 0.2655807, 1.0265634, -0.48800877)
 mesh = SubResource("cube_mesh")
 surface_material_override/0 = SubResource("blue")
+script = ExtResource("4_un8li")
+metadata/_xre_blueprint = "res://benchmarks/blue_cube_blueprint_2.tres"

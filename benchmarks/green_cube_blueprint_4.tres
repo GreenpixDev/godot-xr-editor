@@ -173,20 +173,11 @@ nodes = Array[Dictionary]([{
 "kind": "operator",
 "params": {
 "a": 0.0,
-"b": 0.001,
+"b": 0.0,
 "op": "add"
 },
 "position": Vector2(379.77747, 589.24506),
 "vr_depth": 0.71145284
-}, {
-"id": 9,
-"kind": "get_variable",
-"params": {
-"variable": "test"
-},
-"position": Vector2(189.78009, 487.2842),
-"vr_depth": 0.46795428,
-"vr_inline": true
 }, {
 "id": 10,
 "kind": "branch",
@@ -215,6 +206,36 @@ nodes = Array[Dictionary]([{
 "vr_depth": 0.85105735,
 "vr_inline": true,
 "vr_links": ["variable"]
+}, {
+"id": 13,
+"kind": "get_variable",
+"params": {
+"variable": "gf"
+},
+"position": Vector2(79.777466, 629.24506),
+"vr_depth": 0.71145284,
+"vr_inline": true,
+"vr_links": ["variable"]
+}, {
+"id": 15,
+"kind": "operator",
+"params": {
+"a": 0.0,
+"b": 0,
+"op": "add"
+},
+"position": Vector2(763.14496, 936.78186),
+"vr_depth": 0.9546866
+}, {
+"id": 17,
+"kind": "get_variable",
+"params": {
+"variable": "gf"
+},
+"position": Vector2(463.14496, 1026.7819),
+"vr_depth": 0.9546866,
+"vr_inline": true,
+"vr_links": ["variable"]
 }])
 edges = Array[Dictionary]([{
 "from": 1,
@@ -236,11 +257,6 @@ edges = Array[Dictionary]([{
 "from_port": 0,
 "to": 7,
 "to_port": 1
-}, {
-"from": 9,
-"from_port": 0,
-"to": 8,
-"to_port": 0
 }, {
 "from": 3,
 "from_port": 0,
@@ -276,10 +292,27 @@ edges = Array[Dictionary]([{
 "from_port": 0,
 "to": 11,
 "to_port": 1
+}, {
+"from": 13,
+"from_port": 0,
+"to": 8,
+"to_port": 0
+}, {
+"from": 17,
+"from_port": 0,
+"to": 15,
+"to_port": 1
 }])
 variables = Array[Dictionary]([{
 "name": "test",
-"value": 0.0
+"value": 0.0,
+"vr_depth": 0.15091835,
+"vr_position": Vector2(-46.71186, 900.7403)
+}, {
+"name": "gf",
+"value": 0.0,
+"vr_depth": 0.50681466,
+"vr_position": Vector2(372.94168, 968.0655)
 }])
 host_path = NodePath("GreenCube")
 scene_path = "res://benchmarks/play_check.tscn"

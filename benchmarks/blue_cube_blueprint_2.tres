@@ -1,0 +1,729 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://dkgsi81c46pqr"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_ejfk7"]
+
+[resource]
+script = ExtResource("1_ejfk7")
+nodes = Array[Dictionary]([{
+"arguments": Array[Dictionary]([]),
+"id": 1,
+"kind": "signal",
+"params": {
+"policy": "parallel",
+"signal": "ready",
+"target": "."
+},
+"position": Vector2(606.1074, -10.899872),
+"vr_depth": 0.46149075
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([]),
+"awaits": false,
+"category": "Time",
+"class": "XREBlueprintLibrary",
+"description": "Seconds of real time since the game started. Pause and [member Engine.time_scale] don't slow it, unlike Delay.",
+"extra": 0,
+"keywords": "time seconds clock elapsed now ticks",
+"name": "get_time",
+"pure": true,
+"return": 3,
+"return_class": "",
+"returns": true,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": [],
+"then": "Then",
+"title": "Get Time",
+"vararg": false
+},
+"id": 2,
+"kind": "call",
+"params": {},
+"position": Vector2(97.92576, 506.47507),
+"vr_depth": 0.65407157
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"key": "angle_rad",
+"label": "Angle Rad",
+"name": "angle_rad",
+"type": 3
+}]),
+"awaits": false,
+"category": "@GlobalScope · math",
+"class": "",
+"description": "",
+"extra": 0,
+"keywords": "math",
+"name": "cos",
+"pure": true,
+"return": 3,
+"return_class": "",
+"returns": true,
+"scope": "global",
+"script": "",
+"targets": [],
+"then": "Then",
+"title": "Cos",
+"vararg": false
+},
+"id": 3,
+"kind": "call",
+"params": {
+"angle_rad": 0.0
+},
+"position": Vector2(307.46198, 708.79645),
+"vr_depth": 1.1230834
+}, {
+"id": 4,
+"kind": "operator",
+"params": {
+"a": 0.0,
+"b": 1.0,
+"op": "multiply"
+},
+"position": Vector2(199.45644, 617.6207),
+"vr_depth": 0.90773124
+}, {
+"id": 5,
+"kind": "operator",
+"params": {
+"a": 0.0,
+"b": 0.1,
+"op": "multiply"
+},
+"position": Vector2(364.78174, 703.4766),
+"vr_depth": 1.3941584
+}, {
+"id": 6,
+"kind": "set_variable",
+"params": {
+"value": Vector3(0, 0, 0),
+"variable": "start"
+},
+"position": Vector2(777.4184, 29.436447),
+"vr_depth": 0.75413877
+}, {
+"id": 7,
+"kind": "get_property",
+"params": {
+"property": "position",
+"target": "."
+},
+"position": Vector2(534.1833, 182.06647),
+"property_type": 9,
+"vr_depth": 0.49143094
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"default": 0.0,
+"key": "x",
+"label": "X",
+"name": "x",
+"type": 3
+}, {
+"class_name": "",
+"default": 0.0,
+"key": "y",
+"label": "Y",
+"name": "y",
+"type": 3
+}, {
+"class_name": "",
+"default": 0.0,
+"key": "z",
+"label": "Z",
+"name": "z",
+"type": 3
+}]),
+"awaits": false,
+"category": "Vector",
+"class": "XREBlueprintLibrary",
+"description": "A Vector3 from its components.",
+"extra": 0,
+"keywords": "vector construct compose xyz position direction",
+"name": "make_vector3",
+"pure": true,
+"return": 9,
+"return_class": "",
+"returns": true,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": [],
+"then": "Then",
+"title": "Make Vector3",
+"vararg": false
+},
+"id": 8,
+"kind": "call",
+"params": {
+"x": 0.0,
+"y": 0.0,
+"z": 0.0
+},
+"position": Vector2(547.9258, 503.60678),
+"vr_depth": 1.6263586
+}, {
+"id": 9,
+"kind": "operator",
+"params": {
+"a": Vector3(0, 0, 0),
+"b": Vector3(0, 0, 0),
+"op": "add"
+},
+"position": Vector2(465.39468, 231.06863),
+"vr_depth": 1.9281336
+}, {
+"id": 10,
+"kind": "get_variable",
+"params": {
+"variable": "start"
+},
+"position": Vector2(338.56427, 253.2189),
+"vr_depth": 1.7674551,
+"vr_inline": true
+}, {
+"id": 11,
+"kind": "set_property",
+"params": {
+"property": "position",
+"target": ".",
+"value": Vector3(0, 0, 0)
+},
+"position": Vector2(-72.78114, -46.94545),
+"property_type": 9,
+"vr_depth": 2.412897,
+"vr_links": ["target"]
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"default": 1.0,
+"key": "seconds",
+"label": "Seconds",
+"name": "seconds",
+"non_negative": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Flow",
+"class": "XREBlueprintLibrary",
+"description": "Waits [param seconds] of game time, or until the event's run is cancelled; 0 waits for the next frame.",
+"extra": 0,
+"keywords": "wait timer pause sleep",
+"name": "delay",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": [],
+"then": "Finished",
+"title": "Delay",
+"vararg": false
+},
+"id": 12,
+"kind": "call",
+"params": {
+"seconds": 0.01
+},
+"position": Vector2(-560.81464, -85.67761),
+"vr_depth": 2.432205
+}, {
+"id": 13,
+"kind": "operator",
+"params": {
+"a": 0.0,
+"b": 0.1,
+"op": "multiply"
+},
+"position": Vector2(619.61774, 403.96408),
+"vr_depth": 1.2552475
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"key": "angle_rad",
+"label": "Angle Rad",
+"name": "angle_rad",
+"type": 3
+}]),
+"awaits": false,
+"category": "@GlobalScope · math",
+"class": "",
+"description": "",
+"extra": 0,
+"keywords": "math",
+"name": "sin",
+"pure": true,
+"return": 3,
+"return_class": "",
+"returns": true,
+"scope": "global",
+"script": "",
+"targets": [],
+"then": "Then",
+"title": "Sin",
+"vararg": false
+},
+"id": 14,
+"kind": "call",
+"params": {
+"angle_rad": 0.0
+},
+"position": Vector2(555.78534, 408.03613),
+"vr_depth": 1.0119762
+}, {
+"id": 15,
+"kind": "operator",
+"params": {
+"a": 0.0,
+"b": 1.0,
+"op": "multiply"
+},
+"position": Vector2(441.73087, 424.82022),
+"vr_depth": 0.816469
+}, {
+"id": 16,
+"kind": "operator",
+"params": {
+"a": 0.0,
+"b": 0.1,
+"op": "multiply"
+},
+"position": Vector2(502.28992, 558.8351),
+"vr_depth": 1.3298372
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"key": "angle_rad",
+"label": "Angle Rad",
+"name": "angle_rad",
+"type": 3
+}]),
+"awaits": false,
+"category": "@GlobalScope · math",
+"class": "",
+"description": "",
+"extra": 0,
+"keywords": "math",
+"name": "sin",
+"pure": true,
+"return": 3,
+"return_class": "",
+"returns": true,
+"scope": "global",
+"script": "",
+"targets": [],
+"then": "Then",
+"title": "Sin",
+"vararg": false
+},
+"id": 17,
+"kind": "call",
+"params": {
+"angle_rad": 0.0
+},
+"position": Vector2(429.3644, 531.2533),
+"vr_depth": 1.0882684
+}, {
+"id": 18,
+"kind": "operator",
+"params": {
+"a": 0.0,
+"b": 3.0,
+"op": "multiply"
+},
+"position": Vector2(328.07288, 515.96497),
+"vr_depth": 0.8641854
+}, {
+"id": 19,
+"kind": "get_variable",
+"params": {
+"variable": "r"
+},
+"position": Vector2(202.28992, 648.8351),
+"vr_depth": 1.3298372,
+"vr_inline": true
+}, {
+"id": 20,
+"kind": "get_variable",
+"params": {
+"variable": "r"
+},
+"position": Vector2(64.78174, 793.4766),
+"vr_depth": 1.3941584,
+"vr_inline": true
+}, {
+"id": 21,
+"kind": "get_variable",
+"params": {
+"variable": "r"
+},
+"position": Vector2(319.61774, 493.96408),
+"vr_depth": 1.2552475,
+"vr_inline": true
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "Node3D",
+"key": "target",
+"label": "Target",
+"name": "target",
+"self": true,
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"key": "angle",
+"label": "Angle",
+"name": "angle",
+"type": 3
+}]),
+"awaits": false,
+"category": "Node3D",
+"class": "Node3D",
+"description": "",
+"extra": 0,
+"keywords": "",
+"name": "rotate_x",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "method",
+"script": "",
+"targets": ["Node3D"],
+"then": "Then",
+"title": "Rotate X",
+"vararg": false
+},
+"id": 22,
+"kind": "call",
+"params": {
+"angle": 0.05,
+"target": "."
+},
+"position": Vector2(779.1158, -80.16577),
+"vr_depth": 1.5457218,
+"vr_links": ["target"]
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "Node3D",
+"key": "target",
+"label": "Target",
+"name": "target",
+"self": true,
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"key": "angle",
+"label": "Angle",
+"name": "angle",
+"type": 3
+}]),
+"awaits": false,
+"category": "Node3D",
+"class": "Node3D",
+"description": "",
+"extra": 0,
+"keywords": "turn spin",
+"name": "rotate_y",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "method",
+"script": "",
+"targets": ["Node3D"],
+"then": "Then",
+"title": "Rotate Y",
+"vararg": false
+},
+"id": 23,
+"kind": "call",
+"params": {
+"angle": 0.004,
+"target": "."
+},
+"position": Vector2(596.63654, -81.7449),
+"vr_depth": 1.9078865,
+"vr_links": ["target"]
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "Node3D",
+"key": "target",
+"label": "Target",
+"name": "target",
+"self": true,
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"key": "angle",
+"label": "Angle",
+"name": "angle",
+"type": 3
+}]),
+"awaits": false,
+"category": "Node3D",
+"class": "Node3D",
+"description": "",
+"extra": 0,
+"keywords": "",
+"name": "rotate_z",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "method",
+"script": "",
+"targets": ["Node3D"],
+"then": "Then",
+"title": "Rotate Z",
+"vararg": false
+},
+"id": 24,
+"kind": "call",
+"params": {
+"angle": 0.01,
+"target": "."
+},
+"position": Vector2(328.57767, -90.569305),
+"vr_depth": 2.2315674,
+"vr_links": ["target"]
+}, {
+"id": 25,
+"kind": "set_property",
+"params": {
+"property": "transparency",
+"target": ".",
+"value": 0.5
+},
+"position": Vector2(760.63635, -54.736313),
+"property_type": 3,
+"vr_depth": 1.1121416,
+"vr_links": ["target"]
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"key": "angle_rad",
+"label": "Angle Rad",
+"name": "angle_rad",
+"type": 3
+}]),
+"awaits": false,
+"category": "@GlobalScope · math",
+"class": "",
+"description": "",
+"extra": 0,
+"keywords": "math",
+"name": "sin",
+"pure": true,
+"return": 3,
+"return_class": "",
+"returns": true,
+"scope": "global",
+"script": "",
+"targets": [],
+"then": "Then",
+"title": "Sin",
+"vararg": false
+},
+"id": 26,
+"kind": "call",
+"params": {
+"angle_rad": 0.0
+},
+"position": Vector2(580.9673, 220.84909),
+"vr_depth": 0.8602669
+}])
+edges = Array[Dictionary]([{
+"from": 4,
+"from_port": 0,
+"to": 3,
+"to_port": 0
+}, {
+"from": 3,
+"from_port": 0,
+"to": 5,
+"to_port": 0
+}, {
+"from": 7,
+"from_port": 0,
+"to": 6,
+"to_port": 1
+}, {
+"from": 5,
+"from_port": 0,
+"to": 8,
+"to_port": 2
+}, {
+"from": 8,
+"from_port": 0,
+"to": 9,
+"to_port": 1
+}, {
+"from": 10,
+"from_port": 0,
+"to": 9,
+"to_port": 0
+}, {
+"from": 9,
+"from_port": 0,
+"to": 11,
+"to_port": 1
+}, {
+"from": 11,
+"from_port": 0,
+"to": 12,
+"to_port": 0
+}, {
+"from": 14,
+"from_port": 0,
+"to": 13,
+"to_port": 0
+}, {
+"from": 15,
+"from_port": 0,
+"to": 14,
+"to_port": 0
+}, {
+"from": 2,
+"from_port": 0,
+"to": 15,
+"to_port": 0
+}, {
+"from": 16,
+"from_port": 0,
+"to": 8,
+"to_port": 1
+}, {
+"from": 17,
+"from_port": 0,
+"to": 16,
+"to_port": 0
+}, {
+"from": 18,
+"from_port": 0,
+"to": 17,
+"to_port": 0
+}, {
+"from": 2,
+"from_port": 0,
+"to": 18,
+"to_port": 0
+}, {
+"from": 19,
+"from_port": 0,
+"to": 16,
+"to_port": 1
+}, {
+"from": 20,
+"from_port": 0,
+"to": 5,
+"to_port": 1
+}, {
+"from": 21,
+"from_port": 0,
+"to": 13,
+"to_port": 1
+}, {
+"from": 23,
+"from_port": 0,
+"to": 24,
+"to_port": 0
+}, {
+"from": 24,
+"from_port": 0,
+"to": 11,
+"to_port": 0
+}, {
+"from": 13,
+"from_port": 0,
+"to": 8,
+"to_port": 0
+}, {
+"from": 22,
+"from_port": 0,
+"to": 23,
+"to_port": 0
+}, {
+"from": 2,
+"from_port": 0,
+"to": 4,
+"to_port": 0
+}, {
+"from": 26,
+"from_port": 0,
+"to": 25,
+"to_port": 1
+}, {
+"from": 2,
+"from_port": 0,
+"to": 26,
+"to_port": 0
+}, {
+"from": 1,
+"from_port": 0,
+"to": 6,
+"to_port": 0
+}, {
+"from": 6,
+"from_port": 0,
+"to": 25,
+"to_port": 0
+}, {
+"from": 25,
+"from_port": 0,
+"to": 22,
+"to_port": 0
+}, {
+"from": 12,
+"from_port": 0,
+"to": 25,
+"to_port": 0,
+"vr_bends": PackedVector3Array(-989.55225, -444.4181, 1.6718363)
+}])
+variables = Array[Dictionary]([{
+"name": "start",
+"value": Vector3(0, 0, 0),
+"vr_depth": 0.65263456,
+"vr_position": Vector2(516.8519, 305.83325)
+}, {
+"name": "r",
+"value": 0.1,
+"vr_depth": 1.1877006,
+"vr_position": Vector2(732.93964, 862.61285)
+}])
+host_path = NodePath("BlueCube")
+scene_path = "res://benchmarks/play_check.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.93332404, 0, -0.35903513, 0, 1, 0, 0.35903513, 0, 0.93332404, 0.30163527, 1.1969459, -0.7932815)
+vr_center = Vector2(80, 100)

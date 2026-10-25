@@ -1,0 +1,270 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://dofxnwmqboieq"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_b8dqr"]
+
+[resource]
+script = ExtResource("1_b8dqr")
+nodes = Array[Dictionary]([{
+"arguments": Array[Dictionary]([]),
+"id": 1,
+"kind": "signal",
+"params": {
+"policy": "parallel",
+"signal": "ready",
+"target": "."
+},
+"position": Vector2(80, 100)
+}, {
+"id": 2,
+"kind": "set_property",
+"params": {
+"property": "position",
+"target": ".",
+"value": Vector3(0, 0, 0)
+},
+"position": Vector2(1209.5933, 176.3121),
+"property_type": 9,
+"vr_depth": 0.31558692
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"default": 0.0,
+"key": "x",
+"label": "X",
+"name": "x",
+"type": 3
+}, {
+"class_name": "",
+"default": 0.0,
+"key": "y",
+"label": "Y",
+"name": "y",
+"type": 3
+}, {
+"class_name": "",
+"default": 0.0,
+"key": "z",
+"label": "Z",
+"name": "z",
+"type": 3
+}]),
+"awaits": false,
+"category": "Vector",
+"class": "XREBlueprintLibrary",
+"description": "A Vector3 from its components.",
+"extra": 0,
+"keywords": "vector construct compose xyz position direction",
+"name": "make_vector3",
+"pure": true,
+"return": 9,
+"return_class": "",
+"returns": true,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": [],
+"then": "Then",
+"title": "Make Vector3",
+"vararg": false
+},
+"id": 3,
+"kind": "call",
+"params": {
+"x": 0.0,
+"y": -0.30000000000000004,
+"z": 0.0
+},
+"position": Vector2(974.44244, 582.91833),
+"vr_depth": 0.44976082
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"key": "angle_rad",
+"label": "Angle Rad",
+"name": "angle_rad",
+"type": 3
+}]),
+"awaits": false,
+"category": "@GlobalScope · math",
+"class": "",
+"description": "",
+"extra": 0,
+"keywords": "math",
+"name": "sin",
+"pure": true,
+"return": 3,
+"return_class": "",
+"returns": true,
+"scope": "global",
+"script": "",
+"targets": [],
+"then": "Then",
+"title": "Sin",
+"vararg": false
+},
+"id": 4,
+"kind": "call",
+"params": {
+"angle_rad": -0.1
+},
+"position": Vector2(449.01395, 560.652),
+"vr_depth": 0.107748374
+}, {
+"id": 5,
+"kind": "get_variable",
+"params": {
+"variable": "x"
+},
+"position": Vector2(149.01395, 600.652),
+"vr_depth": 0.107748374,
+"vr_inline": true
+}, {
+"id": 6,
+"kind": "set_variable",
+"params": {
+"value": 0.0,
+"variable": "x"
+},
+"position": Vector2(491.01944, 210.74304),
+"vr_depth": 0.041986376
+}, {
+"id": 7,
+"kind": "operator",
+"params": {
+"a": 0.05,
+"b": 0.1,
+"op": "add"
+},
+"position": Vector2(-11.112556, 346.88586),
+"vr_depth": 0.057391495
+}, {
+"id": 8,
+"kind": "get_variable",
+"params": {
+"variable": "x"
+},
+"position": Vector2(-311.11255, 436.88586),
+"vr_depth": 0.057391495,
+"vr_inline": true
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "",
+"default": 1.0,
+"key": "seconds",
+"label": "Seconds",
+"name": "seconds",
+"non_negative": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Flow",
+"class": "XREBlueprintLibrary",
+"description": "Waits [param seconds] of game time, or until the event's run is cancelled; 0 waits for the next frame.",
+"extra": 0,
+"keywords": "wait timer pause sleep",
+"name": "delay",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": [],
+"then": "Finished",
+"title": "Delay",
+"vararg": false
+},
+"id": 9,
+"kind": "call",
+"params": {
+"seconds": 0.01
+},
+"position": Vector2(1338.2538, -37.93138),
+"vr_depth": 0.661464
+}, {
+"id": 10,
+"kind": "operator",
+"params": {
+"a": 0.0,
+"b": 10.0,
+"op": "divide"
+},
+"position": Vector2(757.8206, 561.73987),
+"vr_depth": 0.23535241
+}])
+edges = Array[Dictionary]([{
+"from": 3,
+"from_port": 0,
+"to": 2,
+"to_port": 1
+}, {
+"from": 5,
+"from_port": 0,
+"to": 4,
+"to_port": 0
+}, {
+"from": 1,
+"from_port": 0,
+"to": 6,
+"to_port": 0
+}, {
+"from": 7,
+"from_port": 0,
+"to": 6,
+"to_port": 1
+}, {
+"from": 8,
+"from_port": 0,
+"to": 7,
+"to_port": 1
+}, {
+"from": 6,
+"from_port": 0,
+"to": 2,
+"to_port": 0
+}, {
+"from": 2,
+"from_port": 0,
+"to": 9,
+"to_port": 0
+}, {
+"from": 9,
+"from_port": 0,
+"to": 6,
+"to_port": 0,
+"vr_bends": PackedVector3Array(1487.8092, -366.37695, -0.47165763)
+}, {
+"from": 4,
+"from_port": 0,
+"to": 10,
+"to_port": 0
+}, {
+"from": 10,
+"from_port": 0,
+"to": 3,
+"to_port": 1
+}])
+variables = Array[Dictionary]([{
+"name": "x",
+"value": 0.0,
+"vr_depth": 0.13802968,
+"vr_position": Vector2(-4.0251923, 615.98254)
+}])
+host_path = NodePath("GreenCube")
+scene_path = "res://benchmarks/play_check.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.91373926, 0, -0.4063011, 0, 1, 0, 0.40630114, 0, 0.9137392, 0.12106794, 1.3045325, -0.32313448)
+vr_center = Vector2(80, 100)
