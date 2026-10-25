@@ -26,6 +26,7 @@ var _palette: XREPalette
 var _panels: XREPanels
 var _blueprints: XREBlueprints
 var _manipulator: XREManipulator
+var _shortcut: XREObjectShortcut
 var _play_mode: XREPlayMode
 var _undo: XREUndo
 var _launcher: XREStandaloneLauncher
@@ -118,6 +119,13 @@ func _add_tools(rig: XRERig) -> void:
 	rig.add_child(_manipulator)
 	_panels.set_manipulator(_manipulator)
 	_palette.set_manipulator(_manipulator)
+	# After the manipulator: a hand it gives back has no trigger press left for it (D-088).
+	_shortcut = XREObjectShortcut.new(document, rig, EditorInterface.get_editor_theme())
+	_shortcut.name = "XREObjectShortcut"
+	_shortcut.blocked = _blueprints.is_open
+	_shortcut.blueprint_requested.connect(_blueprints.open_selected)
+	_manipulator.shortcut_requested.connect(_shortcut.open)
+	rig.add_child(_shortcut)
 	_play_mode = XREPlayMode.new(document, _session, rig)
 	_play_mode.name = "XREPlayMode"
 	rig.add_child(_play_mode)
@@ -162,6 +170,7 @@ func _forget_tools() -> void:
 	_panels = null
 	_blueprints = null
 	_manipulator = null
+	_shortcut = null
 	_play_mode = null
 	_undo = null
 	# What the history would put back in the panels and the graph went with them.

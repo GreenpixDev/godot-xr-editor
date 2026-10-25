@@ -292,6 +292,8 @@ func _test_selection() -> void:
 	_lamp.name = "Lamp"
 	_scene.add_child(_lamp)
 	_document.root = _scene
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.UNDO_SELECTION) == XREFeatureSettings.ON, "Undo selection is on by default (D-089)")
+	_document.features.set_value(XREFeatureSettings.UNDO_SELECTION, XREFeatureSettings.OFF)
 	_document.history.clear()
 	_document.select([_box], XREDocument.Source.TOOL)
 	_check(not _document.history.can_undo(), "with Undo selection off, selecting is no step, as on the desktop")
@@ -322,6 +324,8 @@ func _build_rig() -> void:
 	_right = _add_tracker(&"right_hand")
 	_left = _add_tracker(&"left_hand")
 	_document.features = XREFeatureSettings.new()
+	# The buttons' checks count steps of their own: selecting is none of them.
+	_document.features.set_value(XREFeatureSettings.UNDO_SELECTION, XREFeatureSettings.OFF)
 	_rig = XRERig.new()
 	_undo = XREUndo.new(_document, _rig)
 	_rig.add_child(_undo)

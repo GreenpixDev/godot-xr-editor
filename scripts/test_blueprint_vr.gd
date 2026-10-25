@@ -27,9 +27,10 @@ var _saved_parameters: Dictionary[StringName, StringName] = {}
 var _saved_path := ""
 const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT,
 		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
-		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS]
-## The values the checks start from: the defaults before D-076 made the author's
-## picks the defaults. Each check switches to the variant it covers.
+		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS,
+		XREFeatureSettings.OBJECT_SHORTCUT]
+## The values the checks start from: the defaults before D-076 and D-089 made the
+## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.VALUE_INPUT: XREFeatureSettings.WINDOW, XREFeatureSettings.TARGET_INPUT: XREFeatureSettings.WINDOW,
 	XREFeatureSettings.ANIMATION_WAIT: XREFeatureSettings.FLAG, XREFeatureSettings.VARIABLE_INPUT: XREFeatureSettings.WINDOW,
@@ -38,7 +39,7 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.AXIS_SCALE: XREFeatureSettings.AUTO, XREFeatureSettings.FOCUS: XREFeatureSettings.OFF,
 	XREFeatureSettings.DEFOCUS: XREFeatureSettings.OFF, XREFeatureSettings.LINK_PREVIEW: XREFeatureSettings.OFF,
 	XREFeatureSettings.LINK_WIRES: XREFeatureSettings.OFF, XREFeatureSettings.LINK_CREATE: XREFeatureSettings.WIRE_BUTTON,
-	XREFeatureSettings.WIRE_BENDS: XREFeatureSettings.OFF,
+	XREFeatureSettings.WIRE_BENDS: XREFeatureSettings.OFF, XREFeatureSettings.OBJECT_SHORTCUT: XREFeatureSettings.OFF,
 }
 
 
@@ -1229,6 +1230,13 @@ func _test_badge() -> void:
 			and badge.get_blueprint_button().tooltip_text == "Create Blueprint", "its one button is Blueprint, which creates one here")
 	_check(not badge.get_close_button().is_visible_in_tree() and not badge.get_trash_button().is_visible_in_tree(), "the graph's buttons wait for the graph")
 	_check_leader(badge, geometry.global_transform * geometry.custom_aabb)
+	# With the object's shortcut on, its Blueprint takes the scene badge's place (D-088).
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.ON)
+	await _frames()
+	_check(not badge.is_shown(), "with the object's shortcut on, the scene has no badge")
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
+	await _frames()
+	_check(badge.is_shown() and not badge.is_graph(), "with the shortcut off, the badge is back")
 	var before := _host.transform
 	_document.preview_transform(_host, Transform3D(Basis.from_euler(Vector3(0.1, 0.3, 0.4)).scaled(Vector3(4, 7, 2)), before.origin))
 	await _frames()
@@ -1282,6 +1290,11 @@ func _test_badge_graph(badge: XREBlueprintBadge, path: String) -> void:
 			and badge.get_trash_button().is_visible_in_tree() and badge.get_close_button().is_visible_in_tree(), "+, the trash and × instead of Blueprint")
 	_check((badge.get_leader().material_override as ShaderMaterial).render_priority == Material.RENDER_PRIORITY_MAX, "the leader is drawn over the dimmed scene too")
 	_check_leader(badge, geometry.global_transform * geometry.custom_aabb)
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.ON)
+	await _frames()
+	_check(badge.is_shown() and badge.is_graph(), "with the object's shortcut on, the graph keeps its badge (D-088)")
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
+	await _frames()
 	await _click_at(badge, _pixel_of(badge.get_add_button()))
 	_check(_service.is_block_palette_shown() and _service.is_open(), "+ opens the block palette")
 	_service.close_block_palette()
@@ -2821,7 +2834,8 @@ func _test_wire_bends() -> void:
 	_check(graph.edges[edge]["from"] == from and graph.edges[edge]["to"] == to, "the wire is the last edge")
 
 	# Off, as before: the wire takes no ray.
-	_check(features.get_value(XREFeatureSettings.WIRE_BENDS) == XREFeatureSettings.OFF and not canvas.get_bends_shown(), "Wire bends is off by default")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.WIRE_BENDS) == XREFeatureSettings.ON, "Wire bends is on by default (D-089)")
+	_check(features.get_value(XREFeatureSettings.WIRE_BENDS) == XREFeatureSettings.OFF and not canvas.get_bends_shown(), "Wire bends is off at the start of the checks")
 	_aim_at_wire(_wire_middle(edge))
 	await _frames()
 	_check(not canvas.is_ghost_shown(true) and not canvas.is_edge_lit(edge), "off, the ray on a wire neither lights it nor marks a bend")

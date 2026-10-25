@@ -54,7 +54,8 @@ stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>"""],
 stroke="#fff" stroke-width="6" stroke-linejoin="round"/>"""],
 }
 ## Glyphs for buttons: the launcher's library, a window, a pin, close; the
-## object's badge's Blueprint, add a block and delete (D-085).
+## object's badge's Blueprint, add a block and delete (D-085); the object's
+## shortcut's rename and the disc of its buttons (D-088).
 const GLYPHS: Dictionary[StringName, String] = {
 	&"blueprint": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <rect x="14" y="28" width="40" height="32" rx="8"/><rect x="74" y="68" width="40" height="32" rx="8"/>
@@ -71,6 +72,10 @@ const GLYPHS: Dictionary[StringName, String] = {
 	&"pin": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <path d="M46 18H82M54 18V50L36 70H92L74 50V18M64 70V110"/></g>""",
 	&"close": """<path d="M34 34L94 94M94 34L34 94" stroke="#fff" stroke-width="11" stroke-linecap="round"/>""",
+	# The object's shortcut (D-088): rename, a pencil; a round button's face, to tint.
+	&"rename": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M28 100L34 76L82 28L100 46L52 94Z"/><path d="M70 40L88 58M66 104H104"/></g>""",
+	&"disc": """<circle cx="64" cy="64" r="62" fill="#fff"/>""",
 }
 
 static var _cache: Dictionary[String, Texture2D] = {}

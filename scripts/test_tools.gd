@@ -42,8 +42,12 @@ class FakeDocument extends XREDocument:
 		commits.append(before)
 		_record(&"transform", source, [node])
 
-	func set_property(_object: Object, _property: StringName, _value: Variant, _source: Source) -> void:
-		pass
+	func set_property(object: Object, property: StringName, value: Variant, source: Source) -> void:
+		object.set(property, value)
+		var nodes: Array[Node] = []
+		if object is Node:
+			nodes.append(object as Node)
+		_record(&"set_property", source, nodes)
 
 	func preview_property(_object: Object, _property: StringName, _value: Variant) -> void:
 		pass
@@ -115,6 +119,8 @@ var _locomotion: XRELocomotion
 var _icons: XREIcons
 var _palette: XREPalette
 var _manipulator: XREManipulator
+var _shortcut: XREObjectShortcut
+var _blueprint_requests := 0
 ## The box the manipulator tests grab, in the scene's first lane.
 var _target: MeshInstance3D
 var _gain := 1.0
@@ -170,6 +176,26 @@ func _initialize() -> void:
 		_held_deleted,
 		_point_at_spot_icon,
 		_spot_selected,
+		_shortcut_off,
+		_shortcut_stays_shut,
+		_select_for_shortcut,
+		_release_for_shortcut,
+		_hold_for_shortcut,
+		_shortcut_opened,
+		_rename_lit,
+		_rename_typed,
+		_renamed,
+		_delete_aimed,
+		_delete_lit,
+		_deleted_by_shortcut,
+		_near_selected,
+		_open_for_nothing,
+		_let_go_on_nothing,
+		_closed_on_nothing,
+		_blueprint_aimed,
+		_blueprint_lit,
+		_blueprint_requested,
+		_shortcut_blocked,
 		_grab_for_flight,
 		_fly,
 		_flown,
@@ -418,6 +444,8 @@ func _start_manipulator() -> void:
 	_left = _add_tracker(&"left_hand")
 	_document = FakeDocument.new()
 	_document.root = _scene
+	# The manipulator's checks press the trigger on what is selected: no shortcut until its own checks (D-088).
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
 	_document.operation_recorded.connect(
 			func(operation: StringName, source: XREDocument.Source, nodes: Array[Node], _time_usec: int) -> void:
 				_operations.append("%s %s %s" % [operation, XREDocument.Source.keys()[source], nodes.map(
@@ -434,6 +462,11 @@ func _start_manipulator() -> void:
 	_manipulator = XREManipulator.new(_document, _rig, _icons)
 	_rig.add_child(_manipulator)
 	_palette.set_manipulator(_manipulator)
+	# After the manipulator, as in the plugin (D-088).
+	_shortcut = XREObjectShortcut.new(_document, _rig)
+	_shortcut.blueprint_requested.connect(func() -> void: _blueprint_requests += 1)
+	_manipulator.shortcut_requested.connect(_shortcut.open)
+	_rig.add_child(_shortcut)
 	root.add_child(_rig)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
@@ -857,6 +890,144 @@ func _spot_selected() -> void:
 			_check_vector(box.global_basis.get_scale(), Vector3.ONE * expected, "a light's outline is a cube")
 	_check(outlined, "the selected light is outlined")
 	_set_hand(_right, Vector3(13.0, 0.0, 1.0), 0.0, 0.0)
+
+
+# The object's shortcut (D-088): the trigger held again on the selected node
+# opens Delete, Rename and Blueprint; the ray picks one, letting go does it.
+
+## Aims the right hand from [param origin] at [param target], the trigger at [param trigger].
+func _aim_right(origin: Vector3, target: Vector3, trigger: float) -> void:
+	_set_hand(_right, origin, trigger, 0.0, Basis.looking_at(target - origin))
+
+
+func _check_shortcut_closed(what: String) -> void:
+	_check(not _shortcut.is_open() and not _shortcut.is_renaming() and not _shortcut.is_dimming(), "%s: the shortcut is closed, nothing dark" % what)
+	_check(_rig.right_hand.get_claimant() == null and _rig.left_hand.get_claimant() == null, "%s: the hands are free again" % what)
+
+
+func _shortcut_off() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.OBJECT_SHORTCUT) == XREFeatureSettings.ON, "the object's shortcut is on by default (D-089)")
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(13.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _shortcut_stays_shut() -> void:
+	_check(not _shortcut.is_open() and _operations.size() == _operation_count, "with the shortcut off, the trigger on the selected node does nothing")
+	_set_hand(_right, Vector3(13.0, 0.0, 1.0), 0.0, 0.0)
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.ON)
+
+
+func _select_for_shortcut() -> void:
+	_set_hand(_right, Vector3(1.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _release_for_shortcut() -> void:
+	_check(_document.get_selection() == [_scene.get_node(^"Behind")], "with the shortcut on, the trigger still selects another node: %s" % [_document.get_selection()])
+	_check(not _shortcut.is_open(), "selecting opens no shortcut")
+	_set_hand(_right, Vector3(1.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _hold_for_shortcut() -> void:
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(1.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _shortcut_opened() -> void:
+	_check(_shortcut.is_open() and _shortcut.is_dimming(), "the trigger again on the selected node opens its shortcut, the rest dark")
+	_check(_operations.size() == _operation_count, "opening the shortcut changes nothing: %s" % [_operations.slice(_operation_count)])
+	_check(_rig.right_hand.get_claimant() == _shortcut and _rig.left_hand.get_claimant() == _shortcut, "both hands are the shortcut's")
+	_check_vector(_shortcut.global_position, Vector3(1.0, 0.0, 1.0 - XREObjectShortcut.DISTANCE), "it opens along the ray")
+	_check(_shortcut.get_lit() == -1, "the ray where the trigger went down picks nothing")
+	_aim_right(Vector3(1.0, 0.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.RENAME), 1.0)
+
+
+func _rename_lit() -> void:
+	_check(_shortcut.get_lit() == XREObjectShortcut.RENAME, "the ray on Rename lights it: %d" % _shortcut.get_lit())
+	_aim_right(Vector3(1.0, 0.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.RENAME), 0.0)
+
+
+func _rename_typed() -> void:
+	var keyboard := _shortcut.get_keyboard()
+	_check(not _shortcut.is_open() and _shortcut.is_renaming() and _shortcut.is_dimming(), "Rename let go on opens the keyboard, the rest still dark")
+	_check(keyboard.value.text == "Behind", "the keyboard starts from the name: %s" % keyboard.value.text)
+	_check(_operations.size() == _operation_count, "opening the keyboard changes nothing")
+	keyboard.value.text = "Crate"
+	keyboard.value.text_submitted.emit(keyboard.value.text)
+	var node := _document.get_selection()[0]
+	_check(node.name == &"Crate", "Done renames the object: %s" % node.name)
+	_check(_operations.slice(_operation_count) == ["set_property TOOL [\"Crate\"]"], "renaming is recorded: %s" % [_operations.slice(_operation_count)])
+	_set_hand(_right, Vector3(1.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _renamed() -> void:
+	_check_shortcut_closed("after renaming")
+	_set_hand(_right, Vector3(1.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _delete_aimed() -> void:
+	_check(_shortcut.is_open(), "the shortcut opens again on the renamed node")
+	_aim_right(Vector3(1.0, 0.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.DELETE), 1.0)
+
+
+func _delete_lit() -> void:
+	_check(_shortcut.get_lit() == XREObjectShortcut.DELETE, "the ray on Delete lights it: %d" % _shortcut.get_lit())
+	_aim_right(Vector3(1.0, 0.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.DELETE), 0.0)
+
+
+func _deleted_by_shortcut() -> void:
+	var gone := _document.removed.back() as Node
+	_check(gone != null and gone.name == &"Crate", "Delete let go on removes the object: %s" % [_document.removed])
+	_check(_operations.back() == "remove_nodes TOOL [\"Crate\"]", "deleting is recorded: %s" % [_operations])
+	_check_shortcut_closed("after deleting")
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 1.0, 0.0)
+
+
+func _near_selected() -> void:
+	_check(_document.get_selection() == [_target], "the trigger selects the near box: %s" % [_document.get_selection()])
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+func _open_for_nothing() -> void:
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 1.0, 0.0)
+
+
+func _let_go_on_nothing() -> void:
+	_check(_shortcut.is_open(), "the shortcut opens on the near box")
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+func _closed_on_nothing() -> void:
+	_check_shortcut_closed("let go on no button")
+	_check(_operations.size() == _operation_count and _document.get_selection() == [_target], "let go on no button, nothing is done")
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 1.0, 0.0)
+
+
+func _blueprint_aimed() -> void:
+	_check(_shortcut.is_open(), "the shortcut opens once more")
+	_aim_right(Vector3(0.0, 0.0, 0.3), _shortcut.get_button_position(XREObjectShortcut.BLUEPRINT), 1.0)
+
+
+func _blueprint_lit() -> void:
+	_check(_shortcut.get_lit() == XREObjectShortcut.BLUEPRINT, "the ray on Blueprint lights it: %d" % _shortcut.get_lit())
+	_aim_right(Vector3(0.0, 0.0, 0.3), _shortcut.get_button_position(XREObjectShortcut.BLUEPRINT), 0.0)
+
+
+func _blueprint_requested() -> void:
+	_check(_blueprint_requests == 1, "Blueprint let go on asks for the object's graph: %d" % _blueprint_requests)
+	_check(_target.is_inside_tree() and _document.get_selection() == [_target], "Blueprint keeps the object and its selection")
+	_check_shortcut_closed("after Blueprint")
+	# An open graph keeps its badge instead (D-085).
+	_shortcut.blocked = func() -> bool: return true
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 1.0, 0.0)
+
+
+func _shortcut_blocked() -> void:
+	_check(not _shortcut.is_open() and _operations.size() == _operation_count, "while the graph is open the trigger on the selected node opens nothing")
+	_shortcut.blocked = Callable()
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 
 # Locomotion: flying with a node grabbed by the ray, which HOMER would

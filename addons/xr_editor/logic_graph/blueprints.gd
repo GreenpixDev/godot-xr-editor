@@ -2197,11 +2197,14 @@ func _selection_changed() -> void:
 ## The badge (D-085): in the scene, over the one selected object, with its
 ## Blueprint button; in the graph, over the graph's object, with the graph's
 ## buttons, drawn over everything — or over the graph, if no object has it.
+## With the object's shortcut on, the scene has no badge: the shortcut's
+## Blueprint takes its place (D-088).
 func _update_badge() -> void:
 	var nodes := _document.get_selection()
 	var selected: Node = nodes[0] if nodes.size() == 1 and is_instance_valid(nodes[0]) else null
 	var graph := _workspace.visible
 	var object: Node = blueprint.get_host() if graph else selected
+	if not graph and _document.features.get_value(XREFeatureSettings.OBJECT_SHORTCUT) == XREFeatureSettings.ON: object = null
 	_badge_anchor = _anchor(object) if is_instance_valid(object) and object.is_inside_tree() else null
 	_badge_geometry.clear()
 	if _badge_anchor != null: _collect_badge_geometry(_badge_anchor)
@@ -2266,6 +2269,9 @@ func _scene_operation(operation: StringName, source: XREDocument.Source, _nodes:
 ## A switch of the node display (D-039) redraws the open cards at once; a held card is put down first.
 ## So does a switch of the port display; a switch of the window shape bends or flattens the graph's windows.
 func _feature_changed(key: StringName) -> void:
+	if key == XREFeatureSettings.OBJECT_SHORTCUT:
+		_update_badge()
+		return
 	if key == XREFeatureSettings.WINDOW_SHAPE:
 		_update_window_shape()
 		return

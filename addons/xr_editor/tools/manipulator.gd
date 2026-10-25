@@ -12,6 +12,8 @@ extends Node
 ## ([XREIcons]) are drawn on top, so they are touched and pointed at before
 ## geometry. Selection draws white edges ([XREOutline]).
 ## [br]- Trigger: select the pointed node, or clear the selection over empty space.
+## With [constant XREFeatureSettings.OBJECT_SHORTCUT] on, the trigger on the
+## node already selected asks for its shortcut ([signal shortcut_requested], D-088).
 ## [br]- Grip: grab the pointed node, which also selects it. A touched node
 ## follows the hand rigidly. A node grabbed with the ray follows the hand
 ## with the hand's motion scaled by how much farther from the body the node
@@ -41,6 +43,11 @@ extends Node
 ## Picking happens in [XREPicker] (native). A grab changes the scene only
 ## through [XREDocument]: a preview every frame, then one undo step when the
 ## last hand lets go. Lives under the [XRERig], so its outlines render in the headset.
+
+## Emitted when the trigger of [param hand] goes down on [param node], the only
+## selected node, with [constant XREFeatureSettings.OBJECT_SHORTCUT] on (D-088):
+## [XREObjectShortcut] opens for it and claims the hand.
+signal shortcut_requested(hand: XREHand, node: Node3D)
 
 ## How far the ray reaches, in meters.
 const PICK_DISTANCE := 50.0
@@ -186,7 +193,10 @@ func _process(_delta: float) -> void:
 			elif _holders.size() == 1:
 				_join(state)
 		elif state.hand.trigger_pressed and _holders.is_empty():
-			_select(state.hover)
+			if _opens_shortcut(state.hover):
+				shortcut_requested.emit(state.hand, state.hover)
+			else:
+				_select(state.hover)
 
 	var delete_hand := _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE)
 	if _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and delete_hand.is_free_for(self):
@@ -331,6 +341,14 @@ func _update_hover(state: HandState, root: Node) -> void:
 			hand.show_ray(length, true)
 	else:
 		hand.show_ray(XREHand.RAY_LENGTH, false)
+
+
+## Whether the trigger on [param node] opens its shortcut rather than selects it (D-088).
+func _opens_shortcut(node: Node3D) -> bool:
+	if node == null or _document.features.get_value(XREFeatureSettings.OBJECT_SHORTCUT) != XREFeatureSettings.ON:
+		return false
+	var selection := _document.get_selection()
+	return selection.size() == 1 and selection[0] == node
 
 
 ## Makes [param node] the only selected node, or clears the selection for null.

@@ -135,14 +135,20 @@ const WIRE_BUTTON := &"wire_button"
 const PULL := &"pull"
 const PORT_BUTTON := &"port_button"
 const ALWAYS := &"always"
-## Bends of logic graph wires, as waypoints in draw.io (D-081). Off, wires are
-## drawn as before and the bends a graph has are kept but not shown; on, a
-## wire goes through its bends, and trigger or grip on it adds and drags them.
+## Bends of logic graph wires, as waypoints in draw.io (D-081). On (the
+## default since D-089), a wire goes through its bends, and trigger or grip on
+## it adds and drags them; off, wires are drawn as before and the bends a
+## graph has are kept but not shown.
 const WIRE_BENDS := &"wire_bends"
 ## Whether undo in the headset ([XREHistory], D-087) puts back the selection
 ## of scene objects too, a step of its own each time it changes, as Blender's
-## does; off, it doesn't, as the desktop editor's Ctrl+Z doesn't.
+## does (the default since D-089); off, it doesn't, as the desktop editor's Ctrl+Z doesn't.
 const UNDO_SELECTION := &"undo_selection"
+## Whether the trigger held again on the selected object opens its shortcut
+## ([XREObjectShortcut], D-088): delete, rename, Blueprint, picked by the ray
+## and done as the trigger lets go. On (the default since D-089), it takes
+## the place of the scene's badge (D-085); the graph keeps its badge.
+const OBJECT_SHORTCUT := &"object_shortcut"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076),
@@ -270,16 +276,23 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	WIRE_BENDS: {
 		"category": Category.FEATURES,
 		"title": "Wire bends",
-		"values": [OFF, ON],
-		"labels": ["Off", "On"],
+		"values": [ON, OFF],
+		"labels": ["On", "Off"],
 		"hint": "On: trigger or grip on a wire drags a bend out of it, on a knot moves the bend; Delete on a knot removes it.",
 	},
 	UNDO_SELECTION: {
 		"category": Category.FEATURES,
 		"title": "Undo selection",
-		"values": [OFF, ON],
-		"labels": ["Off", "On"],
+		"values": [ON, OFF],
+		"labels": ["On", "Off"],
 		"hint": "On: undo puts back what was selected too, a step of its own each time the selection changes. Off: selecting isn't undone, as on the desktop.",
+	},
+	OBJECT_SHORTCUT: {
+		"category": Category.FEATURES,
+		"title": "Object shortcut",
+		"values": [ON, OFF],
+		"labels": ["On", "Off"],
+		"hint": "On: hold the trigger again on the selected object for Delete, Rename and Blueprint; let go on one to do it, elsewhere to cancel. The Blueprint badge over the object gives way to it; the graph keeps its badge.",
 	},
 }
 
