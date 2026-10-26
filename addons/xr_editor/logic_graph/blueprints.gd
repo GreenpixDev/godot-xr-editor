@@ -1556,6 +1556,83 @@ func _show_parameters(id: int = -1) -> void:
 	_request_window(XREBlueprintParametersTab, parameters_pose(id))
 
 
+## Whether input [param port] of block [param id] is the one Target of an
+## archetypes' Set (D-093): a Set Property's Target, which a box's wire turns
+## into a Set Variable of the box.
+func _sets_target(id: int, port: int) -> bool:
+	var block := blueprint.graph.find_node(id)
+	return canvas.get_style() == XREFeatureSettings.ARCHETYPES and block.get("kind") == "set_property" and port == XREBlueprintGraph.target_port(block)
+
+
+## Whether the Variable wire being drawn is an archetypes' Set Variable's
+## (D-093): let go on a scene object, it turns the Set into a Set Property of it.
+func _variable_set_link() -> bool:
+	if _link_kind != XREBlueprintCanvas.VARIABLE or _link_block < 0 or canvas.get_style() != XREFeatureSettings.ARCHETYPES: return false
+	return blueprint.graph.find_node(_link_block).get("kind") == "set_variable"
+
+
+## The one Set of archetypes (D-093): Set [param id], writing a property,
+## writes [param variable] instead, under the hood a Set Variable. Its
+## execution wires stay; a wire into its Value stays if it fits the variable,
+## else the Value gets the variable's value; its Target and its wires to the
+## scene go. One edit.
+func _set_writes_variable(id: int, variable: String) -> void:
+	var found := blueprint.graph.find_variable(variable)
+	if found.is_empty() or blueprint.graph.find_node(id).is_empty(): return
+	var type := XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(found))
+	var state := blueprint.graph.snapshot()
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] != id: continue
+		entry["kind"] = "set_variable"
+		entry["params"] = {"variable": variable, "value": found.get("value", XREBlueprintSchema.default_value(XREBlueprintGraph.variable_type(found)))}
+		for key: String in ["vr_anchor", "vr_links", XREBlueprintGraph.SCENE_BENDS]: entry.erase(key)
+	_keep_set_wires(state, id, type)
+	if blueprint.perform(blueprint.commit.bind("Set Variable", state), &"vr_graph"):
+		cancel_connection()
+		_message("Set writes %s." % variable)
+	else: _message(blueprint.last_error)
+
+
+## The other way (D-093): Set [param id], writing a variable, writes a
+## property of [param node], under the hood a Set Property, its member to
+## pick from the petals that open. Execution and Value wires stay. One edit.
+func _set_writes_property(id: int, node: Node) -> void:
+	var host := blueprint.get_host()
+	if host == null or not blueprint.scene_nodes().has(node):
+		_message("The target is outside the edited scene.")
+		return
+	var state := blueprint.graph.snapshot()
+	var defaults: Dictionary = XREBlueprintGraph.BLOCKS["set_property"]["params"]
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] != id: continue
+		entry["kind"] = "set_property"
+		entry["params"] = {"target": str(host.get_path_to(node)), "property": defaults["property"], "value": defaults["value"]}
+		for key: String in ["vr_links", XREBlueprintGraph.VARIABLE_BENDS]: entry.erase(key)
+	_keep_set_wires(state, id, XREBlueprintGraph.VALUE)
+	if not blueprint.perform(blueprint.commit.bind("Set Property", state), &"vr_graph"):
+		_message(blueprint.last_error)
+		return
+	cancel_connection()
+	var object := node as Node3D
+	if object != null: _open_petals(id, object, object.global_position)
+	_message("Set writes a property of %s: pick it." % node.name)
+
+
+## Keeps of [param state]'s wires into Set [param id] its execution and a
+## Value wire whose source fits [param type]; a dropped Value keeps its token.
+func _keep_set_wires(state: Dictionary, id: int, type: int) -> void:
+	state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return _keeps_set_wire(edge, id, type))
+	_drop_orphan_inlines(state)
+
+
+func _keeps_set_wire(edge: Dictionary, id: int, type: int) -> bool:
+	if edge["to"] != id or int(edge["to_port"]) == 0: return true
+	if int(edge["to_port"]) != 1: return false
+	var source := blueprint.graph.find_node(edge["from"])
+	var outputs := blueprint.graph.ports(source, false)
+	return int(edge["from_port"]) < outputs.size() and XREBlueprintGraph.ports_compatible(int((outputs[int(edge["from_port"])] as Array)[1]), type)
+
+
 ## Switches what the header of block [param id]'s archetype says (D-092):
 ## the member if it said the operation, and back. Kept in the block's
 ## vr_heading, one edit of the graph, which A undoes.
@@ -1965,7 +2042,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			return
 	canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 	canvas.hover_socket(-1, -1, hand == _rig.right_hand)
-	if _pending_scene_target() or (_link_kind == XREBlueprintCanvas.SOURCE and _link_hand == hand):
+	if _pending_scene_target() or (_link_kind == XREBlueprintCanvas.SOURCE and _link_hand == hand) or (_link_hand == hand and _variable_set_link()):
 		_update_scene_target_pointer(hand, origin, direction)
 		return
 	if not _member_link.is_empty() and _member_hand == hand:
@@ -2335,7 +2412,10 @@ func _feature_changed(key: StringName) -> void:
 	var value := _document.features.get_value(key)
 	var switched := false
 	if key == XREFeatureSettings.NODE_DISPLAY: switched = canvas.set_display(value)
-	elif key == XREFeatureSettings.NODE_STYLE: switched = canvas.set_style(value)
+	elif key == XREFeatureSettings.NODE_STYLE:
+		switched = canvas.set_style(value)
+		# One Set in archetypes (D-093): the menu lists Set for both.
+		block_menu.one_set = value == XREFeatureSettings.ARCHETYPES
 	elif key == XREFeatureSettings.NODE_SHRINK: switched = canvas.set_shrink(value)
 	elif key == XREFeatureSettings.NODE_HEADING: switched = canvas.set_heading(value)
 	elif key == XREFeatureSettings.PORT_DISPLAY: switched = canvas.set_port_display(value)
@@ -2510,6 +2590,7 @@ func _build_block_menu(theme: Theme) -> void:
 	block_menu = XREBlueprintActionMenu.new()
 	block_menu.set_large(true)
 	block_menu.offers_variables = true
+	block_menu.one_set = canvas.get_style() == XREFeatureSettings.ARCHETYPES
 	if theme != null: block_menu.theme = theme
 	block_menu.action_chosen.connect(_add_from_menu)
 	block_menu.action_dragged.connect(_drag_from_menu)
@@ -2747,7 +2828,7 @@ func _update_target_wires() -> void:
 
 ## The block a wire to the scene is drawn from: its Target port, or an event's Source.
 func _scene_link_block() -> int:
-	if _link_kind == XREBlueprintCanvas.SOURCE: return _link_block
+	if _link_kind == XREBlueprintCanvas.SOURCE or _variable_set_link(): return _link_block
 	return _pending_id
 
 
@@ -2810,7 +2891,7 @@ func _update_scene_target_pointer(hand: XREHand, origin: Vector3, direction: Vec
 	var point := origin + direction * distance
 	hand.show_ray(distance, target != null)
 	if _pending_hand == hand: _preview_connection(point)
-	elif _link_kind == XREBlueprintCanvas.SOURCE: canvas.show_socket_link(id, XREBlueprintCanvas.SOURCE, canvas.to_local(point))
+	elif _link_kind == XREBlueprintCanvas.SOURCE or _variable_set_link(): canvas.show_socket_link(id, _link_kind, canvas.to_local(point))
 	# With Targets on Scene the object under the ray shows the members this block can use (D-052).
 	var block := blueprint.graph.find_node(id)
 	if target is Node3D and XREBlueprintTokens.targets_in_scene(_document.features.get_value(XREFeatureSettings.TARGET_INPUT)) and not _member_role(block).is_empty():
@@ -2818,7 +2899,8 @@ func _update_scene_target_pointer(hand: XREHand, origin: Vector3, direction: Vec
 			_open_petals(id, target as Node3D, point)
 			_message("%s: point at a petal and press trigger to wire the member; the stick or a drag scrolls." % target.name)
 	if hand.trigger_pressed and target != null:
-		if _link_kind == XREBlueprintCanvas.SOURCE:
+		if _variable_set_link(): _set_writes_property(id, target)
+		elif _link_kind == XREBlueprintCanvas.SOURCE:
 			if blueprint.perform(blueprint.set_target_member.bind(id, target, "", "", null, "Wire Member"), &"vr_graph"):
 				cancel_connection()
 				_message("Source connected to scene object.")
@@ -3003,6 +3085,8 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 			if _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty(): _wire_variable(id, _link_box)
 			else: _start_link(id, XREBlueprintCanvas.VARIABLE, hand)
 		elif kind == XREBlueprintCanvas.MEMBER: _open_member_petals(id, hand)
+		elif canvas.get_hit_port() >= 0 and canvas.get_hit_input() and _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty() and _sets_target(id, canvas.get_hit_port()):
+			_set_writes_variable(id, _link_box)
 		elif canvas.get_hit_port() >= 0 and canvas.get_hit_input() and _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty():
 			_wire_box_to_port(_link_box, id, canvas.get_hit_port())
 		elif canvas.get_hit_port() >= 0:
@@ -4306,7 +4390,8 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 				_show_parameters()
 			else: _start_turn(pointer, -1, "", variable, origin + direction * hit)
 		_:
-			if _pending_id >= 0 and _pending_input: _wire_box_to_port(variable, _pending_id, _pending_port)
+			if _pending_id >= 0 and _pending_input and _sets_target(_pending_id, _pending_port): _set_writes_variable(_pending_id, variable)
+			elif _pending_id >= 0 and _pending_input: _wire_box_to_port(variable, _pending_id, _pending_port)
 			elif _link_kind == XREBlueprintCanvas.VARIABLE and _link_block >= 0: _wire_variable(_link_block, variable)
 			else:
 				cancel_connection()

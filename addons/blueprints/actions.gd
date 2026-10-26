@@ -70,7 +70,8 @@ func invalidate_scripts() -> void:
 ## variable may have to go into it, D-079, D-080),
 ## [code]query[/code] (words that must all match), [code]advanced[/code]
 ## (whether Advanced is open) and [code]new_variables[/code] (whether the view
-## adds new variables, D-078). An Advanced section lists its actions only when
+## adds new variables, D-078), [code]one_set[/code] (whether the view has one Set for
+## a property and a variable, D-093). An Advanced section lists its actions only when
 ## open or searched. The graph's variables are a section of the native blocks,
 ## and of the host's chip, whose script they belong to.
 func sections(context: Dictionary) -> Array[Dictionary]:
@@ -132,7 +133,7 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 		for group: String in categories:
 			result.append(_section(group, categories[group], context))
 	if chip in [NATIVE, ALL]:
-		result.append(_section("Native", _native_actions(graph, host), context))
+		result.append(_section("Native", _native_actions(graph, host, context.get("one_set", false)), context))
 		result.append(_section("Variables", _variable_actions(graph, host, context), context))
 		for title: String in ["Math", "Comparison", "Logic"]:
 			result.append(_section(title, _operator_actions(title, graph, host), context))
@@ -462,11 +463,13 @@ func _operator_actions(title: String, graph: XREBlueprintGraph, host: Node) -> A
 	return _bind(actions, host, false, graph)
 
 
-## Branch, Value, properties and events.
-func _native_actions(graph: XREBlueprintGraph, host: Node) -> Array[Dictionary]:
+## Branch, Value, properties and events; with [param one_set] Set Property is
+## Set, which writes a variable too, by the wire of its Target (D-093).
+func _native_actions(graph: XREBlueprintGraph, host: Node, one_set: bool = false) -> Array[Dictionary]:
 	var actions: Array[Dictionary] = []
 	var natives := [["branch", "Branch", "if condition", "native"], ["value", "Value", "literal constant", "native"],
-			["get_property", "Get Property", "read", "pure"], ["set_property", "Set Property", "write", "property"], ["signal", "On Signal", "event", "event"]]
+			["get_property", "Get Property", "read", "pure"], ["set_property", "Set" if one_set else "Set Property", "write property variable" if one_set else "write", "property"],
+			["signal", "On Signal", "event", "event"]]
 	for entry: Array in natives:
 		actions.append({"id": "native:" + entry[0], "title": entry[1], "subtitle": "native · " + entry[2], "kind": entry[3], "keywords": entry[2],
 				"category": "Native", "block": XREBlueprintGraph.make_node(0, entry[0], Vector2.ZERO), "target": null, "disabled": ""})
@@ -504,8 +507,10 @@ func _variable_actions(graph: XREBlueprintGraph, host: Node, context: Dictionary
 		setter["params"]["value"] = variable.get("value", XREBlueprintSchema.default_value(XREBlueprintGraph.variable_type(variable)))
 		actions.append({"id": "variable:get:" + variable["name"], "title": "Get " + variable["name"], "subtitle": "variable: " + type, "kind": "variable",
 				"keywords": "variable get", "category": "Variables", "block": getter, "target": null, "disabled": ""})
-		actions.append({"id": "variable:set:" + variable["name"], "title": "Set " + variable["name"], "subtitle": "variable: " + type, "kind": "variable",
-				"keywords": "variable set", "category": "Variables", "block": setter, "target": null, "disabled": ""})
+		# One Set (D-093): it writes the variable whose box its Target is wired to.
+		if not context.get("one_set", false):
+			actions.append({"id": "variable:set:" + variable["name"], "title": "Set " + variable["name"], "subtitle": "variable: " + type, "kind": "variable",
+					"keywords": "variable set", "category": "Variables", "block": setter, "target": null, "disabled": ""})
 	var result: Array[Dictionary] = []
 	for value: Variant in (NEW_VARIABLES if context.get("new_variables", false) else []):
 		if wanted is Array and not typeof(value) in (wanted as Array): continue
