@@ -19,6 +19,10 @@ extends Resource
 ## its VR depth in meters as [code]vr_depth[/code]. A block keeps those of its
 ## own wires so: [constant SCENE_BENDS], [constant VARIABLE_BENDS]. The
 ## compiler and GraphEdit ignore them.
+##
+## A block's [code]vr_heading[/code], "operation" or "member", says what its
+## card's header shows in the VR editor's archetypes (D-092), over the
+## editor's setting; the compiler and GraphEdit ignore it too.
 
 const FORMAT_VERSION := 3
 const MAX_NODES := 256
@@ -599,6 +603,8 @@ func validate() -> PackedStringArray:
 			errors.append("Block #%s has invalid VR anchor." % id)
 		if block.has("vr_links") and not block["vr_links"] is Array:
 			errors.append("Block #%s has invalid VR links." % id)
+		if block.has("vr_heading") and not str(block["vr_heading"]) in ["operation", "member"]:
+			errors.append("Block #%s has invalid VR heading." % id)
 		for key: String in [SCENE_BENDS, VARIABLE_BENDS]:
 			if block.has(key) and not _valid_bends(block[key]): errors.append("Block #%s has invalid VR bends." % id)
 		var params: Dictionary = block["params"]

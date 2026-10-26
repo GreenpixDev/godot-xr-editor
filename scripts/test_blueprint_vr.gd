@@ -583,6 +583,13 @@ func _test_node_style() -> void:
 	_service.blueprint.undo()
 	await _frames()
 	_check(not graph.find_node(added[1]).is_empty(), "undo puts it back")
+	# ⇄ switches one card's heading (D-092): one edit, undone by A.
+	_service.switch_heading(added[0])
+	await _frames()
+	_check(str(graph.find_node(added[0]).get("vr_heading", "")) == "member" and _card(added[0]).node.get_node_or_null("Member") != null, "⇄ makes the Set's header say its member")
+	_service.blueprint.undo()
+	await _frames()
+	_check(not graph.find_node(added[0]).has("vr_heading") and _card(added[0]).node.get_node_or_null("Title") != null, "undo puts the operation back")
 	# Node shrink (D-091) redraws the open graph too.
 	_check(_document.set_feature(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.MATH, XREDocument.Source.PANEL), "node shrink switches to + Math")
 	await _frames()

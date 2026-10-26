@@ -53,6 +53,7 @@ const GLYPHS: Dictionary[StringName, String] = {
 	&"vector": '<path d="M-5 5L5 -5M0 -5H5V0" {S}/>',
 	&"color": '<circle cx="-2.8" cy="-2" r="2.6" fill="#ff6b6b"/><circle cx="2.8" cy="-2" r="2.6" fill="#7be5b3"/><circle cy="2.8" r="2.6" fill="#89adff"/>',
 	&"time": '<circle r="5" {S}/><path d="M0 -3V0L2.2 1.4" {S}/>',
+	&"swap": '<path d="M-5 -2.5H4.5L2 -5M5 2.5H-4.5L-2 5" {S}/>',
 	&"random": '<rect x="-5" y="-5" width="10" height="10" rx="2.5" {S}/><circle cx="-2" cy="-2" r="1" {F}/><circle cx="2" cy="2" r="1" {F}/>',
 }
 ## Glyphs drawn in their own colors, never tinted.

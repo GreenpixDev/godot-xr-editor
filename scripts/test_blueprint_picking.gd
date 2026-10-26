@@ -148,6 +148,66 @@ func _test_signs() -> void:
 	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
 
 
+## An archetype's card (D-092): In and Then on the header's edges, the target
+## on the row under it, an event's policy a puck in the header; in Member the
+## header says the member with the operation under it and the target row has
+## no adapter; a block's own vr_heading wins over the setting; ⇄ shows and is
+## picked with the trash.
+func _test_headings() -> void:
+	var cards_graph := XREBlueprintGraph.new()
+	var event := XREBlueprintGraph.make_node(1, "signal", Vector2.ZERO)
+	(event["params"] as Dictionary).merge({"target": "Gate", "signal": "body_entered"}, true)
+	var setter := XREBlueprintGraph.make_node(2, "set_property", Vector2(0, 300))
+	(setter["params"] as Dictionary).merge({"target": "Lamp", "property": "light_energy"}, true)
+	var own := XREBlueprintGraph.make_node(3, "set_property", Vector2(0, 600))
+	(own["params"] as Dictionary).merge({"target": "Lamp", "property": "visible"}, true)
+	own["vr_heading"] = "member"
+	cards_graph.nodes = [event, setter, own]
+	cards_graph.upgrade()
+	var modes := _canvas.get_parameter_modes()
+	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, XREFeatureSettings.ADAPTER, modes[2], modes[3])
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.rebuild(cards_graph)
+	_canvas.face_user(Vector3(0, 0, 50))
+	var cards := _canvas.get("_cards") as Array
+	var signal_card := cards[0] as XREBlueprintCanvas.Card
+	var set_card := cards[1] as XREBlueprintCanvas.Card
+	var head_y := signal_card.height * 0.5 - XREBlueprintCanvas.HEAD_HEIGHT * 0.5
+	_check(signal_card.headed and is_equal_approx(signal_card.outputs[0].y, head_y), "an event's Then is on its header's right edge")
+	_check(is_equal_approx(set_card.inputs[0].y, set_card.height * 0.5 - XREBlueprintCanvas.HEAD_HEIGHT * 0.5) and set_card.inputs[0].x < 0.0, "a Set's In is on its header's left edge")
+	var target := XREBlueprintGraph.target_port(setter)
+	_check(set_card.inputs[target].y > set_card.inputs[1 if target != 1 else 2].y, "its Target is on the row under the header, above Value")
+	_check((set_card.node.get_node("Title") as Label3D).text == "Set" and (signal_card.node.get_node("Title") as Label3D).text == "On Signal", "the headers say the operation: Set, On Signal")
+	var chip: XREBlueprintCanvas.Socket = null
+	var adapters := 0
+	for socket: XREBlueprintCanvas.Socket in signal_card.sockets:
+		if socket.key == "policy": chip = socket
+		if socket.kind == XREBlueprintCanvas.MEMBER: adapters += 1
+	_check(chip != null and is_equal_approx(chip.center.y, head_y) and chip.center.x > 0.0, "the policy is a chip in the event's header")
+	_check(adapters == 1, "in Operation the event's Source has its adapter")
+	var mine := cards[2] as XREBlueprintCanvas.Card
+	_check((mine.node.get_node("Member") as Label3D).text == "visible" and _canvas.heading_of(own) == XREFeatureSettings.MEMBER, "a block's own vr_heading says its member over the setting")
+	_check(_canvas.set_heading(XREFeatureSettings.MEMBER) and not _canvas.set_heading(&"both"), "Node heading switches to Member")
+	_canvas.rebuild(cards_graph)
+	cards = _canvas.get("_cards") as Array
+	signal_card = cards[0] as XREBlueprintCanvas.Card
+	set_card = cards[1] as XREBlueprintCanvas.Card
+	_check((signal_card.node.get_node("Member") as Label3D).text == "body_entered" and (set_card.node.get_node("Member") as Label3D).text == "light_energy", "in Member the headers say body_entered and light_energy")
+	var members: Array[XREBlueprintCanvas.Socket] = []
+	for socket: XREBlueprintCanvas.Socket in set_card.sockets:
+		if socket.kind == XREBlueprintCanvas.MEMBER: members.append(socket)
+	_check(members.size() == 1 and members[0].visual.name == "Member", "the Set's member is the header's, its Target has no adapter")
+	_check(set_card.swap != null and not set_card.swap.visible, "⇄ waits for the focus")
+	_canvas.set_focus(Vector3i(2, -1, -1))
+	_check(set_card.swap.visible and _hit(set_card.node.position + set_card.swap_point, Vector3.FORWARD) >= 0 and _canvas.get_hit_swap() and not _canvas.get_hit_delete(), "in focus ⇄ shows by the trash and is picked")
+	_canvas.set_focus(Vector3i(-1, -1, -1))
+	_check(_canvas.set_style(XREFeatureSettings.CLASSIC), "classic again")
+	_canvas.rebuild(cards_graph)
+	_check(_canvas.heading_of(own) == XREFeatureSettings.OPERATION and not ((_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card).headed, "classic cards say the operation, as before")
+	_canvas.set_heading(XREFeatureSettings.OPERATION)
+	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
+
+
 ## Whether every triangle of [param mesh] that faces +Z winds clockwise seen from there (Godot's front faces).
 static func _faces_front(mesh: Mesh) -> bool:
 	var arrays := mesh.surface_get_arrays(0)
@@ -286,6 +346,7 @@ func _run() -> void:
 	_test_cuboid(graph)
 	_test_archetypes(graph)
 	_test_signs()
+	_test_headings()
 	_canvas.rebuild(graph)
 	_test_port_wires()
 	_canvas.queue_free()

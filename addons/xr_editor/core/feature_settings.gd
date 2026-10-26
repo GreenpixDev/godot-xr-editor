@@ -60,6 +60,16 @@ const OPERATORS := &"operators"
 ## second rim and the name, an oval for three inputs.
 const MATH := &"math"
 
+## What an archetype's header says of a block with a member — a signal, a
+## property, an animation, a variable (D-092): the operation, its member
+## then on the adapter, or the member itself, the wire to the object or box
+## bare. A card may be switched on its own (its block's vr_heading).
+const NODE_HEADING := &"node_heading"
+## "On Signal", "Set", "Play Animation"; the member on the adapter, the name or the link.
+const OPERATION := &"operation"
+## "body_entered", "light_energy", "gate_open" over a small "On Signal" or "Set".
+const MEMBER := &"member"
+
 ## Shape of the windows (rig-locked panels, docs/vr_ui.md; D-043). The tab
 ## launcher is concave either way.
 const WINDOW_SHAPE := &"window_shape"
@@ -199,6 +209,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [OPERATORS, MATH],
 		"labels": ["Operators", "+ Math"],
 		"hint": "With Archetypes. Operators: operators are signs, a circle, a diamond or a pill. + Math: math functions as sin, abs, clamp too, a circle or an oval with their name.",
+	},
+	NODE_HEADING: {
+		"category": Category.FEATURES,
+		"title": "Node heading",
+		"values": [OPERATION, MEMBER],
+		"labels": ["Operation", "Member"],
+		"hint": "With Archetypes. Operation: the header says what the block does, the member is on the adapter. Member: the header says the signal, property or variable, the wire to it bare. ⇄ by the trash switches one card.",
 	},
 	WINDOW_SHAPE: {
 		"category": Category.FEATURES,

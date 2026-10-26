@@ -446,6 +446,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	canvas.set_display(document.features.get_value(XREFeatureSettings.NODE_DISPLAY))
 	canvas.set_style(document.features.get_value(XREFeatureSettings.NODE_STYLE))
 	canvas.set_shrink(document.features.get_value(XREFeatureSettings.NODE_SHRINK))
+	canvas.set_heading(document.features.get_value(XREFeatureSettings.NODE_HEADING))
 	canvas.set_class_icons(document.get_class_icon)
 	canvas.set_plus_shown(document.features.get_value(XREFeatureSettings.CARD_PLUS) == XREFeatureSettings.SHOWN)
 	canvas.set_bends_shown(document.features.get_value(XREFeatureSettings.WIRE_BENDS) == XREFeatureSettings.ON)
@@ -1555,6 +1556,19 @@ func _show_parameters(id: int = -1) -> void:
 	_request_window(XREBlueprintParametersTab, parameters_pose(id))
 
 
+## Switches what the header of block [param id]'s archetype says (D-092):
+## the member if it said the operation, and back. Kept in the block's
+## vr_heading, one edit of the graph, which A undoes.
+func switch_heading(id: int) -> void:
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty() or not XREBlueprintCanvas.can_head(block): return
+	var heading := XREFeatureSettings.OPERATION if canvas.heading_of(block) == XREFeatureSettings.MEMBER else XREFeatureSettings.MEMBER
+	var state := blueprint.graph.snapshot()
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] == id: entry["vr_heading"] = str(heading)
+	blueprint.perform(blueprint.commit.bind("Switch Heading", state), &"vr_graph")
+
+
 ## Removes the selected block and incident wires through the graph document.
 func delete_block(id: int = -1) -> void:
 	var target := id if id >= 0 else _selected
@@ -2323,6 +2337,7 @@ func _feature_changed(key: StringName) -> void:
 	if key == XREFeatureSettings.NODE_DISPLAY: switched = canvas.set_display(value)
 	elif key == XREFeatureSettings.NODE_STYLE: switched = canvas.set_style(value)
 	elif key == XREFeatureSettings.NODE_SHRINK: switched = canvas.set_shrink(value)
+	elif key == XREFeatureSettings.NODE_HEADING: switched = canvas.set_heading(value)
 	elif key == XREFeatureSettings.PORT_DISPLAY: switched = canvas.set_port_display(value)
 	elif key == XREFeatureSettings.CARD_PLUS: switched = canvas.set_plus_shown(value == XREFeatureSettings.SHOWN)
 	elif key == XREFeatureSettings.WIRE_BENDS: switched = canvas.set_bends_shown(value == XREFeatureSettings.ON)
@@ -2980,6 +2995,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	elif hand.trigger_pressed:
 		if canvas.get_hit_plus(): _show_block_palette(id)
 		elif canvas.get_hit_delete(): delete_block(id)
+		elif canvas.get_hit_swap(): switch_heading(id)
 		elif token: _start_turn(pointer, id, key, "", origin + direction * hit)
 		elif not link.is_empty(): _retarget_link(link, hand)
 		elif kind == XREBlueprintCanvas.SOURCE: _start_link(id, XREBlueprintCanvas.SOURCE, hand)
