@@ -2945,3 +2945,47 @@
   - при Wire bends = Off trigger по проводу к ящику сразу делает ссылку;
   - блоки из палитры для куба (`vr_panel`) с Auto link: дальний — ссылка, когда к кубу уже больше одной связи, ближний — провод.
 - В окне и в шлеме не проверено, чек-лист — [blueprints_vr.md](blueprints_vr.md#поправки-после-проверки-greencube-и-bluecube-меню-провода-и-auto-link-d-090-d-091).
+
+## D-092 · 2026-10-25 · Падение test_inspector: два use after free — прокси инспектора и две смены сцены за кадр
+
+**Статус:** принято; разбирает падение из Проверки D-089
+
+**Контекст.** `test_inspector` плавающе падал (SIGSEGV) после отмены открытия `play_check.tscn` (D-089), и `check.sh` заканчивался «test_inspector didn't finish». В чистом worktree падение не воспроизводилось: 0 из 36 запусков, в том числе после полного `check.sh`, со 100 открытыми вкладками из основной копии и под нагрузкой на все ядра. Падает, только когда у сцен есть сохранённое выделение: `$selected_nodes` в `.godot/editor/*-editstate-*.cfg` (BlueCube в `play_check`, BlueCubeTurned в `manipulation_check`). Такие файлы пишет редактор с окном, поэтому падала основная копия, а свежие worktree — нет. С этими файлами и `xr_editor_features.cfg` из основной копии HEAD падал 2 раза из 8.
+
+**Разбор.** Сбор 4.7.2 из официальных исходников (`4.7.2-stable`, ed1daf0bf; без правок движка, только для диагностики) с символами и с AddressSanitizer (`use_asan=yes`, MSVC 14.51). Без ASan сборка MSVC не падала (0 из 20): исход зависит от аллокатора. ASan нашёл две ошибки.
+
+1. *Плагин.* `XREInspectorTab._refresh` присваивал `_proxy` новый `XREInspectorProxy` до `_inspector.edit(new)`. Старый прокси (RefCounted) освобождался, а `EditorInspector::edit` строит `Variant(object)` из старого указателя, чтобы проверить его: `get_instance_id()` и `init_ref()` на освобождённой памяти, а деструктор `Variant` может удалить объект второй раз. ASan на HEAD: heap-use-after-free в `Variant::Variant(const Object *)` ← `EditorInspector::edit`, 2 запуска из 2. Случается, когда выделение переходит с узла на узел без пустого выделения между ними; восстановленное выделение сцен даёт это при каждой смене сцены.
+2. *Движок 4.7.2.* Каждая смена сцены (`EditorNode::_set_current_scene_nocheck` → `_set_main_scene_state` → `SceneTreeDock::set_filter` → `SceneTreeEditor::_update_filter(nullptr, true)`) откладывает для каждого выделенного узла `callable_mp(tree, &Tree::scroll_to_item).call_deferred(TreeItem*, false)` (`editor/scene/scene_tree_editor.cpp:1001` и `:1137`). Вторая смена до сброса очереди вызывает `SceneTreeEditor::update_tree()` → `_reset()` → `Tree::clear()` и удаляет эти `TreeItem`. При сбросе очереди `VariantObjectClassChecker` делает `Object::cast_to<TreeItem>` по висячему указателю. Отсюда и «Cannot convert argument 1 from Object to Object» у `Tree::scroll_to_item` в выживших запусках, и SIGSEGV всегда по одному адресу (`main+62ef15d`). ASan: heap-use-after-free в `call_with_variant_args_helper<Tree, TreeItem *, bool>` ← `CallQueue::flush`; освобождено в `Tree::clear` ← `SceneTreeEditor::_reset` ← `EditorNode::open_scene` ← `EditorInterface::open_scene_from_path`. Голый скрипт, трижды за кадр вызывающий `open_scene_from_path`, без вкладки и истории плагина: ASan — 2 из 2. Официальная сборка без вкладки инспектора не падала (0 из 20), с ней — 4 из 20: вкладка только меняет раскладку кучи. Тест делал три смены сцены за кадр (`_undo_open`: undo, redo, undo).
+
+С одной правкой 1 официальная сборка падала 7 раз из 30: она нужна, но её мало. Те же три смены в разных кадрах — 0 из 20, две смены за кадр — 2 из 20.
+
+**Решение.**
+1. `XREInspectorTab._refresh` сначала передаёт инспектору новый прокси (`_inspector.edit(proxy)`), потом заменяет `_proxy`: старый освобождается, когда инспектор его уже отпустил.
+2. Одна смена сцены за кадр. `XREPluginDocument` запоминает кадр последней смены сцены по `EditorPlugin.scene_changed`, который движок шлёт синхронно сразу после постановки отложенных прокруток; так учитываются и смены на десктопе. В этом кадре:
+   - `open_scene` возвращает `ERR_BUSY` (описано в `XREDocument.open_scene`);
+   - `_may_replay` запрещает undo и redo в шлеме: шаг остаётся в истории, а не выбрасывается как «ничего не изменивший», и кнопка сработает в следующем кадре;
+   - `_switch_scene` ничего не делает (на случай других путей).
+   Шаг истории хранит изменения одного кадра, поэтому его воспроизведение меняет сцену не больше одного раза.
+3. `test_inspector`:
+   - новая проверка правки 1, детерминированная: выделение с Sun на Floor, и по сигналу `edited_object_changed` старый прокси ещё жив (на старом коде проверка не проходит в каждом запуске);
+   - undo, redo и снова undo открытия — в разных кадрах; в кадре смены redo и `open_scene` отказывают, а шаг остаётся для redo.
+4. Оба подводных камня — в `docs/conventions.md`.
+
+**Альтернативы.**
+- Ждать исправления в движке: версия закреплена на 4.7.2, форк запрещён.
+- Только разнести шаги теста по кадрам: падение ушло бы из `check.sh`, но плагин сам мог бы сменить сцену дважды за кадр (шаг истории с двумя открытиями, открытие с панели в кадре отмены).
+- Снять выделение перед сменой сцены: движок восстанавливает выделение сцены из своего состояния, прокрутки ставятся всё равно.
+- Сбросить очередь отложенных вызовов из GDScript: такого API нет.
+- Отложить смену сцены на следующий кадр: undo и redo истории синхронно возвращают, изменилось ли что-то, и тест сразу проверяет сцену.
+
+**Последствия.**
+- Нажатие undo или redo в шлеме в тот же кадр, что смена сцены, ничего не делает; человек так быстро не нажимает.
+- `addons/blueprints/document.gd` (`open_graph_scene`) по-прежнему зовёт `open_scene_from_path` напрямую, по клику на десктопе — по одному разу за кадр; не меняли.
+- Отчёт в upstream (не отправлен: нужен аккаунт автора на GitHub):
+
+  > **Editor: use after free in SceneTreeEditor when the edited scene changes twice in one frame**
+  > Godot 4.7.2-stable (ed1daf0bf), Windows 11. With a node selected in each scene, calling `EditorInterface.open_scene_from_path()` for two already-open scenes in one frame crashes the editor (SIGSEGV) or prints `Error calling deferred method: 'Tree::Tree::scroll_to_item': Cannot convert argument 1 from Object to Object`. AddressSanitizer: heap-use-after-free in `call_with_variant_args_helper<Tree, TreeItem *, bool>` from `CallQueue::flush`; freed by `Tree::clear()` ← `SceneTreeEditor::_reset()` ← `EditorNode::_set_current_scene_nocheck()`. Cause: `SceneTreeEditor::_update_filter()` and `_update_filter_helper()` (`scene_tree_editor.cpp:1001`, `:1137`) defer `Tree::scroll_to_item` with a raw `TreeItem *`, which the next `update_tree()` frees before the queue is flushed. Fix: defer by `ObjectID`, as `SceneTreeEditor::_tree_scroll_to_item` already does. Repro: an `@tool` node whose `_process` calls `open_scene_from_path(a)`, `open_scene_from_path(b)`, `open_scene_from_path(a)` in one frame, with saved selections in both scenes.
+
+  Вторая находка в upstream необязательна: `EditorInspector::edit` проверяет старый объект через `Variant(object)`, что само разыменует висячий указатель. Хранить `ObjectID` было бы надёжнее, но освобождать редактируемый объект раньше — ошибка плагина.
+
+**Проверка.** Официальная сборка 4.7.2, с файлами editstate и настроек из основной копии: `test_inspector` 0 of 51 — 30 запусков из 30, без единой строки `ERROR`. В чистом состоянии worktree — 10 из 10. ASan-сборка: с правками 3 из 3 без ошибок; HEAD — use after free в 2 из 2. `check: OK`.
