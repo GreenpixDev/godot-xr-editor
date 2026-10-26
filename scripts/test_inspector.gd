@@ -14,6 +14,8 @@ const SCENE := "res://benchmarks/manipulation_check.tscn"
 const OTHER_SCENE := "res://benchmarks/play_check.tscn"
 ## Editor frames to wait for the scene to open before giving up.
 const SCENE_TIMEOUT_FRAMES := 600
+## Editor frames to wait for the inspector tab to follow the selection.
+const SELECTION_TIMEOUT_FRAMES := 30
 
 var _document: XREDocument
 var _checks := 0
@@ -28,14 +30,18 @@ var _sun: DirectionalLight3D
 var _energy_before := 0.0
 ## A node the headset adds and deletes, undone and redone (D-087).
 var _added: Node3D
+## The proxy the inspector edited before another node was selected, and
+## whether it was still there when the inspector moved off it (D-092).
+var _old_proxy: WeakRef
+var _old_proxy_alive := false
 
 
 func _init(document: XREDocument) -> void:
 	name = "XRETestInspector"
 	_document = document
-	_steps = [_wait_for_scene, _open_window, _inspector_shown, _drag_value, _open_other_scene, _other_scene_opened,
-			_undo_value, _add_node, _undo_add, _remove_node, _undo_remove, _edit_on_desktop, _open_for_undo, _undo_open,
-			_test_files, _finish]
+	_steps = [_wait_for_scene, _open_window, _inspector_shown, _select_other_node, _other_node_shown, _sun_shown_again,
+			_drag_value, _open_other_scene, _other_scene_opened, _undo_value, _add_node, _undo_add, _remove_node,
+			_undo_remove, _edit_on_desktop, _open_for_undo, _undo_open, _redo_open, _undo_open_again, _test_files, _finish]
 
 
 func _enter_tree() -> void:
@@ -131,6 +137,52 @@ func _inspector_shown() -> void:
 	history.undo()
 	_check(is_equal_approx(_sun.light_energy, _energy_before), "undo puts the value back: %f" % _sun.light_energy)
 	_next()
+
+
+## D-092: from one node to another the inspector edits a new proxy. The old
+## one is freed only after the inspector has let go of it: EditorInspector
+## touches what it edited in edit(), and a freed proxy there is a use after free.
+func _select_other_node() -> void:
+	_old_proxy = weakref(_tab.get_proxy())
+	_waited = 0
+	_tab.get_inspector().edited_object_changed.connect(_on_edited_object_changed, CONNECT_ONE_SHOT)
+	var floor_node := _document.get_scene_root().get_node(^"Floor")
+	_document.select([floor_node], XREDocument.Source.PANEL)
+	_next()
+
+
+func _on_edited_object_changed() -> void:
+	_old_proxy_alive = _old_proxy.get_ref() != null
+
+
+func _other_node_shown() -> void:
+	if not _shows(_document.get_scene_root().get_node(^"Floor"), "the inspector edits the node selected next"):
+		return
+	_check(_old_proxy_alive, "the proxy edited before outlives the inspector's switch to the next one")
+	_check(_old_proxy.get_ref() == null, "and is freed after it")
+	_document.select([_sun], XREDocument.Source.PANEL)
+	_next()
+
+
+func _sun_shown_again() -> void:
+	if _shows(_sun, "and the node selected again"):
+		_next()
+
+
+## Whether the inspector tab edits [param node] through its proxy. The
+## editor tells of a new selection in a later frame: false until then, and a
+## failed check [param what] after [constant SELECTION_TIMEOUT_FRAMES].
+func _shows(node: Node, what: String) -> bool:
+	var proxy := _tab.get_proxy()
+	if proxy != null and proxy.get_target() == node and _tab.get_inspector().get_edited_object() == proxy:
+		_check(true, what)
+		_waited = 0
+		return true
+	_waited += 1
+	if _waited > SELECTION_TIMEOUT_FRAMES:
+		_check(false, what)
+		_step = _steps.size() - 1
+	return false
 
 
 func _drag_value() -> void:
@@ -250,8 +302,22 @@ func _open_for_undo() -> void:
 func _undo_open() -> void:
 	_check(_document.undo(XREDocument.Source.TOOL) and _document.get_scene_root().scene_file_path == SCENE,
 			"undo goes back to the scene edited before")
+	# D-092: a second switch in one frame would crash Godot 4.7.2.
+	_check(not _document.redo(XREDocument.Source.TOOL) and _document.get_scene_root().scene_file_path == SCENE
+			and _document.history.get_redo_name() == "Open play_check.tscn",
+			"in the frame of a switch, redo waits and keeps the step: %s" % _document.history.get_redo_name())
+	_check(_document.open_scene(OTHER_SCENE, XREDocument.Source.PANEL) == ERR_BUSY
+			and _document.get_scene_root().scene_file_path == SCENE, "and so does opening a scene")
+	_next()
+
+
+func _redo_open() -> void:
 	_check(_document.redo(XREDocument.Source.TOOL) and _document.get_scene_root().scene_file_path == OTHER_SCENE,
 			"redo opens the other one again")
+	_next()
+
+
+func _undo_open_again() -> void:
 	_check(_document.undo(XREDocument.Source.TOOL) and _document.get_scene_root().scene_file_path == SCENE, "and back")
 	_next()
 

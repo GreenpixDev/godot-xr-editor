@@ -677,6 +677,14 @@ func on_top_surface(hand: XREHand, origin: Vector3, direction: Vector3) -> XREPa
 	return surface
 
 
+## Whether a window drawn over everything is shown, as the block palette
+## (D-086): the rays are drawn over it then (D-090), however it was opened.
+func has_window_on_top() -> bool:
+	for window: XREPanelWindow in _windows:
+		if window.is_on_top() and window.is_shown(): return true
+	return false
+
+
 func _pin_hand(window: XREPanelWindow) -> XREHand:
 	match window.pin:
 		XREPanelWindow.Pin.LEFT_HAND: return _rig.left_hand
