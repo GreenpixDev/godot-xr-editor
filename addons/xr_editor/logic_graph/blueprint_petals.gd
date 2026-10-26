@@ -62,6 +62,9 @@ var _hit := -1
 var _hovered := -1
 var _object: Node3D
 var _on_top := false
+## Where on top it sorts ([method set_on_top]): at the cards' Front focus
+## (D-075), or, for the block menu's fan and ring, over it (D-096).
+var top_sorting := 100.0
 ## The widest petal shown: the column the ray is on the fan within.
 var _widest := 0.0
 var _stem: MeshInstance3D
@@ -135,14 +138,14 @@ func set_on_top(enabled: bool) -> void:
 
 
 ## Over everything (D-062): a petal's edge and fill come up from under the
-## cards' priority to theirs, sorted after them and before their text.
-static func _raise(node: Node, enabled: bool) -> void:
+## cards' priority to theirs, sorted at [member top_sorting] and before their text.
+func _raise(node: Node, enabled: bool) -> void:
 	for child: Node in node.get_children():
 		if child is Label3D:
 			(child as Label3D).no_depth_test = enabled
-			(child as Label3D).sorting_offset = 101.0 if enabled else 0.0
+			(child as Label3D).sorting_offset = top_sorting + 1.0 if enabled else 0.0
 		elif child is MeshInstance3D:
-			(child as MeshInstance3D).sorting_offset = 100.0 if enabled else 0.0
+			(child as MeshInstance3D).sorting_offset = top_sorting if enabled else 0.0
 			var material := (child as MeshInstance3D).material_override as BaseMaterial3D
 			if material != null:
 				material.no_depth_test = enabled
@@ -396,6 +399,13 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			nearest = gap
 			_hit = index
 	return world
+
+
+## Where the petal of [param item] is, global; the fan's own place without one.
+func item_position(item: Dictionary) -> Vector3:
+	for petal: Petal in _petals:
+		if petal.item == item: return global_transform * petal.center
+	return global_position
 
 
 ## The item of the petal the last ray hit, or empty.

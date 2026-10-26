@@ -382,7 +382,14 @@ func _test_mockup_details() -> void:
 	var boxes := _canvas.get_boxes()
 	var read := boxes.box_end("speed", Vector3.ZERO)
 	var write := boxes.box_end("speed", Vector3.ZERO, true)
-	_check(read[1] == Vector3.RIGHT and write[1] == Vector3.UP and read[0].x > boxes.box_point("speed").x and write[0].y > boxes.box_point("speed").y, "a box is read on its right edge and written from its top")
+	# The box turns to the head as the cards do (D-090): its own right and up.
+	var speed_box: XREBlueprintBoxes.Box = null
+	for item: XREBlueprintBoxes.Box in boxes.get("_boxes") as Array:
+		if item.name == "speed": speed_box = item
+	var turn := speed_box.node.basis.orthonormalized()
+	var local_read := speed_box.node.transform.affine_inverse() * read[0]
+	var local_write := speed_box.node.transform.affine_inverse() * write[0]
+	_check(read[1].is_equal_approx(turn * Vector3.RIGHT) and write[1].is_equal_approx(turn * Vector3.UP) and local_read.x > 0.0 and local_write.y > 0.0, "a box is read on its right edge and written from its top")
 	_canvas.set_composite(XREFeatureSettings.SPLIT)
 	_canvas.rebuild(details)
 	boxes = _canvas.get_boxes()

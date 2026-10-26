@@ -196,19 +196,17 @@ func get_ray_material() -> Material:
 	return _ray.material_override
 
 
-## How much later the ray sorts than where it is ([method set_on_top]): a beam
-## drawn for it, as the simulator's, sorts the same, so that it stays over
-## what Front draws over everything (D-075, D-109).
-func get_ray_sorting_offset() -> float:
-	return _ray.sorting_offset
-
-
 ## Keeps pointer visuals above the scene-only logic dimmer.
 func set_overlay(enabled: bool) -> void:
 	for material: StandardMaterial3D in [_ray_material, _hit_material]:
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if enabled else BaseMaterial3D.TRANSPARENCY_DISABLED
 		material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS if enabled else BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
 		material.render_priority = Material.RENDER_PRIORITY_MAX if enabled else 0
+
+
+## How much later than the rest the ray is drawn: more than anything else drawn over everything while [method set_on_top], else 0.
+func get_ray_sorting() -> float:
+	return _ray.sorting_offset
 
 
 ## Draws the ray and its dot over everything (D-061), while an input has the user's attention.

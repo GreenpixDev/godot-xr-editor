@@ -102,6 +102,7 @@ func _run() -> void:
 	_test_vectors()
 	_test_insert_block()
 	_test_actions()
+	_test_palette_variants()
 	_test_operators()
 	print("test_blueprints: %d of %d checks failed" % [_failures, _checks])
 	quit(1 if _failures > 0 else 0)
@@ -1097,6 +1098,129 @@ func _operator(graph: XREBlueprintGraph, op: String, params: Dictionary = {}) ->
 
 ## The operators (D-065): their types, a wire's type taken by the other
 ## literal, the menu, the generated code and its values.
+## The block palette's variants (D-093): kinds and wires counted, the likely
+## next ranked by them, the task groups, the best matches of a search, and the
+## menu's tiles and task chips with where an action was picked.
+func _test_palette_variants() -> void:
+	var sin_block := XREBlueprintGraph.make_call(1, XREBlueprintFunctions.global("sin"), Vector2.ZERO)
+	_check(XREBlueprintStats.key_of(sin_block) == "call:sin" and XREBlueprintStats.key_of(XREBlueprintGraph.make_operator(1, "multiply", Vector2.ZERO)) == "operator:multiply"
+			and XREBlueprintStats.key_of(XREBlueprintGraph.make_node(1, "ready", Vector2.ZERO)) == "signal:ready" and XREBlueprintStats.key_of({}) == "",
+			"a block's kind for the menu is its function, operator or signal")
+	var getter := XREBlueprintGraph.make_node(1, "get_variable", Vector2.ZERO)
+	getter["params"]["variable"] = "phase"
+	_check(XREBlueprintStats.key_of(getter) == "get_variable", "Get Variable of any variable is one kind")
+	# Sin into Multiply twice and into Divide once, as in the project's graphs.
+	var graph := XREBlueprintGraph.new()
+	for pair: Array in [["multiply", 0], ["multiply", 0], ["divide", 0]]:
+		var from := graph.nodes.size() + 1
+		graph.nodes.append(XREBlueprintGraph.make_call(from, XREBlueprintFunctions.global("sin"), Vector2.ZERO))
+		graph.nodes.append(XREBlueprintGraph.make_operator(from + 1, pair[0], Vector2.ZERO))
+		_wire(graph, from, from + 1)
+	var stats := XREBlueprintStats.new()
+	stats.add_graph(graph)
+	_check(stats.kind_count("call:sin") == 3 and stats.pair_count("call:sin", "operator:multiply") == 2 and stats.pair_count("call:sin", "operator:divide") == 1, "kinds and wires are counted")
+	var project := XREBlueprintStats.new()
+	project.update(graph)
+	_check(project.kind_count("signal:ready") > 0 and project.pair_count("call:sin", "operator:multiply") > 2, "the project's graph files are counted, with the graph being edited")
+	var actions := XREBlueprintActions.new()
+	var pin := {"type": XREBlueprintGraph.NUMBER, "output": true, "key": "call:sin"}
+	var next := actions.suggest({"graph": graph, "pin": pin}, 5, stats)
+	_check(next.size() == 5 and next[0]["id"] == "operator:multiply" and next[1]["id"] == "operator:divide", "a wire from Sin suggests Multiply, then Divide: %s" % [next.map(func(action: Dictionary) -> String: return str(action["id"]))])
+	_check(next.all(func(action: Dictionary) -> bool: return XREBlueprintActions.fits_pin(action, XREBlueprintGraph.NUMBER, true)), "suggestions fit the wire")
+	var into := actions.suggest({"graph": graph, "pin": {"type": XREBlueprintGraph.NUMBER, "output": false, "key": "operator:multiply"}}, 3, stats)
+	_check(not into.is_empty() and into[0]["id"] == "global:sin", "a wire from Multiply's input suggests what goes into it: Sin")
+	var keys: Array[String] = []
+	for action: Dictionary in actions.suggest({"graph": graph}, 12, stats): keys.append(XREBlueprintStats.key_of(action.get("block", {})))
+	var unique: Array[String] = []
+	for key: String in keys:
+		if not unique.has(key): unique.append(key)
+	_check(keys.size() == 12 and unique.size() == 12, "one suggestion of each kind")
+	actions.remember({"id": "preset:delay"})
+	_check(actions.suggest({"graph": graph, "pin": {"type": XREBlueprintGraph.EXEC, "output": true}}, 3, stats)[0]["id"] == "preset:delay", "without wires counted, what was added lately comes first")
+	var cases := {"operator:multiply": "Arithmetic", "operator:modulo": "Arithmetic", "operator:greater": "Logic", "operator:and": "Logic", "native:equals": "Logic",
+			"global:sin": "Math", "preset:delay": "Flow", "native:branch": "Flow", "global:print": "Utility", "preset:print": "Utility", "static:XREBlueprintLibrary.get_time": "Utility",
+			"set:Node3D.position": "Move", "method:Node3D.rotate_y": "Move", "set:Node3D.visible": "Look", "set:Label3D.text": "Look", "preset:play_sound": "Sound",
+			"variable:get:phase": "Variables", "native:value": "Variables", "method:Node.queue_free": "Object", "set:Node3D.rotation_edit_mode": "Move"}
+	var wrong: Array[String] = []
+	for id: String in cases:
+		var kind := "variable" if id.begins_with("variable:") else "pure"
+		var category := "@GlobalScope · math" if id == "global:sin" else "@GlobalScope · general" if id == "global:print" else "Time" if id.ends_with("get_time") else ""
+		if XREBlueprintActions.task_of({"id": id, "kind": kind, "category": category}) != cases[id]: wrong.append(id)
+	_check(wrong.is_empty() and XREBlueprintActions.task_of({"id": "signal:ready", "kind": "event"}) == "Events", "blocks go to their task groups: %s" % [wrong])
+	var scene := Node3D.new()
+	var cube := MeshInstance3D.new()
+	cube.name = "Cube"
+	scene.add_child(cube)
+	root.add_child(scene)
+	var math := XREBlueprintActions.flatten(actions.sections({"task": "Math", "node": cube, "host": scene, "graph": graph}))
+	_check(math.any(func(action: Dictionary) -> bool: return action["id"] == "global:sin") and not math.any(func(action: Dictionary) -> bool: return action["id"] == "operator:multiply")
+			and math.all(func(action: Dictionary) -> bool: return XREBlueprintActions.task_of(action) == "Math"), "Math has @GlobalScope's math functions, not the operators (D-095)")
+	var arithmetic := XREBlueprintActions.flatten(actions.sections({"task": "Arithmetic", "node": cube, "host": scene, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
+	var logic := XREBlueprintActions.flatten(actions.sections({"task": "Logic", "node": cube, "host": scene, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
+	_check(arithmetic.has("operator:multiply") and arithmetic.has("operator:divide") and not arithmetic.has("operator:greater"), "Arithmetic has + − × ÷")
+	_check(logic.has("operator:greater") and logic.has("operator:and") and logic.has("native:equals") and not logic.has("operator:add"), "Logic has the comparisons, Equal, AND, OR, NOT")
+	var utility := XREBlueprintActions.flatten(actions.sections({"task": "Utility", "node": cube, "host": scene, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["title"]))
+	_check(utility.has("Print") and utility.has("Get Time") and not XREBlueprintActions.flatten(actions.sections({"task": "Flow", "node": cube, "host": scene, "graph": graph})).any(func(action: Dictionary) -> bool: return action["title"] in ["Print", "Get Time"]),
+			"Print and Get Time are Utility, not Flow")
+	var move := XREBlueprintActions.flatten(actions.sections({"task": "Move", "node": cube, "host": scene, "graph": graph}))
+	_check(move.any(func(action: Dictionary) -> bool: return action["id"] == "set:Node3D.position") and move.any(func(action: Dictionary) -> bool: return action["id"] == "preset:tween"), "Move has the object's position and Tween Property")
+	var object := actions.sections({"task": "Object", "node": cube, "host": scene, "graph": graph})
+	_check(object.any(func(section: Dictionary) -> bool: return section["advanced"]), "Object keeps Advanced")
+	var groups := actions.by_task({"node": cube, "host": scene, "graph": graph}, 8, stats)
+	_check(groups.keys() == XREBlueprintActions.TASKS and (groups["Math"] as Array).size() == 8 and not (groups["Move"] as Array).is_empty(), "the ring's groups are the task groups, at most 8 blocks each")
+	_check((groups["Sound"] as Array).is_empty(), "a cube has no Sound: the library's Play Sound is a player's, not the cube's (D-095)")
+	_check(actions.object_tasks({"node": cube, "host": scene, "graph": graph}) == ["Move", "Look", "Object"], "the cube's groups: Move, Look, Object")
+	var peer := Node.new()
+	scene.add_child(peer)
+	_check(actions.object_tasks({"node": peer, "host": scene, "graph": graph}) == ["Object"] and actions.object_tasks({"graph": graph}).is_empty(),
+			"a plain Node, as a graph of networking has, has no Move, Look or Sound; no object, no object's groups")
+	var player := AudioStreamPlayer3D.new()
+	scene.add_child(player)
+	_check(actions.object_tasks({"node": player, "host": scene, "graph": graph}).has("Sound"), "a sound player has Sound")
+	var best := actions.sections({"chip": XREBlueprintActions.ALL, "node": cube, "host": scene, "graph": graph, "query": "sin"})
+	_check(best[0]["title"] == "Best matches" and best[0]["actions"][0]["id"] == "global:sin", "a search shows its best matches first: Sin for \"sin\", before Asin")
+	# The menu: tiles over the chips, chips by task, and where an action was picked.
+	var menu := XREBlueprintActionMenu.new()
+	menu.actions = XREBlueprintActions.new()
+	menu.stats = stats
+	root.add_child(menu)
+	var contexts: Array[Dictionary] = [{"label": "Cube", "node": cube}]
+	menu.open(contexts, scene, graph, pin)
+	_check(menu.get_tiles().is_empty() and not (menu.get_node("Tiles") as Control).visible, "the list has no tiles by default")
+	var chosen: Array[Dictionary] = []
+	menu.action_chosen.connect(func(action: Dictionary) -> void: chosen.append(action))
+	menu.set_tiles(true)
+	var tiles := menu.get_tiles()
+	_check(tiles.size() == XREBlueprintActionMenu.TILE_COUNT and tiles[0]["id"] == "operator:multiply" and (menu.get_node("Tiles") as Control).visible, "tiles show the likely next blocks for the wire")
+	((menu.get_node("Tiles") as Node).get_child(0) as Button).pressed.emit()
+	_check(chosen.size() == 1 and chosen[0]["id"] == "operator:multiply" and chosen[0]["origin"] == "tile", "a tile adds its block and says it came from a tile")
+	menu.choose_chip(menu.get_chip_titles().find("All"))
+	menu.search.text = "sin"
+	menu.refresh()
+	_check(not (menu.get_node("Tiles") as Control).visible, "tiles make way for a search's results")
+	var row := menu.tree.get_root().get_first_child().get_first_child()
+	row.select(0)
+	menu.tree.item_activated.emit()
+	_check(chosen.size() == 2 and chosen[1]["origin"] == "search", "a row picked while searching says so")
+	menu.search.text = ""
+	menu.refresh()
+	menu.set_task_groups(true)
+	var expected := PackedStringArray(XREBlueprintActions.GENERAL_TASKS)
+	expected.append_array(["Move", "Look", "Object", "All"])
+	_check(menu.get_chip_titles() == expected, "by task, the chips are the general groups, the cube's and All: %s" % [menu.get_chip_titles()])
+	menu.clear_pin()
+	menu.choose_chip(menu.get_chip_titles().find("Math"))
+	_check(menu.get_listed().any(func(action: Dictionary) -> bool: return action["id"] == "global:sin") and menu.get_listed().all(func(action: Dictionary) -> bool: return XREBlueprintActions.task_of(action) == "Math"), "the Math chip lists Sin")
+	menu.choose_chip(menu.get_chip_titles().find("Arithmetic"))
+	_check(menu.get_listed().any(func(action: Dictionary) -> bool: return action["id"] == "operator:multiply"), "the Arithmetic chip lists Multiply")
+	menu.choose_chip(menu.get_chip_titles().find("Move"))
+	_check(menu.get_listed().any(func(action: Dictionary) -> bool: return action["id"] == "set:Node3D.position"), "the Move chip lists the first context object's position")
+	menu.set_task_groups(false)
+	_check(menu.get_chip_titles()[0] == "Cube", "by source, the context object's chip comes back")
+	menu.free()
+	scene.free()
+
+
 func _test_operators() -> void:
 	var invalid := XREBlueprintOperators.INVALID
 	_check(XREBlueprintOperators.result_type("add", TYPE_INT, TYPE_INT) == TYPE_INT and XREBlueprintOperators.result_type("add", TYPE_INT, TYPE_FLOAT) == TYPE_FLOAT, "integers add to an integer, with a real to a real")

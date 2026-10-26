@@ -78,6 +78,8 @@ const COMPATIBLE_SCALE := 1.3
 ## to its radius: twice the tube's 2.2 mm (D-045).
 const LIT_WIRE_GROW := 0.0022
 const PLUS_RADIUS := 0.010
+## The copy button's color (D-093): a light blue, as neither the plus's white nor the trash's pink.
+const COPY_COLOR := Color("a9d4ff")
 const TOUCH_RADIUS := 0.035
 ## Lift only the contact dot towards the controller; ray picking stays unchanged.
 const HIT_DOT_OFFSET := 0.012
@@ -278,6 +280,9 @@ class Card:
 	var plus_faces: Array[Node3D] = []
 	var trash: Node3D
 	var trash_point: Vector3
+	## The copy button (D-093), or null while cards have none.
+	var copy: Node3D
+	var copy_point: Vector3
 	var inputs: Array[Vector3] = []
 	var outputs: Array[Vector3] = []
 	var input_types: Array[int] = []
@@ -358,6 +363,7 @@ var _hit_port := -1
 var _hit_input := false
 var _hit_plus := false
 var _hit_delete := false
+var _hit_copy := false
 ## Where the last ray met the port it hit, -1 at its bottom to 1 at its top, and the edge that picks.
 var _hit_height := 0.0
 var _hit_edge := -1
@@ -370,6 +376,12 @@ var _hover_right := -1
 var _hover_left := -1
 var _delete_right := -1
 var _delete_left := -1
+var _copy_right := -1
+var _copy_left := -1
+## Whether cards have the copy button ([constant XREFeatureSettings.BLOCK_COPY], D-093).
+var _copy_shown := false
+var _copy_mesh: ArrayMesh
+var _copy_material: Material
 var _body_materials: Array[ShaderMaterial] = []
 ## Archetypes (D-099): the headers by [enum XREBlueprintIcons.Group], the faces
 ## under a header, of a pure function and of an operator, the frames by port
@@ -491,6 +503,8 @@ void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 	_sphere_mesh.rings = 12
 	_trash_mesh = _make_trash_mesh()
 	_trash_material = material(Color("ffabb4"), true)
+	_copy_mesh = _make_copy_mesh()
+	_copy_material = material(COPY_COLOR, true)
 	_preview = create_scene_wire(Color("ffda82"))
 	_preview.visible = false
 	_boxes = XREBlueprintBoxes.new(_trash_mesh, _trash_material, material(TRASH_COLOR, true))
@@ -686,6 +700,14 @@ func set_plus_shown(shown: bool) -> bool:
 	return true
 
 
+## Whether cards have the copy button ([constant XREFeatureSettings.BLOCK_COPY],
+## D-093); true if that changed, for a rebuild.
+func set_copy_shown(shown: bool) -> bool:
+	if shown == _copy_shown: return false
+	_copy_shown = shown
+	return true
+
+
 ## Whether wires bend ([constant XREFeatureSettings.WIRE_BENDS], D-081): drawn
 ## through their bends, which the ray takes. Off, wires are drawn as before
 ## and the graph keeps their bends. True if that changed, for a rebuild.
@@ -764,6 +786,8 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	_hover_left = -1
 	_delete_right = -1
 	_delete_left = -1
+	_copy_right = -1
+	_copy_left = -1
 	_port_right = Vector2i(-1, -1)
 	_port_left = Vector2i(-1, -1)
 	_socket_right = Vector2i(-1, -1)
@@ -914,6 +938,19 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		if archetype:
 			trash.scale = Vector3.ONE * TRASH_SCALE
 			card.trash.visible = false
+		if _copy_shown:
+			# Over the top edge, at the trash's side: on the card it would cover the title.
+			# An operator's trash is over the edge already: the copy goes beside it.
+			card.copy_point = Vector3(card.trash_point.x + 0.025, card.trash_point.y, card.trash_point.z) if card.compact \
+					else Vector3(card.trash_point.x, card.height * 0.5 + 0.016, card.trash_point.z)
+			# An archetype's trash stands over the edge itself: the copy goes left of it, and of
+			# its heading's switch, and shows with them under the ray (D-113).
+			if archetype: card.copy_point = card.trash_point - Vector3(SWAP_SHIFT * (2.0 if can_head(block) and not card.bead else 1.0), 0, 0)
+			card.copy = Node3D.new()
+			card.copy.position = card.copy_point
+			card.node.add_child(card.copy)
+			card.copy.add_child(XRERig.create_vr_mesh(_copy_mesh, _copy_material))
+			if archetype: card.copy.visible = false
 		_add_rows(card, graph, block, inputs, outputs, layout)
 		if not chip.is_empty() and _value_mode != XREFeatureSettings.WINDOW: _add_chip(card, block, chip, group)
 		if archetype and can_head(block) and not card.bead: _add_swap(card, block)
@@ -1640,7 +1677,7 @@ func preview_box_move(variable: String, point: Vector3) -> void:
 
 ## Keeps a captured point of the box of [param variable] on the rod (D-078):
 ## [param contact] (global) is where [param local_contact], a point of the
-## box, goes. A box keeps the graph's orientation, as a cuboid card does.
+## box, goes, in the graph's orientation; the box turns to the head about its center (D-090).
 func preview_box_grab(variable: String, contact: Vector3, local_contact: Vector3) -> void:
 	preview_box_move(variable, to_local(contact) - local_contact)
 
@@ -1675,13 +1712,15 @@ func is_faded(id: int) -> bool:
 	return card != null and card.faded
 
 
-## Turns flat cards towards the head without moving their centers or editing the graph.
-## Cuboids stay as they are; the head is kept for a switch back to billboards.
+## Turns flat cards towards the head without moving their centers or editing the graph,
+## and the variables' boxes with them (D-090). Cuboids stay as they are, and so
+## do the boxes then; the head is kept for a switch back to billboards.
 func face_user(head: Vector3) -> void:
 	if _faces_user and head.is_equal_approx(_head_position) and global_transform.is_equal_approx(_view_transform): return
 	_faces_user = true
 	_head_position = head
 	_view_transform = global_transform
+	_boxes.face(head, _display != XREFeatureSettings.CUBOID)
 	if _display == XREFeatureSettings.CUBOID: return
 	for card: Card in _cards:
 		_orient(card)
@@ -1914,6 +1953,7 @@ func _look_card(card: Card) -> void:
 	if _style == XREFeatureSettings.ARCHETYPES:
 		card.trash.visible = _in_focus(card.id)
 		if card.swap != null: card.swap.visible = card.trash.visible
+		if card.copy != null: card.copy.visible = card.trash.visible
 		# A bead's name shows under the ray (D-103, D-108).
 		if card.tip != null: card.tip.visible = card.trash.visible
 
@@ -2020,10 +2060,12 @@ func is_port_hovered(id: int, port: int, input: bool) -> bool:
 ## [param input]) under the ray of the [param right] hand or the other.
 ## [param edge] is the wire to light: the one on that port ([method get_hit_edge])
 ## or the one the ray is on ([method get_hit_wire]), or -1.
-## A variable's box under that ray is let go too, unless [param keep_box].
-func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1, keep_box: bool = false) -> void:
+## A variable's box under that ray is let go too, unless [param keep_box];
+## the copy button grows with [param copy].
+func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1, keep_box: bool = false, copy: bool = false) -> void:
 	if not keep_box: _boxes.hover(-1, -1, right)
 	hover_plus(id if plus else -1, right)
+	_hover_copy(id if copy else -1, right)
 	_hover_port(id, port, input, right)
 	_hover_edge(edge, right)
 	var hovered := id if trash else -1
@@ -2092,6 +2134,25 @@ func _hover_port(id: int, port: int, input: bool, right: bool) -> void:
 	_scale_ports()
 
 
+func _hover_copy(id: int, right: bool) -> void:
+	if id == (_copy_right if right else _copy_left): return
+	if right: _copy_right = id
+	else: _copy_left = id
+	for card: Card in _cards:
+		if card.copy != null: card.copy.scale = Vector3.ONE * (HOVER_SCALE if card.id == _copy_right or card.id == _copy_left else 1.0)
+
+
+## Two squares, one over the other's corner: the copy button (D-093).
+static func _make_copy_mesh() -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for corner: Vector3 in [Vector3(-0.0025, 0.0025, 0), Vector3(0.0025, -0.0025, 0.0005)]:
+		for side: float in [-1.0, 1.0]:
+			_append_trash_bar(surface, Vector3(0.012, 0.0018, 0.002), corner + Vector3(0, side * 0.0051, 0))
+			_append_trash_bar(surface, Vector3(0.0018, 0.012, 0.002), corner + Vector3(side * 0.0051, 0, 0))
+	return surface.commit()
+
+
 static func _make_trash_mesh() -> ArrayMesh:
 	# One shared mesh/material, one draw per icon instead of seven separate bars.
 	var surface := SurfaceTool.new()
@@ -2120,6 +2181,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 	_hit_plus = false
 	_hit_delete = false
 	_hit_swap = false
+	_hit_copy = false
 	_hit_edge = -1
 	_hit_height = 0.0
 	_hit_socket = -1
@@ -2154,6 +2216,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_plus = false
 			_hit_delete = false
 			_hit_swap = false
+			_hit_copy = false
 		for face: Node3D in card.plus_faces:
 			var plus_point := card.plus_point
 			var plus_size := Vector3.ONE * PLUS_RADIUS * face.scale.x * 2.0
@@ -2165,6 +2228,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_plus = true
 				_hit_delete = false
 				_hit_swap = false
+				_hit_copy = false
 		var trash_size := Vector3.ONE * PLUS_RADIUS * card.trash.scale.x * (TRASH_SCALE if _style == XREFeatureSettings.ARCHETYPES else 1.0) * 2.0
 		var trash_hit := _box_distance(card_origin, card_direction, AABB(card.trash_point - trash_size * 0.5, trash_size), nearest) if card.trash.visible else -1.0
 		if trash_hit >= 0:
@@ -2174,6 +2238,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_plus = false
 			_hit_delete = true
 			_hit_swap = false
+			_hit_copy = false
 		if card.swap != null and card.swap.visible:
 			var swap_size := Vector3.ONE * SWAP_SIZE
 			var swap_hit := _box_distance(card_origin, card_direction, AABB(card.swap_point - swap_size * 0.5, swap_size), nearest)
@@ -2184,6 +2249,19 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_plus = false
 				_hit_delete = false
 				_hit_swap = true
+				_hit_copy = false
+		# An archetype's copy shows with its trash (D-113); a classic card's always.
+		if card.copy != null and card.copy.visible:
+			var copy_size := Vector3.ONE * PLUS_RADIUS * card.copy.scale.x * 2.0
+			var copy_hit := _box_distance(card_origin, card_direction, AABB(card.copy_point - copy_size * 0.5, copy_size), nearest)
+			if copy_hit >= 0:
+				nearest = copy_hit
+				_hit_id = card.id
+				_hit_port = -1
+				_hit_plus = false
+				_hit_delete = false
+				_hit_swap = false
+				_hit_copy = true
 		for index: int in card.inputs.size():
 			var center := card.inputs[index]
 			var hit := _port_distance(card_origin, card_direction, center, card.ports[index].scale, nearest)
@@ -2198,6 +2276,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_plus = false
 				_hit_delete = false
 				_hit_swap = false
+				_hit_copy = false
 				_hit_height = (card_origin + card_direction * hit - center).y / ((PORT_RADIUS + PORT_HIT_MARGIN) * card.ports[index].scale.y)
 		for index: int in card.outputs.size():
 			var center := card.outputs[index]
@@ -2213,6 +2292,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_plus = false
 				_hit_delete = false
 				_hit_swap = false
+				_hit_copy = false
 				_hit_height = (card_origin + card_direction * hit - center).y / ((PORT_RADIUS + PORT_HIT_MARGIN) * card.ports[card.inputs.size() + index].scale.y)
 		for index: int in card.sockets.size():
 			var socket := card.sockets[index]
@@ -2239,10 +2319,11 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_plus = false
 			_hit_delete = false
 			_hit_swap = false
+			_hit_copy = false
 	# A wire in front of a card's face takes the ray from it; ports, sockets and
 	# the cards' buttons keep it. Not while a wire is drawn: it ends on ports.
 	var drawing := _preview.visible or _compatible_type >= 0
-	if _bends_shown and not drawing and _hit_port < 0 and _hit_socket < 0 and not _hit_plus and not _hit_delete:
+	if _bends_shown and not drawing and _hit_port < 0 and _hit_socket < 0 and not _hit_plus and not _hit_delete and not _hit_copy:
 		var wire_hit := _intersect_wires(local_origin, local_direction, nearest)
 		if wire_hit >= 0:
 			nearest = wire_hit
@@ -2258,6 +2339,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_plus = false
 			_hit_delete = false
 			_hit_swap = false
+			_hit_copy = false
 			_hit_wire = -1
 			_hit_bend = -1
 			return nearest
@@ -2432,6 +2514,7 @@ func get_hit_color() -> Variant:
 	if _hit_port >= 0: return COLORS[card.input_types[_hit_port] if _hit_input else card.output_types[_hit_port]]
 	if _hit_plus: return Color.WHITE
 	if _hit_delete: return (_trash_material as BaseMaterial3D).albedo_color
+	if _hit_copy: return COPY_COLOR
 	return (card.normal as ShaderMaterial).get_shader_parameter(&"face_tint")
 
 
@@ -2579,6 +2662,19 @@ func get_hit_delete() -> bool:
 	return _hit_delete
 
 
+## Where the plus of card [param id] is, global, shown or not: where the
+## block menu's suggestions or ring open from it (D-093).
+func plus_position(id: int) -> Vector3:
+	var card := _find_card(id)
+	if card == null: return global_position
+	return card.node.global_transform * card.plus_point
+
+
+## Whether the last ray hit the card's copy button (D-093).
+func get_hit_copy() -> bool:
+	return _hit_copy
+
+
 ## Cached endpoint position in workspace coordinates.
 func port_position(id: int, port: int, input: bool) -> Vector3:
 	var card := _find_card(id)
@@ -2597,15 +2693,21 @@ func _port_position(card: Card, port: int, input: bool, finished: int = -1) -> V
 	return card.node.transform * (center + Vector3.BACK * PORT_DEPTH * visual.scale.z)
 
 
-## Wires leave outputs rightwards and enter inputs from the left, as in GraphEdit. The graph's
-## horizontal, not the card's: a card turned towards the head would tip its wires behind others.
+## Wires leave outputs rightwards and enter inputs from the left, as in GraphEdit: the card's
+## own sides (D-090), so that a card turned towards the head — seen from the side or from behind
+## the graph — sends its wires out of the side its ports are on, not along the graph's horizontal.
 func port_direction(id: int, input: bool) -> Vector3:
 	var card := _find_card(id)
 	return _port_direction(card, input) if card != null else Vector3.ZERO
 
 
-static func _port_direction(_card: Card, input: bool) -> Vector3:
-	return Vector3.LEFT if input else Vector3.RIGHT
+static func _port_direction(card: Card, input: bool) -> Vector3:
+	return -_side(card) if input else _side(card)
+
+
+## The card's right, along its rows: the graph's with cuboids, turned with a billboard.
+static func _side(card: Card) -> Vector3:
+	return card.node.basis.x.normalized() if card != null else Vector3.RIGHT
 
 
 ## The side of the card its ports face; back edges loop out this way.
@@ -2647,7 +2749,7 @@ func show_socket_link(id: int, kind: int, end: Vector3) -> void:
 	if card == null: return
 	for socket: Socket in card.sockets:
 		if socket.kind == kind:
-			_preview.update_curve(card.node.transform * socket.center, Vector3.LEFT, end, Vector3.ZERO, _front(card))
+			_preview.update_curve(card.node.transform * socket.center, -_side(card), end, Vector3.ZERO, _front(card))
 			_preview.visible = true
 			return
 
@@ -2669,7 +2771,7 @@ func _update_variable_link(link: Wire) -> void:
 	# A link's wire leaves its ring, not the socket (D-074).
 	var at := link.from.node.transform * (link.link.end if link.link != null else link.from.sockets[link.socket].center)
 	var end := _boxes.box_end(link.variable, at, link.writes)
-	_lay(link, at, Vector3.LEFT, end[0], end[1], _front(link.from))
+	_lay(link, at, -_side(link.from), end[0], end[1], _front(link.from))
 
 
 ## Lays [param wire] from its output, or its variable's box, to its input.
@@ -2919,7 +3021,8 @@ func show_link(from: Vector3, to: Vector3) -> void:
 
 ## A static wire from socket [param kind] of block [param id] — an event's Source — towards the scene object.
 func update_socket_wire(link: Wire, id: int, kind: int, end: Vector3) -> void:
-	_lay(link, socket_position(id, kind), Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
+	var card := _find_card(id)
+	_lay(link, socket_position(id, kind), -_side(card), end, Vector3.ZERO, _front(card))
 
 
 ## Lights the cards whose Variable socket is wired to the box of
@@ -3262,7 +3365,8 @@ func adapter_end(id: int) -> Variant:
 
 ## A static wire from the adapter of block [param id], leaving left, free towards the scene object.
 func update_adapter_wire(link: Wire, id: int, start: Vector3, end: Vector3) -> void:
-	_lay(link, start, Vector3.LEFT, end, Vector3.ZERO, _front(_find_card(id)))
+	var card := _find_card(id)
+	_lay(link, start, -_side(card), end, Vector3.ZERO, _front(card))
 
 
 ## The link of [param block]'s target (D-074) in its input [param port] or its
@@ -3494,8 +3598,10 @@ func intersect_link_wire(origin: Vector3, direction: Vector3, maximum: float) ->
 ## takes it (D-074): natively, on each of its tubes (D-081); -1 for nowhere.
 func intersect_wire(wire: Wire, origin: Vector3, direction: Vector3, maximum: float) -> float:
 	var found := -1.0
+	# The ends of a bent wire's tubes are its knots, not ports: they keep no margin (D-090).
+	var margin := WIRE_MARGIN if wire.pieces.size() == 1 else 0.0
 	for piece: XREGraphWire in wire.pieces:
-		var hit := piece.intersect_ray(origin, direction, WIRE_REACH, maximum, WIRE_MARGIN)
+		var hit := piece.intersect_ray(origin, direction, WIRE_REACH, maximum, margin)
 		if hit < 0.0: continue
 		maximum = hit
 		found = hit
@@ -3701,6 +3807,8 @@ func _build_boxes(graph: XREBlueprintGraph) -> void:
 	var used: Dictionary[String, bool] = {}
 	for block: Dictionary in graph.nodes:
 		if block["kind"] in ["get_variable", "set_variable"]: used[str(block["params"]["variable"])] = true
+	# Turned as the cards are, with the display they are rebuilt for (D-090).
+	_boxes.face(_head_position, _faces_user and _display != XREFeatureSettings.CUBOID)
 	_boxes.rebuild(graph, _box_places(graph), _value_mode, used, _composite == XREFeatureSettings.SPLIT, _style == XREFeatureSettings.ARCHETYPES)
 	for card: Card in _cards:
 		var block := graph.find_node(card.id)

@@ -55,7 +55,7 @@ stroke="#fff" stroke-width="6" stroke-linejoin="round"/>"""],
 }
 ## Glyphs for buttons: the launcher's library, a window, a pin, close; the
 ## object's badge's Blueprint, add a block and delete (D-085); the object's
-## shortcut's rename and the disc of its buttons (D-088).
+## shortcut's rename and the disc of its buttons (D-088); the wire menu's link and bend (D-090).
 const GLYPHS: Dictionary[StringName, String] = {
 	&"blueprint": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <rect x="14" y="28" width="40" height="32" rx="8"/><rect x="74" y="68" width="40" height="32" rx="8"/>
@@ -76,6 +76,11 @@ const GLYPHS: Dictionary[StringName, String] = {
 	&"rename": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <path d="M28 100L34 76L82 28L100 46L52 94Z"/><path d="M70 40L88 58M66 104H104"/></g>""",
 	&"disc": """<circle cx="64" cy="64" r="62" fill="#fff"/>""",
+	# The wire's menu (D-090): a link, a plug with its ring; a bend, a wire through a knot.
+	&"link": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+<rect x="16" y="50" width="50" height="28" rx="14"/><circle cx="92" cy="64" r="18"/><path d="M66 64H74"/></g>""",
+	&"bend": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round">
+<path d="M16 96C40 96 44 40 64 40S88 96 112 96"/></g><circle cx="64" cy="40" r="13" fill="#fff"/>""",
 }
 
 static var _cache: Dictionary[String, Texture2D] = {}

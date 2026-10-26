@@ -93,7 +93,8 @@ func _test_bends() -> void:
 	_check((pieces[1].get_point(last - 1) - pieces[1].get_point(last)).normalized().dot(Vector3.LEFT) > 0.95, "and enters its input from the left")
 	var arriving := (first.get_point(last) - first.get_point(last - 1)).normalized()
 	var leaving := (pieces[1].get_point(1) - pieces[1].get_point(0)).normalized()
-	_check(arriving.angle_to(leaving) < deg_to_rad(8.0), "no corner at the knot: %.1f°" % rad_to_deg(arriving.angle_to(leaving)))
+	# Handles by the run along each end (D-090) curve the wire a little tighter at the knot than before; still no corner.
+	_check(arriving.angle_to(leaving) < deg_to_rad(10.0), "no corner at the knot: %.1f°" % rad_to_deg(arriving.angle_to(leaving)))
 	_check(_sharpest_turn(first) < deg_to_rad(25.0) and _sharpest_turn(pieces[1]) < deg_to_rad(25.0), "both tubes bend smoothly")
 
 	# The ray: knot, tube, a tube in front of a card, and ports before wires.
@@ -211,6 +212,14 @@ func _run() -> void:
 	wire.update_curve(Vector3.ZERO, Vector3.LEFT, Vector3(0.2, 0.3, -0.4), Vector3.ZERO)
 	_check(_attached(wire, Vector3.ZERO, Vector3(0.2, 0.3, -0.4)), "free end reaches the pointed position")
 	_check(_sharpest_turn(wire) < deg_to_rad(25.0), "free end curve is smooth")
+	# A wire mostly in depth (D-090): its handles go by how far it runs along its ports, not by its
+	# whole length, so it leaves in a short hook and runs on, not swinging out sideways by half its length.
+	var deep_end := Vector3(0.03, 0.02, 0.5)
+	wire.update_curve(Vector3.ZERO, Vector3.RIGHT, deep_end, Vector3.LEFT)
+	var sideways := 0.0
+	for index: int in wire.get_point_count(): sideways = maxf(sideways, absf(wire.get_point(index).x - deep_end.x * 0.5))
+	_check(_attached(wire, Vector3.ZERO, deep_end) and _exits(wire, Vector3.RIGHT, Vector3.LEFT), "a wire mostly in depth still leaves and enters its ports sideways")
+	_check(sideways < 0.04, "a wire mostly in depth swings out sideways by %.3f m, under 4 cm" % sideways)
 
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [XREBlueprintGraph.make_node(1, "ready", Vector2(-600, 0)), XREBlueprintGraph.make_node(2, "print", Vector2(600, 0)), XREBlueprintGraph.make_node(3, "print", Vector2.ZERO)]
@@ -233,11 +242,10 @@ func _run() -> void:
 		canvas.face_user(head)
 		_check(stored.mesh.visible and _max_shift(stored.mesh, before) < 0.01, "a 1 cm head move shifts the wire by less than 1 cm (step %d)" % step)
 	_check(_attached(stored.mesh, canvas.port_position(1, 0, false), canvas.port_position(2, 0, true)), "turned cards keep the wire on both ports")
-	# Turned cards move their ports back, but the handles must not tip the wire further behind.
-	var deepest := INF
-	for index: int in stored.mesh.get_point_count(): deepest = minf(deepest, stored.mesh.get_point(index).z)
-	var ports := minf(canvas.port_position(1, 0, false).z, canvas.port_position(2, 0, true).z)
-	_check(deepest > ports - 0.005, "turned cards do not tip the wire behind its own ports (%.3f m vs %.3f m)" % [deepest, ports])
+	# A wire leaves a turned card out of the side its ports are on, not along the graph's horizontal
+	# (D-090, after D-035): seen from the side, it doesn't leave the card the other way.
+	_check(_exits(stored.mesh, source.node.basis.x.normalized(), -target.node.basis.x.normalized()) and absf(source.node.basis.x.normalized().z) > 0.1,
+			"a wire leaves the turned source card's side and enters the turned target card's side")
 	_check(graph.snapshot() == snapshot, "turning the cards never modifies the graph")
 	canvas.preview_transform(1, Transform3D(Basis.from_euler(Vector3(0.3, 0.7, 0.4)), Vector3(-0.2, 0, 0.1)))
 	_check(_attached(stored.mesh, canvas.port_position(1, 0, false), canvas.port_position(2, 0, true)), "moving a card drags its wire end along")
@@ -245,7 +253,9 @@ func _run() -> void:
 	canvas.update_scene_wire(scene_link, 2, 0, Vector3(0.54, -0.35, -0.5))
 	var scene_wire := scene_link.mesh
 	_check(_attached(scene_wire, canvas.port_position(2, 0, true), Vector3(0.54, -0.35, -0.5)), "Target wire runs from its port to the scene object")
-	_check((scene_wire.get_point(1) - scene_wire.get_point(0)).normalized().dot(-target.node.basis.x) > 0.95, "Target wire leaves its input port leftwards")
+	# The object is behind the port's way out: the wire loops out towards the user (D-035) on a short handle (D-090), so it leaves leftwards and a little forwards.
+	var leaves := (scene_wire.get_point(1) - scene_wire.get_point(0)).normalized().dot(-target.node.basis.x)
+	_check(leaves > 0.7, "Target wire leaves its input port leftwards: %.2f" % leaves)
 	var preview := canvas.get("_preview") as XREGraphWire
 	canvas.show_connection(1, 0, false, Vector3(0.1, 0.2, 0.3))
 	_check(preview.visible and _attached(preview, canvas.port_position(1, 0, false), Vector3(0.1, 0.2, 0.3)), "connection preview follows the free end")
