@@ -28,8 +28,22 @@ const NATIVE := &"native"
 const ALL := &"all"
 ## Classes every node has: their members go under Advanced.
 const ADVANCED_CLASSES: Array[String] = ["Node", "Object"]
-## How many recently added actions the menu offers first.
+## How many recently added actions the menu offers first, and how many best matches of a search.
 const RECENT_COUNT := 5
+## The menu's groups by task (D-093, D-095), in the order of their chips: what
+## a block is for, not where it comes from in code. The general groups first,
+## then the groups of the context object, which only its own blocks fill.
+const TASKS: Array[String] = ["Events", "Variables", "Arithmetic", "Logic", "Math", "Flow", "Utility", "Move", "Look", "Sound", "Object"]
+const GENERAL_TASKS: Array[String] = ["Events", "Variables", "Arithmetic", "Logic", "Math", "Flow", "Utility"]
+const OBJECT_TASKS: Array[String] = ["Move", "Look", "Sound", "Object"]
+## Words of a member's name that put it in Move or in Look; the rest of an
+## object's members are Object.
+const MOVE_WORDS: Array[String] = ["position", "rotat", "scale", "transform", "translate", "basis", "quaternion", "look_at", "velocity", "offset"]
+## Members those words name that don't move anything: the translation of text.
+const NOT_MOVE_WORDS: Array[String] = ["auto_translate", "translate_messages"]
+## Classes whose objects move: only they have the group Move (D-095).
+const MOVING_CLASSES: Array[String] = ["Node2D", "Node3D", "Control"]
+const LOOK_WORDS: Array[String] = ["visible", "show", "hide", "transparency", "modulate", "color", "text", "material", "albedo", "energy", "texture"]
 ## The start values of new variables the menu offers (D-078), one of each type.
 const NEW_VARIABLES: Array = [false, 0, 0.0, "", Vector2.ZERO, Vector3.ZERO, Color.WHITE]
 
@@ -74,6 +88,7 @@ func invalidate_scripts() -> void:
 ## open or searched. The graph's variables are a section of the native blocks,
 ## and of the host's chip, whose script they belong to.
 func sections(context: Dictionary) -> Array[Dictionary]:
+	if not str(context.get("task", "")).is_empty(): return _task_sections(context)
 	var chip: StringName = context.get("chip", CONTEXT)
 	var result: Array[Dictionary] = []
 	var node := context.get("node") as Node
@@ -88,6 +103,7 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 	if graph == null: graph = XREBlueprintGraph.new()
 	var dynamic := node == null and not cls.is_empty()
 	if chip in [CONTEXT, ALL] and not cls.is_empty():
+		var own_from := result.size()
 		result.append(_section("Presets", _presets(node, cls, host, graph, dynamic), context))
 		var own := _class_actions(cls, true)
 		var script := node.get_script() as Script if node != null else null
@@ -101,7 +117,7 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 		result.append(_section("Signals · " + label, _bind(_signal_actions(node, cls, script), node, dynamic, graph), context))
 		if chip == CONTEXT and node != null and node == host: result.append(_section("Variables", _variable_actions(graph, host, context), context))
 		result.append(_section("Library", _bind(_library_actions(cls), node, dynamic, graph), context))
-		if chip == CONTEXT:
+		if chip == CONTEXT or context.get("with_advanced", false):
 			var advanced: Array[Dictionary] = []
 			for name: String in ADVANCED_CLASSES:
 				if ClassDB.is_parent_class(cls, name): advanced.append_array(_class_actions(name, true))
@@ -110,6 +126,9 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 			section["count"] = (section["actions"] as Array).size()
 			if not context.get("advanced", false) and str(context.get("query", "")).strip_edges().is_empty(): section["actions"] = []
 			result.append(section)
+		# The object's own sections (D-095): what its groups Move, Look, Sound and Object list.
+		for index: int in range(own_from, result.size()):
+			if result[index]["title"] != "Variables": result[index]["object"] = true
 	if chip in [LIBRARY, ALL]:
 		var library := _library_actions("")
 		if chip == ALL and not cls.is_empty():
@@ -144,7 +163,197 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 				for action: Dictionary in section["actions"]:
 					if action["id"] == id and found.size() < RECENT_COUNT and not found.has(action): found.append(action)
 		if not found.is_empty(): result.insert(0, {"title": "Recent", "actions": found, "advanced": false, "count": found.size()})
+	var best := _best_matches(result, str(context.get("query", "")))
+	if not best.is_empty(): result.insert(0, {"title": "Best matches", "actions": best, "advanced": false, "count": best.size()})
 	return result
+
+
+## The sections of task [code]task[/code] of [param context] (D-093): those of
+## all the blocks, with the context object's Advanced, each keeping only the
+## blocks of that task ([method task_of]); a group of the object
+## ([constant OBJECT_TASKS]) only the object's own sections (D-095).
+func _task_sections(context: Dictionary) -> Array[Dictionary]:
+	var task := str(context["task"])
+	var base := context.duplicate()
+	base.erase("task")
+	base["chip"] = ALL
+	base["with_advanced"] = task == "Object"
+	var result: Array[Dictionary] = []
+	var cls := _context_class(context)
+	for section: Dictionary in sections(base):
+		if task in OBJECT_TASKS and not section.get("object", false): continue
+		if section.get("advanced", false):
+			result.append(section)
+			continue
+		var kept: Array[Dictionary] = []
+		for action: Dictionary in section["actions"]:
+			if _task_for(action, cls) == task: kept.append(action)
+		if kept.is_empty(): continue
+		var copy := section.duplicate()
+		copy["actions"] = kept
+		copy["count"] = kept.size()
+		result.append(copy)
+	return result
+
+
+## The task group of [param action] (D-093, D-095), one of [constant TASKS]:
+## events; variables and values; arithmetic — the operators + − × ÷ % —;
+## logic — comparisons, Equal, AND, OR, NOT —; math — the functions of
+## @GlobalScope's math and random, vectors —; flow — Branch, Delay, what
+## orders the run —; utility — Print, Get Time, the rest of @GlobalScope —;
+## moving, the look, sound and animation, and the object's other members.
+## An object's member is Move or Look by the words of its name.
+static func task_of(action: Dictionary) -> String:
+	var id := str(action["id"])
+	if action.get("kind", "") == "event": return "Events"
+	if action.get("kind", "") == "variable" or id in ["native:value", "preset:boolean"]: return "Variables"
+	if id == "native:equals": return "Logic"
+	if id.begins_with("operator:"):
+		return "Arithmetic" if XREBlueprintOperators.group_of(id.trim_prefix("operator:")) == XREBlueprintOperators.MATH else "Logic"
+	if id in ["native:branch", "preset:delay"]: return "Flow"
+	if id == "preset:print": return "Utility"
+	if id == "preset:tween": return "Move"
+	if id in ["preset:play_sound", "preset:play_animation"]: return "Sound"
+	var category := str(action.get("category", ""))
+	if category.begins_with("@GlobalScope · "): return "Math" if category.ends_with(" · math") or category.ends_with(" · random") else "Utility"
+	match category:
+		"Vector": return "Math"
+		"Flow": return "Flow"
+		"Time": return "Utility"
+		"Motion": return "Move"
+		"Color": return "Look"
+		"Audio", "Animation": return "Sound"
+	var member := id.get_slice(".", id.get_slice_count(".") - 1) if id.contains(".") else ""
+	var moving := not NOT_MOVE_WORDS.any(func(word: String) -> bool: return member.contains(word))
+	for word: String in MOVE_WORDS:
+		if moving and member.contains(word): return "Move"
+	for word: String in LOOK_WORDS:
+		if member.contains(word): return "Look"
+	return "Object"
+
+
+## Up to [constant RECENT_COUNT] actions of [param sections] whose title
+## [param query] begins, or one of its words does: Sin before Asin for "sin".
+## The title itself first, then a beginning of it, then of a word; shorter first.
+static func _best_matches(sections: Array[Dictionary], query: String) -> Array[Dictionary]:
+	var wanted := query.strip_edges().to_lower()
+	var best: Array[Dictionary] = []
+	if wanted.is_empty(): return best
+	var scored: Array[Array] = []
+	var seen: Dictionary[String, bool] = {}
+	for action: Dictionary in flatten(sections):
+		if seen.has(action["id"]) or not str(action["disabled"]).is_empty(): continue
+		seen[action["id"]] = true
+		var title := str(action["title"]).to_lower()
+		var score := 3 if title == wanted else 2 if title.begins_with(wanted) else 1 if (" " + title).contains(" " + wanted) else 0
+		if score > 0: scored.append([score, title.length(), scored.size(), action])
+	scored.sort_custom(func(first: Array, second: Array) -> bool:
+		if first[0] != second[0]: return first[0] > second[0]
+		if first[1] != second[1]: return first[1] < second[1]
+		return first[2] < second[2])
+	for entry: Array in scored.slice(0, RECENT_COUNT): best.append(entry[3])
+	return best
+
+
+## The [param count] blocks most likely to be added next for [param context]
+## (D-093), best first, of every group and section: those that fit its pin,
+## one of each kind ([method XREBlueprintStats.key_of]), none that can't be
+## added ([method rank]).
+func suggest(context: Dictionary, count: int, stats: XREBlueprintStats) -> Array[Dictionary]:
+	return rank(flatten(sections(_every_block(context, false))), context.get("pin", {}), stats, count)
+
+
+## The blocks of each task group for [param context] (D-093), by
+## [constant TASKS], each ranked ([method rank]) and at most [param count]; a
+## group of the object only the context object's own blocks (D-095).
+func by_task(context: Dictionary, count: int, stats: XREBlueprintStats) -> Dictionary[String, Array]:
+	var groups: Dictionary[String, Array] = {}
+	for task: String in TASKS: groups[task] = []
+	var cls := _context_class(context)
+	for section: Dictionary in sections(_every_block(context, true)):
+		var own: bool = section.get("object", false)
+		for action: Dictionary in section["actions"]:
+			var task := _task_for(action, cls)
+			if own or not task in OBJECT_TASKS: groups[task].append(action)
+	var pin: Dictionary = context.get("pin", {})
+	for task: String in TASKS: groups[task] = rank(groups[task], pin, stats, count)
+	return groups
+
+
+## The groups of [constant OBJECT_TASKS] the context object of [param context]
+## has blocks of, whatever the pin (D-095): Move for what moves, Sound for a
+## player, none without an object — a graph of networking has no Move.
+func object_tasks(context: Dictionary) -> Array[String]:
+	var base := _every_block(context, true)
+	base.erase("pin")
+	base["chip"] = CONTEXT
+	var found: Dictionary[String, bool] = {}
+	var cls := _context_class(context)
+	for section: Dictionary in sections(base):
+		if not section.get("object", false): continue
+		for action: Dictionary in section["actions"]: found[_task_for(action, cls)] = true
+	var tasks: Array[String] = []
+	for task: String in OBJECT_TASKS:
+		if found.has(task): tasks.append(task)
+	return tasks
+
+
+## The task group of [param action] for a context object of class [param cls]
+## ([method task_of]): what would be Move is Object for one that doesn't move
+## ([constant MOVING_CLASSES]) — a plain Node's Tween Property.
+static func _task_for(action: Dictionary, cls: String) -> String:
+	var task := task_of(action)
+	if task == "Move" and not MOVING_CLASSES.any(func(moving: String) -> bool: return ClassDB.class_exists(cls) and ClassDB.is_parent_class(cls, moving)): return "Object"
+	return task
+
+
+## The engine class of [param context]'s object, or empty.
+static func _context_class(context: Dictionary) -> String:
+	var node := context.get("node") as Node
+	var cls := str(context.get("class", node.get_class() if node != null else ""))
+	if not cls.is_empty() and not ClassDB.class_exists(cls):
+		var script := XREBlueprintFunctions.global_script(cls)
+		cls = str(script.get_instance_base_type()) if script != null else "Node"
+	return cls
+
+
+## [param context] for all the blocks, without a search; Advanced too with [param advanced].
+static func _every_block(context: Dictionary, advanced: bool) -> Dictionary:
+	var base := context.duplicate()
+	base.erase("task")
+	base["chip"] = ALL
+	base["query"] = ""
+	base["with_advanced"] = advanced
+	base["advanced"] = advanced
+	return base
+
+
+## The first [param count] of [param actions], best first (D-093): by the
+## wires in [param stats] between the block of [param pin] ([code]key[/code],
+## [method XREBlueprintStats.key_of]) and each one's kind — from an output into
+## it, from it into an input — then how often its kind is in the graphs, raised
+## a little if it was added lately, then their order. One of each kind; none
+## that can't be added.
+func rank(actions: Array, pin: Dictionary, stats: XREBlueprintStats, count: int) -> Array[Dictionary]:
+	var from := str(pin.get("key", ""))
+	var output: bool = pin.get("output", true)
+	var scored: Array[Array] = []
+	var seen: Dictionary[String, bool] = {}
+	for action: Dictionary in actions:
+		if not str(action["disabled"]).is_empty(): continue
+		var key := XREBlueprintStats.key_of(action.get("block", {}))
+		if key.is_empty(): key = str(action["id"])
+		if seen.has(key): continue
+		seen[key] = true
+		var wires := 0
+		if not from.is_empty() and stats != null: wires = stats.pair_count(from, key) if output else stats.pair_count(key, from)
+		var lately := recent.find(str(action["id"]))
+		var score := wires * 100 + (stats.kind_count(key) if stats != null else 0) + (2 * (8 - lately) if lately >= 0 and lately < 8 else 0)
+		scored.append([score, scored.size(), action])
+	scored.sort_custom(func(first: Array, second: Array) -> bool: return first[0] > second[0] or (first[0] == second[0] and first[1] < second[1]))
+	var ranked: Array[Dictionary] = []
+	for entry: Array in scored.slice(0, count): ranked.append(entry[2])
+	return ranked
 
 
 ## Every action of [param sections] in order, without section headers.

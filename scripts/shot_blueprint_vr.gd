@@ -49,6 +49,55 @@ func _look(from: Vector3, at: Vector3) -> void:
 	_rig.camera.global_transform = Transform3D(Basis.looking_at(at - from, Vector3.UP), from)
 
 
+## D-093: the palette's tiles and task chips, the ring at a card's plus, the
+## next-block suggestions there and the copy button; the user's settings back.
+func _shot_d090(head: Vector3, host: Node3D) -> void:
+	var keys: Array[StringName] = [XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY]
+	var saved: Dictionary[StringName, StringName] = {}
+	for key: StringName in keys: saved[key] = _document.features.get_value(key)
+	var panels := _service.panels
+	var card: int = _service.blueprint.graph.nodes[0]["id"] if not _service.blueprint.graph.nodes.is_empty() else -1
+	_document.features.set_value(XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.OFF)
+	for groups: StringName in [XREFeatureSettings.SOURCES, XREFeatureSettings.TASKS]:
+		_document.features.set_value(XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.TILES)
+		_document.features.set_value(XREFeatureSettings.PALETTE_GROUPS, groups)
+		if card >= 0: _service.call("_show_block_palette", card)
+		else: _service.open_block_menu()
+		await _frames(6)
+		var window := panels.find_window(XREBlueprintPaletteTab)
+		if window != null:
+			_look(window.global_position + window.global_basis.z * 0.7, window.global_position)
+			await _shot("17b_tiles_%s" % groups)
+		_service.close_block_palette()
+		await _frames(3)
+	_document.features.set_value(XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.SOURCES)
+	if card >= 0:
+		var plus := _service.canvas.plus_position(card)
+		_document.features.set_value(XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.RING)
+		_service.call("_show_block_palette", card)
+		await _frames(4)
+		var ring := _service.get("_choice") as XREBlueprintRing
+		_look(head, plus)
+		await _shot("17c_ring")
+		if ring != null and ring.is_open():
+			ring.open_sector(XREBlueprintRing.ORDER.find("Flow"))
+			await _shot("17d_ring_flow")
+		_service.call("_close_inputs")
+		_document.features.set_value(XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.LIST)
+		_document.features.set_value(XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.ON)
+		_service.call("_show_block_palette", card)
+		await _frames(4)
+		_look(head, plus)
+		await _shot("17e_suggestions")
+		_service.call("_close_inputs")
+		_document.features.set_value(XREFeatureSettings.BLOCK_COPY, XREFeatureSettings.ON)
+		await _frames(4)
+		_look(head, host.global_position)
+		await _shot("17f_copy_button")
+	for key: StringName in keys: _document.features.set_value(key, saved[key])
+	await _frames(3)
+
+
 func _run() -> void:
 	for frame: int in 600:
 		await get_tree().process_frame
@@ -212,6 +261,7 @@ func _run() -> void:
 		await _shot("17_block_menu")
 	_service.close_block_palette()
 	await _frames(3)
+	await _shot_d090(head, host)
 	# The Color window (D-064): the 2D picker, then the globe of colors; the user's setting back.
 	var colors := _document.features.get_value(XREFeatureSettings.COLOR_INPUT)
 	_look(head, host.global_position)
