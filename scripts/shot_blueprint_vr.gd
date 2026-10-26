@@ -307,6 +307,26 @@ func _run() -> void:
 	print("shot_blueprint_vr: dimmer shown ", (_service.get("_dimmer") as Node3D).is_visible_in_tree())
 	_service.cancel_connection()
 	_service.close_block_palette()
+	# Branch, Get Time and Random under the ray, as Node style and Node shrink show them (D-097).
+	var extras: Array[Dictionary] = [XREBlueprintGraph.make_node(0, "branch", Vector2.ZERO),
+			XREBlueprintGraph.make_call(0, XREBlueprintFunctions.static_function("XREBlueprintLibrary", "get_time"), Vector2.ZERO),
+			XREBlueprintGraph.make_call(0, XREBlueprintFunctions.global("randi_range"), Vector2.ZERO)]
+	for index: int in extras.size():
+		_service.call("_add_from_menu", {"id": "shot:extra_%d" % index, "title": XREBlueprintGraph.title(extras[index]), "target": null, "block": extras[index]})
+		await _frames(6)
+		var added_id: int = _service.blueprint.graph.nodes.back()["id"]
+		var extra: XREBlueprintCanvas.Card = null
+		for card: XREBlueprintCanvas.Card in _service.canvas.get("_cards") as Array:
+			if card.id == added_id: extra = card
+		if extra == null: continue
+		var spot := extra.node.global_transform
+		_aim(spot.origin, spot.basis.z.normalized())
+		_look(spot.origin + spot.basis.z.normalized() * 0.5, spot.origin)
+		await _shot("23_extra_%d_focus" % index)
+		_aim(Vector3(-50, 0, 0), Vector3.BACK)
+		# Each where the one before stood: taken back before the next.
+		_service.blueprint.undo()
+		await _frames(3)
 	# An engine method's card, Rotate X, under the ray: its class's icon on the header's circle (D-090).
 	_service.call("_add_from_menu", {"id": "shot:rotate_x", "title": "Rotate X", "target": null,
 			"block": XREBlueprintGraph.make_call(0, XREBlueprintFunctions.method("Node3D", "rotate_x"), Vector2.ZERO)})

@@ -64,12 +64,33 @@ static func outline(shape: Shape) -> PackedVector2Array:
 				var to := (corner + (after - corner).normalized() * ROUNDING - center).angle()
 				if to < from: to += TAU
 				for step: int in 7: points.append(center + Vector2.from_angle(lerpf(from, to, step / 6.0)) * ROUNDING)
-		Shape.PILL, Shape.OVAL:
-			var size := size_of(shape)
-			var radius := size.y * 0.5
-			var reach := size.x * 0.5 - radius
-			for step: int in SEGMENTS / 2 + 1: points.append(Vector2(reach, 0) + Vector2.from_angle(-PI * 0.5 + PI * step / (SEGMENTS / 2)) * radius)
-			for step: int in SEGMENTS / 2 + 1: points.append(Vector2(-reach, 0) + Vector2.from_angle(PI * 0.5 + PI * step / (SEGMENTS / 2)) * radius)
+		Shape.PILL, Shape.OVAL: points = stadium(size_of(shape))
+	return points
+
+
+## A rectangle [param size] wide and high around its centre, its corners
+## rounded by [param radii] — top left, top right, bottom right, bottom left
+## — counterclockwise (D-097: a variable's box and its lid).
+static func rounded_rect(size: Vector2, radii: Vector4) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var half := size * 0.5
+	var corners: Array[Vector2] = [Vector2(half.x, -half.y), Vector2(half.x, half.y), Vector2(-half.x, half.y), Vector2(-half.x, -half.y)]
+	var rounding: Array[float] = [radii.z, radii.y, radii.x, radii.w]
+	for index: int in 4:
+		var radius := minf(rounding[index], minf(half.x, half.y))
+		var start := -PI * 0.5 + PI * 0.5 * index
+		var center := corners[index] - Vector2(signf(corners[index].x), signf(corners[index].y)) * radius
+		for step: int in 7: points.append(center + Vector2.from_angle(start + PI * 0.5 * step / 6.0) * radius)
+	return points
+
+
+## A pill [param size] wide and high, its ends round, counterclockwise.
+static func stadium(size: Vector2) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var radius := size.y * 0.5
+	var reach := maxf(size.x * 0.5 - radius, 0.0)
+	for step: int in SEGMENTS / 2 + 1: points.append(Vector2(reach, 0) + Vector2.from_angle(-PI * 0.5 + PI * step / (SEGMENTS / 2)) * radius)
+	for step: int in SEGMENTS / 2 + 1: points.append(Vector2(-reach, 0) + Vector2.from_angle(PI * 0.5 + PI * step / (SEGMENTS / 2)) * radius)
 	return points
 
 

@@ -294,6 +294,60 @@ func _test_port_shapes() -> void:
 	_check(((_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card).ports[1].mesh is CylinderMesh, "ports are discs again")
 
 
+## The mockup's details (D-097): an event's policy a narrow chip with its
+## icon; On Ready says its member too; execution ports arrows on the card's
+## edges; Branch's True and False tabs; Get Time's dial; a bead's name large;
+## a variable's box read on its right edge and written from its top, its
+## trash under the ray; a Get Variable without boxes a tag.
+func _test_mockup_details() -> void:
+	var details := XREBlueprintGraph.new()
+	details.nodes = [XREBlueprintGraph.make_node(1, "ready", Vector2.ZERO), XREBlueprintGraph.make_node(2, "branch", Vector2(0, 300)),
+			XREBlueprintGraph.make_call(3, XREBlueprintFunctions.static_function("XREBlueprintLibrary", "get_time"), Vector2(0, 600))]
+	var getter := XREBlueprintGraph.make_node(4, "get_variable", Vector2(0, 900))
+	getter["params"]["variable"] = "speed"
+	details.nodes.append(getter)
+	details.variables = [{"name": "speed", "value": 1.5}]
+	details.upgrade()
+	var modes := _canvas.get_parameter_modes()
+	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, XREFeatureSettings.ADAPTER, modes[2], XREFeatureSettings.WINDOW)
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.set_shrink(XREFeatureSettings.SYSTEM)
+	_canvas.rebuild(details)
+	_canvas.face_user(Vector3(0, 0, 50))
+	var cards := _canvas.get("_cards") as Array
+	var ready := cards[0] as XREBlueprintCanvas.Card
+	var chip := ready.node.get_node_or_null("Chip") as Node3D
+	var chip_socket: XREBlueprintCanvas.Socket = null
+	for socket: XREBlueprintCanvas.Socket in ready.sockets:
+		if socket.key == "policy": chip_socket = socket
+	_check(chip != null and chip_socket != null and chip_socket.visual == chip and chip_socket.size.x < 0.09, "the policy is a narrow chip of its own: %s" % [chip_socket.size if chip_socket != null else null])
+	_check(XREBlueprintCanvas.can_head(details.nodes[0]) and XREBlueprintCanvas.member_of(details.nodes[0]) == "ready", "On Ready says its member, ready, too")
+	_check(is_equal_approx(ready.outputs[0].x, ready.width * 0.5) and ready.ports[ready.inputs.size()].mesh is ArrayMesh, "its Then is an arrow on the card's edge")
+	var branch := cards[1] as XREBlueprintCanvas.Card
+	var tabs := branch.node.find_children("Tab*", "MeshInstance3D", false, false)
+	_check(tabs.size() == 2 and is_equal_approx(branch.outputs[0].x, branch.width * 0.5), "Branch has True and False tabs, its outputs on the edge")
+	var time := cards[2] as XREBlueprintCanvas.Card
+	_check(time.bead and (time.node.get_node("Icon") as MeshInstance3D).mesh.get_aabb().size.x > time.width * 0.9, "Get Time's dial fills its ring")
+	_check(time.tip.font_size == XREBlueprintCanvas.TIP_SIZE, "a bead's name is large")
+	var tag := cards[3] as XREBlueprintCanvas.Card
+	_check(tag.tag and (tag.node.get_node("Title") as Label3D).text == "speed" and is_equal_approx(tag.outputs[0].x, tag.width * 0.5), "a Get Variable without boxes is a tag with its name, its output on its end")
+	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, XREFeatureSettings.ADAPTER, modes[2], XREFeatureSettings.BOXES)
+	_canvas.rebuild(details)
+	var boxes := _canvas.get_boxes()
+	var read := boxes.box_end("speed", Vector3.ZERO)
+	var write := boxes.box_end("speed", Vector3.ZERO, true)
+	_check(read[1] == Vector3.RIGHT and write[1] == Vector3.UP and read[0].x > boxes.box_point("speed").x and write[0].y > boxes.box_point("speed").y, "a box is read on its right edge and written from its top")
+	var center := boxes.box_point("speed")
+	_check(boxes.intersect_ray(center + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() != XREBlueprintBoxes.TRASH, "out of focus its trash isn't there")
+	_canvas.set_focus(Vector3i(-1, -1, -1), "speed")
+	var trash := ((boxes.get("_boxes") as Array)[0] as XREBlueprintBoxes.Box).trash
+	_check(trash.visible, "under the ray its trash shows over it")
+	_canvas.set_focus(Vector3i(-1, -1, -1))
+	_canvas.set_shrink(XREFeatureSettings.OPERATORS)
+	_canvas.set_style(XREFeatureSettings.CLASSIC)
+	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
+
+
 ## Whether every triangle of [param mesh] that faces +Z winds clockwise seen from there (Godot's front faces).
 static func _faces_front(mesh: Mesh) -> bool:
 	var arrays := mesh.surface_get_arrays(0)
@@ -435,6 +489,7 @@ func _run() -> void:
 	_test_headings()
 	_test_beads()
 	_test_port_shapes()
+	_test_mockup_details()
 	_canvas.rebuild(graph)
 	_test_port_wires()
 	_canvas.queue_free()

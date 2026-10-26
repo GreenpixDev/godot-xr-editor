@@ -54,10 +54,20 @@ const GLYPHS: Dictionary[StringName, String] = {
 	&"color": '<circle cx="-2.8" cy="-2" r="2.6" fill="#ff6b6b"/><circle cx="2.8" cy="-2" r="2.6" fill="#7be5b3"/><circle cy="2.8" r="2.6" fill="#89adff"/>',
 	&"time": '<circle r="5" {S}/><path d="M0 -3V0L2.2 1.4" {S}/>',
 	&"swap": '<path d="M-5 -2.5H4.5L2 -5M5 2.5H-4.5L-2 5" {S}/>',
+	# An event's policy on its chip (D-097): runs side by side, a new one ignored, the old one restarted (the loop).
+	&"parallel": '<path d="M-5 -2.5H4M1.5 -5L4 -2.5L1.5 0M-5 2.5H4M1.5 0L4 2.5L1.5 5" {S}/>',
+	&"ignore": '<circle r="5" {S}/><path d="M-3.5 3.5L3.5 -3.5" {S}/>',
+	# Branch's tabs (D-097): True's tick, False's cross.
+	&"true": '<path d="M-4 0L-1 3L4 -3" {S}/>',
+	&"false": '<path d="M-3 -3L3 3M3 -3L-3 3" {S}/>',
+	# Get Time's and Random's faces on their rings (D-097), in their own colours: a dial
+	# with its quarter ticks and hands, a die with five pips.
+	&"dial": '<circle r="6.3" fill="none" stroke="#4fd1d9" stroke-opacity=".5" stroke-width=".4"/><path d="M0 -6.1V-5M6.1 0H5M0 6.1V5M-6.1 0H-5" stroke="#4fd1d9" stroke-width=".55"/><path d="M0 -4.2V0L2.8 1.7" stroke="#eaf8f9" stroke-width=".8" fill="none" stroke-linecap="round"/>',
+	&"dice": '<rect x="-5.2" y="-5.2" width="10.4" height="10.4" rx="2.2" fill="none" stroke="#cdeff1" stroke-width=".55"/><g fill="#cdeff1"><circle cx="-2.5" cy="-2.5" r=".85"/><circle cx="2.5" cy="-2.5" r=".85"/><circle r=".85"/><circle cx="-2.5" cy="2.5" r=".85"/><circle cx="2.5" cy="2.5" r=".85"/></g>',
 	&"random": '<rect x="-5" y="-5" width="10" height="10" rx="2.5" {S}/><circle cx="-2" cy="-2" r="1" {F}/><circle cx="2" cy="2" r="1" {F}/>',
 }
 ## Glyphs drawn in their own colors, never tinted.
-const COLORED: Array[StringName] = [&"color"]
+const COLORED: Array[StringName] = [&"color", &"dial", &"dice"]
 ## Our icons of the library's functions and of engine methods, by
 ## "Class.name", and of @GlobalScope's, by name.
 const FUNCTIONS: Dictionary[String, StringName] = {
