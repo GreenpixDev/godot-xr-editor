@@ -10,8 +10,14 @@ extends VBoxContainer
 ## and the actions in sections ([XREBlueprintActions]). A click on a row
 ## chooses it; a row pulled out of the list sideways is dragged, so that the
 ## view places its block where the pull ends.
+##
+## Two variants of the headset's palette (D-090): tiles of the blocks most
+## likely next over the chips ([method set_tiles]), and chips by task —
+## Events, Math, Move and the rest ([constant XREBlueprintActions.TASKS]) —
+## instead of by source ([method set_task_groups]). A chosen action carries
+## where it was picked, [code]origin[/code]: "tile", "list" or "search".
 
-## A row was clicked.
+## A row or a tile was clicked; [param action] has its [code]origin[/code].
 signal action_chosen(action: Dictionary)
 ## A row was pressed and pulled out of the list while held.
 signal action_dragged(action: Dictionary)
@@ -31,13 +37,29 @@ const GROUP_TITLES: Array[String] = ["Library", "Global", "Native", "All"]
 ## level under the chips; the picked one less so.
 const SECTION_DIM := 0.3
 const SECTION_PICKED_DIM := 0.12
+## How many tiles there are, and in how many columns (D-090).
+const TILE_COUNT := 12
+const TILE_COLUMNS := 4
+## How much darker than its kind's color a tile is, and its hovered and pressed look.
+const TILE_DIM := 0.3
+const TILE_HOVER_DIM := 0.1
 
 var actions := XREBlueprintActions.shared()
+## What the tiles are ranked by (D-090).
+var stats := XREBlueprintStats.shared()
 ## Whether the menu offers new variables (D-078): the headset's graph adds them
 ## as boxes where they are put; the desktop has its Variables dialog for that.
 var offers_variables := false
 var search: LineEdit
 var tree: Tree
+## The tiles over the chips (D-090) and the actions they add.
+var _tiles: GridContainer
+var _tile_actions: Array[Dictionary] = []
+var _tiles_shown := false
+## Whether the chips are the task groups (D-090) rather than the context objects and sources.
+var _tasks := false
+## The task groups the chips show (D-092): the general ones, then those the first context object has.
+var _task_titles: Array[String] = []
 var _chips: HFlowContainer
 var _chip_group: ButtonGroup
 ## The sections of the chosen chip, All first (D-063), and the one picked: empty for All.
@@ -63,6 +85,11 @@ var _context_key: Array = []
 func _init() -> void:
 	name = "ActionMenu"
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_tiles = GridContainer.new()
+	_tiles.name = "Tiles"
+	_tiles.columns = TILE_COLUMNS
+	_tiles.hide()
+	add_child(_tiles)
 	_chips = HFlowContainer.new()
 	_chips.name = "Chips"
 	add_child(_chips)
@@ -113,6 +140,34 @@ func set_large(large: bool) -> void:
 	_icons.clear()
 
 
+## Shows the tiles of the blocks most likely next over the chips (D-090): those
+## that fit the pin, ranked by [member stats] and what was added lately.
+func set_tiles(shown: bool) -> void:
+	if shown == _tiles_shown: return
+	_tiles_shown = shown
+	_update_tiles()
+	if _graph != null: refresh()
+
+
+## Groups the chips by task (D-090) — [constant XREBlueprintActions.TASKS] and
+## All — or, as before, by context object and source.
+func set_task_groups(tasks: bool) -> void:
+	if tasks == _tasks: return
+	_tasks = tasks
+	_chip = 0
+	_sub = ""
+	_advanced = false
+	_update_task_titles()
+	_build_chips()
+	if _graph != null: refresh()
+
+
+## The actions of the tiles, in order; empty while they are hidden.
+func get_tiles() -> Array[Dictionary]:
+	if not _tiles_shown: return []
+	return _tile_actions
+
+
 ## Opens the menu on [param contexts] — [code]{"label", "node", "class"}[/code],
 ## the first chosen — for a graph [param graph] hosted by [param host]. A
 ## [param pin] ([code]{"type", "output", "label"}[/code]) lists only blocks
@@ -129,7 +184,9 @@ func open(contexts: Array[Dictionary], host: Node, graph: XREBlueprintGraph, pin
 	search.set_block_signals(true)
 	search.text = ""
 	search.set_block_signals(false)
+	_update_task_titles()
 	_build_chips()
+	_update_tiles()
 	refresh()
 
 
@@ -143,8 +200,14 @@ func set_contexts(contexts: Array[Dictionary], host: Node, graph: XREBlueprintGr
 	_contexts = contexts
 	_host = host
 	_graph = graph
-	_chip = _contexts.size() + group if group >= 0 else 0
+	if not _tasks: _chip = _contexts.size() + group if group >= 0 else 0
+	else:
+		# The task group chosen stays, as long as the new object has it; All stays All.
+		var task := _task_titles[_chip] if _chip < _task_titles.size() else ""
+		_update_task_titles()
+		_chip = _task_titles.size() if task.is_empty() else maxi(_task_titles.find(task), 0)
 	_build_chips()
+	_update_tiles()
 	refresh()
 
 
@@ -157,13 +220,15 @@ func get_pin() -> Dictionary:
 func clear_pin() -> void:
 	if _pin.is_empty(): return
 	_pin = {}
+	_update_tiles()
 	refresh()
 	pin_cleared.emit()
 
 
-## Picks chip [param index]: a context object first, then the groups.
+## Picks chip [param index]: a context object first, then the groups; by
+## task, a task group, then All.
 func choose_chip(index: int) -> void:
-	_chip = clampi(index, 0, _contexts.size() + GROUPS.size() - 1)
+	_chip = clampi(index, 0, (_task_titles.size() + 1 if _tasks else _contexts.size() + GROUPS.size()) - 1)
 	_sub = ""
 	_advanced = false
 	for button: Node in _chips.get_children():
@@ -216,20 +281,22 @@ func refresh() -> void:
 	_pin_row.visible = not _pin.is_empty()
 	if not _pin.is_empty():
 		_pin_label.text = "%s %s" % ["From" if _pin.get("output", true) else "Into", _pin.get("label", "")]
+	_tiles.visible = _tiles_shown and not _tile_actions.is_empty() and search.text.strip_edges().is_empty()
 	tree.clear()
 	var root := tree.create_item()
 	var context := {"chip": XREBlueprintActions.CONTEXT, "host": _host, "graph": _graph, "pin": _pin, "query": search.text, "advanced": _advanced, "new_variables": offers_variables}
-	if _chip < _contexts.size():
+	if _tasks:
+		# A task group lists the first context object's members of that task, as All does all of them.
+		context = _first_context(context)
+		if _chip < _task_titles.size(): context["task"] = _task_titles[_chip]
+	elif _chip < _contexts.size():
 		var chosen := _contexts[_chip]
 		context["node"] = chosen.get("node")
 		context["label"] = chosen.get("label", "")
 		if chosen.has("class"): context["class"] = chosen["class"]
 	else:
+		context = _first_context(context)
 		context["chip"] = GROUPS[_chip - _contexts.size()]
-		var first := _contexts[0] if not _contexts.is_empty() else {}
-		context["node"] = first.get("node")
-		if first.has("class"): context["class"] = first["class"]
-		context["label"] = first.get("label", "")
 	# The row of sections comes from the chip and the pin, not the search, so that typing doesn't move it.
 	var all := context.duplicate()
 	all["query"] = ""
@@ -237,7 +304,7 @@ func refresh() -> void:
 	_sub_titles = PackedStringArray()
 	for section: Dictionary in actions.sections(all):
 		var short := short_title(str(section["title"]))
-		if section["title"] != "Recent" and not _sub_titles.has(short): _sub_titles.append(short)
+		if not section["title"] in ["Recent", "Best matches"] and not _sub_titles.has(short): _sub_titles.append(short)
 	if _sub_titles.size() < 2: _sub_titles = PackedStringArray()
 	if not _sub.is_empty() and not _sub_titles.has(_sub): _sub = ""
 	if not _sub_titles.is_empty(): _sub_titles.insert(0, "All")
@@ -278,6 +345,55 @@ func refresh() -> void:
 		empty.set_selectable(1, false)
 
 
+## What the menu lists all the blocks for now (D-090): the first context
+## object, the host, the graph, the pin — for [method XREBlueprintActions.suggest].
+func menu_context() -> Dictionary:
+	return _first_context({"host": _host, "graph": _graph, "pin": _pin, "new_variables": offers_variables})
+
+
+## [param context] of all the blocks, on the first context object.
+func _first_context(context: Dictionary) -> Dictionary:
+	var result := context.duplicate()
+	result["chip"] = XREBlueprintActions.ALL
+	var first := _contexts[0] if not _contexts.is_empty() else {}
+	result["node"] = first.get("node")
+	if first.has("class"): result["class"] = first["class"]
+	result["label"] = first.get("label", "")
+	return result
+
+
+## Ranks the tiles anew (D-090) for the pin and the context objects; nothing while they are hidden.
+func _update_tiles() -> void:
+	for child: Node in _tiles.get_children():
+		_tiles.remove_child(child)
+		child.queue_free()
+	_tile_actions = []
+	# Not before the menu first opens on a graph.
+	if not _tiles_shown or _graph == null: return
+	stats.update(_graph)
+	_tile_actions = actions.suggest(menu_context(), TILE_COUNT, stats)
+	for action: Dictionary in _tile_actions:
+		var tile := Button.new()
+		tile.text = action["title"]
+		tile.tooltip_text = "%s\n%s" % [action["title"], action["subtitle"]]
+		tile.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		tile.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tile.custom_minimum_size = Vector2(0, 64 if _large else 30)
+		var color: Color = KIND_COLORS.get(action["kind"], KIND_COLORS["native"])
+		for state: StringName in [&"normal", &"hover", &"pressed", &"hover_pressed", &"focus"]:
+			var style := StyleBoxFlat.new()
+			style.bg_color = color.darkened(TILE_HOVER_DIM if state in [&"hover", &"pressed", &"hover_pressed"] else TILE_DIM)
+			style.border_color = Color(1, 1, 1, 0.9 if state in [&"hover", &"pressed", &"hover_pressed"] else 0.22)
+			style.set_border_width_all(2 if _large else 1)
+			style.set_corner_radius_all(10 if _large else 5)
+			style.set_content_margin_all(6)
+			if state == &"focus": style.draw_center = false
+			tile.add_theme_stylebox_override(state, style)
+		tile.pressed.connect(_choose_action.bind(action, "tile"))
+		_tiles.add_child(tile)
+
+
 func _build_subs() -> void:
 	for child: Node in _subs.get_children():
 		_subs.remove_child(child)
@@ -315,13 +431,23 @@ func _notification(what: int) -> void:
 		for child: Node in _subs.get_children(): _dim(child as Button)
 
 
+## The task groups of the chips (D-092): the general ones, then those the first context object has.
+func _update_task_titles() -> void:
+	_task_titles = XREBlueprintActions.GENERAL_TASKS.duplicate()
+	if _tasks: _task_titles.append_array(actions.object_tasks(menu_context()))
+
+
 func _build_chips() -> void:
 	for child: Node in _chips.get_children():
 		_chips.remove_child(child)
 		child.queue_free()
 	var titles: Array[String] = []
-	for context: Dictionary in _contexts: titles.append(str(context.get("label", "")))
-	titles.append_array(GROUP_TITLES)
+	if _tasks:
+		titles.append_array(_task_titles)
+		titles.append("All")
+	else:
+		for context: Dictionary in _contexts: titles.append(str(context.get("label", "")))
+		titles.append_array(GROUP_TITLES)
 	for index: int in titles.size():
 		var chip := Button.new()
 		chip.text = titles[index]
@@ -337,11 +463,18 @@ func _choose(row: TreeItem) -> void:
 	if row == null: return
 	var action: Variant = row.get_metadata(0)
 	if action is Dictionary and str((action as Dictionary)["disabled"]).is_empty():
-		actions.remember(action)
-		action_chosen.emit(action)
+		_choose_action(action, "list" if search.text.strip_edges().is_empty() else "search")
 	elif action is String and action == "advanced":
 		_advanced = not _advanced
 		refresh()
+
+
+## Chooses [param action], picked from [param origin] ("tile", "list" or "search").
+func _choose_action(action: Dictionary, origin: String) -> void:
+	actions.remember(action)
+	var chosen := action.duplicate()
+	chosen["origin"] = origin
+	action_chosen.emit(chosen)
 
 
 func _tree_input(event: InputEvent) -> void:
@@ -362,7 +495,9 @@ func _tree_input(event: InputEvent) -> void:
 		if action is Dictionary and str((action as Dictionary)["disabled"]).is_empty():
 			_dragged = true
 			actions.remember(action)
-			action_dragged.emit(action)
+			var dragged := (action as Dictionary).duplicate()
+			dragged["origin"] = "list" if search.text.strip_edges().is_empty() else "search"
+			action_dragged.emit(dragged)
 
 
 func _search_input(event: InputEvent) -> void:

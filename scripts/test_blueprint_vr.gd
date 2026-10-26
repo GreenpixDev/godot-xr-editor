@@ -28,8 +28,8 @@ var _saved_path := ""
 const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT,
 		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
 		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS,
-		XREFeatureSettings.OBJECT_SHORTCUT]
-## The values the checks start from: the defaults before D-076 and D-089 made the
+		XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY]
+## The values the checks start from: the defaults before D-076, D-089 and D-094 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.VALUE_INPUT: XREFeatureSettings.WINDOW, XREFeatureSettings.TARGET_INPUT: XREFeatureSettings.WINDOW,
@@ -40,6 +40,8 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.DEFOCUS: XREFeatureSettings.OFF, XREFeatureSettings.LINK_PREVIEW: XREFeatureSettings.OFF,
 	XREFeatureSettings.LINK_WIRES: XREFeatureSettings.OFF, XREFeatureSettings.LINK_CREATE: XREFeatureSettings.WIRE_BUTTON,
 	XREFeatureSettings.WIRE_BENDS: XREFeatureSettings.OFF, XREFeatureSettings.OBJECT_SHORTCUT: XREFeatureSettings.OFF,
+	XREFeatureSettings.BLOCK_PALETTE: XREFeatureSettings.LIST, XREFeatureSettings.PALETTE_GROUPS: XREFeatureSettings.SOURCES,
+	XREFeatureSettings.NEXT_SUGGESTIONS: XREFeatureSettings.OFF, XREFeatureSettings.BLOCK_COPY: XREFeatureSettings.OFF,
 }
 
 
@@ -316,6 +318,7 @@ func _run() -> void:
 	await _test_target()
 	await _test_left_wire(print_id)
 	await _test_block_menu()
+	await _test_d090()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -1502,6 +1505,230 @@ func _test_block_menu() -> void:
 	_service.call("_drag_from_menu", branch[0] if not branch.is_empty() else {})
 	await _frames()
 	_check(graph.nodes.size() == blocks + 2 and _service.get("_ghost") == null, "a row pulled out of the menu is placed where its trigger is let go")
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## D-090: adding blocks without the keyboard. Each setting's variants: the
+## next-block suggestions at a wire let go and at a plus, More… and a click
+## away; the palette's tiles, task chips and ring; the copy button. Where a
+## block was picked is the name of its operation in the log.
+func _test_d090() -> void:
+	var features := _document.features
+	for key: StringName in [XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY]:
+		_check(features.get_value(key) == BASELINE[key], "%s starts at the list as it was" % key)
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.BLOCK_PALETTE) == XREFeatureSettings.RING and XREFeatureSettings.get_default(XREFeatureSettings.PALETTE_GROUPS) == XREFeatureSettings.SOURCES
+			and XREFeatureSettings.get_default(XREFeatureSettings.NEXT_SUGGESTIONS) == XREFeatureSettings.OFF and XREFeatureSettings.get_default(XREFeatureSettings.BLOCK_COPY) == XREFeatureSettings.ON,
+			"the defaults are the author's picks (D-094): the ring, chips by source, no suggestions, the copy button")
+	var history := _service.blueprint.history.get_version()
+	var graph := _service.blueprint.graph
+	var menu := _service.block_menu
+	var hand := _rig.right_hand
+	_service.add_block("print")
+	await _frames()
+	var source: int = graph.nodes.back()["id"]
+	# Suggestions at a wire let go in empty space.
+	_check(_document.set_feature(XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.ON, XREDocument.Source.PANEL) and _operations.back() == &"set_feature", "suggestions switch on, logged")
+	_check(_service.click_port(source, 0, false), "a wire from Print's Then")
+	_service.call("_open_menu_for_wire", Vector3(0.6, -0.4, 0.05))
+	await _frames()
+	var choice := _service.get("_choice") as XREBlueprintPetals
+	var shown := choice.get_shown()
+	_check(choice.is_open() and not (choice is XREBlueprintRing) and not _service.is_block_palette_shown(), "a wire let go opens the suggestions, not the palette")
+	_check(shown.size() == XREBlueprints.SUGGESTIONS + 1 and (shown.back() as Dictionary).get("more", false) and shown[0].has("action"), "five blocks and More…: %s" % [shown.map(func(item: Dictionary) -> String: return str(item["text"]))])
+	_check(shown.slice(0, XREBlueprints.SUGGESTIONS).all(func(item: Dictionary) -> bool: return XREBlueprintActions.fits_pin(item["action"], XREBlueprintGraph.EXEC, true)), "each fits the wire")
+	var blocks := graph.nodes.size()
+	_service.call("_choose_petal", choice, shown[0], hand)
+	await _frames()
+	var added: int = graph.nodes.back()["id"]
+	_check(graph.nodes.size() == blocks + 1 and graph.edges.has({"from": source, "from_port": 0, "to": added, "to_port": 0}) and int(_service.get("_pending_id")) == -1 and not choice.is_open(),
+			"a suggestion is added wired where the wire was let go, and the petals go")
+	_check(&"add_suggested_block" in _operations, "the log says it came from a suggestion")
+	_check(_service.click_port(source, 0, false) or _service.click_port(added, 0, false), "another wire")
+	_service.call("_open_menu_for_wire", Vector3(0.7, -0.4, 0.05))
+	await _frames()
+	shown = choice.get_shown()
+	_service.call("_choose_petal", choice, shown.back(), hand)
+	await _frames()
+	_check(_service.is_block_palette_shown() and not choice.is_open() and int(_service.get("_pending_id")) >= 0, "More… opens the palette for the same wire")
+	_service.close_block_palette()
+	_service.cancel_connection()
+	await _frames()
+	_check(_service.click_port(added, 0, false), "a wire again")
+	_service.call("_open_menu_for_wire", Vector3(0.7, -0.4, 0.05))
+	await _frames()
+	_service.call("_close_inputs")
+	await _frames()
+	_check(not choice.is_open() and int(_service.get("_pending_id")) == -1 and not bool(_service.get("_menu_at_point")), "a click away takes the suggestions and their wire away")
+	_service.call("_show_block_palette", added)
+	await _frames()
+	_check(choice.is_open() and not _service.is_block_palette_shown() and choice.get_shown()[0].has("action"), "the plus offers suggestions too")
+	_check(_document.set_feature(XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.OFF, XREDocument.Source.PANEL) and not choice.is_open(), "switched off, suggestions open close")
+	# Tiles over the list.
+	_check(_document.set_feature(XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.TILES, XREDocument.Source.PANEL), "the palette switches to tiles")
+	_service.call("_show_block_palette", added)
+	await _frames()
+	var tiles := menu.get_tiles()
+	_check(_service.is_block_palette_shown() and tiles.size() == XREBlueprintActionMenu.TILE_COUNT and (menu.get_node("Tiles") as Control).visible, "the palette has its tiles")
+	_check(tiles.all(func(action: Dictionary) -> bool: return XREBlueprintActions.fits_pin(action, XREBlueprintGraph.EXEC, true)), "tiles fit the plus's wire")
+	blocks = graph.nodes.size()
+	((menu.get_node("Tiles") as Node).get_child(0) as Button).pressed.emit()
+	await _frames()
+	_check(graph.nodes.size() == blocks + 1 and &"add_block_from_tile" in _operations, "a tile adds its block, logged as from a tile")
+	_service.close_block_palette()
+	# Chips by task.
+	_check(_document.set_feature(XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.TASKS, XREDocument.Source.PANEL), "the chips switch to tasks")
+	_check(menu.get_chip_titles()[0] == "Events" and menu.get_chip_titles().has("Move") and menu.get_chip_titles()[-1] == "All", "the chips are the task groups")
+	_document.set_feature(XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.SOURCES, XREDocument.Source.PANEL)
+	_check(menu.get_chip_titles().has("Library"), "and back to the sources")
+	# The ring.
+	_check(_document.set_feature(XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.RING, XREDocument.Source.PANEL) and menu.get_tiles().is_empty(), "the palette switches to the ring, without tiles")
+	_service.add_block("print")
+	await _frames()
+	var free: int = graph.nodes.back()["id"]
+	_service.call("_show_block_palette", free)
+	await _frames()
+	choice = _service.get("_choice") as XREBlueprintPetals
+	var ring := choice as XREBlueprintRing
+	_check(ring != null and ring.is_open() and not _service.is_block_palette_shown(), "the plus opens the ring, not the window")
+	if ring == null: return
+	shown = ring.get_shown()
+	var arc: Array = shown.filter(func(item: Dictionary) -> bool: return item.has("sector") and int(item["sector"]) >= XREBlueprintRing.ORDER.size()).map(func(item: Dictionary) -> String: return str(item["text"]))
+	_check(shown[0].get("list", false) and shown.slice(1, 1 + XREBlueprintRing.ORDER.size()).map(func(item: Dictionary) -> String: return str(item["text"])) == XREBlueprintRing.ORDER,
+			"the ring has its middle, the seven general groups and Object (D-093)")
+	_check(arc.has("Move") and not arc.has("Object") and not arc.has("Sound"), "over it, the object's other groups it has: %s" % [arc])
+	_check(XREBlueprintRing.ORDER[0] == "Object" and is_equal_approx(XREBlueprintRing.sector_angle(0), PI * 0.5), "Object is at the top, under the middle of the arc (D-094)")
+	var object_group := XREBlueprintRing.ORDER.size() + arc.find("Move")
+	var arc_angle := PI * 0.5 + XREBlueprintRing.BAND_STEP * (arc.size() * 0.5 - arc.find("Move") - 0.5)
+	var arc_at := ring.global_transform * (Vector3(cos(arc_angle), sin(arc_angle), 0.0) * (XREBlueprintRing.BAND_IN + XREBlueprintRing.BAND_OUT) * 0.5)
+	var arc_front := ring.global_basis.z.normalized()
+	_check(ring.intersect_ray(arc_at + arc_front * 0.4, -arc_front, 1.0) >= 0 and ring.get_hit().get("sector", -1) == object_group, "the ray picks a group of the arc")
+	ring.hover_hit()
+	_check(ring.get_open_sector() == "Move" and ring.get_shown().size() > shown.size(), "and shows its blocks over the arc")
+	var column := ring.get_node("Column") as Node3D
+	var pills: Array[Vector3] = []
+	for item: Dictionary in ring.get_shown().slice(1 + XREBlueprintRing.ORDER.size() + arc.size()): pills.append(ring.item_position(item))
+	var middle := (pills[0] + pills[-1]) * 0.5 if not pills.is_empty() else Vector3.ZERO
+	var head := _rig.camera.global_position
+	_check(column != null and not pills.is_empty() and absf(column.global_basis.y.normalized().dot((middle - head).normalized())) < 0.05 and column.basis.y.z > 0.0,
+			"the column over the arc leans toward the head, square to the line of sight to its middle (D-095): dot %.3f, lean %.3f" % [column.global_basis.y.normalized().dot((middle - head).normalized()) if column != null else NAN, column.basis.y.z if column != null else NAN])
+	if not pills.is_empty():
+		_check(ring.intersect_ray(head, (pills[-1] - head).normalized(), 5.0) >= 0 and ring.get_hit().has("action"), "the ray picks a block of the leaning column")
+	var sortings: Array[float] = []
+	var labels_free := true
+	var parts: Array[Node] = [ring]
+	while not parts.is_empty():
+		var part: Node = parts.pop_back()
+		parts.append_array(part.get_children())
+		if part is MeshInstance3D: sortings.append((part as MeshInstance3D).sorting_offset)
+		if part is Label3D and not (part as Label3D).no_depth_test: labels_free = false
+	_check(not sortings.is_empty() and sortings.min() >= XREBlueprints.CHOICE_SORTING and XREBlueprints.CHOICE_SORTING > XREBlueprintFocus.TOP_SORTING and labels_free,
+			"the ring is drawn over everything, over the cards in Front focus too (D-093)")
+	_check(shown.filter(func(item: Dictionary) -> bool: return item.has("sector") and not item["enabled"]).map(func(item: Dictionary) -> String: return str(item["text"])).has("Events"),
+			"a group with no block for the wire, Events after an execution output, is dim")
+	var flow := XREBlueprintRing.ORDER.find("Flow")
+	var angle := XREBlueprintRing.sector_angle(flow)
+	var at := ring.global_transform * (Vector3(cos(angle), sin(angle), 0.0) * (XREBlueprintRing.DISC + XREBlueprintRing.OUTER) * 0.5)
+	var front := ring.global_basis.z.normalized()
+	_check(ring.intersect_ray(at + front * 0.4, -front, 1.0) >= 0 and ring.get_hit().get("sector", -1) == flow, "the ray picks a group")
+	ring.hover_hit()
+	_check(ring.get_open_sector() == "Flow" and ring.get_shown().size() > shown.size(), "the ray on a group shows its blocks")
+	var delay: Array[Dictionary] = ring.get_shown().filter(func(item: Dictionary) -> bool: return item.has("action") and item["action"]["title"] == "Delay")
+	_check(not delay.is_empty(), "Flow has Delay")
+	blocks = graph.nodes.size()
+	if not delay.is_empty():
+		_service.call("_choose_petal", ring, delay[0], hand)
+		await _frames()
+		_check(graph.nodes.size() == blocks + 1 and graph.edges.has({"from": free, "from_port": 0, "to": graph.nodes.back()["id"], "to_port": 0}) and not ring.is_open(), "a block of the ring is added wired from the card")
+		_check(&"add_block_from_ring" in _operations, "logged as from the ring")
+	_service.call("_show_block_palette", added)
+	await _frames()
+	_service.call("_choose_petal", ring, ring.get_shown()[0], hand)
+	await _frames()
+	_check(_service.is_block_palette_shown() and not ring.is_open(), "the ring's middle opens the list with its search")
+	_service.close_block_palette()
+	# D-091: More… opens the ring where it was clicked, the ring's Search… the window; the wire waits meanwhile.
+	_document.set_feature(XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.ON, XREDocument.Source.PANEL)
+	_service.add_block("print")
+	await _frames()
+	var spare: int = graph.nodes.back()["id"]
+	_check(_service.click_port(spare, 0, false), "a wire for the ring")
+	var let_go := Vector3(0.5, -0.3, 0.05)
+	_service.call("_open_menu_for_wire", let_go)
+	await _frames()
+	var fan := _service.get("_choice") as XREBlueprintPetals
+	var preview := _service.canvas.get("_preview") as XREGraphWire
+	_service.call("_preview_connection", _service.canvas.to_global(Vector3(-0.4, 0.3, 0.2)))
+	_check(preview.get_point(preview.get_point_count() - 1).distance_to(let_go) < 0.005, "with the suggestions open the wire ends where it was let go, wherever the ray is")
+	var more: Dictionary = fan.get_shown().back()
+	var more_at := fan.item_position(more)
+	_service.call("_choose_petal", fan, more, hand)
+	await _frames()
+	ring = _service.get("_choice") as XREBlueprintRing
+	_check(ring != null and ring.is_open() and ring.global_position.distance_to(more_at) < 0.001, "More… opens the ring where it was clicked")
+	_service.call("_preview_connection", _service.canvas.to_global(Vector3(-0.4, 0.3, 0.2)))
+	_check(preview.visible and preview.get_point(preview.get_point_count() - 1).distance_to(let_go) < 0.005, "and the wire still waits there")
+	if ring != null:
+		_service.call("_choose_petal", ring, ring.get_shown()[0], hand)
+		await _frames()
+	var list := _panels.find_window(XREBlueprintPaletteTab)
+	_check(list != null and list.global_position.distance_to(more_at) < XREBlueprints.PARAMETERS_LIFT + 0.002, "the ring's Search… opens the window there")
+	_service.call("_preview_connection", _service.canvas.to_global(Vector3(-0.4, 0.3, 0.2)))
+	_check(preview.get_point(preview.get_point_count() - 1).distance_to(let_go) < 0.005 and int(_service.get("_pending_id")) == spare, "the wire waits on the window too")
+	_service.call("_cancel_wire_menu")
+	await _frames()
+	_check(not _service.is_block_palette_shown() and int(_service.get("_pending_id")) == -1 and not preview.visible, "a click elsewhere takes the window and the wire away")
+	_document.set_feature(XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.LIST, XREDocument.Source.PANEL)
+	_check(_service.click_port(spare, 0, false), "a wire for the list")
+	_service.call("_open_menu_for_wire", let_go)
+	await _frames()
+	more = fan.get_shown().back()
+	more_at = fan.item_position(more)
+	_service.call("_choose_petal", fan, more, hand)
+	await _frames()
+	list = _panels.find_window(XREBlueprintPaletteTab)
+	_check(list != null and list.global_position.distance_to(more_at) < XREBlueprints.PARAMETERS_LIFT + 0.002, "with the list, More… opens the window where it was clicked")
+	_service.call("_cancel_wire_menu")
+	_document.set_feature(XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.OFF, XREDocument.Source.PANEL)
+	await _frames()
+	_document.set_feature(XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.LIST, XREDocument.Source.PANEL)
+	# The copy button.
+	_check(_document.set_feature(XREFeatureSettings.BLOCK_COPY, XREFeatureSettings.ON, XREDocument.Source.PANEL), "the copy button switches on")
+	await _frames()
+	var card := _card(source)
+	_check(card != null and card.copy != null, "cards have the copy button")
+	if card == null or card.copy == null: return
+	var button := card.node.global_transform * card.copy_point
+	var facing := card.node.global_basis.z.normalized()
+	_service.canvas.intersect_ray(button + facing * 0.4, -facing, 1.0)
+	_check(_service.canvas.get_hit_copy() and _service.canvas.get_hit_id() == source and not _service.canvas.get_hit_delete(), "the ray hits the copy button")
+	blocks = graph.nodes.size()
+	var edges := graph.edges.size()
+	var version := _service.blueprint.history.get_version()
+	# The trigger let go at once: the drag ends as it starts.
+	_service.call("_start_copy", source, hand, button)
+	await _frames()
+	var copy: Dictionary = graph.nodes.back()
+	var original := graph.find_node(source)
+	_check(graph.nodes.size() == blocks + 1 and graph.edges.size() == edges and copy["kind"] == original["kind"] and copy["params"] == original["params"], "a click copies the block, without its wires")
+	_check((copy["position"] as Vector2).x == (original["position"] as Vector2).x and (copy["position"] as Vector2).y > (original["position"] as Vector2).y, "beside it, below")
+	_check(_service.blueprint.history.get_version() == version + 1 and &"duplicate_block" in _operations, "one undo step, Duplicate Block in the log")
+	# Held, the copy follows the ray until the trigger lets go.
+	_aim(Vector3(5, 4, -2))
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_service.call("_start_copy", source, hand, button)
+	_aim(Vector3(4.6, 4.2, -2))
+	await _frames()
+	var ghost := _service.get("_ghost") as Node3D
+	_check(ghost != null and graph.nodes.size() == blocks + 1, "the copy's stand-in follows the ray while the trigger is held")
+	var dropped := _service.canvas.to_local(ghost.global_position) if ghost != null else Vector3.ZERO
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(graph.nodes.size() == blocks + 2 and absf(float((graph.nodes.back() as Dictionary).get("vr_depth", 0.0)) - dropped.z) < 0.001, "pulled away, the copy goes where it is let go")
+	_document.set_feature(XREFeatureSettings.BLOCK_COPY, XREFeatureSettings.OFF, XREDocument.Source.PANEL)
+	await _frames()
+	_check(_card(source) != null and _card(source).copy == null, "switched off, the button goes")
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	await _frames()
 
