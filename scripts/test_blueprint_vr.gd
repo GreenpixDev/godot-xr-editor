@@ -581,6 +581,13 @@ func _test_node_style() -> void:
 	_service.blueprint.undo()
 	await _frames()
 	_check(not graph.find_node(added[1]).is_empty(), "undo puts it back")
+	# A click on the policy chip takes the next policy (D-098), one edit.
+	var policy := str(graph.find_node(event)["params"]["policy"])
+	_service.call("_next_policy", event)
+	await _frames()
+	_check(str(graph.find_node(event)["params"]["policy"]) != policy, "a click on the chip takes the next policy")
+	_service.blueprint.undo()
+	await _frames()
 	# ⇄ switches one card's heading (D-092): one edit, undone by A.
 	_service.switch_heading(added[0])
 	await _frames()

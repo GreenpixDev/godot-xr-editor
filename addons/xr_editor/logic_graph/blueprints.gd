@@ -1637,6 +1637,16 @@ func _keeps_set_wire(edge: Dictionary, id: int, type: int) -> bool:
 	return int(edge["from_port"]) < outputs.size() and XREBlueprintGraph.ports_compatible(int((outputs[int(edge["from_port"])] as Array)[1]), type)
 
 
+## The policy chip of an archetype's event (D-098): a click takes the next
+## policy — parallel, ignore, restart, parallel —, one edit, no widget.
+func _next_policy(id: int) -> void:
+	var block := blueprint.graph.find_node(id)
+	if block.is_empty(): return
+	var policies: Array[String] = ["parallel", "ignore", "restart"]
+	var next := policies[(policies.find(str((block["params"] as Dictionary).get("policy", "parallel"))) + 1) % policies.size()]
+	if not blueprint.perform(blueprint.set_parameter.bind(id, "policy", next), &"vr_graph"): _message(blueprint.last_error)
+
+
 ## Switches what the header of block [param id]'s archetype says (D-092):
 ## the member if it said the operation, and back. Kept in the block's
 ## vr_heading, one edit of the graph, which A undoes.
@@ -3093,6 +3103,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		if canvas.get_hit_plus(): _show_block_palette(id)
 		elif canvas.get_hit_delete(): delete_block(id)
 		elif canvas.get_hit_swap(): switch_heading(id)
+		elif token and key == "policy" and canvas.get_style() == XREFeatureSettings.ARCHETYPES: _next_policy(id)
 		elif token: _start_turn(pointer, id, key, "", origin + direction * hit)
 		elif not link.is_empty(): _retarget_link(link, hand)
 		elif kind == XREBlueprintCanvas.SOURCE: _start_link(id, XREBlueprintCanvas.SOURCE, hand)

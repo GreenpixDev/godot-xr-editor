@@ -475,9 +475,9 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ```
 
-1. Node style = Archetypes. У события policy — узкий тёмный чип со значком и словом; ЛКМ по нему открывает веер parallel / ignore / restart.
-2. Node heading = Member: On Ready говорит «ready», под ним мелко «On Ready»; Rotate X — «self».
+1. Node style = Archetypes. У события policy — узкий тёмный чип со значком и словом; ЛКМ по нему переключает parallel → ignore → restart без веера (D-098), E (A) возвращает.
+2. Node heading = Member: шапка одной строкой — «On Ready», «Set Position», «Get Position», член сиреневым (D-098); у Source и Target нет адаптера, у ссылки — одно кольцо. В Operation любое событие — «On Signal».
 3. Порты исполнения — белые стрелки на самих краях карточки. У Branch справа вкладки True (зелёная, галочка) и False (розовая, крестик).
-4. Node shrink = + System: Get Time — кольцо с циферблатом, Random — с кубиком; название под бусиной читается с вытянутой руки.
+4. Node shrink = + System: Get Time — кольцо с циферблатом, Random — с кубиком; подписей под бусинами нет (D-098). Вкладки Branch скруглены слева. Свободный вход оператора — цвета своей детали (1.0 — float).
 5. Variables = Boxes: ящик — тёмная карточка с крышкой цвета типа (имя и тип), значение ниже, порт чтения справа; провод Set входит сверху; корзина над ящиком только под лучом. С Composite values = Split — выдвижной ящик x, y, z.
 6. Variables = Window: Get Variable — бирка-пилюля с именем и портом справа.
