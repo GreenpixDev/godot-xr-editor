@@ -166,7 +166,10 @@ func _test_headings() -> void:
 	(own["params"] as Dictionary).merge({"target": "Lamp", "property": "visible"}, true)
 	own["vr_heading"] = "member"
 	XREBlueprintLinks.set_link(setter, XREBlueprintLinks.TARGET, true)
-	cards_graph.nodes = [event, setter, own]
+	var rotate := XREBlueprintGraph.make_call(4, XREBlueprintFunctions.method("Node3D", "rotate_x"), Vector2(0, 900))
+	var linked_rotate := XREBlueprintGraph.make_call(5, XREBlueprintFunctions.method("Node3D", "rotate_x"), Vector2(0, 1200))
+	XREBlueprintLinks.set_link(linked_rotate, XREBlueprintLinks.TARGET, true)
+	cards_graph.nodes = [event, setter, own, rotate, linked_rotate]
 	cards_graph.upgrade()
 	var modes := _canvas.get_parameter_modes()
 	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, XREFeatureSettings.ADAPTER, modes[2], modes[3])
@@ -193,6 +196,12 @@ func _test_headings() -> void:
 		if socket.kind == XREBlueprintCanvas.MEMBER: adapters += 1
 	_check(chip != null and is_equal_approx(chip.center.y, head_y) and chip.center.x > 0.0, "the policy is a chip in the event's header")
 	_check(adapters == 1, "in Operation the event's Source has its adapter")
+	var kinds: Array[int] = []
+	for socket: XREBlueprintCanvas.Socket in (cards[3] as XREBlueprintCanvas.Card).sockets: kinds.append(socket.kind)
+	_check(not kinds.has(XREBlueprintCanvas.MEMBER), "Rotate X takes its object itself: no adapter on its Target (D-103)")
+	kinds.clear()
+	for socket: XREBlueprintCanvas.Socket in (cards[4] as XREBlueprintCanvas.Card).sockets: kinds.append(socket.kind)
+	_check(kinds.has(XREBlueprintCanvas.LINK) and not kinds.has(XREBlueprintCanvas.MEMBER), "its link goes into the port, with no adapter")
 	var mine := cards[2] as XREBlueprintCanvas.Card
 	_check((mine.node.get_node("Member") as Label3D).text == "Visible" and (mine.node.get_node("Verb") as Label3D).text == "Set" and _canvas.heading_of(own) == XREFeatureSettings.MEMBER, "a block's own vr_heading says its member over the setting")
 	_check(_canvas.set_heading(XREFeatureSettings.MEMBER) and not _canvas.set_heading(&"both"), "Node heading switches to Member")

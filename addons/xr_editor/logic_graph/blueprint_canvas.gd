@@ -3010,6 +3010,12 @@ func _layout(graph: XREBlueprintGraph, block: Dictionary, inputs: Array, outputs
 	return [left, right]
 
 
+## Whether [param block]'s target has a member to pick — a property, a signal,
+## an animation — which an adapter is for (D-103).
+static func _has_member(block: Dictionary) -> bool:
+	return not XREBlueprintTokens.member_key(block).is_empty()
+
+
 ## Builds the rows of [param layout] ([method _layout]) on [param card].
 func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: Array, outputs: Array, layout: Array) -> void:
 	card.inputs.resize(inputs.size())
@@ -3052,14 +3058,16 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 			# With the member in the header the target row has only the wire, or a link's bare ring (D-092).
 			elif target_link and bare:
 				_add_target_link(card, block, _row_point(card, row, true), index, -1, true)
-			elif target_link and XREBlueprintTokens.adapter(_target_mode):
+			# An adapter picks a member of its object (D-059); a call that takes the object
+			# itself, as Rotate X, has none: its wire or link goes straight into the port (D-103).
+			elif target_link and XREBlueprintTokens.adapter(_target_mode) and _has_member(block):
 				_add_adapter(card, block, _row_point(card, row, true), true, index)
 			elif target_link:
 				_add_target_link(card, block, _row_point(card, row, true), index, -1)
 				if not member_key.is_empty(): _add_member(card, text, member_key, str(params.get(member_key, "")), block)
 			elif key == "target" and bare: pass
 			elif key == "target" and XREBlueprintTokens.adapter(_target_mode) and block["kind"] != "signal":
-				if not wired.has(index): _add_adapter(card, block, _row_point(card, row, true))
+				if not wired.has(index) and _has_member(block): _add_adapter(card, block, _row_point(card, row, true))
 			elif key == "target" and not member_key.is_empty() and block["kind"] != "signal":
 				_add_member(card, text, member_key, str(params.get(member_key, "")), block)
 			elif key in tokens:
