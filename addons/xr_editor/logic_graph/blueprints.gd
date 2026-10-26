@@ -4417,6 +4417,7 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 				parameters.show_variables()
 				_show_parameters()
 			else: _start_turn(pointer, -1, "", variable, origin + direction * hit)
+		XREBlueprintBoxes.DRAWER: _switch_drawer(variable)
 		XREBlueprintBoxes.COMPONENT:
 			# A component's output (D-096): into the port a wire waits at, or a wire of its own to a port.
 			if _pending_id >= 0 and _pending_input: _wire_component_to_port(variable, boxes.get_hit_component(), _pending_id, _pending_port)
@@ -4478,6 +4479,26 @@ func _wire_box_to_port(variable: String, id: int, port: int, added: Dictionary =
 	else:
 		_close_wire_menu()
 		_message("%s reads %s." % [XREBlueprintGraph.title(target), variable])
+
+
+## Opens or shuts the drawer of components of [param variable]'s box (D-099),
+## whatever Composite values says for the others: one edit of the graph's
+## editor-only vr_collapsed. A drawer whose components are wired stays open.
+func _switch_drawer(variable: String) -> void:
+	var found := blueprint.graph.find_variable(variable)
+	if found.is_empty(): return
+	var shutting := not bool(found.get("vr_collapsed", false))
+	if shutting:
+		for block: Dictionary in blueprint.graph.nodes:
+			if XREBlueprintCanvas.is_split_break(block) and XREBlueprintCanvas.split_variable(blueprint.graph, block) == variable:
+				_message("%s's components are wired: unwire them to shut its drawer." % variable)
+				return
+	var state := blueprint.graph.snapshot()
+	for entry: Dictionary in state["variables"]:
+		if entry["name"] != variable: continue
+		if shutting: entry["vr_collapsed"] = true
+		else: entry.erase("vr_collapsed")
+	if not blueprint.perform(blueprint.commit.bind("Shut Drawer" if shutting else "Open Drawer", state), &"vr_graph"): _message(blueprint.last_error)
 
 
 ## A wire from component [param component] of [param variable]'s box into

@@ -22,7 +22,8 @@ extends Resource
 ##
 ## A block's [code]vr_heading[/code], "operation" or "member", says what its
 ## card's header shows in the VR editor's archetypes (D-092), over the
-## editor's setting; the compiler and GraphEdit ignore it too.
+## editor's setting; a variable's [code]vr_collapsed[/code] shuts its box's
+## drawer of components there (D-099). The compiler and GraphEdit ignore them too.
 
 const FORMAT_VERSION := 3
 const MAX_NODES := 256
@@ -582,6 +583,8 @@ func validate() -> PackedStringArray:
 			errors.append("Variable %s has an invalid VR position." % name)
 		if variable.has("vr_depth") and (not typeof(variable["vr_depth"]) in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(variable["vr_depth"]))):
 			errors.append("Variable %s has invalid VR depth." % name)
+		if variable.has("vr_collapsed") and not variable["vr_collapsed"] is bool:
+			errors.append("Variable %s has an invalid VR drawer." % name)
 	for block: Dictionary in nodes:
 		var id: Variant = block.get("id")
 		var kind: Variant = block.get("kind")

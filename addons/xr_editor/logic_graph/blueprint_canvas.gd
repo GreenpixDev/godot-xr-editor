@@ -180,21 +180,27 @@ const CHIP_ICON := 0.016
 const CHIP_TEXT := 15
 const CHIP_SHADE := 0.72
 const CHIP_BORDER := Color(1, 1, 1, 0.25)
-## Branch's tabs on its right edge (D-097): their width, colours of True and False, how much of them is seen.
+## Branch's tabs on its right edge (D-097): their width and height, colours of
+## True and False, how much of their colour their opaque face has (D-099: a
+## see-through tab looked lit only in focus).
 const TAB_WIDTH := 0.1
+const TAB_HEIGHT := 0.028
 const TAB_COLORS: Array[Color] = [Color("7be5b3"), Color("e8879b")]
-const TAB_SEEN := 0.16
+const TAB_TINT := 0.28
 ## A Get Variable's tag (D-097): its height, how much of its type's colour its face has.
 const TAG_HEIGHT := 0.035
 const TAG_TINT := 0.22
 const SWAP_SIZE := 0.024
 const SWAP_SHIFT := 0.034
 ## A bead (D-094): its radius, and with three ports on a side; its icon's size
-## in its radii, an image's. Its name under the ray went in D-098.
+## in its radii, an image's; how far under it its name shows under the ray,
+## and its font size (D-097: 18 was too small to read; back in D-099).
 const BEAD_RADIUS := 0.036
 const BEAD_LARGE := 0.042
 const BEAD_ICON := 1.15
 const BEAD_IMAGE := 0.85
+const BEAD_TIP := 0.02
+const TIP_SIZE := 26
 ## How much of a bead the face of Get Time and Random covers, in its radii.
 const BEAD_FACE := 1.9
 const PURE_FALLBACK_SIZE := 38
@@ -240,9 +246,11 @@ class Card:
 	## The switch of its heading, where it is, null without one.
 	var swap: Node3D
 	var swap_point: Vector3
-	## A bead (D-094): its outputs' places on its right arc.
+	## A bead (D-094): its outputs' places on its right arc, its name under it
+	## shown under the ray.
 	var bead := false
 	var shape_outputs: Array[Vector2] = []
+	var tip: Label3D
 	## Whether its tokens say their ports' names: a bead of two values or more.
 	var named_tokens := false
 	## A Get Variable's tag (D-097): a pill of its type's colour with its name.
@@ -592,11 +600,12 @@ func heading_of(block: Dictionary) -> StringName:
 	return StringName(own) if own in [XREFeatureSettings.OPERATION, XREFeatureSettings.MEMBER] else _heading
 
 
-## Whether [param block] has a member its header may say (D-092, D-097): any
-## event — On Ready too, its member is ready —, any block with a target —
-## its member, or its object for a call without one —, a variable's Set.
+## Whether [param block] has a member its header may say (D-092, D-097, D-099):
+## any event — On Ready too, its member is ready —, a block with a member —
+## a property, an animation —, a variable's Set. A call without a member, as
+## Rotate X, has only its operation: its object is no member of it.
 static func can_head(block: Dictionary) -> bool:
-	return block.get("kind") in ["set_variable", "signal"] or XREBlueprintGraph.has_target(block)
+	return block.get("kind") in ["set_variable", "signal"] or not XREBlueprintTokens.member_key(block).is_empty()
 
 
 ## The member [param block]'s header says in Member (D-092): its signal,
@@ -607,8 +616,6 @@ static func member_of(block: Dictionary) -> String:
 		var variable := str(params.get("variable", ""))
 		return variable if not variable.is_empty() else "choose a box"
 	var key := XREBlueprintTokens.member_key(block)
-	# A call with a target but no member (Play Sound, Rotate X) says its object.
-	if key.is_empty(): return XREBlueprintTokens.adapter_text(block).trim_suffix(" ▸")
 	var member := str(params.get(key, ""))
 	return member if not member.is_empty() else XREBlueprintTokens.member_placeholder(block)
 
@@ -918,7 +925,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			var source := graph.find_node(edge["from"])
 			if is_inline(source) and source["kind"] != "get_variable":
 				# From a box's component through its hidden Break (D-096): no link, the variable of the Break's getter.
-				wire.variable = _split_variable(graph, source)
+				wire.variable = split_variable(graph, source)
 				wire.component = edge["from_port"]
 				inline.append(wire)
 			elif is_inline(source):
@@ -1109,9 +1116,8 @@ func _add_icon_to(parent: Node3D, texture: Texture2D, tint: Color, size: float, 
 ## before the output's name [param text].
 func _add_tab(card: Card, point: Vector3, index: int, text: String) -> void:
 	var color := TAB_COLORS[index]
-	var height := ROW_HEIGHT - 0.008
-	var outline := XREBlueprintShapes.rounded_rect(Vector2(TAB_WIDTH, height), Vector4(height * 0.5, 0, 0, height * 0.5))
-	var tab := XRERig.create_vr_mesh(XREBlueprintShapes.body(outline, 0.0005), XREBlueprintBoxes.under_material(Color(color, TAB_SEEN)))
+	var outline := XREBlueprintShapes.rounded_rect(Vector2(TAB_WIDTH, TAB_HEIGHT), Vector4(TAB_HEIGHT * 0.5, 0, 0, TAB_HEIGHT * 0.5))
+	var tab := XRERig.create_vr_mesh(XREBlueprintShapes.body(outline, 0.0005), XREBlueprintBoxes.under_material(XREBlueprintIcons.BODY.lerp(color, TAB_TINT)))
 	tab.name = "TabTrue" if index == 0 else "TabFalse"
 	tab.position = Vector3(card.width * 0.5 - TAB_WIDTH * 0.5, point.y, card.face + CARD_THICKNESS * 0.5 + 0.0004)
 	card.node.add_child(tab)
@@ -1211,8 +1217,8 @@ func _add_tag(card: Card, block: Dictionary, outputs: Array) -> void:
 	card.node.add_child(text)
 
 
-## A bead's rim and its icon inside — white on a function, its result's
-## colour on a pure function (D-094).
+## A bead's rim, its icon inside — white on a function, its result's colour
+## on a pure function — and its name under it for the ray (D-094).
 func _add_bead(card: Card, block: Dictionary, group: int, outputs: Array) -> void:
 	var front := card.bounds.end.z + 0.0004
 	card.frame = XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, 0.0, RIM, front), card.frame_material)
@@ -1230,6 +1236,11 @@ func _add_bead(card: Card, block: Dictionary, group: int, outputs: Array) -> voi
 	elif icon is StringName:
 		var glyph: StringName = icon
 		_add_icon(card, "Icon", XREBlueprintIcons.texture(glyph, ICON_PIXELS, false), Color.WHITE if glyph in XREBlueprintIcons.COLORED else tint, radius * BEAD_ICON, center)
+	card.tip = label(operation_of(block), TIP_SIZE)
+	card.tip.name = "Tip"
+	card.tip.position = Vector3(0, -radius - BEAD_TIP, front + 0.0006)
+	card.tip.visible = false
+	card.node.add_child(card.tip)
 
 
 
@@ -1276,7 +1287,7 @@ func _add_sign_symbol(card: Card, block: Dictionary, inputs: Array, outputs: Arr
 
 ## The variable whose components the hidden Break [param breaker] gives (D-096):
 ## that of the inline Get Variable wired into it, empty for none.
-static func _split_variable(graph: XREBlueprintGraph, breaker: Dictionary) -> String:
+static func split_variable(graph: XREBlueprintGraph, breaker: Dictionary) -> String:
 	for edge: Dictionary in graph.edges:
 		if edge["to"] != breaker["id"]: continue
 		var getter := graph.find_node(edge["from"])
@@ -1866,6 +1877,8 @@ func _look_card(card: Card) -> void:
 	if _style == XREFeatureSettings.ARCHETYPES:
 		card.trash.visible = _in_focus(card.id)
 		if card.swap != null: card.swap.visible = card.trash.visible
+		# A bead's name shows under the ray (D-094, D-099).
+		if card.tip != null: card.tip.visible = card.trash.visible
 
 	var paint := focus_paint(card.focus)
 	var seen := focus_seen(card.focus)

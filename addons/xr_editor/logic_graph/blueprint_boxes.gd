@@ -24,6 +24,9 @@ const TRASH := 1
 const TOKEN := 2
 ## An output of a component on the box's right side (D-096).
 const COMPONENT := 3
+## The switch of a box's drawer of components (D-099).
+const DRAWER := 4
+const DRAWER_SIZE := 0.018
 ## Components by type, as Break names its outputs; a component's port's
 ## radius, how far out of the box's side it is, the rows apart.
 const COMPONENTS: Dictionary[int, Array] = {TYPE_VECTOR2: ["x", "y"], TYPE_VECTOR3: ["x", "y", "z"], TYPE_COLOR: ["r", "g", "b", "a"]}
@@ -69,6 +72,10 @@ class Box:
 	var component_ports: Array[Node3D] = []
 	## Its size, which an archetypes' box takes from its name and value (D-097).
 	var size := BOX_SIZE
+	## Its drawer of components shut on its own (D-099), and its switch.
+	var collapsed := false
+	var drawer: Node3D
+	var drawer_point := Vector3.ZERO
 	## Where an archetypes' box is read and written, in its space (D-097).
 	var read_point := Vector3.ZERO
 	var write_point := Vector3.ZERO
@@ -116,7 +123,7 @@ func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], styl
 	_hover_left = Vector2i(-1, -1)
 	for variable: Dictionary in graph.variables:
 		var key := str(variable["name"])
-		_add_box(key, variable.get("value"), XREBlueprintGraph.variable_type(variable), places.get(key, Vector3.ZERO), style, used.has(key), XREBlueprintTokens.variable_expression(variable))
+		_add_box(key, variable.get("value"), XREBlueprintGraph.variable_type(variable), places.get(key, Vector3.ZERO), style, used.has(key), XREBlueprintTokens.variable_expression(variable), bool(variable.get("vr_collapsed", false)))
 
 
 ## Moves the boxes to their points of [param places] (canvas space, by
@@ -132,9 +139,10 @@ func move_box(variable: String, point: Vector3) -> void:
 		if box.name == variable: box.node.position = point
 
 
-func _add_box(variable: String, value: Variant, type: int, point: Vector3, style: StringName, used: bool, expression: String = "") -> void:
+func _add_box(variable: String, value: Variant, type: int, point: Vector3, style: StringName, used: bool, expression: String = "", collapsed: bool = false) -> void:
 	var box := Box.new()
 	box.name = variable
+	box.collapsed = collapsed
 	box.value = value
 	box.used = used
 	box.type = type
@@ -188,7 +196,9 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 		box.node.add_child(box.token)
 		box.token_text = box.token.get_meta(&"text") as Label3D
 		box.token_size = Vector3(width, XREBlueprintTokens.HEIGHT, 0.012)
-	if _split and COMPONENTS.has(type): _add_components(box)
+	if _split and COMPONENTS.has(type):
+		_add_drawer_switch(box, Vector3(BOX_SIZE.x * 0.5 - 0.01, BOX_SIZE.y * 0.5 + 0.012, BOX_SIZE.z * 0.5))
+		if not box.collapsed: _add_components(box)
 	_boxes.append(box)
 
 
@@ -266,7 +276,23 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 	box.trash.add_child(trash)
 	box.trash.visible = false
 	box.node.add_child(box.trash)
-	if _split and COMPONENTS.has(box.type): _add_drawer(box)
+	if _split and COMPONENTS.has(box.type):
+		_add_drawer_switch(box, Vector3(width * 0.5 - 0.016, CARD_HEIGHT * 0.5 - LID_HEIGHT * 0.5, front + 0.0016))
+		if not box.collapsed: _add_drawer(box)
+
+
+## The switch of [param box]'s drawer of components at [param point] (D-099):
+## ▾ while open, ▸ while shut; the trigger on it opens or shuts it.
+func _add_drawer_switch(box: Box, point: Vector3) -> void:
+	box.drawer_point = point
+	box.drawer = Node3D.new()
+	box.drawer.position = point
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE * DRAWER_SIZE
+	var face := XREBlueprintCanvas.material(Color.WHITE, true)
+	face.albedo_texture = XREBlueprintIcons.texture(&"drawer_shut" if box.collapsed else &"drawer_open", 64, false)
+	box.drawer.add_child(XRERig.create_vr_mesh(quad, face))
+	box.node.add_child(box.drawer)
 
 
 ## An archetypes' box's components (D-096, D-097): a drawer under it, each
@@ -372,6 +398,14 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_part = COMPONENT
 			_hit_component = component
 		if _hit == index and _hit_part == COMPONENT: continue
+		# The drawer's switch takes the ray before the box under it (D-099).
+		if box.drawer != null:
+			var switch := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.drawer_point - Vector3(0.012, 0.012, 0.006), Vector3(0.024, 0.024, 0.012)), nearest)
+			if switch >= 0:
+				nearest = switch
+				_hit = index
+				_hit_part = DRAWER
+				continue
 		# An archetypes' trash stands over the box, shown under the ray (D-097).
 		if _archetype and box.trash.visible:
 			var over := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.trash_point - Vector3(0.012, 0.014, 0.006), Vector3(0.024, 0.028, 0.012)), nearest)

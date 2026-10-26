@@ -258,7 +258,10 @@ func _test_beads() -> void:
 	for child: Node in random.node.find_children("*", "Label3D", true, false): texts.append((child as Label3D).text)
 	_check(random.bead and texts.any(func(text: String) -> bool: return text.begins_with("from ")), "Random is a ring whose tokens say their names: %s" % [texts])
 	_check(not (cards[3] as XREBlueprintCanvas.Card).bead, "Set is a card with + System")
-	_check(delay.node.get_node_or_null("Tip") == null, "a bead has no name under it (D-098)")
+	_check(not delay.tip.visible, "a bead's name waits for the ray")
+	_canvas.set_focus(Vector3i(1, -1, -1))
+	_check(delay.tip.visible and delay.tip.text == "Delay" and delay.tip.font_size == XREBlueprintCanvas.TIP_SIZE, "under the ray a bead says its name, large (D-099)")
+	_canvas.set_focus(Vector3i(-1, -1, -1))
 	_check(_canvas.set_shrink(XREFeatureSettings.ICONS), "Node shrink switches to All with icons")
 	_canvas.rebuild(beads)
 	cards = _canvas.get("_cards") as Array
@@ -314,7 +317,7 @@ func _test_mockup_details() -> void:
 	getter["params"]["variable"] = "speed"
 	details.nodes.append(getter)
 	details.nodes.append(XREBlueprintGraph.make_operator(5, "multiply", Vector2(0, 1200)))
-	details.variables = [{"name": "speed", "value": 1.5}]
+	details.variables = [{"name": "speed", "value": 1.5}, {"name": "spot", "value": Vector3.ONE}, {"name": "aim", "value": Vector3.ONE, "vr_collapsed": true}]
 	details.upgrade()
 	var modes := _canvas.get_parameter_modes()
 	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, XREFeatureSettings.ADAPTER, modes[2], XREFeatureSettings.WINDOW)
@@ -336,6 +339,9 @@ func _test_mockup_details() -> void:
 	var tabs := branch.node.find_children("Tab*", "MeshInstance3D", false, false)
 	_check(tabs.size() == 2 and is_equal_approx(branch.outputs[0].x, branch.width * 0.5), "Branch has True and False tabs, its outputs on the edge")
 	_check((tabs[0] as MeshInstance3D).mesh is ArrayMesh, "the tabs are round at their left ends (D-098)")
+	_check(is_equal_approx(((tabs[0] as MeshInstance3D).material_override as BaseMaterial3D).albedo_color.a, 1.0) and (tabs[0] as MeshInstance3D).mesh.get_aabb().size.y < XREBlueprintCanvas.ROW_HEIGHT * 0.7,
+			"and opaque and low (D-099)")
+	_check(not XREBlueprintCanvas.can_head(XREBlueprintGraph.make_call(9, XREBlueprintFunctions.method("Node3D", "rotate_x"), Vector2.ZERO)), "Rotate X has no member to say, only its operation (D-099)")
 	var times := cards[4] as XREBlueprintCanvas.Card
 	_check(((times.ports[1] as MeshInstance3D).material_override as BaseMaterial3D).albedo_color.is_equal_approx(XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]),
 			"an operand with a float token has a float's port, not any value's (D-098)")
@@ -349,6 +355,19 @@ func _test_mockup_details() -> void:
 	var read := boxes.box_end("speed", Vector3.ZERO)
 	var write := boxes.box_end("speed", Vector3.ZERO, true)
 	_check(read[1] == Vector3.RIGHT and write[1] == Vector3.UP and read[0].x > boxes.box_point("speed").x and write[0].y > boxes.box_point("speed").y, "a box is read on its right edge and written from its top")
+	_canvas.set_composite(XREFeatureSettings.SPLIT)
+	_canvas.rebuild(details)
+	boxes = _canvas.get_boxes()
+	_check(not boxes.component_point("spot", 0).is_equal_approx(boxes.box_point("spot")) and boxes.component_point("aim", 0).is_equal_approx(boxes.box_point("aim")),
+			"with Split a box has its drawer, unless its own is shut (D-099)")
+	var aim := boxes.box_point("aim")
+	var aim_box: XREBlueprintBoxes.Box = null
+	for item: XREBlueprintBoxes.Box in boxes.get("_boxes") as Array:
+		if item.name == "aim": aim_box = item
+	_check(boxes.intersect_ray(aim + aim_box.drawer_point + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() == XREBlueprintBoxes.DRAWER, "its drawer's switch takes the ray")
+	_canvas.set_composite(XREFeatureSettings.WHOLE)
+	_canvas.rebuild(details)
+	boxes = _canvas.get_boxes()
 	var center := boxes.box_point("speed")
 	_check(boxes.intersect_ray(center + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() != XREBlueprintBoxes.TRASH, "out of focus its trash isn't there")
 	_canvas.set_focus(Vector3i(-1, -1, -1), "speed")

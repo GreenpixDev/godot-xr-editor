@@ -661,6 +661,14 @@ func _test_composite_values() -> void:
 	var z := boxes.component_point("spot", 2)
 	_check(not z.is_equal_approx(boxes.box_point("spot")) and z.x > boxes.box_point("spot").x, "its box has its components' outputs on its right")
 	_check(boxes.intersect_ray(z + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() == XREBlueprintBoxes.COMPONENT and boxes.get_hit_component() == 2, "the ray picks the z output")
+	# The drawer shuts on its own (D-099), one edit, and opens again.
+	_service.call("_switch_drawer", "spot")
+	await _frames()
+	_check(bool(graph.find_variable("spot").get("vr_collapsed", false)) and _service.canvas.get_boxes().component_point("spot", 2).is_equal_approx(_service.canvas.get_boxes().box_point("spot")), "its drawer shuts without the setting")
+	_service.call("_switch_drawer", "spot")
+	await _frames()
+	_check(not graph.find_variable("spot").has("vr_collapsed"), "and opens again")
+	boxes = _service.canvas.get_boxes()
 	var cards := (_service.canvas.get("_cards") as Array).size()
 	_service.call("_wire_component_to_port", "spot", 1, delay, 1)
 	await _frames()
@@ -670,6 +678,9 @@ func _test_composite_values() -> void:
 	var block := graph.find_node(breaker)
 	_check(XREBlueprintCanvas.is_split_break(block) and str((block["function"] as Dictionary)["name"]) == "break_vector3", "the y output wired into Seconds is a hidden Break of spot")
 	_check((_service.canvas.get("_cards") as Array).size() == cards, "with no card for it or its Get Variable")
+	_service.call("_switch_drawer", "spot")
+	await _frames()
+	_check(not graph.find_variable("spot").has("vr_collapsed"), "a drawer whose components are wired stays open")
 	var wired: XREBlueprintCanvas.Wire = null
 	for wire: XREBlueprintCanvas.Wire in _service.canvas.get("_wires") as Array:
 		if wire.from == null and wire.to != null and wire.to.id == delay and wire.to_port == 1: wired = wire
@@ -683,7 +694,7 @@ func _test_composite_values() -> void:
 	await _frames()
 	_check(graph.find_node(breaker).is_empty() and not graph.nodes.any(func(entry: Dictionary) -> bool: return entry["kind"] == "get_variable" and entry.get("vr_inline", false) and str(entry["params"]["variable"]) == "spot"),
 			"deleting Delay takes the hidden Break and its Get Variable with it")
-	for step: int in 4: _service.blueprint.undo()
+	for step: int in 6: _service.blueprint.undo()
 	await _frames()
 	_check(graph.nodes.size() == count and graph.find_variable("spot").is_empty(), "undo takes back each edit")
 	_document.set_feature(XREFeatureSettings.COMPOSITE_VALUES, XREFeatureSettings.WHOLE, XREDocument.Source.PANEL)

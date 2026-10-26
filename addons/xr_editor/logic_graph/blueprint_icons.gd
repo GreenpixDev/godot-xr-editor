@@ -64,6 +64,9 @@ const GLYPHS: Dictionary[StringName, String] = {
 	# with its quarter ticks and hands, a die with five pips.
 	&"dial": '<circle r="6.3" fill="none" stroke="#4fd1d9" stroke-opacity=".5" stroke-width=".4"/><path d="M0 -6.1V-5M6.1 0H5M0 6.1V5M-6.1 0H-5" stroke="#4fd1d9" stroke-width=".55"/><path d="M0 -4.2V0L2.8 1.7" stroke="#eaf8f9" stroke-width=".8" fill="none" stroke-linecap="round"/>',
 	&"dice": '<rect x="-5.2" y="-5.2" width="10.4" height="10.4" rx="2.2" fill="none" stroke="#cdeff1" stroke-width=".55"/><g fill="#cdeff1"><circle cx="-2.5" cy="-2.5" r=".85"/><circle cx="2.5" cy="-2.5" r=".85"/><circle r=".85"/><circle cx="-2.5" cy="2.5" r=".85"/><circle cx="2.5" cy="2.5" r=".85"/></g>',
+	# A box's drawer of components (D-099): open, shut.
+	&"drawer_open": '<path d="M-4 -2L0 2L4 -2" {S}/>',
+	&"drawer_shut": '<path d="M-2 -4L2 0L-2 4" {S}/>',
 	&"random": '<rect x="-5" y="-5" width="10" height="10" rx="2.5" {S}/><circle cx="-2" cy="-2" r="1" {F}/><circle cx="2" cy="2" r="1" {F}/>',
 }
 ## Glyphs drawn in their own colors, never tinted.
