@@ -98,6 +98,47 @@ static func output(shape: Shape) -> Vector2:
 	return Vector2(size_of(shape).x * 0.5, 0)
 
 
+## Shared meshes of the ports' shapes by type (D-095).
+static var _ports: Dictionary[int, ArrayMesh] = {}
+
+
+## A flat port of [param type]'s shape, [param radius] across its middle and
+## [param depth] deep, facing +Z (D-095): execution an arrow, bool a diamond,
+## int a square, float a circle, text a pill, vectors a triangle, an object a
+## hexagon, a colour a ring half filled, any value a ring. Made once a type.
+static func port_mesh(type: int, radius: float, depth: float) -> ArrayMesh:
+	if _ports.has(type): return _ports[type]
+	var r := radius
+	var points := PackedVector2Array()
+	var hollow := false
+	match type:
+		XREBlueprintGraph.EXEC: points = PackedVector2Array([Vector2(-0.85 * r, -r), Vector2(0.15 * r, -r), Vector2(1.1 * r, 0), Vector2(0.15 * r, r), Vector2(-0.85 * r, r)])
+		XREBlueprintGraph.BOOLEAN: points = PackedVector2Array([Vector2(1.15 * r, 0), Vector2(0, 1.15 * r), Vector2(-1.15 * r, 0), Vector2(0, -1.15 * r)])
+		XREBlueprintGraph.INTEGER: points = PackedVector2Array([Vector2(0.85 * r, -0.85 * r), Vector2(0.85 * r, 0.85 * r), Vector2(-0.85 * r, 0.85 * r), Vector2(-0.85 * r, -0.85 * r)])
+		XREBlueprintGraph.TEXT:
+			for step: int in 13: points.append(Vector2(0.6 * r, 0) + Vector2.from_angle(-PI * 0.5 + PI * step / 12.0) * 0.7 * r)
+			for step: int in 13: points.append(Vector2(-0.6 * r, 0) + Vector2.from_angle(PI * 0.5 + PI * step / 12.0) * 0.7 * r)
+		XREBlueprintGraph.VECTOR2, XREBlueprintGraph.VECTOR3: points = PackedVector2Array([Vector2(0, 1.1 * r), Vector2(-1.05 * r, -0.8 * r), Vector2(1.05 * r, -0.8 * r)])
+		XREBlueprintGraph.OBJECT:
+			for step: int in 6: points.append(Vector2.from_angle(TAU * step / 6.0) * 1.05 * r)
+		XREBlueprintGraph.VALUE, XREBlueprintGraph.COLOR:
+			points = circle(r)
+			hollow = true
+		_: points = circle(r)
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	if hollow:
+		surface.append_from(ring(points, 0.0, r * 0.3, depth * 0.5), 0, Transform3D.IDENTITY)
+		# A colour's ring is half filled: its left half, as a colour swatch's two tones.
+		if type == XREBlueprintGraph.COLOR:
+			var half := PackedVector2Array()
+			for step: int in 13: half.append(Vector2.from_angle(PI * 0.5 + PI * step / 12.0) * r * 0.75)
+			surface.append_from(body(half, depth), 0, Transform3D.IDENTITY)
+	else: surface.append_from(body(points, depth), 0, Transform3D.IDENTITY)
+	_ports[type] = surface.commit()
+	return _ports[type]
+
+
 ## A circle of [param radius], counterclockwise: a bead's outline (D-094).
 static func circle(radius: float) -> PackedVector2Array:
 	var points := PackedVector2Array()

@@ -18,8 +18,6 @@ var _hover_pulses := 0
 var _keyboard_clicks := 0
 ## The editor's node display before the test, put back at the end.
 var _saved_display := XREFeatureSettings.BILLBOARD
-var _saved_style := XREFeatureSettings.CLASSIC
-var _saved_shrink := XREFeatureSettings.OPERATORS
 ## The same for the port display and the window shape (D-043).
 var _saved_ports := XREFeatureSettings.FLAT
 var _saved_shape := XREFeatureSettings.FLAT
@@ -30,7 +28,7 @@ var _saved_path := ""
 const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT,
 		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
 		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS,
-		XREFeatureSettings.OBJECT_SHORTCUT]
+		XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.NODE_STYLE, XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.NODE_HEADING, XREFeatureSettings.PORT_SHAPES]
 ## The values the checks start from: the defaults before D-076 and D-089 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
@@ -42,6 +40,9 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.DEFOCUS: XREFeatureSettings.OFF, XREFeatureSettings.LINK_PREVIEW: XREFeatureSettings.OFF,
 	XREFeatureSettings.LINK_WIRES: XREFeatureSettings.OFF, XREFeatureSettings.LINK_CREATE: XREFeatureSettings.WIRE_BUTTON,
 	XREFeatureSettings.WIRE_BENDS: XREFeatureSettings.OFF, XREFeatureSettings.OBJECT_SHORTCUT: XREFeatureSettings.OFF,
+	# The redesign of the cards (D-090 to D-095) starts from Classic, as the checks before it expect.
+	XREFeatureSettings.NODE_STYLE: XREFeatureSettings.CLASSIC, XREFeatureSettings.NODE_SHRINK: XREFeatureSettings.OPERATORS,
+	XREFeatureSettings.NODE_HEADING: XREFeatureSettings.OPERATION, XREFeatureSettings.PORT_SHAPES: XREFeatureSettings.OFF,
 }
 
 
@@ -117,10 +118,6 @@ func _run() -> void:
 	# The editor's variant is put back at the end; the checks expect the default billboards.
 	_saved_display = _document.features.get_value(XREFeatureSettings.NODE_DISPLAY)
 	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
-	_saved_style = _document.features.get_value(XREFeatureSettings.NODE_STYLE)
-	_document.features.set_value(XREFeatureSettings.NODE_STYLE, XREFeatureSettings.CLASSIC)
-	_saved_shrink = _document.features.get_value(XREFeatureSettings.NODE_SHRINK)
-	_document.features.set_value(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.OPERATORS)
 	_saved_ports = _document.features.get_value(XREFeatureSettings.PORT_DISPLAY)
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.FLAT)
 	_saved_shape = _document.features.get_value(XREFeatureSettings.WINDOW_SHAPE)
@@ -425,8 +422,6 @@ func _run() -> void:
 	_viewport.queue_free()
 	await _frames()
 	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, _saved_display)
-	_document.features.set_value(XREFeatureSettings.NODE_STYLE, _saved_style)
-	_document.features.set_value(XREFeatureSettings.NODE_SHRINK, _saved_shrink)
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, _saved_ports)
 	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, _saved_shape)
 	for key: StringName in PARAMETER_SETTINGS: _document.features.set_value(key, _saved_parameters[key])
@@ -610,6 +605,12 @@ func _test_node_style() -> void:
 	_service.blueprint.undo()
 	await _frames()
 	_check(graph.find_node(added[0])["kind"] == "set_property" and graph.find_variable("speed").is_empty(), "undo takes back each edit")
+	# Port shapes (D-095) redraw the open graph too.
+	_check(_document.set_feature(XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.ON, XREDocument.Source.PANEL) and _service.canvas.get_port_shapes(), "port shapes switch on")
+	await _frames()
+	_check(_card(added[1]).ports[1].mesh is ArrayMesh, "Branch's Condition is a shaped port")
+	_check(_document.set_feature(XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.OFF, XREDocument.Source.PANEL), "and off")
+	await _frames()
 	# Node shrink (D-091) redraws the open graph too.
 	_check(_document.set_feature(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.MATH, XREDocument.Source.PANEL), "node shrink switches to + Math")
 	await _frames()

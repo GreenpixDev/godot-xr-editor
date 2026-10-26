@@ -75,6 +75,13 @@ const OPERATION := &"operation"
 ## "body_entered", "light_energy", "gate_open" over a small "On Signal" or "Set".
 const MEMBER := &"member"
 
+## Whether a logic graph port's shape says its type too, its colour as before
+## (D-095): execution an arrow, bool a diamond, int a square, float a
+## circle, text a pill, a vector a triangle, an object a hexagon, a colour a
+## half-filled circle, any value a ring. Int and float, side by side, differ
+## by more than their hue (D-080).
+const PORT_SHAPES := &"port_shapes"
+
 ## Shape of the windows (rig-locked panels, docs/vr_ui.md; D-043). The tab
 ## launcher is concave either way.
 const WINDOW_SHAPE := &"window_shape"
@@ -221,6 +228,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [OPERATION, MEMBER],
 		"labels": ["Operation", "Member"],
 		"hint": "With Archetypes. Operation: the header says what the block does, the member is on the adapter. Member: the header says the signal, property or variable, the wire to it bare. ⇄ by the trash switches one card.",
+	},
+	PORT_SHAPES: {
+		"category": Category.FEATURES,
+		"title": "Port shapes",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: a port's shape says its type as its colour does: an arrow for execution, a diamond for bool, a square for int, a circle for float, a pill for text, a triangle for vectors.",
 	},
 	WINDOW_SHAPE: {
 		"category": Category.FEATURES,

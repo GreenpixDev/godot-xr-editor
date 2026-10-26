@@ -269,6 +269,31 @@ func _test_beads() -> void:
 	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
 
 
+## Port shapes (D-095): with them on a port's mesh is its type's shape, one
+## mesh a type, flat and facing the front, its colour as before, picked as a
+## port was; off, ports are discs again.
+func _test_port_shapes() -> void:
+	var shaped := XREBlueprintGraph.new()
+	shaped.nodes = [XREBlueprintGraph.make_node(1, "branch", Vector2.ZERO), XREBlueprintGraph.make_node(2, "delay", Vector2(0, 300))]
+	shaped.upgrade()
+	_check(_canvas.set_port_shapes(true) and not _canvas.set_port_shapes(true), "port shapes switch on once")
+	_canvas.rebuild(shaped)
+	_canvas.face_user(Vector3(0, 0, 50))
+	var branch := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var delay := (_canvas.get("_cards") as Array)[1] as XREBlueprintCanvas.Card
+	var condition := branch.ports[1].mesh
+	var seconds := delay.ports[1].mesh
+	_check(condition is ArrayMesh and seconds is ArrayMesh and condition != seconds, "bool's port and float's are shapes of their own")
+	_check(branch.ports[0].mesh == delay.ports[0].mesh, "execution's ports share one arrow")
+	_check(_faces_front(condition) and _faces_front(branch.ports[0].mesh), "the shapes face the front")
+	_check(((branch.ports[1] as MeshInstance3D).material_override as BaseMaterial3D).albedo_color.is_equal_approx(XREBlueprintCanvas.COLORS[XREBlueprintGraph.BOOLEAN]), "in bool's colour as before")
+	var port := _canvas.port_position(1, 1, true)
+	_check(_hit(port, Vector3.FORWARD) >= 0 and _canvas.get_hit_port() == 1 and _canvas.get_hit_input(), "a shaped port is picked as a port")
+	_check(_canvas.set_port_shapes(false), "port shapes switch off")
+	_canvas.rebuild(shaped)
+	_check(((_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card).ports[1].mesh is CylinderMesh, "ports are discs again")
+
+
 ## Whether every triangle of [param mesh] that faces +Z winds clockwise seen from there (Godot's front faces).
 static func _faces_front(mesh: Mesh) -> bool:
 	var arrays := mesh.surface_get_arrays(0)
@@ -409,6 +434,7 @@ func _run() -> void:
 	_test_signs()
 	_test_headings()
 	_test_beads()
+	_test_port_shapes()
 	_canvas.rebuild(graph)
 	_test_port_wires()
 	_canvas.queue_free()

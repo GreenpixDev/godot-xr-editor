@@ -351,6 +351,7 @@ var _archetype_trash: Material
 var _class_icon: Callable
 var _shrink := XREFeatureSettings.OPERATORS
 var _heading := XREFeatureSettings.OPERATION
+var _port_shapes := false
 var _hit_swap := false
 var _faces_user := false
 var _display := XREFeatureSettings.BILLBOARD
@@ -505,6 +506,31 @@ func set_shrink(shrink: StringName) -> bool:
 ## Which blocks archetypes draw as signs: a value of [constant XREFeatureSettings.NODE_SHRINK].
 func get_shrink() -> StringName:
 	return _shrink
+
+
+## Whether ports are shaped by their types ([constant XREFeatureSettings.PORT_SHAPES],
+## D-095). Takes effect on the next [method rebuild]; true if it changed.
+func set_port_shapes(shaped: bool) -> bool:
+	if shaped == _port_shapes: return false
+	_port_shapes = shaped
+	return true
+
+
+## Whether ports are shaped by their types ([method set_port_shapes]).
+func get_port_shapes() -> bool:
+	return _port_shapes
+
+
+## A port's mesh of [param type] in [param color]: shaped by the type with
+## Port shapes on (D-095), flat on the face; else a disc, or a sphere if
+## [param spherical] — the sphere's centre is then [constant SPHERE_LIFT] radii
+## out of the face, which the caller sets.
+func _port_visual(type: int, color: Color, spherical: bool) -> MeshInstance3D:
+	if _port_shapes: return XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type, PORT_RADIUS, PORT_DEPTH * 2.0), material(color, true))
+	if spherical: return XRERig.create_vr_mesh(_sphere_mesh, wire_material(color))
+	var disc := XRERig.create_vr_mesh(_port_mesh, material(color, true))
+	disc.rotation.x = PI * 0.5
+	return disc
 
 
 ## Switches what archetypes' headers say by default to [param heading], a value of
@@ -2684,14 +2710,10 @@ func update_scene_wire(link: Wire, id: int, port: int, end: Vector3) -> void:
 func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1, shown: int = -1) -> Label3D:
 	var point := _row_point(card, row if row >= 0 else index, input)
 	var color := COLORS[shown if shown >= 0 else spec[1]]
-	var mesh: MeshInstance3D
-	if _port_display == XREFeatureSettings.SPHERE:
-		# Shaded by the view angle, as wires are, so that it reads as round.
-		point.z = card.face + CARD_THICKNESS * 0.5 + PORT_RADIUS * SPHERE_LIFT
-		mesh = XRERig.create_vr_mesh(_sphere_mesh, wire_material(color))
-	else:
-		mesh = XRERig.create_vr_mesh(_port_mesh, material(color, true))
-		mesh.rotation.x = PI * 0.5
+	var spherical := _port_display == XREFeatureSettings.SPHERE and not _port_shapes
+	# Shaded by the view angle, as wires are, so that it reads as round.
+	if spherical: point.z = card.face + CARD_THICKNESS * 0.5 + PORT_RADIUS * SPHERE_LIFT
+	var mesh := _port_visual(shown if shown >= 0 else spec[1], color, spherical)
 	mesh.position = point
 	card.node.add_child(mesh)
 	# By the port's index, not its row: an archetype's rows are in another order (D-092).
@@ -2858,8 +2880,7 @@ func _name_outside(label_node: Label3D, text: String) -> void:
 ## A port-like socket that is not one of the block's ports: Finished, Source or Variable.
 func _add_virtual(card: Card, kind: int, key: String, title: String, type: int, row: int, input: bool) -> Label3D:
 	var point := _row_point(card, row, input)
-	var mesh := XRERig.create_vr_mesh(_port_mesh, material(COLORS[type], true))
-	mesh.rotation.x = PI * 0.5
+	var mesh := _port_visual(type, COLORS[type], false)
 	mesh.position = point
 	card.node.add_child(mesh)
 	var socket := Socket.new()
@@ -2965,12 +2986,7 @@ func _add_adapter(card: Card, block: Dictionary, point: Vector3, link: bool = fa
 	neck_mesh.rotation.z = PI * 0.5
 	neck_mesh.position = Vector3((edge + pin_x) * 0.5, 0, depth)
 	plug.add_child(neck_mesh)
-	var pin: MeshInstance3D
-	if _port_display == XREFeatureSettings.SPHERE:
-		pin = XRERig.create_vr_mesh(_sphere_mesh, wire_material(COLORS[XREBlueprintGraph.OBJECT]))
-	else:
-		pin = XRERig.create_vr_mesh(_port_mesh, material(COLORS[XREBlueprintGraph.OBJECT], true))
-		pin.rotation.x = PI * 0.5
+	var pin := _port_visual(XREBlueprintGraph.OBJECT, COLORS[XREBlueprintGraph.OBJECT], _port_display == XREFeatureSettings.SPHERE)
 	pin.position = Vector3(pin_x, 0, depth)
 	plug.add_child(pin)
 	plug.set_meta(&"pin", pin)
