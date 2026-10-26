@@ -77,8 +77,15 @@ func _test_archetypes(graph: XREBlueprintGraph) -> void:
 	_check(_hit(card.trash_point, Vector3.FORWARD) < 0, "a hidden trash isn't picked")
 	_canvas.set_focus(Vector3i(1, -1, -1))
 	_check(card.trash.visible and _hit(card.trash_point, Vector3.FORWARD) >= 0 and _canvas.get_hit_delete(), "in focus the trash shows and is picked")
+	var air := card.node.position + Vector3(card.trash_point.x, card.bounds.end.y + 0.003, card.trash_point.z)
+	_check(_hit(air, Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 1 and not _canvas.get_hit_delete(), "the air between the card and its trash keeps the card under the ray (D-114)")
+	var stand_in := _canvas.stand_in(1)
+	_check(stand_in != null and stand_in.get_child_count() == card.node.get_child_count() and not (stand_in.get_child(card.trash.get_index()) as Node3D).visible
+			and (stand_in.get_child(card.plus.get_index()) as Node3D).visible == false, "a copy's stand-in is the card without its buttons (D-114)")
+	stand_in.free()
 	_canvas.set_focus(Vector3i(-1, -1, -1))
 	_check(not card.trash.visible, "and hides when the focus goes")
+	_check(_hit(air, Vector3.FORWARD) < 0, "and the air is air again")
 	var calls := XREBlueprintGraph.new()
 	calls.nodes = [XREBlueprintGraph.make_call(1, XREBlueprintFunctions.global("lerpf"), Vector2.ZERO),
 			XREBlueprintGraph.make_call(2, XREBlueprintFunctions.method("Node3D", "look_at"), Vector2(0, 300)),
@@ -233,9 +240,21 @@ func _test_headings() -> void:
 	var member_label := set_card.node.get_node("Member") as Label3D
 	_check(member_label.scale.is_equal_approx(Vector3.ONE) and member_label.modulate.is_equal_approx(XREBlueprintCanvas.MEMBER_HOVER), "the member under the ray changes colour, not size (D-110)")
 	_canvas.hover_socket(-1, -1, true)
+	# Another card's socket under the ray leaves a dark member dark (D-114).
+	XREBlueprintFocus.paint(member_label, XREBlueprintFocus.DARK)
+	var dark := member_label.modulate
+	_canvas.hover_socket(1, 0, true)
+	_check(member_label.modulate.is_equal_approx(dark), "a member out of focus stays dark while the ray is on another card")
+	_canvas.hover_socket(2, member_socket, true)
+	_check(member_label.modulate.v < XREBlueprintCanvas.MEMBER_HOVER.v, "and lights up dark under the ray")
+	_canvas.hover_socket(-1, -1, true)
+	XREBlueprintFocus.paint(member_label, XREBlueprintFocus.PLAIN)
+	_check(member_label.modulate.is_equal_approx(XREBlueprintCanvas.MEMBER_COLOR), "and is its own colour back in focus")
 	_check(set_card.swap != null and not set_card.swap.visible, "⇄ waits for the focus")
 	_canvas.set_focus(Vector3i(2, -1, -1))
 	_check(set_card.swap.visible and _hit(set_card.node.position + set_card.swap_point, Vector3.FORWARD) >= 0 and _canvas.get_hit_swap() and not _canvas.get_hit_delete(), "in focus ⇄ shows by the trash and is picked")
+	var between := set_card.node.position + (set_card.swap_point + set_card.trash_point) * 0.5
+	_check(_hit(between, Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 2 and not _canvas.get_hit_swap() and not _canvas.get_hit_delete(), "the air between ⇄ and the trash keeps the card (D-114)")
 	_canvas.set_focus(Vector3i(-1, -1, -1))
 	_check(_canvas.set_style(XREFeatureSettings.CLASSIC), "classic again")
 	_canvas.rebuild(cards_graph)
@@ -343,7 +362,7 @@ func _test_mockup_details() -> void:
 	getter["params"]["variable"] = "speed"
 	details.nodes.append(getter)
 	details.nodes.append(XREBlueprintGraph.make_operator(5, "multiply", Vector2(0, 1200)))
-	details.variables = [{"name": "speed", "value": 1.5}, {"name": "spot", "value": Vector3.ONE}, {"name": "aim", "value": Vector3.ONE, "vr_collapsed": true}]
+	details.variables = [{"name": "speed", "value": 1.5}, {"name": "spot", "value": Vector3.ONE, "vr_collapsed": false}, {"name": "aim", "value": Vector3.ONE}]
 	details.upgrade()
 	var modes := _canvas.get_parameter_modes()
 	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, XREFeatureSettings.ADAPTER, modes[2], XREFeatureSettings.WINDOW)
@@ -411,6 +430,15 @@ func _test_mockup_details() -> void:
 	_check(spot_box.component_ports[1].scale.x > 1.5 and is_equal_approx(spot_box.component_ports[0].scale.x, 1.0), "the output of y under the ray grows, as a card's port (D-109)")
 	boxes.hover(-1, -1, true)
 	_check(is_equal_approx(spot_box.component_ports[1].scale.x, 1.0), "and shrinks back")
+	_check((spot_box.component_ports[0] as MeshInstance3D).mesh.get_aabb().size.x < XREBlueprintBoxes.COMPONENT_RADIUS * 2.0 + 0.0005, "the outputs are as small as they were drawn, not ports' size (D-114)")
+	var triangle := XREBlueprintShapes.port_mesh(XREBlueprintGraph.VECTOR3, XREBlueprintCanvas.PORT_RADIUS, XREBlueprintCanvas.PORT_DEPTH * 2.0)
+	var shaped := func(box: XREBlueprintBoxes.Box) -> bool: return box.node.find_children("*", "MeshInstance3D", true, false).any(func(item: Node) -> bool: return (item as MeshInstance3D).mesh == triangle)
+	_check(not shaped.call(spot_box), "with Port shapes off a Vector3's box has no triangle (D-114)")
+	_canvas.set_port_shapes(true)
+	_canvas.rebuild(details)
+	boxes = _canvas.get_boxes()
+	_check(shaped.call((boxes.get("_boxes") as Array)[spot_index] as XREBlueprintBoxes.Box), "with it on it has")
+	_canvas.set_port_shapes(false)
 	_canvas.set_composite(XREFeatureSettings.WHOLE)
 	_canvas.rebuild(details)
 	boxes = _canvas.get_boxes()

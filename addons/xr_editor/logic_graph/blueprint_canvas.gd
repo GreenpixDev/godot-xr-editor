@@ -201,6 +201,9 @@ const TAG_HEIGHT := 0.035
 const TAG_TINT := 0.22
 const SWAP_SIZE := 0.024
 const SWAP_SHIFT := 0.034
+## The values of Node shrink from fewest signs to most, each with the ones before it: the
+## setting lists its default first (D-114), not in this order.
+const SHRINK_LEVELS: Array[StringName] = [XREFeatureSettings.OPERATORS, XREFeatureSettings.MATH, XREFeatureSettings.SYSTEM, XREFeatureSettings.ICONS]
 ## A bead (D-103): its radius, and with three ports on a side; its icon's size
 ## in its radii, an image's; how far under it its name shows under the ray,
 ## and its font size (D-106: 18 was too small to read; back in D-108).
@@ -1215,7 +1218,7 @@ func _type_frame(type: int) -> Material:
 ## and Random from + System on; from All with icons, every block with an icon
 ## of its own — not ƒ — and at most three rows a side ([param layout]), not an event.
 func _is_bead(block: Dictionary, inputs: Array, layout: Array) -> bool:
-	var level := XREFeatureSettings.get_values(XREFeatureSettings.NODE_SHRINK).find(_shrink)
+	var level := SHRINK_LEVELS.find(_shrink)
 	if level < 2: return false
 	var function: Dictionary = block.get("function", {})
 	var key := "%s.%s" % [function.get("class", ""), function.get("name", "")]
@@ -1257,7 +1260,7 @@ func _add_tag(card: Card, block: Dictionary, outputs: Array) -> void:
 	card.frame.set_meta(&"painted", true)
 	card.node.add_child(card.frame)
 	var type := int((outputs[0] as Array)[1]) if not outputs.is_empty() else XREBlueprintGraph.VALUE
-	var dot := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type, PORT_RADIUS, PORT_DEPTH * 2.0), material(COLORS[type], true))
+	var dot := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type if _port_shapes else XREBlueprintGraph.NUMBER, PORT_RADIUS, PORT_DEPTH * 2.0), material(COLORS[type], true))
 	dot.scale = Vector3.ONE * 0.55
 	dot.position = Vector3(-card.width * 0.5 + 0.017, 0, front + 0.0004)
 	card.node.add_child(dot)
@@ -1306,7 +1309,7 @@ func _sign_shape(block: Dictionary, inputs: Array, outputs: Array) -> XREBluepri
 			XREBlueprintOperators.LOGIC: return XREBlueprintShapes.Shape.PILL
 		return XREBlueprintShapes.Shape.DIAMOND
 	# + Math and every level after it (D-100, D-103).
-	if XREFeatureSettings.get_values(XREFeatureSettings.NODE_SHRINK).find(_shrink) >= 1 and not XREBlueprintShapes.word_of(block, inputs, outputs).is_empty():
+	if SHRINK_LEVELS.find(_shrink) >= 1 and not XREBlueprintShapes.word_of(block, inputs, outputs).is_empty():
 		return XREBlueprintShapes.Shape.CIRCLE if inputs.size() <= 2 else XREBlueprintShapes.Shape.OVAL
 	return XREBlueprintShapes.Shape.NONE
 
@@ -1367,6 +1370,17 @@ static func split_variable(graph: XREBlueprintGraph, breaker: Dictionary) -> Str
 		var getter := graph.find_node(edge["from"])
 		if getter.get("kind") == "get_variable": return str((getter["params"] as Dictionary).get("variable", ""))
 	return ""
+
+
+## Whether the drawer of components of [param variable]'s box is shut (D-108):
+## shut unless its editor-only vr_collapsed is false (D-114), open while a
+## hidden Break wires its components.
+static func drawer_shut(graph: XREBlueprintGraph, variable: Dictionary) -> bool:
+	if not bool(variable.get("vr_collapsed", true)): return false
+	var name := str(variable.get("name", ""))
+	for block: Dictionary in graph.nodes:
+		if is_split_break(block) and split_variable(graph, block) == name: return false
+	return true
 
 
 ## How wide an operator's card is (D-065): its ports and the widest token on
@@ -1557,6 +1571,19 @@ static func card_group(block: Dictionary) -> int:
 		if ClassDB.is_parent_class(cls, "AnimationMixer"): return 5
 		if cls.begins_with("AudioStreamPlayer"): return 4
 	return 1
+
+
+## A stand-in of card [param id] for its copy on the way to its place (D-114):
+## the card's node duplicated at the card's scale, without its buttons and
+## name tip, centred at its origin; null for no card.
+func stand_in(id: int) -> Node3D:
+	var card := _find_card(id)
+	if card == null: return null
+	var copy := card.node.duplicate() as Node3D
+	for button: Node3D in [card.plus, card.trash, card.copy, card.swap, card.tip]:
+		if button != null: (copy.get_child(button.get_index()) as Node3D).visible = false
+	copy.transform = Transform3D(Basis.from_scale(card.node.global_basis.get_scale()), Vector3.ZERO)
+	return copy
 
 
 ## Graph coordinates of a workspace point: the inverse of [method position_from_block] without depth.
@@ -2320,6 +2347,29 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_delete = false
 			_hit_swap = false
 			_hit_copy = false
+		# The air between an archetype's buttons and between them and its card keeps
+		# the card under the ray, so its buttons don't hide on the way to one (D-114).
+		if _hit_id != card.id and _style == XREFeatureSettings.ARCHETYPES and card.trash.visible:
+			var reach := AABB(card.trash_point - trash_size * 0.5, trash_size)
+			if card.swap != null: reach = reach.merge(AABB(card.swap_point - Vector3.ONE * SWAP_SIZE * 0.5, Vector3.ONE * SWAP_SIZE))
+			if card.copy != null:
+				var copy_size := Vector3.ONE * PLUS_RADIUS * card.copy.scale.x * 2.0
+				reach = reach.merge(AABB(card.copy_point - copy_size * 0.5, copy_size))
+			# Down into the card: a sign's outline leaves air under its corner.
+			var floor_y := card.bounds.get_center().y if not card.outline.is_empty() else card.bounds.end.y
+			reach = reach.expand(Vector3(reach.position.x, floor_y, reach.position.z))
+			var gap := _box_distance(card_origin, card_direction, reach, nearest)
+			if gap >= 0:
+				nearest = gap
+				_hit_id = card.id
+				_hit_port = -1
+				_hit_input = false
+				_hit_socket = -1
+				_hit_finished = false
+				_hit_plus = false
+				_hit_delete = false
+				_hit_swap = false
+				_hit_copy = false
 	# A wire in front of a card's face takes the ray from it; ports, sockets and
 	# the cards' buttons keep it. Not while a wire is drawn: it ends on ports.
 	var drawing := _preview.visible or _compatible_type >= 0
@@ -2622,8 +2672,9 @@ func hover_socket(id: int, socket: int, right: bool) -> void:
 			var hovered := Vector2i(card.id, index) == _socket_right or Vector2i(card.id, index) == _socket_left
 			var item := card.sockets[index]
 			if item.kind in [FINISHED, SOURCE, VARIABLE]: item.visual.scale = item.base_scale * (HOVER_SCALE if hovered else 1.0)
-			# The member in a header doesn't grow over its verb: it changes colour (D-110).
-			elif item.visual.name == "Member" and item.visual is Label3D: (item.visual as Label3D).modulate = MEMBER_HOVER if hovered else MEMBER_COLOR
+			# The member in a header doesn't grow over its verb: it changes colour (D-110),
+			# staying dark on a card out of focus (D-114).
+			elif item.visual.name == "Member" and item.visual is Label3D: XREBlueprintFocus.recolor(item.visual as Label3D, MEMBER_HOVER if hovered else MEMBER_COLOR)
 			else: item.visual.scale = item.base_scale * (SOCKET_HOVER if hovered else 1.0)
 	# The wire of a Variable socket under a ray thickens, as a port's does (D-061).
 	_paint_links()
@@ -3809,7 +3860,7 @@ func _build_boxes(graph: XREBlueprintGraph) -> void:
 		if block["kind"] in ["get_variable", "set_variable"]: used[str(block["params"]["variable"])] = true
 	# Turned as the cards are, with the display they are rebuilt for (D-090).
 	_boxes.face(_head_position, _faces_user and _display != XREFeatureSettings.CUBOID)
-	_boxes.rebuild(graph, _box_places(graph), _value_mode, used, _composite == XREFeatureSettings.SPLIT, _style == XREFeatureSettings.ARCHETYPES)
+	_boxes.rebuild(graph, _box_places(graph), _value_mode, used, _composite == XREFeatureSettings.SPLIT, _style == XREFeatureSettings.ARCHETYPES, _port_shapes)
 	for card: Card in _cards:
 		var block := graph.find_node(card.id)
 		for index: int in card.sockets.size():

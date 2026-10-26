@@ -30,7 +30,7 @@ const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, X
 		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS,
 		XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.AUTO_LINK, XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY,
 		XREFeatureSettings.NODE_STYLE, XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.NODE_HEADING, XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.COMPOSITE_VALUES]
-## The values the checks start from: the defaults before D-076, D-089 and D-097 made the
+## The values the checks start from: the defaults before D-076, D-089, D-097 and D-114 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.VALUE_INPUT: XREFeatureSettings.WINDOW, XREFeatureSettings.TARGET_INPUT: XREFeatureSettings.WINDOW,
@@ -664,16 +664,21 @@ func _test_composite_values() -> void:
 	_check(_service.blueprint.add_variable("spot", Vector3(1, 2, 3), {"vr_position": Vector2(-400, 300)}), "a Vector3 variable")
 	await _frames()
 	var boxes := _service.canvas.get_boxes()
+	_check(boxes.component_point("spot", 2).is_equal_approx(boxes.box_point("spot")), "a new box's drawer starts shut (D-114)")
+	_service.call("_switch_drawer", "spot")
+	await _frames()
+	boxes = _service.canvas.get_boxes()
+	_check(graph.find_variable("spot").get("vr_collapsed", true) == false, "its switch opens it, one edit")
 	var z := boxes.component_point("spot", 2)
 	_check(not z.is_equal_approx(boxes.box_point("spot")) and z.x > boxes.box_point("spot").x, "its box has its components' outputs on its right")
 	_check(boxes.intersect_ray(z + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() == XREBlueprintBoxes.COMPONENT and boxes.get_hit_component() == 2, "the ray picks the z output")
 	# The drawer shuts on its own (D-108), one edit, and opens again.
 	_service.call("_switch_drawer", "spot")
 	await _frames()
-	_check(bool(graph.find_variable("spot").get("vr_collapsed", false)) and _service.canvas.get_boxes().component_point("spot", 2).is_equal_approx(_service.canvas.get_boxes().box_point("spot")), "its drawer shuts without the setting")
+	_check(not graph.find_variable("spot").has("vr_collapsed") and _service.canvas.get_boxes().component_point("spot", 2).is_equal_approx(_service.canvas.get_boxes().box_point("spot")), "its drawer shuts without the setting")
 	_service.call("_switch_drawer", "spot")
 	await _frames()
-	_check(not graph.find_variable("spot").has("vr_collapsed"), "and opens again")
+	_check(graph.find_variable("spot").get("vr_collapsed", true) == false, "and opens again")
 	boxes = _service.canvas.get_boxes()
 	var cards := (_service.canvas.get("_cards") as Array).size()
 	_service.call("_wire_component_to_port", "spot", 1, delay, 1)
@@ -686,7 +691,7 @@ func _test_composite_values() -> void:
 	_check((_service.canvas.get("_cards") as Array).size() == cards, "with no card for it or its Get Variable")
 	_service.call("_switch_drawer", "spot")
 	await _frames()
-	_check(not graph.find_variable("spot").has("vr_collapsed"), "a drawer whose components are wired stays open")
+	_check(graph.find_variable("spot").get("vr_collapsed", true) == false, "a drawer whose components are wired stays open")
 	var wired: XREBlueprintCanvas.Wire = null
 	for wire: XREBlueprintCanvas.Wire in _service.canvas.get("_wires") as Array:
 		if wire.from == null and wire.to != null and wire.to.id == delay and wire.to_port == 1: wired = wire
@@ -700,7 +705,7 @@ func _test_composite_values() -> void:
 	await _frames()
 	_check(graph.find_node(breaker).is_empty() and not graph.nodes.any(func(entry: Dictionary) -> bool: return entry["kind"] == "get_variable" and entry.get("vr_inline", false) and str(entry["params"]["variable"]) == "spot"),
 			"deleting Delay takes the hidden Break and its Get Variable with it")
-	for step: int in 6: _service.blueprint.undo()
+	for step: int in 7: _service.blueprint.undo()
 	await _frames()
 	_check(graph.nodes.size() == count and graph.find_variable("spot").is_empty(), "undo takes back each edit")
 	_document.set_feature(XREFeatureSettings.COMPOSITE_VALUES, XREFeatureSettings.WHOLE, XREDocument.Source.PANEL)
@@ -1699,6 +1704,10 @@ func _test_d093() -> void:
 	_check(XREFeatureSettings.get_default(XREFeatureSettings.BLOCK_PALETTE) == XREFeatureSettings.RING and XREFeatureSettings.get_default(XREFeatureSettings.PALETTE_GROUPS) == XREFeatureSettings.SOURCES
 			and XREFeatureSettings.get_default(XREFeatureSettings.NEXT_SUGGESTIONS) == XREFeatureSettings.OFF and XREFeatureSettings.get_default(XREFeatureSettings.BLOCK_COPY) == XREFeatureSettings.ON,
 			"the defaults are the author's picks (D-097): the ring, chips by source, no suggestions, the copy button")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.NODE_STYLE) == XREFeatureSettings.ARCHETYPES and XREFeatureSettings.get_default(XREFeatureSettings.NODE_SHRINK) == XREFeatureSettings.SYSTEM
+			and XREFeatureSettings.get_default(XREFeatureSettings.NODE_HEADING) == XREFeatureSettings.MEMBER and XREFeatureSettings.get_default(XREFeatureSettings.COMPOSITE_VALUES) == XREFeatureSettings.SPLIT
+			and XREFeatureSettings.get_default(XREFeatureSettings.LINK_CREATE) == XREFeatureSettings.WIRE_MENU and XREFeatureSettings.get_default(XREFeatureSettings.AUTO_LINK) == XREFeatureSettings.ON,
+			"the defaults are the author's picks (D-114): archetypes, + System, Member, Split, the wire menu, auto link")
 	var history := _service.blueprint.history.get_version()
 	var graph := _service.blueprint.graph
 	var menu := _service.block_menu
@@ -3407,7 +3416,7 @@ func _test_d090() -> void:
 	var graph := _service.blueprint.graph
 	var canvas := _service.canvas
 	var history := _service.blueprint.history.get_version()
-	_check(XREFeatureSettings.get_values(XREFeatureSettings.AUTO_LINK) == [XREFeatureSettings.OFF, XREFeatureSettings.ON], "Auto link is a setting, off by default")
+	_check(XREFeatureSettings.get_values(XREFeatureSettings.AUTO_LINK) == [XREFeatureSettings.ON, XREFeatureSettings.OFF], "Auto link is a setting, on by default (D-114)")
 
 	# The rays over the block palette, drawn over everything (D-086), though no card is in focus.
 	_aim_from(Vector3(-5, 0, 0), Vector3.BACK)
@@ -4520,7 +4529,7 @@ func _test_d074() -> void:
 	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
 	_check(XREFeatureSettings.get_values(XREFeatureSettings.LINK_PREVIEW) == [XREFeatureSettings.VARIABLES, XREFeatureSettings.OFF, XREFeatureSettings.OBJECTS, XREFeatureSettings.ALL]
 			and XREFeatureSettings.get_values(XREFeatureSettings.LINK_WIRES) == [XREFeatureSettings.ON_FOCUS, XREFeatureSettings.OFF, XREFeatureSettings.ON]
-			and XREFeatureSettings.get_values(XREFeatureSettings.LINK_CREATE) == [XREFeatureSettings.WIRE_BUTTON, XREFeatureSettings.PULL, XREFeatureSettings.PORT_BUTTON, XREFeatureSettings.ALWAYS, XREFeatureSettings.WIRE_MENU],
+			and XREFeatureSettings.get_values(XREFeatureSettings.LINK_CREATE) == [XREFeatureSettings.WIRE_MENU, XREFeatureSettings.WIRE_BUTTON, XREFeatureSettings.PULL, XREFeatureSettings.PORT_BUTTON, XREFeatureSettings.ALWAYS],
 			"Link preview, Link wires and Link from wire are settings with the values asked for, the first by default")
 	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
 	_service.blueprint.set_variable("link_gain", 2.0)

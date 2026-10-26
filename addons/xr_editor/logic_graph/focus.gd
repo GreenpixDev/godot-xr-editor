@@ -86,6 +86,17 @@ static func paint(node: Node, paint_as: int, root: Node3D = null) -> void:
 	for child: Node in node.get_children(): paint(child, paint_as, root)
 
 
+## Gives [param label] the colour [param color] as [method paint] left it:
+## darker while it is painted [constant DARK] (D-114).
+static func recolor(label: Label3D, color: Color) -> void:
+	if not label.has_meta(&"unpainted"):
+		label.modulate = color
+		return
+	var before: Array = label.get_meta(&"unpainted")
+	before[0] = color
+	label.modulate = _darker(color)
+
+
 ## Draws [param geometry] over the rest of the graph, or as before (D-075):
 ## in the transparent pass, sorted [constant TOP_SORTING] later and more the
 ## farther toward the front of [param root] it stands, a label after a

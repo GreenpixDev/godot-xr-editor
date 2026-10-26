@@ -119,16 +119,17 @@ static func output(shape: Shape) -> Vector2:
 	return Vector2(size_of(shape).x * 0.5, 0)
 
 
-## Shared meshes of the ports' shapes by type (D-104).
-static var _ports: Dictionary[int, ArrayMesh] = {}
+## Shared meshes of the ports' shapes by type, radius and depth (D-104).
+static var _ports: Dictionary[Vector3, ArrayMesh] = {}
 
 
 ## A flat port of [param type]'s shape, [param radius] across its middle and
 ## [param depth] deep, facing +Z (D-104): execution an arrow, bool a diamond,
 ## int a square, float a circle, text a pill, vectors a triangle, an object a
-## hexagon, a colour a ring half filled, any value a ring. Made once a type.
+## hexagon, a colour a ring half filled, any value a ring. Made once a type and size.
 static func port_mesh(type: int, radius: float, depth: float) -> ArrayMesh:
-	if _ports.has(type): return _ports[type]
+	var key := Vector3(type, radius, depth)
+	if _ports.has(key): return _ports[key]
 	var r := radius
 	var points := PackedVector2Array()
 	var hollow := false
@@ -156,8 +157,8 @@ static func port_mesh(type: int, radius: float, depth: float) -> ArrayMesh:
 			for step: int in 13: half.append(Vector2.from_angle(PI * 0.5 + PI * step / 12.0) * r * 0.75)
 			surface.append_from(body(half, depth), 0, Transform3D.IDENTITY)
 	else: surface.append_from(body(points, depth), 0, Transform3D.IDENTITY)
-	_ports[type] = surface.commit()
-	return _ports[type]
+	_ports[key] = surface.commit()
+	return _ports[key]
 
 
 ## A circle of [param radius], counterclockwise: a bead's outline (D-103).

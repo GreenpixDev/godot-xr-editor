@@ -1489,20 +1489,24 @@ func _drag_from_menu(action: Dictionary) -> void:
 
 
 ## [param action]'s block follows the ray of [param hand], [param distance] along it, as a stand-in, until the trigger lets go.
-func _start_drag(action: Dictionary, hand: XREHand, distance: float) -> void:
+## The stand-in is [param card], a card's look, or a plate with the block's title without one.
+func _start_drag(action: Dictionary, hand: XREHand, distance: float, card: Node3D = null) -> void:
 	_drag_action = action
 	_drag_hand = hand
 	_drag_distance = distance
 	if is_instance_valid(_ghost): _ghost.queue_free()
 	_ghost = Node3D.new()
 	_ghost.name = "DraggedBlock"
-	var quad := QuadMesh.new()
-	quad.size = Vector2(XREBlueprintCanvas.CARD_WIDTH, 0.08)
-	var face := XREBlueprintCanvas.material(Color(0.2, 0.25, 0.4, 0.7), true)
-	_ghost.add_child(XRERig.create_vr_mesh(quad, face))
-	var title := XREBlueprintCanvas.label(action["title"], 21)
-	title.position.z = 0.001
-	_ghost.add_child(title)
+	if card != null:
+		_ghost.add_child(card)
+	else:
+		var quad := QuadMesh.new()
+		quad.size = Vector2(XREBlueprintCanvas.CARD_WIDTH, 0.08)
+		var face := XREBlueprintCanvas.material(Color(0.2, 0.25, 0.4, 0.7), true)
+		_ghost.add_child(XRERig.create_vr_mesh(quad, face))
+		var title := XREBlueprintCanvas.label(action["title"], 21)
+		title.position.z = 0.001
+		_ghost.add_child(title)
 	_workspace.add_child(_ghost)
 	_update_drag()
 
@@ -1543,7 +1547,8 @@ func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	var distance := clampf(hand.global_position.distance_to(point), 0.3, 2.0)
 	# Where the stand-in starts, as the drag puts it, before a trigger already let go ends it.
 	_copy_start = hand.global_position - hand.global_basis.z.normalized() * distance
-	_start_drag({"id": "copy", "title": XREBlueprintGraph.title(block), "block": copy, "target": blueprint.target_node(id), "origin": "copy"}, hand, distance)
+	# The stand-in looks as the card does (D-114).
+	_start_drag({"id": "copy", "title": XREBlueprintGraph.title(block), "block": copy, "target": blueprint.target_node(id), "origin": "copy"}, hand, distance, canvas.stand_in(id))
 
 
 ## Adds the copy of [param action] (D-093) at workspace point [param point], or
@@ -4908,11 +4913,12 @@ func _wire_box_to_port(variable: String, id: int, port: int, added: Dictionary =
 
 ## Opens or shuts the drawer of components of [param variable]'s box (D-108),
 ## whatever Composite values says for the others: one edit of the graph's
-## editor-only vr_collapsed. A drawer whose components are wired stays open.
+## editor-only vr_collapsed, false while open (drawers start shut, D-114). A
+## drawer whose components are wired stays open.
 func _switch_drawer(variable: String) -> void:
 	var found := blueprint.graph.find_variable(variable)
 	if found.is_empty(): return
-	var shutting := not bool(found.get("vr_collapsed", false))
+	var shutting := not XREBlueprintCanvas.drawer_shut(blueprint.graph, found)
 	if shutting:
 		for block: Dictionary in blueprint.graph.nodes:
 			if XREBlueprintCanvas.is_split_break(block) and XREBlueprintCanvas.split_variable(blueprint.graph, block) == variable:
@@ -4921,8 +4927,8 @@ func _switch_drawer(variable: String) -> void:
 	var state := blueprint.graph.snapshot()
 	for entry: Dictionary in state["variables"]:
 		if entry["name"] != variable: continue
-		if shutting: entry["vr_collapsed"] = true
-		else: entry.erase("vr_collapsed")
+		if shutting: entry.erase("vr_collapsed")
+		else: entry["vr_collapsed"] = false
 	if not blueprint.perform(blueprint.commit.bind("Shut Drawer" if shutting else "Open Drawer", state), &"vr_graph"): _message(blueprint.last_error)
 
 

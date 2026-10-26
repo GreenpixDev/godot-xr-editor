@@ -95,6 +95,8 @@ var _hit_part := BODY
 var _hit_component := -1
 var _split := false
 var _archetype := false
+## Whether a box's dot and output are shaped by its type (Port shapes, D-104), or circles.
+var _shapes := false
 var _archetype_trash: Material
 ## The box part under each hand's ray: the box, the part and its component (D-109), or -1.
 var _hover_right := Vector3i(-1, -1, -1)
@@ -118,10 +120,12 @@ func _init(trash_mesh: Mesh, trash_material: Material, archetype_trash: Material
 ## [constant XREFeatureSettings.VALUE_INPUT], text with Window. [param used]
 ## names the variables blocks refer to. With [param split] a vector's or a
 ## colour's box has an output for each component (D-105). With
-## [param archetype] the boxes look as archetypes do (D-106).
-func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], style: StringName, used: Dictionary, split: bool = false, archetype: bool = false) -> void:
+## [param archetype] the boxes look as archetypes do (D-106); with [param shapes]
+## their dots and outputs have their types' shapes, else they are circles (D-114).
+func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], style: StringName, used: Dictionary, split: bool = false, archetype: bool = false, shapes: bool = false) -> void:
 	_split = split
 	_archetype = archetype
+	_shapes = shapes
 	for box: Box in _boxes:
 		remove_child(box.node)
 		box.node.queue_free()
@@ -130,7 +134,7 @@ func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], styl
 	_hover_left = Vector3i(-1, -1, -1)
 	for variable: Dictionary in graph.variables:
 		var key := str(variable["name"])
-		_add_box(key, variable.get("value"), XREBlueprintGraph.variable_type(variable), places.get(key, Vector3.ZERO), style, used.has(key), XREBlueprintTokens.variable_expression(variable), bool(variable.get("vr_collapsed", false)))
+		_add_box(key, variable.get("value"), XREBlueprintGraph.variable_type(variable), places.get(key, Vector3.ZERO), style, used.has(key), XREBlueprintTokens.variable_expression(variable), XREBlueprintCanvas.drawer_shut(graph, variable))
 
 
 ## Moves the boxes to their points of [param places] (canvas space, by
@@ -251,9 +255,16 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 	var lid_mesh := XRERig.create_vr_mesh(XREBlueprintShapes.body(lid, 0.001), under_material(XREBlueprintIcons.BODY.lerp(color, LID_TINT)))
 	lid_mesh.position = Vector3(0, CARD_HEIGHT * 0.5 - LID_HEIGHT * 0.5, front + 0.0004)
 	box.node.add_child(lid_mesh)
-	box.node.add_child(XRERig.create_vr_mesh(XREBlueprintShapes.ring(outline, 0.0, 0.0017, front + 0.0008), XREBlueprintCanvas.material(color, true)))
+	# The rim, and a line of it under the lid, as a headed card's (D-110, D-114):
+	# in front of the lid, whose face is 0.9 mm out and hid them at 0.8 mm.
+	var rim := SurfaceTool.new()
+	rim.begin(Mesh.PRIMITIVE_TRIANGLES)
+	rim.append_from(XREBlueprintShapes.ring(outline, 0.0, 0.0017, front + 0.0011), 0, Transform3D.IDENTITY)
+	var line := XREBlueprintShapes.rounded_rect(Vector2(width - 0.0034, 0.0017), Vector4.ZERO)
+	rim.append_from(XREBlueprintShapes.body(line, 0.0001), 0, Transform3D(Basis.IDENTITY, Vector3(0, CARD_HEIGHT * 0.5 - LID_HEIGHT, front + 0.0011)))
+	box.node.add_child(XRERig.create_vr_mesh(rim.commit(), XREBlueprintCanvas.material(color, true)))
 	var lid_y := CARD_HEIGHT * 0.5 - LID_HEIGHT * 0.5
-	var dot := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(XREBlueprintGraph.port_type(box.type), XREBlueprintCanvas.PORT_RADIUS, XREBlueprintCanvas.PORT_DEPTH * 2.0), XREBlueprintCanvas.material(color, true))
+	var dot := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(_port_shape(box), XREBlueprintCanvas.PORT_RADIUS, XREBlueprintCanvas.PORT_DEPTH * 2.0), XREBlueprintCanvas.material(color, true))
 	dot.scale = Vector3.ONE * 0.5
 	dot.position = Vector3(-width * 0.5 + 0.015, lid_y, front + 0.0012)
 	box.node.add_child(dot)
@@ -290,7 +301,7 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 	# Read on the right edge, written from the top (D-106).
 	box.read_point = Vector3(width * 0.5, 0, front + 0.002)
 	box.write_point = Vector3(0, CARD_HEIGHT * 0.5, front)
-	var read := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(XREBlueprintGraph.port_type(box.type), XREBlueprintCanvas.PORT_RADIUS, XREBlueprintCanvas.PORT_DEPTH * 2.0), XREBlueprintCanvas.material(color, true))
+	var read := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(_port_shape(box), XREBlueprintCanvas.PORT_RADIUS, XREBlueprintCanvas.PORT_DEPTH * 2.0), XREBlueprintCanvas.material(color, true))
 	read.position = box.read_point
 	box.node.add_child(read)
 	# The trash, as an archetype's: over the right corner, while the ray is on the box.
@@ -306,6 +317,12 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 	if _split and COMPONENTS.has(box.type):
 		_add_drawer_switch(box, Vector3(width * 0.5 - 0.016, CARD_HEIGHT * 0.5 - LID_HEIGHT * 0.5, front + 0.0016))
 		if not box.collapsed: _add_drawer(box)
+
+
+## The type whose port shape [param box]'s dot and output take: its own with
+## Port shapes on, a float's circle with it off, as the cards' ports are (D-114).
+func _port_shape(box: Box) -> int:
+	return XREBlueprintGraph.port_type(box.type) if _shapes else XREBlueprintGraph.NUMBER
 
 
 ## The switch of [param box]'s drawer of components at [param point] (D-108):
@@ -438,11 +455,20 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				continue
 		# An archetypes' trash stands over the box, shown under the ray (D-106).
 		if _archetype and box.trash.visible:
-			var over := XREBlueprintCanvas._box_distance(local_origin, local_direction, AABB(box.trash_point - Vector3(0.012, 0.014, 0.006), Vector3(0.024, 0.028, 0.012)), nearest)
+			var trash_box := AABB(box.trash_point - Vector3(0.012, 0.014, 0.006), Vector3(0.024, 0.028, 0.012))
+			var over := XREBlueprintCanvas._box_distance(local_origin, local_direction, trash_box, nearest)
 			if over >= 0:
 				nearest = over
 				_hit = index
 				_hit_part = TRASH
+				continue
+			# The air between the trash and the box keeps the box under the ray, so
+			# the trash doesn't hide on the way to it (D-114).
+			var gap := XREBlueprintCanvas._box_distance(local_origin, local_direction, trash_box.expand(Vector3(trash_box.position.x, _bounds(box).end.y, trash_box.position.z)), nearest)
+			if gap >= 0:
+				nearest = gap
+				_hit = index
+				_hit_part = BODY
 				continue
 		var body := XREBlueprintCanvas._box_distance(local_origin, local_direction, _bounds(box), nearest)
 		if body < 0: continue

@@ -225,7 +225,7 @@ const NEXT_SUGGESTIONS := &"next_suggestions"
 const BLOCK_COPY := &"block_copy"
 
 ## Every setting by key: its page, title, values (the first is the default;
-## the defaults are the author's picks after the headset checks, D-076),
+## the defaults are the author's picks after the headset checks, D-076, D-114),
 ## the values' titles and a line of explanation.
 const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	NODE_DISPLAY: {
@@ -245,29 +245,29 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	NODE_STYLE: {
 		"category": Category.FEATURES,
 		"title": "Node style",
-		"values": [CLASSIC, ARCHETYPES],
-		"labels": ["Classic", "Archetypes"],
+		"values": [ARCHETYPES, CLASSIC],
+		"labels": ["Archetypes", "Classic"],
 		"hint": "Classic: cards as before. Archetypes: a header colored by group with an icon, pure functions framed in their result's color; the trash and X delete the card under the ray.",
 	},
 	NODE_SHRINK: {
 		"category": Category.FEATURES,
 		"title": "Node shrink",
-		"values": [OPERATORS, MATH, SYSTEM, ICONS],
-		"labels": ["Operators", "+ Math", "+ System", "All with icons"],
+		"values": [SYSTEM, OPERATORS, MATH, ICONS],
+		"labels": ["+ System", "Operators", "+ Math", "All with icons"],
 		"hint": "With Archetypes. Operators: operators are signs. + Math: math functions as sin, abs, clamp too. + System: Delay a bead, Get Time and Random rings. All with icons: every block with its own icon and at most three ports a side; its name shows under the ray.",
 	},
 	NODE_HEADING: {
 		"category": Category.FEATURES,
 		"title": "Node heading",
-		"values": [OPERATION, MEMBER],
-		"labels": ["Operation", "Member"],
+		"values": [MEMBER, OPERATION],
+		"labels": ["Member", "Operation"],
 		"hint": "With Archetypes. Operation: the header says what the block does, the member is on the adapter. Member: the header says the signal, property or variable, the wire to it bare. ⇄ by the trash switches one card.",
 	},
 	COMPOSITE_VALUES: {
 		"category": Category.FEATURES,
 		"title": "Composite values",
-		"values": [WHOLE, SPLIT],
-		"labels": ["Whole", "Split"],
+		"values": [SPLIT, WHOLE],
+		"labels": ["Split", "Whole"],
 		"hint": "Whole: a vector or colour variable's box gives the whole value, a Break takes it apart. Split: its box has an output for each component, x y z or r g b a, wired straight into a port.",
 	},
 	PORT_SHAPES: {
@@ -378,15 +378,15 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	LINK_CREATE: {
 		"category": Category.FEATURES,
 		"title": "Link from wire",
-		"values": [WIRE_BUTTON, PULL, PORT_BUTTON, ALWAYS, WIRE_MENU],
-		"labels": ["Wire button", "Pull", "Port button", "Always", "Wire menu"],
+		"values": [WIRE_MENU, WIRE_BUTTON, PULL, PORT_BUTTON, ALWAYS],
+		"labels": ["Wire menu", "Wire button", "Pull", "Port button", "Always"],
 		"hint": "How a wire to a variable or an object becomes a link: a link button where the ray is on the wire, the grip pulling the wire into its port, a link button over its port, by itself as soon as the wire is made (Always: no buttons, and a link never becomes a wire), or a menu the trigger held on the wire opens (Wire menu: Link or Point; on a point, Delete point; let go on one to do it). A link from the Tokens window laid on the port works with each.",
 	},
 	AUTO_LINK: {
 		"category": Category.FEATURES,
 		"title": "Auto link",
-		"values": [OFF, ON],
-		"labels": ["Off", "On"],
+		"values": [ON, OFF],
+		"labels": ["On", "Off"],
 		"hint": "On: a new wire to a variable or an object that has more than one wire or link already becomes a link by itself if it runs farther than half a meter.",
 	},
 	WIRE_BENDS: {

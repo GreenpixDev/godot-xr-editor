@@ -94,6 +94,22 @@ func _shot_d090(head: Vector3, host: Node3D) -> void:
 		await _frames(4)
 		_look(head, host.global_position)
 		await _shot("17f_copy_button")
+		# The copy on its way: a stand-in that looks as the card does (D-114).
+		# The trigger held with the ray off the graph, so the copy follows it and nothing else takes it.
+		if card >= 0:
+			_aim(Vector3(-50, 1.6, -1), Vector3.BACK)
+			_right.set_input(&"trigger", 1.0)
+			await _frames()
+			_service.call("_start_copy", card, _rig.right_hand, _service.canvas.to_global(_service.canvas.get_block_position(card)))
+			_service.set("_drag_distance", 0.5)
+			await _frames(4)
+			var ghost := _service.get("_ghost") as Node3D
+			if ghost != null: _look(ghost.global_position + ghost.global_basis.z.normalized() * 0.35, ghost.global_position)
+			await _shot("17g_copy_stand_in")
+			_service.call("_end_drag", false)
+			_right.set_input(&"trigger", 0.0)
+			_aim(Vector3(-50, 0, 0), Vector3.BACK)
+			await _frames()
 	for key: StringName in keys: _document.features.set_value(key, saved[key])
 	await _frames(3)
 
@@ -345,6 +361,9 @@ func _run() -> void:
 		var box := _service.canvas.to_global(_service.canvas.get_boxes().box_point(str(graph.variables[0]["name"])))
 		_look(box + _service.canvas.global_basis.z * 0.35 + Vector3(0.05, 0.08, 0), box)
 		await _shot("20_variable_box")
+		# Close enough to see its rim over the lid (D-114).
+		_look(box + _service.canvas.global_basis.z * 0.12, box)
+		await _shot("20b_variable_box_close")
 	_document.features.set_value(XREFeatureSettings.VALUE_INPUT, values)
 	_document.features.set_value(XREFeatureSettings.VARIABLE_INPUT, variables)
 	await _frames(3)
