@@ -11,7 +11,7 @@ extends VBoxContainer
 ## chooses it; a row pulled out of the list sideways is dragged, so that the
 ## view places its block where the pull ends.
 ##
-## Two variants of the headset's palette (D-090): tiles of the blocks most
+## Two variants of the headset's palette (D-093): tiles of the blocks most
 ## likely next over the chips ([method set_tiles]), and chips by task —
 ## Events, Math, Move and the rest ([constant XREBlueprintActions.TASKS]) —
 ## instead of by source ([method set_task_groups]). A chosen action carries
@@ -37,7 +37,7 @@ const GROUP_TITLES: Array[String] = ["Library", "Global", "Native", "All"]
 ## level under the chips; the picked one less so.
 const SECTION_DIM := 0.3
 const SECTION_PICKED_DIM := 0.12
-## How many tiles there are, and in how many columns (D-090).
+## How many tiles there are, and in how many columns (D-093).
 const TILE_COUNT := 12
 const TILE_COLUMNS := 4
 ## How much darker than its kind's color a tile is, and its hovered and pressed look.
@@ -45,20 +45,20 @@ const TILE_DIM := 0.3
 const TILE_HOVER_DIM := 0.1
 
 var actions := XREBlueprintActions.shared()
-## What the tiles are ranked by (D-090).
+## What the tiles are ranked by (D-093).
 var stats := XREBlueprintStats.shared()
 ## Whether the menu offers new variables (D-078): the headset's graph adds them
 ## as boxes where they are put; the desktop has its Variables dialog for that.
 var offers_variables := false
 var search: LineEdit
 var tree: Tree
-## The tiles over the chips (D-090) and the actions they add.
+## The tiles over the chips (D-093) and the actions they add.
 var _tiles: GridContainer
 var _tile_actions: Array[Dictionary] = []
 var _tiles_shown := false
-## Whether the chips are the task groups (D-090) rather than the context objects and sources.
+## Whether the chips are the task groups (D-093) rather than the context objects and sources.
 var _tasks := false
-## The task groups the chips show (D-092): the general ones, then those the first context object has.
+## The task groups the chips show (D-095): the general ones, then those the first context object has.
 var _task_titles: Array[String] = []
 var _chips: HFlowContainer
 var _chip_group: ButtonGroup
@@ -140,7 +140,7 @@ func set_large(large: bool) -> void:
 	_icons.clear()
 
 
-## Shows the tiles of the blocks most likely next over the chips (D-090): those
+## Shows the tiles of the blocks most likely next over the chips (D-093): those
 ## that fit the pin, ranked by [member stats] and what was added lately.
 func set_tiles(shown: bool) -> void:
 	if shown == _tiles_shown: return
@@ -149,7 +149,7 @@ func set_tiles(shown: bool) -> void:
 	if _graph != null: refresh()
 
 
-## Groups the chips by task (D-090) — [constant XREBlueprintActions.TASKS] and
+## Groups the chips by task (D-093) — [constant XREBlueprintActions.TASKS] and
 ## All — or, as before, by context object and source.
 func set_task_groups(tasks: bool) -> void:
 	if tasks == _tasks: return
@@ -345,7 +345,7 @@ func refresh() -> void:
 		empty.set_selectable(1, false)
 
 
-## What the menu lists all the blocks for now (D-090): the first context
+## What the menu lists all the blocks for now (D-093): the first context
 ## object, the host, the graph, the pin — for [method XREBlueprintActions.suggest].
 func menu_context() -> Dictionary:
 	return _first_context({"host": _host, "graph": _graph, "pin": _pin, "new_variables": offers_variables})
@@ -362,7 +362,7 @@ func _first_context(context: Dictionary) -> Dictionary:
 	return result
 
 
-## Ranks the tiles anew (D-090) for the pin and the context objects; nothing while they are hidden.
+## Ranks the tiles anew (D-093) for the pin and the context objects; nothing while they are hidden.
 func _update_tiles() -> void:
 	for child: Node in _tiles.get_children():
 		_tiles.remove_child(child)
@@ -431,7 +431,7 @@ func _notification(what: int) -> void:
 		for child: Node in _subs.get_children(): _dim(child as Button)
 
 
-## The task groups of the chips (D-092): the general ones, then those the first context object has.
+## The task groups of the chips (D-095): the general ones, then those the first context object has.
 func _update_task_titles() -> void:
 	_task_titles = XREBlueprintActions.GENERAL_TASKS.duplicate()
 	if _tasks: _task_titles.append_array(actions.object_tasks(menu_context()))

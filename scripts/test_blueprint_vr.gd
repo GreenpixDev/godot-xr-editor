@@ -29,7 +29,7 @@ const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, X
 		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
 		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS,
 		XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY]
-## The values the checks start from: the defaults before D-076, D-089 and D-094 made the
+## The values the checks start from: the defaults before D-076, D-089 and D-097 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.VALUE_INPUT: XREFeatureSettings.WINDOW, XREFeatureSettings.TARGET_INPUT: XREFeatureSettings.WINDOW,
@@ -318,7 +318,7 @@ func _run() -> void:
 	await _test_target()
 	await _test_left_wire(print_id)
 	await _test_block_menu()
-	await _test_d090()
+	await _test_d093()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -1509,17 +1509,17 @@ func _test_block_menu() -> void:
 	await _frames()
 
 
-## D-090: adding blocks without the keyboard. Each setting's variants: the
+## D-093: adding blocks without the keyboard. Each setting's variants: the
 ## next-block suggestions at a wire let go and at a plus, More… and a click
 ## away; the palette's tiles, task chips and ring; the copy button. Where a
 ## block was picked is the name of its operation in the log.
-func _test_d090() -> void:
+func _test_d093() -> void:
 	var features := _document.features
 	for key: StringName in [XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY]:
 		_check(features.get_value(key) == BASELINE[key], "%s starts at the list as it was" % key)
 	_check(XREFeatureSettings.get_default(XREFeatureSettings.BLOCK_PALETTE) == XREFeatureSettings.RING and XREFeatureSettings.get_default(XREFeatureSettings.PALETTE_GROUPS) == XREFeatureSettings.SOURCES
 			and XREFeatureSettings.get_default(XREFeatureSettings.NEXT_SUGGESTIONS) == XREFeatureSettings.OFF and XREFeatureSettings.get_default(XREFeatureSettings.BLOCK_COPY) == XREFeatureSettings.ON,
-			"the defaults are the author's picks (D-094): the ring, chips by source, no suggestions, the copy button")
+			"the defaults are the author's picks (D-097): the ring, chips by source, no suggestions, the copy button")
 	var history := _service.blueprint.history.get_version()
 	var graph := _service.blueprint.graph
 	var menu := _service.block_menu
@@ -1595,9 +1595,9 @@ func _test_d090() -> void:
 	shown = ring.get_shown()
 	var arc: Array = shown.filter(func(item: Dictionary) -> bool: return item.has("sector") and int(item["sector"]) >= XREBlueprintRing.ORDER.size()).map(func(item: Dictionary) -> String: return str(item["text"]))
 	_check(shown[0].get("list", false) and shown.slice(1, 1 + XREBlueprintRing.ORDER.size()).map(func(item: Dictionary) -> String: return str(item["text"])) == XREBlueprintRing.ORDER,
-			"the ring has its middle, the seven general groups and Object (D-093)")
+			"the ring has its middle, the seven general groups and Object (D-096)")
 	_check(arc.has("Move") and not arc.has("Object") and not arc.has("Sound"), "over it, the object's other groups it has: %s" % [arc])
-	_check(XREBlueprintRing.ORDER[0] == "Object" and is_equal_approx(XREBlueprintRing.sector_angle(0), PI * 0.5), "Object is at the top, under the middle of the arc (D-094)")
+	_check(XREBlueprintRing.ORDER[0] == "Object" and is_equal_approx(XREBlueprintRing.sector_angle(0), PI * 0.5), "Object is at the top, under the middle of the arc (D-097)")
 	var object_group := XREBlueprintRing.ORDER.size() + arc.find("Move")
 	var arc_angle := PI * 0.5 + XREBlueprintRing.BAND_STEP * (arc.size() * 0.5 - arc.find("Move") - 0.5)
 	var arc_at := ring.global_transform * (Vector3(cos(arc_angle), sin(arc_angle), 0.0) * (XREBlueprintRing.BAND_IN + XREBlueprintRing.BAND_OUT) * 0.5)
@@ -1611,7 +1611,7 @@ func _test_d090() -> void:
 	var middle := (pills[0] + pills[-1]) * 0.5 if not pills.is_empty() else Vector3.ZERO
 	var head := _rig.camera.global_position
 	_check(column != null and not pills.is_empty() and absf(column.global_basis.y.normalized().dot((middle - head).normalized())) < 0.05 and column.basis.y.z > 0.0,
-			"the column over the arc leans toward the head, square to the line of sight to its middle (D-095): dot %.3f, lean %.3f" % [column.global_basis.y.normalized().dot((middle - head).normalized()) if column != null else NAN, column.basis.y.z if column != null else NAN])
+			"the column over the arc leans toward the head, square to the line of sight to its middle (D-098): dot %.3f, lean %.3f" % [column.global_basis.y.normalized().dot((middle - head).normalized()) if column != null else NAN, column.basis.y.z if column != null else NAN])
 	if not pills.is_empty():
 		_check(ring.intersect_ray(head, (pills[-1] - head).normalized(), 5.0) >= 0 and ring.get_hit().has("action"), "the ray picks a block of the leaning column")
 	var sortings: Array[float] = []
@@ -1623,7 +1623,7 @@ func _test_d090() -> void:
 		if part is MeshInstance3D: sortings.append((part as MeshInstance3D).sorting_offset)
 		if part is Label3D and not (part as Label3D).no_depth_test: labels_free = false
 	_check(not sortings.is_empty() and sortings.min() >= XREBlueprints.CHOICE_SORTING and XREBlueprints.CHOICE_SORTING > XREBlueprintFocus.TOP_SORTING and labels_free,
-			"the ring is drawn over everything, over the cards in Front focus too (D-093)")
+			"the ring is drawn over everything, over the cards in Front focus too (D-096)")
 	_check(shown.filter(func(item: Dictionary) -> bool: return item.has("sector") and not item["enabled"]).map(func(item: Dictionary) -> String: return str(item["text"])).has("Events"),
 			"a group with no block for the wire, Events after an execution output, is dim")
 	var flow := XREBlueprintRing.ORDER.find("Flow")
@@ -1647,7 +1647,7 @@ func _test_d090() -> void:
 	await _frames()
 	_check(_service.is_block_palette_shown() and not ring.is_open(), "the ring's middle opens the list with its search")
 	_service.close_block_palette()
-	# D-091: More… opens the ring where it was clicked, the ring's Search… the window; the wire waits meanwhile.
+	# D-094: More… opens the ring where it was clicked, the ring's Search… the window; the wire waits meanwhile.
 	_document.set_feature(XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.ON, XREDocument.Source.PANEL)
 	_service.add_block("print")
 	await _frames()
@@ -1675,7 +1675,7 @@ func _test_d090() -> void:
 	_check(list != null and list.global_position.distance_to(more_at) < XREBlueprints.PARAMETERS_LIFT + 0.002, "the ring's Search… opens the window there")
 	_service.call("_preview_connection", _service.canvas.to_global(Vector3(-0.4, 0.3, 0.2)))
 	_check(preview.get_point(preview.get_point_count() - 1).distance_to(let_go) < 0.005 and int(_service.get("_pending_id")) == spare, "the wire waits on the window too")
-	_service.call("_cancel_wire_menu")
+	_service.call("_cancel_dropped_wire")
 	await _frames()
 	_check(not _service.is_block_palette_shown() and int(_service.get("_pending_id")) == -1 and not preview.visible, "a click elsewhere takes the window and the wire away")
 	_document.set_feature(XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.LIST, XREDocument.Source.PANEL)
@@ -1688,7 +1688,7 @@ func _test_d090() -> void:
 	await _frames()
 	list = _panels.find_window(XREBlueprintPaletteTab)
 	_check(list != null and list.global_position.distance_to(more_at) < XREBlueprints.PARAMETERS_LIFT + 0.002, "with the list, More… opens the window where it was clicked")
-	_service.call("_cancel_wire_menu")
+	_service.call("_cancel_dropped_wire")
 	_document.set_feature(XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.OFF, XREDocument.Source.PANEL)
 	await _frames()
 	_document.set_feature(XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.LIST, XREDocument.Source.PANEL)

@@ -30,7 +30,7 @@ const ALL := &"all"
 const ADVANCED_CLASSES: Array[String] = ["Node", "Object"]
 ## How many recently added actions the menu offers first, and how many best matches of a search.
 const RECENT_COUNT := 5
-## The menu's groups by task (D-090, D-092), in the order of their chips: what
+## The menu's groups by task (D-093, D-095), in the order of their chips: what
 ## a block is for, not where it comes from in code. The general groups first,
 ## then the groups of the context object, which only its own blocks fill.
 const TASKS: Array[String] = ["Events", "Variables", "Arithmetic", "Logic", "Math", "Flow", "Utility", "Move", "Look", "Sound", "Object"]
@@ -41,7 +41,7 @@ const OBJECT_TASKS: Array[String] = ["Move", "Look", "Sound", "Object"]
 const MOVE_WORDS: Array[String] = ["position", "rotat", "scale", "transform", "translate", "basis", "quaternion", "look_at", "velocity", "offset"]
 ## Members those words name that don't move anything: the translation of text.
 const NOT_MOVE_WORDS: Array[String] = ["auto_translate", "translate_messages"]
-## Classes whose objects move: only they have the group Move (D-092).
+## Classes whose objects move: only they have the group Move (D-095).
 const MOVING_CLASSES: Array[String] = ["Node2D", "Node3D", "Control"]
 const LOOK_WORDS: Array[String] = ["visible", "show", "hide", "transparency", "modulate", "color", "text", "material", "albedo", "energy", "texture"]
 ## The start values of new variables the menu offers (D-078), one of each type.
@@ -126,7 +126,7 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 			section["count"] = (section["actions"] as Array).size()
 			if not context.get("advanced", false) and str(context.get("query", "")).strip_edges().is_empty(): section["actions"] = []
 			result.append(section)
-		# The object's own sections (D-092): what its groups Move, Look, Sound and Object list.
+		# The object's own sections (D-095): what its groups Move, Look, Sound and Object list.
 		for index: int in range(own_from, result.size()):
 			if result[index]["title"] != "Variables": result[index]["object"] = true
 	if chip in [LIBRARY, ALL]:
@@ -168,10 +168,10 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 	return result
 
 
-## The sections of task [code]task[/code] of [param context] (D-090): those of
+## The sections of task [code]task[/code] of [param context] (D-093): those of
 ## all the blocks, with the context object's Advanced, each keeping only the
 ## blocks of that task ([method task_of]); a group of the object
-## ([constant OBJECT_TASKS]) only the object's own sections (D-092).
+## ([constant OBJECT_TASKS]) only the object's own sections (D-095).
 func _task_sections(context: Dictionary) -> Array[Dictionary]:
 	var task := str(context["task"])
 	var base := context.duplicate()
@@ -196,7 +196,7 @@ func _task_sections(context: Dictionary) -> Array[Dictionary]:
 	return result
 
 
-## The task group of [param action] (D-090, D-092), one of [constant TASKS]:
+## The task group of [param action] (D-093, D-095), one of [constant TASKS]:
 ## events; variables and values; arithmetic — the operators + − × ÷ % —;
 ## logic — comparisons, Equal, AND, OR, NOT —; math — the functions of
 ## @GlobalScope's math and random, vectors —; flow — Branch, Delay, what
@@ -256,16 +256,16 @@ static func _best_matches(sections: Array[Dictionary], query: String) -> Array[D
 
 
 ## The [param count] blocks most likely to be added next for [param context]
-## (D-090), best first, of every group and section: those that fit its pin,
+## (D-093), best first, of every group and section: those that fit its pin,
 ## one of each kind ([method XREBlueprintStats.key_of]), none that can't be
 ## added ([method rank]).
 func suggest(context: Dictionary, count: int, stats: XREBlueprintStats) -> Array[Dictionary]:
 	return rank(flatten(sections(_every_block(context, false))), context.get("pin", {}), stats, count)
 
 
-## The blocks of each task group for [param context] (D-090), by
+## The blocks of each task group for [param context] (D-093), by
 ## [constant TASKS], each ranked ([method rank]) and at most [param count]; a
-## group of the object only the context object's own blocks (D-092).
+## group of the object only the context object's own blocks (D-095).
 func by_task(context: Dictionary, count: int, stats: XREBlueprintStats) -> Dictionary[String, Array]:
 	var groups: Dictionary[String, Array] = {}
 	for task: String in TASKS: groups[task] = []
@@ -281,7 +281,7 @@ func by_task(context: Dictionary, count: int, stats: XREBlueprintStats) -> Dicti
 
 
 ## The groups of [constant OBJECT_TASKS] the context object of [param context]
-## has blocks of, whatever the pin (D-092): Move for what moves, Sound for a
+## has blocks of, whatever the pin (D-095): Move for what moves, Sound for a
 ## player, none without an object — a graph of networking has no Move.
 func object_tasks(context: Dictionary) -> Array[String]:
 	var base := _every_block(context, true)
@@ -328,7 +328,7 @@ static func _every_block(context: Dictionary, advanced: bool) -> Dictionary:
 	return base
 
 
-## The first [param count] of [param actions], best first (D-090): by the
+## The first [param count] of [param actions], best first (D-093): by the
 ## wires in [param stats] between the block of [param pin] ([code]key[/code],
 ## [method XREBlueprintStats.key_of]) and each one's kind — from an output into
 ## it, from it into an input — then how often its kind is in the graphs, raised

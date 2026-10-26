@@ -49,7 +49,7 @@ func _look(from: Vector3, at: Vector3) -> void:
 	_rig.camera.global_transform = Transform3D(Basis.looking_at(at - from, Vector3.UP), from)
 
 
-## D-090: the palette's tiles and task chips, the ring at a card's plus, the
+## D-093: the palette's tiles and task chips, the ring at a card's plus, the
 ## next-block suggestions there and the copy button; the user's settings back.
 func _shot_d090(head: Vector3, host: Node3D) -> void:
 	var keys: Array[StringName] = [XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY]

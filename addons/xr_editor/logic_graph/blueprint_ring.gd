@@ -1,17 +1,17 @@
 @tool
 class_name XREBlueprintRing
 extends XREBlueprintPetals
-## The block palette as a ring (D-090, drawn as D-091 says, its groups as
-## D-092 and D-093 say), a value of [constant XREFeatureSettings.BLOCK_PALETTE]:
+## The block palette as a ring (D-093, drawn as D-094 says, its groups as
+## D-095 and D-096 say), a value of [constant XREFeatureSettings.BLOCK_PALETTE]:
 ## around the point the palette opens from, facing the head, a disc with a
 ## magnifier — Search, the list —, around it a ring of the seven general task
 ## groups and Object, always the same in the same places, and over it an arc
 ## of the context object's groups — Move, Look, Sound —, only those it has,
-## under its name. Drawn over everything (D-093). Each group is a sector with its name and a stripe on its outer edge in
+## under its name. Drawn over everything (D-096). Each group is a sector with its name and a stripe on its outer edge in
 ## the color of the cards it adds. The ray on a group lights it and shows its
 ## blocks as a column of pills in their cards' colors: beside the ring, on the
 ## group's side, for a general group; above the arc for the object's, leaning
-## toward the head, square to the line of sight to its middle (D-095). The
+## toward the head, square to the line of sight to its middle (D-098). The
 ## trigger on one adds it. A group with no block for the wire is dim and
 ## shows nothing. Built as it opens and when another group is shown, never per
 ## frame; picked analytically: the disc and the sectors by distance and angle
@@ -28,11 +28,11 @@ const EDGE := 0.0016
 const SPINE := 0.03
 const TICK := 0.01
 ## The groups of the ring, clockwise from the top: Object, always here, dim
-## without an object (D-093), at the top under the middle of the arc of the
-## object's other groups (D-094), then the general ones, as
+## without an object (D-096), at the top under the middle of the arc of the
+## object's other groups (D-097), then the general ones, as
 ## [constant XREBlueprintActions.GENERAL_TASKS] names them.
 const ORDER: Array[String] = ["Object", "Arithmetic", "Logic", "Math", "Flow", "Utility", "Events", "Variables"]
-## The arc of the object's other groups — Move, Look, Sound (D-092, D-093):
+## The arc of the object's other groups — Move, Look, Sound (D-095, D-096):
 ## its radii, in meters, and the angle of one group on it.
 const BAND_IN := 0.152
 const BAND_OUT := 0.205
@@ -153,7 +153,7 @@ func open_sector(index: int) -> void:
 	var angle := (float(_sectors[index]["from"]) + float(_sectors[index]["to"])) * 0.5
 	if _sectors[index]["outer"]:
 		# Over the arc, the likeliest lowest: the ray goes up to it over nothing
-		# else. Upright it would rise far over the eyes: it leans toward the head (D-095).
+		# else. Upright it would rise far over the eyes: it leans toward the head (D-098).
 		var base := Vector3(cos(angle), sin(angle), 0.0) * BAND_OUT
 		var middle := LIFT + PILL_HEIGHT * 0.5 + (items.size() - 1) * STEP * 0.5
 		_column.transform = Transform3D(Basis(Vector3.RIGHT, column_tilt(base, middle)), base)
@@ -181,7 +181,7 @@ func open_sector(index: int) -> void:
 
 ## How far a column standing at [param base] in the ring's plane, its middle
 ## [param middle] up along it, leans toward the head about the ring's
-## horizontal (D-095): the line of sight to its middle is square to it. With
+## horizontal (D-098): the line of sight to its middle is square to it. With
 ## the lean a, along (0, cos a, sin a), that is (base − eye)·(0, cos a, sin a)
 ## + middle = 0. 0 for a middle under the eyes.
 func column_tilt(base: Vector3, middle: float) -> float:
@@ -249,7 +249,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit = 1 + ORDER.size() + mini(floori(along / BAND_STEP), _sectors.size() - ORDER.size() - 1)
 			return world
 	if _petals.size() <= _ring_count: return -1.0
-	# The blocks in the plane of their column, which leans over the arc (D-095).
+	# The blocks in the plane of their column, which leans over the arc (D-098).
 	var column := _column_transform(_ring_count).affine_inverse()
 	var column_origin := column * local_origin
 	var column_direction := column.basis * local_direction

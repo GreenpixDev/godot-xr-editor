@@ -63,7 +63,7 @@ var _hovered := -1
 var _object: Node3D
 var _on_top := false
 ## Where on top it sorts ([method set_on_top]): at the cards' Front focus
-## (D-075), or, for the block menu's fan and ring, over it (D-093).
+## (D-075), or, for the block menu's fan and ring, over it (D-096).
 var top_sorting := 100.0
 ## The widest petal shown: the column the ray is on the fan within.
 var _widest := 0.0

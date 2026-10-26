@@ -149,7 +149,7 @@ const UNDO_SELECTION := &"undo_selection"
 ## and done as the trigger lets go. On (the default since D-089), it takes
 ## the place of the scene's badge (D-085); the graph keeps its badge.
 const OBJECT_SHORTCUT := &"object_shortcut"
-## How the block palette offers blocks (D-090; the ring by default since D-094): a list as before; tiles of the
+## How the block palette offers blocks (D-093; the ring by default since D-097): a list as before; tiles of the
 ## blocks most likely next over that list; or a ring of the task groups at the
 ## point the palette is opened from, its blocks around the group the ray is on,
 ## the list behind the ring's middle.
@@ -157,7 +157,7 @@ const BLOCK_PALETTE := &"block_palette"
 const LIST := &"list"
 const TILES := &"tiles"
 const RING := &"ring"
-## What the palette's chips group the blocks by (D-090): where they come from
+## What the palette's chips group the blocks by (D-093): where they come from
 ## — the object, the library, @GlobalScope, the native blocks — as before, or
 ## what they are for: Events, Variables, Math, Flow, Move, Look, Sound, Object.
 ## The ring always has the task groups.
@@ -166,9 +166,9 @@ const SOURCES := &"sources"
 const TASKS := &"tasks"
 ## Whether a wire let go in empty space, a card's plus or a box's wire first
 ## offers the five blocks most likely next on petals at that point, with
-## More… for the palette (D-090).
+## More… for the palette (D-093).
 const NEXT_SUGGESTIONS := &"next_suggestions"
-## Whether a card has a copy button beside its trash (D-090; on by default since D-094): the trigger on it
+## Whether a card has a copy button beside its trash (D-093; on by default since D-097): the trigger on it
 ## takes a copy of the block along the ray, to let go where it goes, or, let
 ## go at once, puts it beside the card.
 const BLOCK_COPY := &"block_copy"

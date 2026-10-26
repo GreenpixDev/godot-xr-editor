@@ -2,7 +2,7 @@
 class_name XREBlueprintStats
 extends RefCounted
 ## How often each kind of block, and each wire from one kind to another,
-## comes in the project's graphs (D-090): what the block menu offers first,
+## comes in the project's graphs (D-093): what the block menu offers first,
 ## as tiles, on a ring or as suggestions at a wire's end. Counted when a menu
 ## opens, never per frame: a graph file is read again only when it changed.
 ## Graphs under [constant SKIPPED] are not counted: the addons' own, and the

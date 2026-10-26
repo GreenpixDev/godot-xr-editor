@@ -1098,7 +1098,7 @@ func _operator(graph: XREBlueprintGraph, op: String, params: Dictionary = {}) ->
 
 ## The operators (D-065): their types, a wire's type taken by the other
 ## literal, the menu, the generated code and its values.
-## The block palette's variants (D-090): kinds and wires counted, the likely
+## The block palette's variants (D-093): kinds and wires counted, the likely
 ## next ranked by them, the task groups, the best matches of a search, and the
 ## menu's tiles and task chips with where an action was picked.
 func _test_palette_variants() -> void:
@@ -1154,7 +1154,7 @@ func _test_palette_variants() -> void:
 	root.add_child(scene)
 	var math := XREBlueprintActions.flatten(actions.sections({"task": "Math", "node": cube, "host": scene, "graph": graph}))
 	_check(math.any(func(action: Dictionary) -> bool: return action["id"] == "global:sin") and not math.any(func(action: Dictionary) -> bool: return action["id"] == "operator:multiply")
-			and math.all(func(action: Dictionary) -> bool: return XREBlueprintActions.task_of(action) == "Math"), "Math has @GlobalScope's math functions, not the operators (D-092)")
+			and math.all(func(action: Dictionary) -> bool: return XREBlueprintActions.task_of(action) == "Math"), "Math has @GlobalScope's math functions, not the operators (D-095)")
 	var arithmetic := XREBlueprintActions.flatten(actions.sections({"task": "Arithmetic", "node": cube, "host": scene, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
 	var logic := XREBlueprintActions.flatten(actions.sections({"task": "Logic", "node": cube, "host": scene, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
 	_check(arithmetic.has("operator:multiply") and arithmetic.has("operator:divide") and not arithmetic.has("operator:greater"), "Arithmetic has + − × ÷")
@@ -1168,7 +1168,7 @@ func _test_palette_variants() -> void:
 	_check(object.any(func(section: Dictionary) -> bool: return section["advanced"]), "Object keeps Advanced")
 	var groups := actions.by_task({"node": cube, "host": scene, "graph": graph}, 8, stats)
 	_check(groups.keys() == XREBlueprintActions.TASKS and (groups["Math"] as Array).size() == 8 and not (groups["Move"] as Array).is_empty(), "the ring's groups are the task groups, at most 8 blocks each")
-	_check((groups["Sound"] as Array).is_empty(), "a cube has no Sound: the library's Play Sound is a player's, not the cube's (D-092)")
+	_check((groups["Sound"] as Array).is_empty(), "a cube has no Sound: the library's Play Sound is a player's, not the cube's (D-095)")
 	_check(actions.object_tasks({"node": cube, "host": scene, "graph": graph}) == ["Move", "Look", "Object"], "the cube's groups: Move, Look, Object")
 	var peer := Node.new()
 	scene.add_child(peer)

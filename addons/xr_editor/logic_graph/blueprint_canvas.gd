@@ -62,7 +62,7 @@ const COMPATIBLE_SCALE := 1.3
 ## to its radius: twice the tube's 2.2 mm (D-045).
 const LIT_WIRE_GROW := 0.0022
 const PLUS_RADIUS := 0.010
-## The copy button's color (D-090): a light blue, as neither the plus's white nor the trash's pink.
+## The copy button's color (D-093): a light blue, as neither the plus's white nor the trash's pink.
 const COPY_COLOR := Color("a9d4ff")
 const TOUCH_RADIUS := 0.035
 ## Lift only the contact dot towards the controller; ray picking stays unchanged.
@@ -179,7 +179,7 @@ class Card:
 	var plus_faces: Array[Node3D] = []
 	var trash: Node3D
 	var trash_point: Vector3
-	## The copy button (D-090), or null while cards have none.
+	## The copy button (D-093), or null while cards have none.
 	var copy: Node3D
 	var copy_point: Vector3
 	var inputs: Array[Vector3] = []
@@ -273,7 +273,7 @@ var _delete_right := -1
 var _delete_left := -1
 var _copy_right := -1
 var _copy_left := -1
-## Whether cards have the copy button ([constant XREFeatureSettings.BLOCK_COPY], D-090).
+## Whether cards have the copy button ([constant XREFeatureSettings.BLOCK_COPY], D-093).
 var _copy_shown := false
 var _copy_mesh: ArrayMesh
 var _copy_material: Material
@@ -433,7 +433,7 @@ func set_plus_shown(shown: bool) -> bool:
 
 
 ## Whether cards have the copy button ([constant XREFeatureSettings.BLOCK_COPY],
-## D-090); true if that changed, for a rebuild.
+## D-093); true if that changed, for a rebuild.
 func set_copy_shown(shown: bool) -> bool:
 	if shown == _copy_shown: return false
 	_copy_shown = shown
@@ -1393,7 +1393,7 @@ func _hover_copy(id: int, right: bool) -> void:
 		if card.copy != null: card.copy.scale = Vector3.ONE * (HOVER_SCALE if card.id == _copy_right or card.id == _copy_left else 1.0)
 
 
-## Two squares, one over the other's corner: the copy button (D-090).
+## Two squares, one over the other's corner: the copy button (D-093).
 static func _make_copy_mesh() -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -1887,14 +1887,14 @@ func get_hit_delete() -> bool:
 
 
 ## Where the plus of card [param id] is, global, shown or not: where the
-## block menu's suggestions or ring open from it (D-090).
+## block menu's suggestions or ring open from it (D-093).
 func plus_position(id: int) -> Vector3:
 	var card := _find_card(id)
 	if card == null: return global_position
 	return card.node.global_transform * card.plus_point
 
 
-## Whether the last ray hit the card's copy button (D-090).
+## Whether the last ray hit the card's copy button (D-093).
 func get_hit_copy() -> bool:
 	return _hit_copy
 

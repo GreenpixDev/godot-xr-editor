@@ -66,17 +66,17 @@ const KEYPAD_TOP := 0.6
 const KEYPAD_LEAD := 0.03
 ## Petals scrolled by the right stick tilted all the way, in rows a second (D-067: smoothly).
 const FAN_SPEED := 8.0
-## How many blocks the next-block suggestions offer, and a group of the ring (D-090).
+## How many blocks the next-block suggestions offer, and a group of the ring (D-093).
 const SUGGESTIONS := 5
 const RING_BLOCKS := 8
-## A copy let go nearer than this to where its stand-in started, in meters, goes beside its block (D-090).
+## A copy let go nearer than this to where its stand-in started, in meters, goes beside its block (D-093).
 const COPY_CLICK := 0.03
-## Where the fan of choices and the ring sort, always over everything (D-093):
+## Where the fan of choices and the ring sort, always over everything (D-096):
 ## over the cards in Front focus (100), under the windows over the focus veil
 ## (190) and the hands' rays (200).
 const CHOICE_SORTING := 150.0
 ## The undo step, and the operation in the log, of a block added from the
-## menu, by where it was picked (D-090); from a row without a search, Add Block.
+## menu, by where it was picked (D-093); from a row without a search, Add Block.
 const ADD_TITLES: Dictionary[String, String] = {"tile": "Add Block From Tile", "search": "Add Block From Search", "ring": "Add Block From Ring", "suggestion": "Add Suggested Block"}
 ## What the trigger on a member's name does, shown over it under the ray (D-057).
 const MEMBER_HINT := "click: pick on the object's petals"
@@ -340,19 +340,19 @@ var _petal_outline: XREOutline
 var _petal_block := -1
 var _petal_dynamic := false
 ## A small fan of choices at a point: Get, Set or Tween for a property, or
-## the blocks likely next (D-090); or the ring of the block palette. Either
+## the blocks likely next (D-093); or the ring of the block palette. Either
 ## of [member _fan_choice] and [member _ring], the one in use.
 var _choice: XREBlueprintPetals
 var _choice_point := Vector3.ZERO
 var _fan_choice: XREBlueprintPetals
 var _ring: XREBlueprintRing
-## Whether the choice open stands for the block menu (D-090) — the next-block
+## Whether the choice open stands for the block menu (D-093) — the next-block
 ## suggestions or the ring —, the point it opened at (global) and what opens
 ## the menu's window where it belongs.
 var _choice_menu := false
 var _choice_anchor := Vector3.ZERO
 var _choice_window := Callable()
-## The block a copy is taken of (D-090), and where the copy's stand-in started.
+## The block a copy is taken of (D-093), and where the copy's stand-in started.
 var _copy_source := -1
 var _copy_start := Vector3.ZERO
 ## A wire from a petal of the selected object (Create from scene) and the hand that draws it.
@@ -786,7 +786,7 @@ func _reopen_parameters(block: int) -> bool:
 
 func _reopen_menu(card: int, wired: bool) -> bool:
 	if not _workspace.visible or is_block_palette_shown(): return false
-	# The palette itself, not the suggestions before it (D-090).
+	# The palette itself, not the suggestions before it (D-093).
 	if wired and canvas.has_block(card): _show_block_palette(card, false)
 	else: open_block_menu()
 	return is_block_palette_shown() or (_choice_menu and _choice.is_open())
@@ -1235,7 +1235,7 @@ func _add_from_menu(action: Dictionary, point: Variant = null) -> void:
 	if point is Vector3 or _menu_at_point: block["vr_depth"] = (point as Vector3).z if point is Vector3 else _menu_point.z
 	# From a box (D-063) the block comes unwired; the box is wired into its first fitting input then.
 	var box := str(_menu_wire.get("box", ""))
-	# Where the block was picked is in the operation's name (D-090): the log tells the palette's variants apart.
+	# Where the block was picked is in the operation's name (D-093): the log tells the palette's variants apart.
 	var title: String = ADD_TITLES.get(str(action.get("origin", "")), "Add Block")
 	var id: int = blueprint.perform(blueprint.insert_block.bind(block, position, _menu_wire if box.is_empty() else {}, action.get("target") as Node, title), &"vr_panel")
 	if id < 0:
@@ -1451,7 +1451,7 @@ func _end_drag(place: bool) -> void:
 	elif place: _add_from_menu(action, point)
 
 
-## The trigger on the copy button of card [param id] (D-090), the ray on it
+## The trigger on the copy button of card [param id] (D-093), the ray on it
 ## at [param point]: a copy of the block, without its wires, follows the ray of
 ## [param hand] until the trigger lets go ([method _place_copy]).
 func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
@@ -1467,7 +1467,7 @@ func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	_start_drag({"id": "copy", "title": XREBlueprintGraph.title(block), "block": copy, "target": blueprint.target_node(id), "origin": "copy"}, hand, distance)
 
 
-## Adds the copy of [param action] (D-090) at workspace point [param point], or
+## Adds the copy of [param action] (D-093) at workspace point [param point], or
 ## with [param beside], let go where it started, below its block where no card
 ## is: one undo step, Duplicate Block in the log.
 func _place_copy(action: Dictionary, point: Vector3, beside: bool) -> void:
@@ -1896,11 +1896,11 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 		canvas.hover_socket(-1, -1, hand == _rig.right_hand)
 		var box_waits := _link_hand == hand and not _link_box.is_empty()
-		var menu_waits := (_pending_hand == hand or box_waits) and _wire_menu_open() and hand.get_has_tracking_data()
+		var menu_waits := (_pending_hand == hand or box_waits) and _dropped_menu_open() and hand.get_has_tracking_data()
 		var window := _menu_window()
 		if menu_waits and hand.trigger_pressed and (window == null or window.intersect_ray(hand.global_position, -hand.global_basis.z.normalized(), INF) < 0):
-			# A click on another window lets the wire go with its menu (D-091).
-			_cancel_wire_menu()
+			# A click on another window lets the wire go with its menu (D-094).
+			_cancel_dropped_wire()
 		elif menu_waits:
 			# On the menu of a wire let go, the wire waits at the point it was let go (D-051).
 			if box_waits: canvas.show_link(_link_origin(), _menu_point)
@@ -1990,7 +1990,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 		# A click on one of the graph's windows lets a wire go, as on the panels' (D-058).
 		if hand.trigger_pressed and has_wire(hand) and surface != _menu_window():
-			if _wire_menu_open(): _cancel_wire_menu()
+			if _dropped_menu_open(): _cancel_dropped_wire()
 			else: cancel_connection()
 		if _pending_hand == hand: _preview_connection(origin + direction * maxf(distance, 0.01))
 		if pointer.surface != surface:
@@ -2031,11 +2031,11 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		var hit := canvas_hit
 		if _pending_hand == hand: _preview_connection(origin + direction * (hit if hit >= 0 else 0.8), canvas.get_hit_id() if hit >= 0 else -1, canvas.get_hit_port() if hit >= 0 else -1, canvas.get_hit_input())
 		# With the menu of a wire let go open, a click on a card, a port, a box or a
-		# wire lets the wire go with the menu, and does nothing else (D-091).
-		if hit >= 0 and hand.trigger_pressed and has_wire(hand) and _wire_menu_open():
+		# wire lets the wire go with the menu, and does nothing else (D-094).
+		if hit >= 0 and hand.trigger_pressed and has_wire(hand) and _dropped_menu_open():
 			hand.claim(self)
 			hand.show_ray(hit, true)
-			_cancel_wire_menu()
+			_cancel_dropped_wire()
 			return
 		if hit >= 0 and canvas.get_hit_box():
 			_point_at_box(pointer, origin, direction, hit)
@@ -2068,10 +2068,10 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		if hand.trigger_pressed:
 			# From a box, a click in empty space opens the block menu for its value
 			# (D-063), as a port's wire does; a second click there takes the wire back.
-			if not _link_box.is_empty() and not _wire_menu_open():
+			if not _link_box.is_empty() and not _dropped_menu_open():
 				_open_menu_for_box(canvas.to_local(origin + direction * 0.8))
 				return
-			if _wire_menu_open(): _cancel_wire_menu()
+			if _dropped_menu_open(): _cancel_dropped_wire()
 			else: cancel_connection()
 			_message("Variable wire cancelled.")
 		return
@@ -2089,7 +2089,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		# its own port or × of the menu takes it back, and so does a second click
 		# in empty space while that menu is open (D-058).
 		if hand.trigger_pressed:
-			if _wire_menu_open(): _cancel_wire_menu()
+			if _dropped_menu_open(): _cancel_dropped_wire()
 			else: _open_menu_for_wire(canvas.to_local(origin + direction * 0.8))
 		return
 	if _target_pick >= 0:
@@ -2131,8 +2131,8 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 
 
 func _preview_connection(point: Vector3, end_id: int = -1, end_port: int = -1, end_input: bool = false) -> void:
-	# While the menu of a wire let go is open, the wire ends where it was let go, wherever the ray is (D-091).
-	if _wire_menu_open():
+	# While the menu of a wire let go is open, the wire ends where it was let go, wherever the ray is (D-094).
+	if _dropped_menu_open():
 		canvas.show_connection(_pending_id, _pending_port, _pending_input, _menu_point, -1, -1, false, _pending_finished)
 		return
 	canvas.show_connection(_pending_id, _pending_port, _pending_input, canvas.to_local(point), end_id, end_port, end_input, _pending_finished)
@@ -2624,7 +2624,7 @@ func _show_block_palette(id: int, suggest: bool = true) -> void:
 	_offer_blocks(canvas.plus_position(id), _request_window.bind(XREBlueprintPaletteTab, palette_pose(id)), suggest)
 
 
-## Offers the blocks of the menu just opened (D-090): with [param suggest]
+## Offers the blocks of the menu just opened (D-093): with [param suggest]
 ## and Next suggestions on, the likeliest next on petals at [param at]
 ## (global), with More… for the palette; else the palette itself
 ## ([method _show_palette]). [param window] opens its window where it belongs.
@@ -2646,7 +2646,7 @@ func _offer_blocks(at: Vector3, window: Callable, suggest: bool) -> void:
 	_show_palette()
 
 
-## The block palette of the menu open (D-090), as Block palette says: its
+## The block palette of the menu open (D-093), as Block palette says: its
 ## window, or the ring of the task groups where the menu was opened from.
 func _show_palette() -> void:
 	if _document.features.get_value(XREFeatureSettings.BLOCK_PALETTE) != XREFeatureSettings.RING:
@@ -2662,14 +2662,14 @@ func _show_palette() -> void:
 		for action: Dictionary in tasks[task]: items.append({"text": action["title"], "action": action, "origin": "ring", "enabled": true})
 		groups[task] = items
 	_use_choice(_ring)
-	# The object's groups on the arc are those it has whatever the wire (D-092): the ring keeps its shape for the object.
+	# The object's groups on the arc are those it has whatever the wire (D-095): the ring keeps its shape for the object.
 	var context := block_menu.menu_context()
 	_ring.open_ring(canvas, _choice_anchor, _rig.camera.global_position, _rig.global_basis.y, groups, {"text": "Search…", "list": true, "enabled": true},
 			block_menu.actions.object_tasks(context), str(context.get("label", "")))
 	_choice_menu = true
 
 
-## Makes [param fan] the choice at a point in use, closing the other (D-090); it is not the block menu's until that says so.
+## Makes [param fan] the choice at a point in use, closing the other (D-093); it is not the block menu's until that says so.
 func _use_choice(fan: XREBlueprintPetals) -> void:
 	if fan != _choice:
 		_choice.close()
@@ -2677,14 +2677,14 @@ func _use_choice(fan: XREBlueprintPetals) -> void:
 	_choice_menu = false
 
 
-## A petal of the block menu's suggestions or ring picked (D-090): a group of
+## A petal of the block menu's suggestions or ring picked (D-093): a group of
 ## the ring shows its blocks, More… the palette, the ring's middle the list;
 ## a block is added as the menu adds it.
 func _choose_offered(item: Dictionary) -> void:
 	if item.has("sector"):
 		_ring.open_sector(int(item["sector"]))
 		return
-	# Where More… or Search… was clicked: the ring or the window opens there (D-091).
+	# Where More… or Search… was clicked: the ring or the window opens there (D-094).
 	var at := _choice.item_position(item)
 	_choice.close()
 	if item.has("more") and _document.features.get_value(XREFeatureSettings.BLOCK_PALETTE) == XREFeatureSettings.RING:
@@ -2702,7 +2702,7 @@ func _choose_offered(item: Dictionary) -> void:
 
 
 ## Opens the block palette's window centered at [param at] (global), where
-## More… or Search… was clicked (D-091), a little nearer the head: the ray is on it.
+## More… or Search… was clicked (D-094), a little nearer the head: the ray is on it.
 func _show_window_at(at: Vector3) -> void:
 	var head := _rig.camera.global_position
 	var point := at + (head - at).normalized() * PARAMETERS_LIFT
@@ -2710,13 +2710,13 @@ func _show_window_at(at: Vector3) -> void:
 
 
 ## Whether the block menu of a wire let go is open — its window, the
-## suggestions or the ring (D-091): the wire's end waits where it was let go.
-func _wire_menu_open() -> bool:
+## suggestions or the ring (D-094): the wire's end waits where it was let go.
+func _dropped_menu_open() -> bool:
 	return _menu_at_point and (is_block_palette_shown() or (_choice_menu and _choice.is_open()))
 
 
-## A click off the open menu of a wire let go (D-091): the menu and the wire go.
-func _cancel_wire_menu() -> void:
+## A click off the open menu of a wire let go (D-094): the menu and the wire go.
+func _cancel_dropped_wire() -> void:
 	if is_block_palette_shown(): close_block_palette()
 	if _choice_menu and _choice.is_open(): _choice.close()
 	_choice_menu = false
@@ -2726,12 +2726,12 @@ func _cancel_wire_menu() -> void:
 	_message("Wire cancelled.")
 
 
-## The wire from a variable's box to workspace point [param point], or, while its menu is open, to where it was let go (D-091).
+## The wire from a variable's box to workspace point [param point], or, while its menu is open, to where it was let go (D-094).
 func _show_box_link(point: Vector3) -> void:
-	canvas.show_link(_link_origin(), _menu_point if _wire_menu_open() else point)
+	canvas.show_link(_link_origin(), _menu_point if _dropped_menu_open() else point)
 
 
-## The block menu's suggestions or ring closed without a block (D-090): the
+## The block menu's suggestions or ring closed without a block (D-093): the
 ## wire let go in empty space they were for goes too, as the menu's × takes it.
 func _end_block_offer() -> void:
 	_choice_menu = false
@@ -2742,7 +2742,7 @@ func _end_block_offer() -> void:
 	_message("Wire cancelled.")
 
 
-## The block palette as Block palette and Palette groups say (D-090): tiles
+## The block palette as Block palette and Palette groups say (D-093): tiles
 ## over the list, chips by task. Suggestions or a ring open for the menu
 ## close: the next ones open as the settings say now.
 func _update_palette_mode() -> void:
@@ -3896,7 +3896,7 @@ func _close_inputs() -> void:
 		_petals.close()
 	elif _choice.is_open() and _member_link.is_empty():
 		_choice.close()
-		# The block menu's suggestions or ring go with the wire they were for (D-090).
+		# The block menu's suggestions or ring go with the wire they were for (D-093).
 		if _choice_menu: _end_block_offer()
 
 
