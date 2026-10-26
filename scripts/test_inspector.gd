@@ -31,7 +31,7 @@ var _energy_before := 0.0
 ## A node the headset adds and deletes, undone and redone (D-087).
 var _added: Node3D
 ## The proxy the inspector edited before another node was selected, and
-## whether it was still there when the inspector moved off it (D-090).
+## whether it was still there when the inspector moved off it (D-092).
 var _old_proxy: WeakRef
 var _old_proxy_alive := false
 
@@ -139,7 +139,7 @@ func _inspector_shown() -> void:
 	_next()
 
 
-## D-090: from one node to another the inspector edits a new proxy. The old
+## D-092: from one node to another the inspector edits a new proxy. The old
 ## one is freed only after the inspector has let go of it: EditorInspector
 ## touches what it edited in edit(), and a freed proxy there is a use after free.
 func _select_other_node() -> void:
@@ -302,7 +302,7 @@ func _open_for_undo() -> void:
 func _undo_open() -> void:
 	_check(_document.undo(XREDocument.Source.TOOL) and _document.get_scene_root().scene_file_path == SCENE,
 			"undo goes back to the scene edited before")
-	# D-090: a second switch in one frame would crash Godot 4.7.2.
+	# D-092: a second switch in one frame would crash Godot 4.7.2.
 	_check(not _document.redo(XREDocument.Source.TOOL) and _document.get_scene_root().scene_file_path == SCENE
 			and _document.history.get_redo_name() == "Open play_check.tscn",
 			"in the frame of a switch, redo waits and keeps the step: %s" % _document.history.get_redo_name())

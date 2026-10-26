@@ -97,7 +97,7 @@ func _refresh() -> void:
 		end_edit()
 		# The inspector holds a raw pointer to what it edits and touches it in
 		# edit(): the old proxy must outlive the switch, or that is a use after
-		# free, and a double free of the proxy (D-090).
+		# free, and a double free of the proxy (D-092).
 		var proxy := XREInspectorProxy.new(_document, node)
 		_inspector.edit(proxy)
 		_proxy = proxy

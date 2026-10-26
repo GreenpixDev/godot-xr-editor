@@ -184,7 +184,7 @@ func record_graph_operation(operation: StringName, source: Source) -> void:
 ## edited stays open. Returns [constant ERR_FILE_UNRECOGNIZED] for a file that
 ## is not a scene ([method is_scene_file]), and [constant ERR_BUSY] if the
 ## edited scene already changed in this frame and can't change again until
-## the next ([XREPluginDocument], D-090).
+## the next ([XREPluginDocument], D-092).
 @abstract func open_scene(path: String, source: Source) -> Error
 
 

@@ -334,7 +334,7 @@ func _on_scene_changed(_scene_root: Node) -> void:
 ## Godot 4.7.2 can't switch scenes again until the frame's deferred calls
 ## have run: a switch has the Scene dock scroll to each selected node's
 ## TreeItem later, and the next switch frees those items first, a use after
-## free that crashes the editor (D-090). So one switch a frame.
+## free that crashes the editor (D-092). So one switch a frame.
 func _scene_switched_this_frame() -> bool:
 	return _scene_changed_frame == Engine.get_process_frames()
 

@@ -73,6 +73,11 @@ const MEMBER_HINT := "click: pick on the object's petals"
 ## covers, the window is: so that no card covers it or takes its ray.
 const PARAMETERS_GAP := 0.04
 const PARAMETERS_LIFT := 0.05
+## A block the menu adds with no card to go beside stands this far behind the
+## menu's window, in meters, from the head (D-090); cards nearer each other in
+## depth than [constant MENU_DEPTH_GAP] make way for it, others don't.
+const MENU_BEHIND := 0.08
+const MENU_DEPTH_GAP := 0.15
 ## A ray gone off the graph keeps what it was on in focus this long, in
 ## seconds (D-072): passing between two cards, the graph doesn't flash.
 const FOCUS_HOLD := 0.15
@@ -87,8 +92,23 @@ const PULL_DONE := 0.5
 ## How many parts of an object, and nodes under it, its projection on a link takes at most.
 const PROJECTION_PARTS := 24
 const PROJECTION_NODES := 200
+## The buttons of the wire's menu (D-090), with Link from wire on Wire menu:
+## make the wire a link, add a point — a bend — where the ray is on it, or
+## take off the point the ray is on; with the colors they light up in.
+const WIRE_LINK := 0
+const WIRE_POINT := 1
+const WIRE_UNBEND := 2
+const WIRE_MENU_TITLES: Array[String] = ["Link", "Point", "Delete point"]
+const WIRE_MENU_GLYPHS: Array[StringName] = [&"link", &"bend", &"trash"]
+const WIRE_MENU_COLORS: Array[Color] = [Color("1f8fb5"), Color("3f9e6a"), Color(0.86, 0.2, 0.18)]
+## Auto link (D-090): a new wire to a variable or an object with more wires and
+## links than this already, longer than this in meters, becomes a link.
+const AUTO_LINK_REFERENCES := 1
+const AUTO_LINK_DISTANCE := 0.5
 ## What the ray on a link says (D-074).
 const LINK_HINT := "click: another one  ·  grip: move, let go in the air: a wire"
+## What the ray on a link says with Link from wire on Wire menu (D-090).
+const LINK_MENU_HINT := "click: a wire again  ·  grip: move"
 ## How long the cards that keep a variable from being deleted flash, in seconds (D-079).
 const FLASH_TIME := 1.5
 ## What of the graph is open for the user, bits of [method _open_inputs]: each
@@ -236,6 +256,9 @@ class Pointer:
 	var bend_moved := false
 	## The frame this hand's ray was last on a wire: after it, the knot it lit is let go.
 	var wire_frame := -1
+	## The wire under this hand's ray that may become a link, as a ref, with Link
+	## from wire on Wire menu (D-090): empty for none. Its menu offers Link.
+	var wire_ref: Dictionary = {}
 
 class Marker:
 	var host: Node
@@ -346,6 +369,14 @@ var _pending_link := false
 ## The linkable wire the last [method _link_wire_hit] met, as a ref, and where (global).
 var _wire_ref: Dictionary = {}
 var _wire_point := Vector3.ZERO
+## The wire's menu (D-090): the hand whose trigger holds it open, or null, and
+## what it is for — [code]{"edge", "bend", "piece", "point", "ref"}[/code]: the
+## canvas's wire (-1 for one it doesn't bend), the knot the ray was on (-1 for
+## none), the piece and the point (the canvas's space) where it was on the
+## wire, and the ref of [XREBlueprintLinks] for its link, empty if it may not become one.
+var _wire_menu: XREArcMenu
+var _wire_menu_hand: XREHand
+var _wire_menu_for: Dictionary = {}
 ## Meshes baked from CSG objects for the projections on links, by the object's instance id; forgotten on a scene edit.
 var _projection_meshes: Dictionary[int, Mesh] = {}
 ## The token typed on the keyboard, or a new variable's name ([member _token_field]).
@@ -457,6 +488,9 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_choice = XREBlueprintPetals.new()
 	_choice.name = "Choice"
 	add_child(_choice)
+	_wire_menu = XREArcMenu.new(WIRE_MENU_TITLES, WIRE_MENU_GLYPHS, WIRE_MENU_COLORS)
+	_wire_menu.name = "WireMenu"
+	add_child(_wire_menu)
 	_petal_outline = XREOutline.new(Color.WHITE)
 	add_child(_petal_outline)
 	_forms_home = SubViewport.new()
@@ -631,8 +665,10 @@ func _process(delta: float) -> void:
 	_update_focus()
 	_update_fade()
 	_update_graph_focus(delta)
-	# The rays over an input in use (D-061) and over what Front draws over everything (D-075).
-	var rays_on_top := _focused or canvas.is_front_focused()
+	# The rays over an input in use (D-061), over what Front draws over everything (D-075) and over
+	# the block palette, drawn over everything too (D-086): with no card in focus, as from the badge's
+	# plus, it hid the ray on it (D-090) — opened by the graph, or from the launcher's Add block.
+	var rays_on_top := _focused or canvas.is_front_focused() or is_block_palette_shown() or (is_instance_valid(panels) and panels.has_window_on_top())
 	if rays_on_top != _rays_on_top:
 		_rays_on_top = rays_on_top
 		for hand: XREHand in [_rig.left_hand, _rig.right_hand]: hand.set_on_top(rays_on_top)
@@ -1181,10 +1217,15 @@ func open_block_menu() -> void:
 	_menu_at_point = false
 	block_menu.open(_menu_contexts(-1), blueprint.get_host(), blueprint.graph)
 	var head := _rig.camera.global_position
+	var point := _ahead_point()
+	_request_window(XREBlueprintPaletteTab, Transform3D(XREPanels.facing(point, head, _rig.global_basis.y), point))
+
+
+## In front of the head, level, as far as a window opens and a little below the eyes: global.
+func _ahead_point() -> Vector3:
 	var forward := -_rig.camera.global_basis.z
 	forward.y = 0.0
-	var point := head + (forward.normalized() if not forward.is_zero_approx() else Vector3.FORWARD) * XREPanels.WINDOW_DISTANCE - Vector3.UP * XREPanels.WINDOW_DROP
-	_request_window(XREBlueprintPaletteTab, Transform3D(XREPanels.facing(point, head, _rig.global_basis.y), point))
+	return _rig.camera.global_position + (forward.normalized() if not forward.is_zero_approx() else Vector3.FORWARD) * XREPanels.WINDOW_DISTANCE - Vector3.UP * XREPanels.WINDOW_DROP
 
 
 ## Adds [param action]'s block where the menu was opened, wired to its pin, as
@@ -1194,9 +1235,10 @@ func _add_from_menu(action: Dictionary, point: Variant = null) -> void:
 	if action.has("variable"):
 		_ask_new_variable(action, point)
 		return
-	var position := _menu_position(point)
+	var place := _menu_place(point)
+	var position := Vector2(place.x, place.y)
 	var block: Dictionary = (action["block"] as Dictionary).duplicate(true)
-	if point is Vector3 or _menu_at_point: block["vr_depth"] = (point as Vector3).z if point is Vector3 else _menu_point.z
+	block["vr_depth"] = place.z
 	# From a box (D-063) the block comes unwired; the box is wired into its first fitting input then.
 	var box := str(_menu_wire.get("box", ""))
 	var id: int = blueprint.perform(blueprint.insert_block.bind(block, position, _menu_wire if box.is_empty() else {}, action.get("target") as Node), &"vr_panel")
@@ -1220,24 +1262,50 @@ func _add_from_menu(action: Dictionary, point: Variant = null) -> void:
 		block_menu.open(_menu_contexts(id), blueprint.get_host(), blueprint.graph, pin)
 
 
-## Graph coordinates of a block the menu adds: at [param point] (workspace),
-## at the point a wire was let go, or beside the menu's card — to the right of
-## an output, to the left of an input — and below the cards there.
-func _menu_position(point: Variant) -> Vector2:
-	if point is Vector3: return canvas.block_position(point)
-	if _menu_at_point: return canvas.block_position(_menu_point)
+## Where a block the menu adds goes: graph X and Y with its VR depth. At
+## [param point] (workspace), at the point a wire was let go, beside the
+## menu's card and as deep — to the right of an output, to the left of an
+## input —, or, with no card, as from the badge's plus, where the menu is
+## (D-090): its block stands in the menu's place once it closes. Below the
+## cards there, as deep as the block within [constant MENU_DEPTH_GAP].
+func _menu_place(point: Variant) -> Vector3:
+	if point is Vector3: return _graph_place(point)
+	if _menu_at_point: return _graph_place(_menu_point)
 	var source := blueprint.graph.find_node(_menu_card)
-	var position := Vector2(80, 100) + Vector2(320 * blueprint.graph.nodes.size(), 0)
-	if not source.is_empty():
-		position = source["position"] + Vector2(-320 if _menu_wire.has("to") else 320, 0)
-	for attempt: int in 8:
+	var start: Vector3
+	# Added with no menu, as by [method add_block]: at the end of the row of blocks, as before.
+	if source.is_empty() and _menu_window() == null: start = Vector3(80.0 + 320.0 * blueprint.graph.nodes.size(), 100.0, 0.0)
+	elif source.is_empty(): start = _graph_place(_menu_free_point())
+	else:
+		var beside: Vector2 = source["position"] + Vector2(-320 if _menu_wire.has("to") else 320, 0)
+		start = Vector3(beside.x, beside.y, float(source.get("vr_depth", 0.0)))
+	# Down a column of free places, then the next column on.
+	var place := start
+	for attempt: int in 24:
+		place = start + Vector3(320.0 * floorf(attempt / 6.0), 160.0 * (attempt % 6), 0.0)
 		var free := true
 		for block: Dictionary in blueprint.graph.nodes:
-			var offset: Vector2 = block["position"] - position
-			if absf(offset.x) < 260 and absf(offset.y) < 140: free = false
+			var offset: Vector2 = block["position"] - Vector2(place.x, place.y)
+			if absf(offset.x) < 260 and absf(offset.y) < 140 and absf(float(block.get("vr_depth", 0.0)) - place.z) < MENU_DEPTH_GAP: free = false
 		if free: break
-		position.y += 160
-	return position
+	return place
+
+
+## Graph X and Y of workspace point [param point], with its depth.
+func _graph_place(point: Vector3) -> Vector3:
+	var at := canvas.block_position(point)
+	return Vector3(at.x, at.y, point.z)
+
+
+## Where a block the menu adds with no card to go beside stands, in the
+## workspace: a little behind the menu's window, or, pinned to a hand, before
+## the head where the window opens.
+func _menu_free_point() -> Vector3:
+	var head := _rig.camera.global_position
+	var window := _menu_window() as XREPanelWindow
+	var at := _ahead_point()
+	if window != null and not window.is_pinned(): at = window.global_position
+	return canvas.to_local(at + (at - head).normalized() * MENU_BEHIND)
 
 
 ## The context objects of the menu (D-051): the selected scene object, the
@@ -1805,6 +1873,14 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				else: pointer.held.global_transform = Transform3D(XREPanels.facing(target.origin, _rig.camera.global_position, Vector3.UP), target.origin)
 				if pointer.window != null: pointer.window.hover_handles(pointer.corner)
 			return
+	if _wire_menu.is_open():
+		# The wire's menu has both hands while it is open (D-090), as the object's shortcut does.
+		if hand == _wire_menu_hand: _update_wire_menu(pointer)
+		else:
+			_leave(pointer)
+			hand.claim(self)
+			hand.show_ray(XREHand.RAY_LENGTH, false)
+		return
 	if not hand.is_free_for(self) or not hand.get_has_tracking_data():
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 		canvas.hover_socket(-1, -1, hand == _rig.right_hand)
@@ -2300,6 +2376,7 @@ func _feature_changed(key: StringName) -> void:
 		for pointer: Pointer in _pointers:
 			_hide_button(pointer)
 			if not pointer.pull.is_empty(): _end_pull(pointer, false)
+		_cancel_wire_menu()
 		return
 	if key in [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT, XREFeatureSettings.VARIABLE_INPUT]:
 		var features := _document.features
@@ -2960,7 +3037,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		_hint_frame = Engine.get_process_frames()
 	elif not link.is_empty() and _token_editor.mode in [&"", XREBlueprintTokenEditor.HINT]:
 		var at := origin + direction * hit
-		_token_editor.show_hint(Transform3D(XREPanels.facing(at, _rig.camera.global_position, _rig.global_basis.y), at), LINK_HINT)
+		_token_editor.show_hint(Transform3D(XREPanels.facing(at, _rig.camera.global_position, _rig.global_basis.y), at), LINK_MENU_HINT if _wire_menu_on() else LINK_HINT)
 		_hint_frame = Engine.get_process_frames()
 	_filter_tray(id, socket, key if token else "")
 	if not _member_link.is_empty() and _member_hand == hand:
@@ -2976,6 +3053,8 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		if canvas.get_hit_plus(): _show_block_palette(id)
 		elif canvas.get_hit_delete(): delete_block(id)
 		elif token: _start_turn(pointer, id, key, "", origin + direction * hit)
+		# With Wire menu the trigger on a link makes it its wire again, with no button (D-090).
+		elif not link.is_empty() and _wire_menu_on(): _set_link(link, false)
 		elif not link.is_empty(): _retarget_link(link, hand)
 		elif kind == XREBlueprintCanvas.SOURCE: _start_link(id, XREBlueprintCanvas.SOURCE, hand)
 		elif kind == XREBlueprintCanvas.VARIABLE:
@@ -3013,7 +3092,10 @@ func _point_at_wire(pointer: Pointer, hit: float) -> void:
 	canvas.hover_socket(-1, -1, right)
 	canvas.hover_bend(edge, bend, canvas.get_hit_wire_point(), right)
 	pointer.wire_frame = Engine.get_process_frames()
-	if hand.trigger_pressed or hand.grip_pressed:
+	# With Link from wire on Wire menu the trigger opens the wire's menu (D-090); the grip still drags.
+	if hand.trigger_pressed and _wire_menu_on() and _open_wire_menu(pointer, edge, bend, pointer.wire_ref):
+		canvas.hover_bend(-1, -1, Vector3.ZERO, right)
+	elif hand.trigger_pressed or hand.grip_pressed:
 		_start_bend(pointer, edge, bend, hit, not hand.grip_pressed)
 	elif _deletes_now():
 		_consume_delete()
@@ -3092,10 +3174,11 @@ func _end_bend(pointer: Pointer, commit: bool) -> void:
 	canvas.reset_bends(blueprint.graph, edge)
 
 
-## Puts back the bends being dragged: the graph or the canvas changes under them.
+## Puts back the bends being dragged, and closes the wire's menu (D-090): the graph or the canvas changes under them.
 func _cancel_bends() -> void:
 	for pointer: Pointer in _pointers:
 		if pointer.bend_edge >= 0: _end_bend(pointer, false)
+	_cancel_wire_menu()
 
 
 ## Takes bend [param bend] off the wire of graph edge [param edge], or all its
@@ -3108,6 +3191,101 @@ func _unbend(edge: int, bend: int) -> void:
 		if pointer.bend_edge == edge: return
 	canvas.remove_bend(edge, bend)
 	if not canvas.commit_bends(blueprint, edge, "Remove Bend" if bend >= 0 else "Straighten Wire"): canvas.reset_bends(blueprint.graph, edge)
+
+
+## Adds a bend to the wire of graph edge [param edge] at [param point] (the
+## canvas's space) on its piece [param piece], as one edit, Add Bend (D-090):
+## the wire stays as it was, with a knot there that grip or trigger then drags.
+func _add_bend(edge: int, piece: int, point: Vector3) -> void:
+	for pointer: Pointer in _pointers:
+		if pointer.bend_edge == edge: return
+	if canvas.insert_bend(edge, piece, point) < 0:
+		_message("A wire takes at most %d bends." % XREBlueprintGraph.MAX_BENDS)
+		return
+	if not canvas.commit_bends(blueprint, edge, "Add Bend"): canvas.reset_bends(blueprint.graph, edge)
+
+
+# --- The wire's menu (D-090) ------------------------------------------------------------------
+
+
+## Whether Link from wire is on Wire menu: the trigger on a wire opens its menu.
+func _wire_menu_on() -> bool:
+	return _document.features.get_value(XREFeatureSettings.LINK_CREATE) == XREFeatureSettings.WIRE_MENU
+
+
+## Opens the wire's menu for [param pointer]'s hand, whose trigger went down
+## on the canvas's wire [param edge] (-1 for a wire it doesn't bend), on its
+## knot [param bend] or between knots with -1, the wire's link being
+## [param ref] (empty if it may not become one): Link if it may, Point
+## between knots, Delete point on one. Along the ray, as the object's shortcut
+## (D-088), its center where the ray is. With one of them only there is no
+## menu: Link is done at once (true); a bend or a knot is the trigger's to
+## drag, as without the menu (false).
+func _open_wire_menu(pointer: Pointer, edge: int, bend: int, ref: Dictionary) -> bool:
+	if _wire_menu.is_open(): return false
+	var items: Array[int] = []
+	if not ref.is_empty(): items.append(WIRE_LINK)
+	if edge >= 0: items.append(WIRE_UNBEND if bend >= 0 else WIRE_POINT)
+	# One thing to do is done with no menu (D-090): a bend the trigger drags out of the wire or a
+	# knot it drags, as without the menu (false); a link at once.
+	if items.size() < 2:
+		if items == [WIRE_LINK]: _set_link(ref, true)
+		return items == [WIRE_LINK]
+	var hand := pointer.hand
+	var head := _rig.camera.global_position
+	var center := hand.global_position - hand.global_basis.z.normalized() * XREObjectShortcut.DISTANCE
+	_wire_menu.global_transform = Transform3D(XREPanels.facing(center, head, _rig.global_basis.y), center)
+	_wire_menu_hand = hand
+	_wire_menu_for = {"edge": edge, "bend": bend, "piece": canvas.get_hit_piece(), "point": canvas.get_hit_wire_point(), "ref": ref.duplicate()}
+	_wire_menu.open("Point" if bend >= 0 else "Wire", items)
+	_hide_button(pointer)
+	hand.claim(self)
+	return true
+
+
+## Lights the button under the ray of the menu's hand; its trigger let go does
+## it, or, on none, only closes the menu. A lost hand closes it.
+func _update_wire_menu(pointer: Pointer) -> void:
+	var hand := pointer.hand
+	if not hand.get_has_tracking_data():
+		_cancel_wire_menu()
+		return
+	hand.claim(self)
+	var distance := _wire_menu.pick(hand)
+	var picked := _wire_menu.get_lit()
+	hand.show_ray(distance if distance >= 0.0 else XREHand.RAY_LENGTH, picked >= 0)
+	pointer.focus = int((_wire_menu_for["ref"] as Dictionary).get("card", -1))
+	if hand.trigger_held: return
+	var target := _wire_menu_for
+	_cancel_wire_menu()
+	match picked:
+		WIRE_LINK: _set_link(target["ref"], true)
+		WIRE_POINT: _add_bend(int(target["edge"]), int(target["piece"]), target["point"])
+		WIRE_UNBEND: _unbend(int(target["edge"]), int(target["bend"]))
+
+
+## Closes the wire's menu without doing anything, and lets go of its hand.
+func _cancel_wire_menu() -> void:
+	if not _wire_menu.is_open(): return
+	if _wire_menu_hand != null: _wire_menu_hand.unclaim(self)
+	_wire_menu_hand = null
+	_wire_menu_for = {}
+	_wire_menu.close()
+
+
+## Whether the wire's menu is open (D-090).
+func is_wire_menu_open() -> bool:
+	return _wire_menu.is_open()
+
+
+## The button the ray is on in the wire's menu, one of WIRE_LINK, WIRE_POINT and WIRE_UNBEND, or -1.
+func get_wire_menu_lit() -> int:
+	return _wire_menu.get_lit()
+
+
+## The center of button [param index] of the wire's menu, global.
+func get_wire_menu_button(index: int) -> Vector3:
+	return _wire_menu.get_button_position(index)
 
 
 ## Dims the tray's tokens that don't fit the socket under a ray, once it changes; empty [param key] for none.
@@ -3660,15 +3838,16 @@ func _close_inputs() -> void:
 		_petals.close()
 	elif _choice.is_open() and _member_link.is_empty():
 		_choice.close()
+	_cancel_wire_menu()
 
 
 ## Whether an input has the user's attention (D-061): a value's widget, the
-## keyboard, or the petals of a member being picked, or a choice.
+## keyboard, or the petals of a member being picked, or a choice, or the wire's menu (D-090).
 func is_focused() -> bool:
 	if not _workspace.visible: return false
 	if _token_editor.mode in [XREBlueprintTokenEditor.DIAL, XREBlueprintTokenEditor.CHOICE, XREBlueprintTokenEditor.GLOBE, XREBlueprintTokenEditor.ARROWS]: return true
 	if _editing_color(): return true
-	if _keyboard.is_shown() or _choice.is_open(): return true
+	if _keyboard.is_shown() or _choice.is_open() or _wire_menu.is_open(): return true
 	return _petals.is_open() and (_petal_block >= 0 or _petal_dynamic)
 
 
@@ -4366,7 +4545,8 @@ func _remove_box(variable: String) -> void:
 ## point a wire was let go, or beside the menu's card — or at [param point],
 ## where its row was pulled to. From a wire of a data input, that input reads it.
 func _ask_new_variable(action: Dictionary, point: Variant) -> void:
-	var at := canvas.position_from_block({"position": _menu_position(null), "vr_depth": 0.0})
+	var place := _menu_place(null)
+	var at := canvas.position_from_block({"position": Vector2(place.x, place.y), "vr_depth": place.z})
 	if point is Vector3: at = point
 	elif _menu_at_point: at = _menu_point
 	var value: Variant = action["variable"]
@@ -4806,15 +4986,56 @@ func _connect_member_link(id: int) -> void:
 ## the same edit, [param state] (of [method XREBlueprintDocument.commit]): so a
 ## new wire to a box or an object is a link at once, and undo takes both back.
 ## A reference that stays as it was keeps its look, so a link made a wire again stays a wire.
+## With Auto link on (D-090), only a reference [method _links_far] says so of
+## becomes a link: to a variable or an object with wires or links to it
+## already, far from its card. Edits from the headset are the graph's and
+## its windows' (D-090): a block the block menu adds for an object, with its
+## Target, or a target picked in Parameters, gets its link as a wire does.
 func _link_new_references(state: Dictionary) -> void:
-	if blueprint.operation_source != &"vr_graph" or _document.features.get_value(XREFeatureSettings.LINK_CREATE) != XREFeatureSettings.ALWAYS: return
+	if not blueprint.operation_source in [&"vr_graph", &"vr_panel"]: return
+	var always := _links_only()
+	if not always and _document.features.get_value(XREFeatureSettings.AUTO_LINK) != XREFeatureSettings.ON: return
 	for entry: Dictionary in state["nodes"]:
 		var params: Dictionary = entry["params"]
 		var before: Dictionary = blueprint.graph.find_node(int(entry["id"])).get("params", {})
 		if entry["kind"] in ["get_variable", "set_variable"] and not str(params.get("variable", "")).is_empty() and params.get("variable") != before.get("variable"):
-			XREBlueprintLinks.set_link(entry, XREBlueprintLinks.VARIABLE, true)
+			if always or _links_far(entry, XREBlueprintLinks.VARIABLE, state): XREBlueprintLinks.set_link(entry, XREBlueprintLinks.VARIABLE, true)
 		if XREBlueprintGraph.has_target(entry) and not str(params.get("target", "")).is_empty() and params.get("target") != before.get("target"):
-			XREBlueprintLinks.set_link(entry, XREBlueprintLinks.TARGET, true)
+			if always or _links_far(entry, XREBlueprintLinks.TARGET, state): XREBlueprintLinks.set_link(entry, XREBlueprintLinks.TARGET, true)
+
+
+## Whether the new reference of [param key] of block [param entry] — its
+## variable or its target — in [param state] should be a link by Auto link
+## (D-090): other blocks refer to it more than [constant AUTO_LINK_REFERENCES]
+## times already, by wires or links, and its wire would run farther than
+## [constant AUTO_LINK_DISTANCE] — from the card, or the card an inline Get
+## Variable feeds, to the variable's box or to the object.
+func _links_far(entry: Dictionary, key: String, state: Dictionary) -> bool:
+	var params: Dictionary = entry["params"]
+	var field := "variable" if key == XREBlueprintLinks.VARIABLE else "target"
+	var references := 0
+	for block: Dictionary in blueprint.graph.nodes:
+		if block["id"] == entry["id"] or (block.get("params", {}) as Dictionary).get(field) != params[field]: continue
+		if key == XREBlueprintLinks.VARIABLE and not block["kind"] in ["get_variable", "set_variable"]: continue
+		references += 1
+	if references <= AUTO_LINK_REFERENCES: return false
+	var end: Vector3
+	if key == XREBlueprintLinks.VARIABLE:
+		if not canvas.get_boxes().has_box(str(params[field])): return false
+		end = canvas.get_boxes().box_point(str(params[field]))
+	else:
+		if not XREBlueprintTokens.targets_in_scene(_document.features.get_value(XREFeatureSettings.TARGET_INPUT)): return false
+		var target := blueprint.resolve_target(str(params[field])) as Node3D
+		if target == null or not target.is_inside_tree(): return false
+		end = canvas.to_local(target.global_position)
+	var card := entry
+	if canvas.is_inline(entry):
+		# An inline Get Variable shows on the card it feeds (D-061).
+		for edge: Dictionary in state["edges"]:
+			if edge["from"] != entry["id"]: continue
+			for block: Dictionary in state["nodes"]:
+				if block["id"] == edge["to"]: card = block
+	return canvas.position_from_block(card).distance_to(end) > AUTO_LINK_DISTANCE
 
 
 ## Whether Link from wire is on Always (D-077): links are made by themselves
@@ -4850,7 +5071,8 @@ func _update_link_button(pointer: Pointer, id: int, kind: int, link: Dictionary,
 	# With Always there are no buttons: every new wire is a link, and a link stays one (D-077).
 	if has_wire(pointer.hand) or create == XREFeatureSettings.ALWAYS: return
 	if not link.is_empty():
-		if create != XREFeatureSettings.PULL: _show_button(pointer, link, false, _button_above(id, point))
+		# With Wire menu the trigger on the link itself takes it back to its wire (D-090).
+		if not create in [XREFeatureSettings.PULL, XREFeatureSettings.WIRE_MENU]: _show_button(pointer, link, false, _button_above(id, point))
 		return
 	if create != XREFeatureSettings.PORT_BUTTON: return
 	var ref := _linkable_at(id, kind)
@@ -5003,18 +5225,21 @@ func _link_wire_hit(origin: Vector3, direction: Vector3, limit: float) -> float:
 func _point_at_link_wire(pointer: Pointer, origin: Vector3, direction: Vector3, limit: float, bent: bool = false) -> bool:
 	var create := _document.features.get_value(XREFeatureSettings.LINK_CREATE)
 	var hand := pointer.hand
+	pointer.wire_ref = {}
 	if create in [XREFeatureSettings.PORT_BUTTON, XREFeatureSettings.ALWAYS] or has_wire(hand) or _target_pick >= 0: return false
 	var hit := _link_wire_hit(origin, direction, limit + XREBlueprintCanvas.WIRE_REACH * 2.0 if bent else limit)
 	if hit < 0.0: return false
+	if create == XREFeatureSettings.WIRE_MENU: pointer.wire_ref = _wire_ref
 	if bent:
 		pointer.focus = int(_wire_ref["card"])
+		# With Wire menu the trigger on the bends' wire opens its menu, Link in it ([method _point_at_wire]).
 		if create == XREFeatureSettings.WIRE_BUTTON:
 			# On the wire the button would take the ray from it, and the trigger would make a link, not
 			# a bend: it stands up across the ray, so that a ray from above doesn't foreshorten the rise.
 			var up := Vector3.UP - direction * direction.dot(Vector3.UP)
 			up = up.normalized() if not up.is_zero_approx() else canvas.global_basis.y.normalized()
 			_show_button(pointer, _wire_ref, true, _wire_point + up * BUTTON_RISE - direction * BUTTON_LEAD)
-		elif hand.grip_pressed:
+		elif create == XREFeatureSettings.PULL and hand.grip_pressed:
 			hand.show_ray(hit, true)
 			_start_pull(pointer, _wire_ref, hit)
 			return true
@@ -5025,6 +5250,9 @@ func _point_at_link_wire(pointer: Pointer, origin: Vector3, direction: Vector3, 
 	canvas.hover_socket(-1, -1, hand == _rig.right_hand)
 	pointer.focus = int(_wire_ref["card"])
 	if create == XREFeatureSettings.WIRE_BUTTON: _show_button(pointer, _wire_ref, true, _wire_point + (_rig.camera.global_position - _wire_point).normalized() * BUTTON_LEAD)
+	elif create == XREFeatureSettings.WIRE_MENU:
+		# A wire the canvas doesn't bend, with Wire bends off: its menu has Link alone.
+		if hand.trigger_pressed: _open_wire_menu(pointer, -1, -1, _wire_ref)
 	elif hand.grip_pressed: _start_pull(pointer, _wire_ref, hit)
 	return true
 

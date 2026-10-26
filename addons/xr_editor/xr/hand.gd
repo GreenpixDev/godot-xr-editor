@@ -204,6 +204,11 @@ func set_overlay(enabled: bool) -> void:
 		material.render_priority = Material.RENDER_PRIORITY_MAX if enabled else 0
 
 
+## How much later than the rest the ray is drawn: more than anything else drawn over everything while [method set_on_top], else 0.
+func get_ray_sorting() -> float:
+	return _ray.sorting_offset
+
+
 ## Draws the ray and its dot over everything (D-061), while an input has the user's attention.
 func set_on_top(enabled: bool) -> void:
 	_ray.sorting_offset = 200.0 if enabled else 0.0
