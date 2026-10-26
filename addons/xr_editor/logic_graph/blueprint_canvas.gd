@@ -186,11 +186,12 @@ const CHIP_ICON := 0.016
 const CHIP_TEXT := 15
 const CHIP_SHADE := 0.72
 const CHIP_BORDER := Color(1, 1, 1, 0.25)
-## Branch's tabs on its right edge (D-097): their width and height, colours of
+## Branch's tabs on its right edge (D-097): their height, colours of
 ## True and False, how much of their colour their opaque face has (D-099: a
 ## see-through tab looked lit only in focus).
-const TAB_WIDTH := 0.1
 const TAB_HEIGHT := PORT_RADIUS * 2.0
+## How far a tab reaches left of the mark's centre (D-102: a tab no wider than its mark and name).
+const TAB_LEAD := 0.012
 const TAB_COLORS: Array[Color] = [Color("7be5b3"), Color("e8879b")]
 const TAB_TINT := 0.28
 ## A Get Variable's tag (D-097): its height, how much of its type's colour its face has.
@@ -1128,12 +1129,14 @@ func _add_icon_to(parent: Node3D, texture: Texture2D, tint: Color, size: float, 
 ## before the output's name [param text].
 func _add_tab(card: Card, point: Vector3, index: int, text: String) -> void:
 	var color := TAB_COLORS[index]
-	var outline := XREBlueprintShapes.rounded_rect(Vector2(TAB_WIDTH, TAB_HEIGHT), Vector4(TAB_HEIGHT * 0.5, 0, 0, TAB_HEIGHT * 0.5))
+	var mark := card.width * 0.5 - 0.022 - text_width(text, 18) - 0.011
+	# Both tabs as wide as False's needs (D-102): from just before its cross to the edge.
+	var width := 0.022 + maxf(text_width("True", 18), text_width("False", 18)) + 0.011 + TAB_LEAD
+	var outline := XREBlueprintShapes.rounded_rect(Vector2(width, TAB_HEIGHT), Vector4(TAB_HEIGHT * 0.5, 0, 0, TAB_HEIGHT * 0.5))
 	var tab := XRERig.create_vr_mesh(XREBlueprintShapes.body(outline, 0.0005), XREBlueprintBoxes.under_material(XREBlueprintIcons.BODY.lerp(color, TAB_TINT)))
 	tab.name = "TabTrue" if index == 0 else "TabFalse"
-	tab.position = Vector3(card.width * 0.5 - TAB_WIDTH * 0.5, point.y, card.face + CARD_THICKNESS * 0.5 + 0.0004)
+	tab.position = Vector3(card.width * 0.5 - width * 0.5, point.y, card.face + CARD_THICKNESS * 0.5 + 0.0004)
 	card.node.add_child(tab)
-	var mark := card.width * 0.5 - 0.022 - text_width(text, 18) - 0.011
 	_add_icon_to(card.node, XREBlueprintIcons.texture(&"true" if index == 0 else &"false", ICON_PIXELS, false), color, 0.014, Vector3(mark, point.y, card.face + CARD_THICKNESS * 0.5 + 0.0008))
 
 

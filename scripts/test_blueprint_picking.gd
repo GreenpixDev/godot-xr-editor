@@ -358,6 +358,8 @@ func _test_mockup_details() -> void:
 	_check((tabs[0] as MeshInstance3D).mesh is ArrayMesh, "the tabs are round at their left ends (D-098)")
 	_check(is_equal_approx(((tabs[0] as MeshInstance3D).material_override as BaseMaterial3D).albedo_color.a, 1.0) and (tabs[0] as MeshInstance3D).mesh.get_aabb().size.y < XREBlueprintCanvas.ROW_HEIGHT * 0.7,
 			"and opaque and low (D-099)")
+	_check((tabs[0] as MeshInstance3D).mesh.get_aabb().size.x < 0.08 and is_equal_approx((tabs[0] as MeshInstance3D).mesh.get_aabb().size.x, (tabs[1] as MeshInstance3D).mesh.get_aabb().size.x),
+			"and as narrow as their marks and names, both alike (D-102)")
 	_check(not XREBlueprintCanvas.can_head(XREBlueprintGraph.make_call(9, XREBlueprintFunctions.method("Node3D", "rotate_x"), Vector2.ZERO)), "Rotate X has no member to say, only its operation (D-099)")
 	var times := cards[4] as XREBlueprintCanvas.Card
 	_check(((times.ports[1] as MeshInstance3D).material_override as BaseMaterial3D).albedo_color.is_equal_approx(XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]),
