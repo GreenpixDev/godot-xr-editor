@@ -43,19 +43,19 @@ extends Node3D
 ## the cards' buttons. A drag previews bends here and [method commit_bends]
 ## keeps them as one edit.
 ##
-## [constant XREFeatureSettings.NODE_STYLE] ([method set_style], D-090) says
+## [constant XREFeatureSettings.NODE_STYLE] ([method set_style], D-099) says
 ## what a card shows of its block: as before, or as an archetype — a header in
 ## its group's color with its icon ([XREBlueprintIcons]), none on a pure
 ## function, framed in its result's color, and a trash only on the card in focus.
-## An archetype's operator is a sign ([XREBlueprintShapes], D-091): a circle, a
+## An archetype's operator is a sign ([XREBlueprintShapes], D-100): a circle, a
 ## diamond or a pill in its result's color, and so are math functions as
 ## [constant XREFeatureSettings.NODE_SHRINK] says ([method set_shrink]).
-## An archetype's card (D-092) has its execution In and Then on its header's
+## An archetype's card (D-101) has its execution In and Then on its header's
 ## edges, its target — Target, Source or Variable — on the row under it, an
 ## event's policy as a chip in its header; its header says the operation or
 ## the member, as [constant XREFeatureSettings.NODE_HEADING] or its block's
 ## [code]vr_heading[/code] says ([method heading_of]); ⇄ by its trash switches it.
-## Further, as Node shrink says, a block may be a bead (D-094): a circle in its
+## Further, as Node shrink says, a block may be a bead (D-103): a circle in its
 ## group's colour with the execution's white rim, or a pure function's ring in
 ## its result's colour, its icon inside, its ports on its arcs.
 
@@ -125,7 +125,7 @@ const FADED := 0.35
 ## How much a token or a member grows under a ray.
 const SOCKET_HOVER := 1.15
 const MEMBER_COLOR := Color("dcc8fa")
-## A member in a header under the ray (D-101): the focus's yellow.
+## A member in a header under the ray (D-110): the focus's yellow.
 const MEMBER_HOVER := Color("ffd75e")
 ## An operator's card: how much taller than its rows, its symbol's font sizes
 ## (a sign, a word such as AND) and the room on each side of the symbol.
@@ -149,7 +149,7 @@ const KNOT_HIT_RADIUS := 0.012
 const BEND_LEAD := 0.05
 ## Keys of links ([method link_key]) start here, above any edge's index.
 const LINK_KEYS := 1 << 20
-## An archetype's header (D-090): its height; its icon's size on the card,
+## An archetype's header (D-099): its height; its icon's size on the card,
 ## the circle's and a pure function's, and in pixels; the trash, coral and
 ## larger than a classic card's, standing over the card; the font size of
 ## the ƒ a call without an icon shows, larger on a pure function, as its glyphs are.
@@ -163,7 +163,7 @@ const TRASH_COLOR := Color("ff6b7a")
 const TRASH_SCALE := 1.3
 const TRASH_RISE := 0.02
 const FALLBACK_SIZE := 30
-## A sign (D-091): the width of its rim and of a math function's inner rim, how
+## A sign (D-100): the width of its rim and of a math function's inner rim, how
 ## far in the inner rim is and how much of it is seen; the font size of a
 ## function's name, and of a longer one.
 const RIM := 0.0022
@@ -172,36 +172,36 @@ const INNER_INSET := 0.0055
 const INNER_SEEN := 0.4
 const SIGN_WORD_SIZE := 30
 const SIGN_LONG_SIZE := 24
-## An archetype's card (D-092): the gap between its header and its rows; the
+## An archetype's card (D-101): the gap between its header and its rows; the
 ## switch of its heading, its size, how far left of the trash it stands.
 const HEAD_GAP := 0.006
-## An archetype card's corners (D-100), as the mockup's: 1,5 cm, an event's top
+## An archetype card's corners (D-109), as the mockup's: 1,5 cm, an event's top
 ## left 2,5 cm — its "hat".
 const CORNER := 0.015
 const HAT := 0.025
-## An event's policy chip in its header (D-097): its height, its icon's size,
+## An event's policy chip in its header (D-106): its height, its icon's size,
 ## its text's, how dark its face is of the header's colour, its border.
 const CHIP_HEIGHT := 0.024
 const CHIP_ICON := 0.016
 const CHIP_TEXT := 15
 const CHIP_SHADE := 0.72
 const CHIP_BORDER := Color(1, 1, 1, 0.25)
-## Branch's tabs on its right edge (D-097): their height, colours of
-## True and False, how much of their colour their opaque face has (D-099: a
+## Branch's tabs on its right edge (D-106): their height, colours of
+## True and False, how much of their colour their opaque face has (D-108: a
 ## see-through tab looked lit only in focus).
 const TAB_HEIGHT := PORT_RADIUS * 2.0
-## How far a tab reaches left of the mark's centre (D-102: a tab no wider than its mark and name).
+## How far a tab reaches left of the mark's centre (D-111: a tab no wider than its mark and name).
 const TAB_LEAD := 0.012
 const TAB_COLORS: Array[Color] = [Color("7be5b3"), Color("e8879b")]
 const TAB_TINT := 0.28
-## A Get Variable's tag (D-097): its height, how much of its type's colour its face has.
+## A Get Variable's tag (D-106): its height, how much of its type's colour its face has.
 const TAG_HEIGHT := 0.035
 const TAG_TINT := 0.22
 const SWAP_SIZE := 0.024
 const SWAP_SHIFT := 0.034
-## A bead (D-094): its radius, and with three ports on a side; its icon's size
+## A bead (D-103): its radius, and with three ports on a side; its icon's size
 ## in its radii, an image's; how far under it its name shows under the ray,
-## and its font size (D-097: 18 was too small to read; back in D-099).
+## and its font size (D-106: 18 was too small to read; back in D-108).
 const BEAD_RADIUS := 0.036
 const BEAD_LARGE := 0.042
 const BEAD_ICON := 1.15
@@ -244,23 +244,23 @@ class Card:
 	var width := CARD_WIDTH
 	## An operator's small card (D-065).
 	var compact := false
-	## A sign's shape ([enum XREBlueprintShapes.Shape], D-091), its outline and its inputs' places.
+	## A sign's shape ([enum XREBlueprintShapes.Shape], D-100), its outline and its inputs' places.
 	var shape := 0
 	var outline: PackedVector2Array
 	var shape_inputs: Array[Vector2] = []
-	## An archetype's card with its header row (D-092): row 0 is in the header.
+	## An archetype's card with its header row (D-101): row 0 is in the header.
 	var headed := false
 	## The switch of its heading, where it is, null without one.
 	var swap: Node3D
 	var swap_point: Vector3
-	## A bead (D-094): its outputs' places on its right arc, its name under it
+	## A bead (D-103): its outputs' places on its right arc, its name under it
 	## shown under the ray.
 	var bead := false
 	var shape_outputs: Array[Vector2] = []
 	var tip: Label3D
 	## Whether its tokens say their ports' names: a bead of two values or more.
 	var named_tokens := false
-	## A Get Variable's tag (D-097): a pill of its type's colour with its name.
+	## A Get Variable's tag (D-106): a pill of its type's colour with its name.
 	var tag := false
 	## The height of the first row's ports; a compact card's output is in its middle.
 	var first_row := 0.0
@@ -271,7 +271,7 @@ class Card:
 	var normal: Material
 	var frame: MeshInstance3D
 	## The frame's material while the card is neither selected nor in focus:
-	## a pure function's is its result's type color (D-090).
+	## a pure function's is its result's type color (D-099).
 	var frame_material: Material
 	var plus: Node3D
 	var plus_point: Vector3
@@ -337,9 +337,9 @@ class Wire:
 	## bend shown; and a knot at each. Only [member mesh] while bends are off.
 	var pieces: Array[XREGraphWire] = []
 	var knots: Array[MeshInstance3D] = []
-	## The component of its variable's box it comes from (D-096), -1 for the whole value.
+	## The component of its variable's box it comes from (D-105), -1 for the whole value.
 	var component := -1
-	## Whether it is a Set's wire to its variable's box: it writes it (D-097).
+	## Whether it is a Set's wire to its variable's box: it writes it (D-106).
 	var writes := false
 
 var _cards: Array[Card] = []
@@ -371,7 +371,7 @@ var _hover_left := -1
 var _delete_right := -1
 var _delete_left := -1
 var _body_materials: Array[ShaderMaterial] = []
-## Archetypes (D-090): the headers by [enum XREBlueprintIcons.Group], the faces
+## Archetypes (D-099): the headers by [enum XREBlueprintIcons.Group], the faces
 ## under a header, of a pure function and of an operator, the frames by port
 ## type, the trash.
 var _style := XREFeatureSettings.CLASSIC
@@ -379,7 +379,7 @@ var _head_materials: Array[ShaderMaterial] = []
 var _archetype_faces: Array[ShaderMaterial] = []
 var _type_frames: Dictionary[int, Material] = {}
 var _archetype_trash: Material
-## The faces' shader, and the tags' faces by port type (D-097).
+## The faces' shader, and the tags' faces by port type (D-106).
 var _card_shader: Shader
 var _tag_faces: Dictionary[int, ShaderMaterial] = {}
 var _class_icon: Callable
@@ -517,7 +517,7 @@ static func _face(shader: Shader, tint: Color) -> ShaderMaterial:
 
 
 ## Switches what cards show of their blocks to [param style], a value of
-## [constant XREFeatureSettings.NODE_STYLE] (D-090). Takes effect on the next
+## [constant XREFeatureSettings.NODE_STYLE] (D-099). Takes effect on the next
 ## [method rebuild]; false if it is unknown or already the current one.
 func set_style(style: StringName) -> bool:
 	if style == _style or not style in XREFeatureSettings.get_values(XREFeatureSettings.NODE_STYLE): return false
@@ -531,7 +531,7 @@ func get_style() -> StringName:
 
 
 ## Switches which blocks archetypes draw as signs to [param shrink], a value of
-## [constant XREFeatureSettings.NODE_SHRINK] (D-091). Takes effect on the next
+## [constant XREFeatureSettings.NODE_SHRINK] (D-100). Takes effect on the next
 ## [method rebuild]; false if it is unknown or already the current one.
 func set_shrink(shrink: StringName) -> bool:
 	if shrink == _shrink or not shrink in XREFeatureSettings.get_values(XREFeatureSettings.NODE_SHRINK): return false
@@ -546,7 +546,7 @@ func get_shrink() -> StringName:
 
 ## Switches how a vector's or a colour's variable gives its components to
 ## [param composite], a value of [constant XREFeatureSettings.COMPOSITE_VALUES]
-## (D-096). Takes effect on the next [method rebuild]; false if unchanged or unknown.
+## (D-105). Takes effect on the next [method rebuild]; false if unchanged or unknown.
 func set_composite(composite: StringName) -> bool:
 	if composite == _composite or not composite in XREFeatureSettings.get_values(XREFeatureSettings.COMPOSITE_VALUES): return false
 	_composite = composite
@@ -559,7 +559,7 @@ func get_composite() -> StringName:
 
 
 ## Whether ports are shaped by their types ([constant XREFeatureSettings.PORT_SHAPES],
-## D-095). Takes effect on the next [method rebuild]; true if it changed.
+## D-104). Takes effect on the next [method rebuild]; true if it changed.
 func set_port_shapes(shaped: bool) -> bool:
 	if shaped == _port_shapes: return false
 	_port_shapes = shaped
@@ -572,11 +572,11 @@ func get_port_shapes() -> bool:
 
 
 ## A port's mesh of [param type] in [param color]: shaped by the type with
-## Port shapes on (D-095), flat on the face; else a disc, or a sphere if
+## Port shapes on (D-104), flat on the face; else a disc, or a sphere if
 ## [param spherical] — the sphere's centre is then [constant SPHERE_LIFT] radii
 ## out of the face, which the caller sets.
 func _port_visual(type: int, color: Color, spherical: bool) -> MeshInstance3D:
-	# An archetype's execution is an arrow whatever Port shapes says (D-097), as the mockup's.
+	# An archetype's execution is an arrow whatever Port shapes says (D-106), as the mockup's.
 	if _port_shapes or (type == XREBlueprintGraph.EXEC and _style == XREFeatureSettings.ARCHETYPES): return XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type, PORT_RADIUS, PORT_DEPTH * 2.0), material(color, true))
 	if spherical: return XRERig.create_vr_mesh(_sphere_mesh, wire_material(color))
 	var disc := XRERig.create_vr_mesh(_port_mesh, material(color, true))
@@ -585,7 +585,7 @@ func _port_visual(type: int, color: Color, spherical: bool) -> MeshInstance3D:
 
 
 ## Switches what archetypes' headers say by default to [param heading], a value of
-## [constant XREFeatureSettings.NODE_HEADING] (D-092). Takes effect on the next
+## [constant XREFeatureSettings.NODE_HEADING] (D-101). Takes effect on the next
 ## [method rebuild]; false if it is unknown or already the current one.
 func set_heading(heading: StringName) -> bool:
 	if heading == _heading or not heading in XREFeatureSettings.get_values(XREFeatureSettings.NODE_HEADING): return false
@@ -598,7 +598,7 @@ func get_heading() -> StringName:
 	return _heading
 
 
-## What [param block]'s header says (D-092): its own [code]vr_heading[/code],
+## What [param block]'s header says (D-101): its own [code]vr_heading[/code],
 ## else the setting's; the operation for a block without a member and on
 ## Classic cards.
 func heading_of(block: Dictionary) -> StringName:
@@ -607,7 +607,7 @@ func heading_of(block: Dictionary) -> StringName:
 	return StringName(own) if own in [XREFeatureSettings.OPERATION, XREFeatureSettings.MEMBER] else _heading
 
 
-## Whether [param block] has a member its header may say (D-092, D-097, D-099):
+## Whether [param block] has a member its header may say (D-101, D-106, D-108):
 ## any event — On Ready too, its member is ready —, a block with a member —
 ## a property, an animation —, a variable's Set. A call without a member, as
 ## Rotate X, has only its operation: its object is no member of it.
@@ -615,7 +615,7 @@ static func can_head(block: Dictionary) -> bool:
 	return block.get("kind") in ["set_variable", "signal"] or not XREBlueprintTokens.member_key(block).is_empty()
 
 
-## The member [param block]'s header says in Member (D-092): its signal,
+## The member [param block]'s header says in Member (D-101): its signal,
 ## property or animation, its variable, or what to pick.
 static func member_of(block: Dictionary) -> String:
 	var params: Dictionary = block.get("params", {})
@@ -627,14 +627,14 @@ static func member_of(block: Dictionary) -> String:
 	return member if not member.is_empty() else XREBlueprintTokens.member_placeholder(block)
 
 
-## The operation [param block]'s header says (D-092): Set for both Sets, On
-## Signal for every event — On Ready is one too (D-098) —, else its title.
+## The operation [param block]'s header says (D-101): Set for both Sets, On
+## Signal for every event — On Ready is one too (D-107) —, else its title.
 static func operation_of(block: Dictionary) -> String:
 	if block.get("kind") == "signal": return "On Signal"
 	return "Set" if block.get("kind") in ["set_property", "set_variable"] else XREBlueprintGraph.title(block)
 
 
-## The verb before the member in a Member header (D-098): On for an event, Set,
+## The verb before the member in a Member header (D-107): On for an event, Set,
 ## Get, else the operation — "On Ready", "Set Light Energy", "Get Position".
 static func verb_of(block: Dictionary) -> String:
 	match str(block.get("kind", "")):
@@ -644,12 +644,12 @@ static func verb_of(block: Dictionary) -> String:
 	return operation_of(block)
 
 
-## Whether the last ray hit the switch of a card's heading (D-092).
+## Whether the last ray hit the switch of a card's heading (D-101).
 func get_hit_swap() -> bool:
 	return _hit_swap
 
 
-## Where archetypes take the editor's icon of an engine class (D-090):
+## Where archetypes take the editor's icon of an engine class (D-099):
 ## [param class_icon] takes a class name and gives a [Texture2D] or null.
 func set_class_icons(class_icon: Callable) -> void:
 	_class_icon = class_icon
@@ -812,7 +812,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 				if not int(spec[1]) in [XREBlueprintGraph.EXEC, XREBlueprintGraph.OBJECT]: values += 1
 			card.named_tokens = values >= 2
 		elif archetype and not card.compact and block["kind"] == "get_variable" and _variable_mode != XREFeatureSettings.BOXES:
-			# A Get Variable without boxes is a tag (D-097): its name and its output.
+			# A Get Variable without boxes is a tag (D-106): its name and its output.
 			card.tag = true
 			card.compact = true
 			card.shape = XREBlueprintShapes.Shape.PILL
@@ -851,13 +851,13 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			var pure := group == XREBlueprintIcons.Group.PURE
 			card.normal = _archetype_faces[2 if card.compact else 1 if pure else 0]
 			if card.tag and not outputs.is_empty(): card.normal = _tag_face(int((outputs[0] as Array)[1]))
-			# A bead is its group's colour, rimmed white as the execution is (D-094).
+			# A bead is its group's colour, rimmed white as the execution is (D-103).
 			if card.bead and not pure:
 				card.normal = _head_materials[group]
 				card.frame_material = _type_frame(XREBlueprintGraph.EXEC)
 			# A pure function is framed in its result's color, as its wire is.
 			if pure and not outputs.is_empty(): card.frame_material = _type_frame(int((outputs[0] as Array)[1]))
-		# An archetype's card is rounded (D-100), picked by its outline as a sign is.
+		# An archetype's card is rounded (D-109), picked by its outline as a sign is.
 		if card.headed: card.outline = XREBlueprintShapes.rounded_rect(Vector2(card.width, card.height), _corners(block))
 		var body: Mesh
 		if card.shape != XREBlueprintShapes.Shape.NONE or card.headed: body = XREBlueprintShapes.body(card.outline, body_size.z)
@@ -934,7 +934,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		if wire.from == null:
 			var source := graph.find_node(edge["from"])
 			if is_inline(source) and source["kind"] != "get_variable":
-				# From a box's component through its hidden Break (D-096): no link, the variable of the Break's getter.
+				# From a box's component through its hidden Break (D-105): no link, the variable of the Break's getter.
 				wire.variable = split_variable(graph, source)
 				wire.component = edge["from_port"]
 				inline.append(wire)
@@ -952,7 +952,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		# In its variable's color, as a wire from an output is in its source's: the
 		# port it goes into may take any value, as an operator's does (D-065).
 		var color := COLORS[XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(graph.find_variable(wire.variable)))]
-		# A component is a number (D-096).
+		# A component is a number (D-105).
 		if wire.component >= 0: color = COLORS[XREBlueprintGraph.NUMBER]
 		_add_wire(wire, color, graph.edges[wire.edge])
 		# Drawn at all, the wire a link hides is faint (D-074).
@@ -964,7 +964,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	_show_link_wires()
 
 
-## An archetype's header (D-090) on [param card] of [param block], of
+## An archetype's header (D-099) on [param card] of [param block], of
 ## [param group]: a band in the group's color with the icon on its circle,
 ## then the title; a pure function has no band, its icon in its result's
 ## color. A call without an icon shows ƒ, circled with execution.
@@ -974,9 +974,9 @@ func _add_head(card: Card, block: Dictionary, group: int, outputs: Array, in_por
 	var pure := group == XREBlueprintIcons.Group.PURE
 	var tint := COLORS[int((outputs[0] as Array)[1])] if pure and not outputs.is_empty() else Color.WHITE
 	if not pure:
-		# Its top corners as the card's (D-100).
+		# Its top corners as the card's (D-109).
 		var corners := _corners(block)
-		# Thin and just over the face (D-101): 0.5 mm deep it reached past the
+		# Thin and just over the face (D-110): 0.5 mm deep it reached past the
 		# labels and icons on it, and the depth test hid them out of focus.
 		var band := XREBlueprintShapes.body(XREBlueprintShapes.rounded_rect(Vector2(card.width, HEAD_HEIGHT), Vector4(corners.x, corners.y, 0, 0)), 0.0001)
 		var head := XRERig.create_vr_mesh(band, _head_materials[group])
@@ -986,7 +986,7 @@ func _add_head(card: Card, block: Dictionary, group: int, outputs: Array, in_por
 	var icon: Variant = XREBlueprintIcons.icon_of(block, _class_icon)
 	var fallback: bool = icon == null and block.get("kind") == "call"
 	var size := PURE_ICON_SIZE if pure else ICON_SIZE
-	# Clear of In on the header's left edge (D-092).
+	# Clear of In on the header's left edge (D-101).
 	var start := -card.width * 0.5 + (0.034 if in_port else 0.012)
 	var center := Vector3(start + size * 0.5, row, front)
 	# Every icon of a block with execution stands on the header's dark circle: a glyph, an image, ƒ.
@@ -1004,7 +1004,7 @@ func _add_head(card: Card, block: Dictionary, group: int, outputs: Array, in_por
 		card.node.add_child(sign)
 	var left := start + (size + 0.008 if icon != null or fallback or not pure else 0.0)
 	if heading_of(block) == XREFeatureSettings.MEMBER:
-		# One line (D-098): the verb, then the member in its colour, as words —
+		# One line (D-107): the verb, then the member in its colour, as words —
 		# "On Ready", "Set Light Energy"; the member's trigger opens its petals.
 		var verb := label(verb_of(block), 21)
 		verb.name = "Verb"
@@ -1037,7 +1037,7 @@ func _add_head(card: Card, block: Dictionary, group: int, outputs: Array, in_por
 	card.node.add_child(title)
 
 
-## Puts an archetype's rows in their places (D-092): its execution In first,
+## Puts an archetype's rows in their places (D-101): its execution In first,
 ## in the header, or nothing there; its target next, on the row under the
 ## header; on the right the first execution output in the header (not
 ## Branch's True), nothing beside the target. An event's policy leaves the
@@ -1077,7 +1077,7 @@ func _head_layout(block: Dictionary, inputs: Array, outputs: Array, layout: Arra
 	return chip
 
 
-## An event's policy as a chip in [param card]'s header (D-097): a narrow
+## An event's policy as a chip in [param card]'s header (D-106): a narrow
 ## pill darker than the header of [param group], its policy's icon and word,
 ## left of Then. Its socket is the policy's: the trigger opens the fan of
 ## parallel, ignore and restart, as the token did (D-062).
@@ -1124,13 +1124,13 @@ func _add_icon_to(parent: Node3D, texture: Texture2D, tint: Color, size: float, 
 
 
 ## Branch's True and False tabs on [param card]'s right edge at [param point]
-## (D-097): a strip of the tab's colour, faint, and its tick or cross.
-## Its left end is round, as the mockup's (D-098), and the mark stands just
+## (D-106): a strip of the tab's colour, faint, and its tick or cross.
+## Its left end is round, as the mockup's (D-107), and the mark stands just
 ## before the output's name [param text].
 func _add_tab(card: Card, point: Vector3, index: int, text: String) -> void:
 	var color := TAB_COLORS[index]
 	var mark := card.width * 0.5 - 0.022 - text_width(text, 18) - 0.011
-	# Both tabs as wide as False's needs (D-102): from just before its cross to the edge.
+	# Both tabs as wide as False's needs (D-111): from just before its cross to the edge.
 	var width := 0.022 + maxf(text_width("True", 18), text_width("False", 18)) + 0.011 + TAB_LEAD
 	var outline := XREBlueprintShapes.rounded_rect(Vector2(width, TAB_HEIGHT), Vector4(TAB_HEIGHT * 0.5, 0, 0, TAB_HEIGHT * 0.5))
 	var tab := XRERig.create_vr_mesh(XREBlueprintShapes.body(outline, 0.0005), XREBlueprintBoxes.under_material(XREBlueprintIcons.BODY.lerp(color, TAB_TINT)))
@@ -1140,7 +1140,7 @@ func _add_tab(card: Card, point: Vector3, index: int, text: String) -> void:
 	_add_icon_to(card.node, XREBlueprintIcons.texture(&"true" if index == 0 else &"false", ICON_PIXELS, false), color, 0.014, Vector3(mark, point.y, card.face + CARD_THICKNESS * 0.5 + 0.0008))
 
 
-## The switch of [param card]'s heading (D-092): ⇄ left of its trash, shown
+## The switch of [param card]'s heading (D-101): ⇄ left of its trash, shown
 ## with it, in the member's colour while the card says its member.
 func _add_swap(card: Card, block: Dictionary) -> void:
 	card.swap_point = card.trash_point - Vector3(SWAP_SHIFT, 0, 0)
@@ -1155,7 +1155,7 @@ func _add_swap(card: Card, block: Dictionary) -> void:
 	card.swap.visible = false
 
 ## A square of [param texture] on [param card], [param size] across at
-## [param point], tinted [param tint]: a part of an archetype's icon (D-090).
+## [param point], tinted [param tint]: a part of an archetype's icon (D-099).
 func _add_icon(card: Card, part: String, texture: Texture2D, tint: Color, size: float, point: Vector3) -> void:
 	if texture == null: return
 	var quad := QuadMesh.new()
@@ -1168,13 +1168,13 @@ func _add_icon(card: Card, part: String, texture: Texture2D, tint: Color, size: 
 	card.node.add_child(visual)
 
 
-## An archetype's frame in the color of port type [param type], made once (D-090).
+## An archetype's frame in the color of port type [param type], made once (D-099).
 func _type_frame(type: int) -> Material:
 	if not _type_frames.has(type): _type_frames[type] = material(COLORS[type], true)
 	return _type_frames[type]
 
 
-## Whether [param block] is a bead as an archetype (D-094): Delay, Get Time
+## Whether [param block] is a bead as an archetype (D-103): Delay, Get Time
 ## and Random from + System on; from All with icons, every block with an icon
 ## of its own — not ƒ — and at most three rows a side ([param layout]), not an event.
 func _is_bead(block: Dictionary, inputs: Array, layout: Array) -> bool:
@@ -1188,7 +1188,7 @@ func _is_bead(block: Dictionary, inputs: Array, layout: Array) -> bool:
 	return (layout[0] as Array).size() <= 3 and (layout[1] as Array).size() <= 3
 
 
-## Puts a bead's left rows in its arc's order (D-094): its execution In at the
+## Puts a bead's left rows in its arc's order (D-103): its execution In at the
 ## top, its target next, the rest under them.
 func _bead_layout(block: Dictionary, inputs: Array, layout: Array) -> void:
 	var left: Array[Dictionary] = layout[0]
@@ -1206,13 +1206,13 @@ func _bead_layout(block: Dictionary, inputs: Array, layout: Array) -> void:
 		left.push_front(entry)
 
 
-## A tag's face of port type [param type]'s colour, made once (D-097).
+## A tag's face of port type [param type]'s colour, made once (D-106).
 func _tag_face(type: int) -> ShaderMaterial:
 	if not _tag_faces.has(type): _tag_faces[type] = _face(_card_shader, XREBlueprintIcons.BODY.lerp(COLORS[type], TAG_TINT))
 	return _tag_faces[type]
 
 
-## A Get Variable's tag (D-097): its rim in its type's colour, a dot of its
+## A Get Variable's tag (D-106): its rim in its type's colour, a dot of its
 ## type's shape and its name, as the mockup's.
 func _add_tag(card: Card, block: Dictionary, outputs: Array) -> void:
 	var front := card.bounds.end.z + 0.0004
@@ -1233,7 +1233,7 @@ func _add_tag(card: Card, block: Dictionary, outputs: Array) -> void:
 
 
 ## A bead's rim, its icon inside — white on a function, its result's colour
-## on a pure function — and its name under it for the ray (D-094).
+## on a pure function — and its name under it for the ray (D-103).
 func _add_bead(card: Card, block: Dictionary, group: int, outputs: Array) -> void:
 	var front := card.bounds.end.z + 0.0004
 	card.frame = XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, 0.0, RIM, front), card.frame_material)
@@ -1259,7 +1259,7 @@ func _add_bead(card: Card, block: Dictionary, group: int, outputs: Array) -> voi
 
 
 
-## The shape of [param block]'s sign as an archetype (D-091), or none: an
+## The shape of [param block]'s sign as an archetype (D-100), or none: an
 ## operator by its group, a math function by its inputs from
 ## [constant XREFeatureSettings.NODE_SHRINK] + Math on.
 func _sign_shape(block: Dictionary, inputs: Array, outputs: Array) -> XREBlueprintShapes.Shape:
@@ -1268,21 +1268,21 @@ func _sign_shape(block: Dictionary, inputs: Array, outputs: Array) -> XREBluepri
 			XREBlueprintOperators.MATH: return XREBlueprintShapes.Shape.CIRCLE
 			XREBlueprintOperators.LOGIC: return XREBlueprintShapes.Shape.PILL
 		return XREBlueprintShapes.Shape.DIAMOND
-	# + Math and every level after it (D-091, D-094).
+	# + Math and every level after it (D-100, D-103).
 	if XREFeatureSettings.get_values(XREFeatureSettings.NODE_SHRINK).find(_shrink) >= 1 and not XREBlueprintShapes.word_of(block, inputs, outputs).is_empty():
 		return XREBlueprintShapes.Shape.CIRCLE if inputs.size() <= 2 else XREBlueprintShapes.Shape.OVAL
 	return XREBlueprintShapes.Shape.NONE
 
 
-## The corners of [param block]'s archetype card (D-100): top left, top right,
+## The corners of [param block]'s archetype card (D-109): top left, top right,
 ## bottom right, bottom left; an event's top left larger.
 static func _corners(block: Dictionary) -> Vector4:
 	return Vector4(HAT if block.get("kind") == "signal" else CORNER, CORNER, CORNER, CORNER)
 
 
-## A rounded archetype card's frame along its outline (D-100), as the frame a
+## A rounded archetype card's frame along its outline (D-109), as the frame a
 ## selection and the focus paint, over its header; with [param headed] a
-## line of it between the header and the body too (D-101).
+## line of it between the header and the body too (D-110).
 func _add_rim(card: Card, headed: bool) -> void:
 	var front := card.bounds.end.z + 0.0004
 	var surface := SurfaceTool.new()
@@ -1297,7 +1297,7 @@ func _add_rim(card: Card, headed: bool) -> void:
 
 
 ## A sign's rim in its result's color, as the frame a selection and the focus
-## paint, and a math function's second rim inside it, fainter (D-091).
+## paint, and a math function's second rim inside it, fainter (D-100).
 func _add_rims(card: Card, block: Dictionary, outputs: Array) -> void:
 	var front := card.bounds.end.z + 0.0004
 	card.frame = XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, 0.0, RIM, front), card.frame_material)
@@ -1310,7 +1310,7 @@ func _add_rims(card: Card, block: Dictionary, outputs: Array) -> void:
 	card.node.add_child(rim)
 
 
-## A sign's symbol or name in the middle, in its result's color (D-091); an
+## A sign's symbol or name in the middle, in its result's color (D-100); an
 ## oval's a little right, clear of its three inputs' tokens.
 func _add_sign_symbol(card: Card, block: Dictionary, inputs: Array, outputs: Array) -> void:
 	var text := XREBlueprintGraph.symbol(block) if XREBlueprintGraph.is_operator(block) else XREBlueprintShapes.word_of(block, inputs, outputs)
@@ -1322,7 +1322,7 @@ func _add_sign_symbol(card: Card, block: Dictionary, inputs: Array, outputs: Arr
 	card.node.add_child(symbol)
 
 
-## The variable whose components the hidden Break [param breaker] gives (D-096):
+## The variable whose components the hidden Break [param breaker] gives (D-105):
 ## that of the inline Get Variable wired into it, empty for none.
 static func split_variable(graph: XREBlueprintGraph, breaker: Dictionary) -> String:
 	for edge: Dictionary in graph.edges:
@@ -1490,7 +1490,7 @@ func _fit_pieces(wire: Wire) -> void:
 
 ## Whether [param block] is an inline Get Variable (D-061): a wire from a
 ## variable's box straight into a port stands for it while variables are boxes.
-## A Break marked inline is one too with Composite values on Split (D-096): its
+## A Break marked inline is one too with Composite values on Split (D-105): its
 ## wires come from its variable's box's components.
 func is_inline(block: Dictionary) -> bool:
 	if block.is_empty() or not bool(block.get("vr_inline", false)) or _variable_mode != XREFeatureSettings.BOXES: return false
@@ -1498,7 +1498,7 @@ func is_inline(block: Dictionary) -> bool:
 	return is_split_break(block) and _composite == XREFeatureSettings.SPLIT
 
 
-## Whether [param block] is a Break of a box's components (D-096): a call of
+## Whether [param block] is a Break of a box's components (D-105): a call of
 ## the library's break_vector2, break_vector3 or break_color marked inline.
 static func is_split_break(block: Dictionary) -> bool:
 	if block.get("kind") != "call" or not bool(block.get("vr_inline", false)): return false
@@ -1910,11 +1910,11 @@ func _keep_port(card: Card, port: int, input: bool) -> void:
 
 
 func _look_card(card: Card) -> void:
-	# An archetype's trash shows on the card a ray is on, with Focus and Defocus off too (D-090).
+	# An archetype's trash shows on the card a ray is on, with Focus and Defocus off too (D-099).
 	if _style == XREFeatureSettings.ARCHETYPES:
 		card.trash.visible = _in_focus(card.id)
 		if card.swap != null: card.swap.visible = card.trash.visible
-		# A bead's name shows under the ray (D-094, D-099).
+		# A bead's name shows under the ray (D-103, D-108).
 		if card.tip != null: card.tip.visible = card.trash.visible
 
 	var paint := focus_paint(card.focus)
@@ -2141,7 +2141,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		var card_origin := card_inverse * local_origin
 		var card_direction := card_inverse.basis * local_direction
 		var body := _box_distance(card_origin, card_direction, card.bounds, nearest)
-		# A sign takes the ray inside its outline, not its whole box (D-091).
+		# A sign takes the ray inside its outline, not its whole box (D-100).
 		if body >= 0 and not card.outline.is_empty():
 			var at := card_origin + card_direction * body
 			if not XREBlueprintShapes.contains(card.outline, Vector2(at.x, at.y)): body = -1.0
@@ -2539,7 +2539,7 @@ func hover_socket(id: int, socket: int, right: bool) -> void:
 			var hovered := Vector2i(card.id, index) == _socket_right or Vector2i(card.id, index) == _socket_left
 			var item := card.sockets[index]
 			if item.kind in [FINISHED, SOURCE, VARIABLE]: item.visual.scale = item.base_scale * (HOVER_SCALE if hovered else 1.0)
-			# The member in a header doesn't grow over its verb: it changes colour (D-101).
+			# The member in a header doesn't grow over its verb: it changes colour (D-110).
 			elif item.visual.name == "Member" and item.visual is Label3D: (item.visual as Label3D).modulate = MEMBER_HOVER if hovered else MEMBER_COLOR
 			else: item.visual.scale = item.base_scale * (SOCKET_HOVER if hovered else 1.0)
 	# The wire of a Variable socket under a ray thickens, as a port's does (D-061).
@@ -2689,7 +2689,7 @@ func _update_wire(wire: Wire) -> void:
 		var box := _boxes.box_end(wire.variable, end)
 		start = box[0]
 		start_direction = box[1]
-		# Out of its component's output on the box's right side (D-096).
+		# Out of its component's output on the box's right side (D-105).
 		if wire.component >= 0:
 			start = _boxes.component_point(wire.variable, wire.component)
 			start_direction = Vector3.RIGHT
@@ -2947,14 +2947,14 @@ func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1, 
 	var color := COLORS[shown if shown >= 0 else spec[1]]
 	var type: int = shown if shown >= 0 else spec[1]
 	var spherical := _port_display == XREFeatureSettings.SPHERE and not _port_shapes and not (type == XREBlueprintGraph.EXEC and _style == XREFeatureSettings.ARCHETYPES)
-	# An archetype card's execution ports stand on its edges, half out (D-097).
+	# An archetype card's execution ports stand on its edges, half out (D-106).
 	if type == XREBlueprintGraph.EXEC and card.headed: point.x = card.width * (-0.5 if input else 0.5)
 	# Shaded by the view angle, as wires are, so that it reads as round.
 	if spherical: point.z = card.face + CARD_THICKNESS * 0.5 + PORT_RADIUS * SPHERE_LIFT
 	var mesh := _port_visual(type, color, spherical)
 	mesh.position = point
 	card.node.add_child(mesh)
-	# By the port's index, not its row: an archetype's rows are in another order (D-092).
+	# By the port's index, not its row: an archetype's rows are in another order (D-101).
 	card.ports[index if input else card.inputs.size() + index] = mesh
 	if input:
 		card.inputs[index] = point
@@ -2973,18 +2973,18 @@ func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1, 
 ## Where the port of row [param row] is on the left ([param input]) or the right edge of [param card].
 ## An operator's result is in the middle of its card's height.
 func _row_point(card: Card, row: int, input: bool) -> Vector3:
-	# An archetype's row 0 is its header, the rest under it (D-092).
+	# An archetype's row 0 is its header, the rest under it (D-101).
 	if card.headed:
 		var y := card.height * 0.5 - HEAD_HEIGHT * 0.5 if row == 0 else card.height * 0.5 - HEAD_HEIGHT - HEAD_GAP - ROW_HEIGHT * 0.5 - (row - 1) * ROW_HEIGHT
 		return Vector3((-card.width * 0.5 + 0.014) if input else (card.width * 0.5 - 0.014), y, card.face + 0.003)
-	# A tag's output is on its right end (D-097).
+	# A tag's output is on its right end (D-106).
 	if card.tag: return Vector3(card.width * 0.5 if not input else -card.width * 0.5, -row * ROW_HEIGHT, card.face + 0.003)
-	# A bead's ports are on its arcs (D-094).
+	# A bead's ports are on its arcs (D-103).
 	if card.bead:
 		var places := card.shape_inputs if input else card.shape_outputs
 		var spot := places[row] if row < places.size() else Vector2(card.width * (-0.5 if input else 0.5), -row * ROW_HEIGHT)
 		return Vector3(spot.x, spot.y, card.face + 0.003)
-	# A sign's ports are on its outline (D-091).
+	# A sign's ports are on its outline (D-100).
 	if card.shape != XREBlueprintShapes.Shape.NONE:
 		var place := XREBlueprintShapes.output(card.shape) if not input else card.shape_inputs[row] if row < card.shape_inputs.size() else Vector2(-card.width * 0.5, -row * ROW_HEIGHT)
 		return Vector3(place.x, place.y, card.face + 0.003)
@@ -3011,7 +3011,7 @@ func _layout(graph: XREBlueprintGraph, block: Dictionary, inputs: Array, outputs
 
 
 ## Whether [param block]'s target has a member to pick — a property, a signal,
-## an animation — which an adapter is for (D-103).
+## an animation — which an adapter is for (D-112).
 static func _has_member(block: Dictionary) -> bool:
 	return not XREBlueprintTokens.member_key(block).is_empty()
 
@@ -3040,11 +3040,11 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 			var spec: Array = inputs[index]
 			var bare := heading_of(block) == XREFeatureSettings.MEMBER
 			# Wired, an operator's input of any value takes the color of what comes in, as an Unreal wildcard pin.
-			# Its token's type too, not wired (D-098): a 1.0 makes a float's port, not any value's.
+			# Its token's type too, not wired (D-107): a 1.0 makes a float's port, not any value's.
 			var operand := graph.operand_type(block, spec[2]) if card.compact and spec[1] == XREBlueprintGraph.VALUE and spec.size() > 2 else TYPE_NIL
 			var shown := XREBlueprintGraph.port_type(operand) if operand != TYPE_NIL else -1
 			var text := _add_port(card, spec, index, true, row, shown)
-			# In on an archetype's header has no name: it is the header's edge (D-092).
+			# In on an archetype's header has no name: it is the header's edge (D-101).
 			if entry.has("head"): text.text = ""
 			var key: String = spec[2] if spec.size() > 2 else ""
 			var linked: Dictionary = _linked_inputs.get(Vector2i(card.id, index), {})
@@ -3055,11 +3055,11 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 				var variable := str(linked["variable"])
 				_add_link(card, _row_point(card, row, true), XREBlueprintLinks.VARIABLE, linked["type"], variable if XREBlueprintLinks.shows_name(_link_preview) else "link",
 						int(linked["getter"]), index, -1, variable)
-			# With the member in the header the target row has only the wire, or a link's bare ring (D-092).
+			# With the member in the header the target row has only the wire, or a link's bare ring (D-101).
 			elif target_link and bare:
 				_add_target_link(card, block, _row_point(card, row, true), index, -1, true)
 			# An adapter picks a member of its object (D-059); a call that takes the object
-			# itself, as Rotate X, has none: its wire or link goes straight into the port (D-103).
+			# itself, as Rotate X, has none: its wire or link goes straight into the port (D-112).
 			elif target_link and XREBlueprintTokens.adapter(_target_mode) and _has_member(block):
 				_add_adapter(card, block, _row_point(card, row, true), true, index)
 			elif target_link:
@@ -3092,7 +3092,7 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 				if linked: _add_target_link(card, block, _row_point(card, row, true), -1, SOURCE, true)
 			elif linked and XREBlueprintTokens.adapter(_target_mode): _add_adapter(card, block, _row_point(card, row, true), true, -1)
 			elif linked: _add_target_link(card, block, _row_point(card, row, true), -1, SOURCE)
-			# With the member in the header the Source has only its wire (D-092, D-098).
+			# With the member in the header the Source has only its wire (D-101, D-107).
 			if heading_of(block) == XREFeatureSettings.MEMBER: pass
 			elif XREBlueprintTokens.member_on_card(_target_mode): _add_member(card, text, "signal", str(params.get("signal", "")), block)
 			elif XREBlueprintTokens.adapter(_target_mode) and not linked: _add_adapter(card, block, _row_point(card, row, true))
@@ -3113,7 +3113,7 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 			var text := _add_port(card, outputs[entry["port"]], entry["port"], false, row)
 			if entry.has("head"): text.text = ""
 			if card.headed and block["kind"] == "branch": _add_tab(card, card.outputs[int(entry["port"])], int(entry["port"]), str((outputs[int(entry["port"])] as Array)[0]))
-			# A bead's outputs have small names outside it when it has more than one (D-094).
+			# A bead's outputs have small names outside it when it has more than one (D-103).
 			if card.bead and right.size() > 1: _name_outside(text, str((outputs[entry["port"]] as Array)[0]))
 		elif entry.has("finished"):
 			var finished := _add_virtual(card, FINISHED, "wait", "Finished", XREBlueprintGraph.EXEC, row, false)
@@ -3122,7 +3122,7 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 			card.waits = bool(params.get("wait", false))
 
 
-## Puts a bead's output name [param text] small, outside it over its port (D-094).
+## Puts a bead's output name [param text] small, outside it over its port (D-103).
 func _name_outside(label_node: Label3D, text: String) -> void:
 	label_node.text = text
 	label_node.font_size = 13
@@ -3146,7 +3146,7 @@ func _add_virtual(card: Card, kind: int, key: String, title: String, type: int, 
 	socket.size = Vector3(PORT_RADIUS * 2.0, PORT_RADIUS * 2.0, PORT_DEPTH * 2.0)
 	socket.visual = mesh
 	card.sockets.append(socket)
-	# A bead has no room for a socket's name inside (D-094).
+	# A bead has no room for a socket's name inside (D-103).
 	var text := label(title if not card.bead else "", 18)
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if input else HORIZONTAL_ALIGNMENT_RIGHT
 	text.position = point + Vector3(0.022 if input else -0.022, 0, 0)
@@ -3268,7 +3268,7 @@ func update_adapter_wire(link: Wire, id: int, start: Vector3, end: Vector3) -> v
 ## The link of [param block]'s target (D-074) in its input [param port] or its
 ## Source socket ([param kind]): its object's name or "link" on it, and a ring
 ## for the object's projection, which [XREBlueprints] puts in ([method target_heads]);
-## [param bare] without a name, as the member is in the header (D-092).
+## [param bare] without a name, as the member is in the header (D-101).
 func _add_target_link(card: Card, block: Dictionary, point: Vector3, port: int, kind: int, bare: bool = false) -> void:
 	_add_link(card, point, XREBlueprintLinks.TARGET, XREBlueprintGraph.OBJECT, "" if bare else XREBlueprintLinks.target_text(block, _link_preview, _target_mode),
 			card.id, port, kind, str((block["params"] as Dictionary).get("target", ".")), XREBlueprintLinks.shows_projection(_link_preview))
@@ -3282,7 +3282,7 @@ func _add_target_link(card: Card, block: Dictionary, point: Vector3, port: int, 
 ## With [param projection] its ring waits for the object's projection.
 func _add_link(card: Card, point: Vector3, key: String, type: int, text: String, flag_block: int, port: int, kind: int, value: String, projection: bool = false) -> void:
 	var width := XREBlueprintTokens.width(text)
-	# A bare ring says link where no projection comes in it (D-101).
+	# A bare ring says link where no projection comes in it (D-110).
 	var link := make_link(text, width, type, "link" if text.is_empty() and not projection else "")
 	link.position = Vector3(point.x, point.y, card.face)
 	card.node.add_child(link)
@@ -3311,7 +3311,7 @@ func _add_link(card: Card, point: Vector3, key: String, type: int, text: String,
 ## ring past the far end. Its ring's node is its "head" metadata, where the wire
 ## it hides leaves its "end", how far it reaches its "extent", its label its "text".
 static func make_link(text: String, width: float, type: int, ring_text: String = "") -> Node3D:
-	# A bare link (D-092) is its ring alone by the port, no plug (D-098).
+	# A bare link (D-101) is its ring alone by the port, no plug (D-107).
 	var bare := text.is_empty()
 	var link := make_token(null, "", width, true, false, false, type, text) if not bare else Node3D.new()
 	link.name = "Link"
@@ -3522,7 +3522,7 @@ func _add_token(card: Card, key: String, value: Variant, port: int, row: int, af
 	var empty := value == null
 	# A value typed as an expression shows it as typed (D-063).
 	var shown := XREBlueprintTokens.shown(value, key, expression) if not empty else "0.00"
-	# An oval's ports have no names: its second and third tokens say theirs, "min 0" (D-091); so do a bead's of two values or more (D-094).
+	# An oval's ports have no names: its second and third tokens say theirs, "min 0" (D-100); so do a bead's of two values or more (D-103).
 	if (card.shape == XREBlueprintShapes.Shape.OVAL and row > 0) or card.named_tokens: shown = "%s %s" % [key, shown]
 	var width := XREBlueprintTokens.width(shown)
 	var point := _row_point(card, row, true)
@@ -3530,7 +3530,7 @@ func _add_token(card: Card, key: String, value: Variant, port: int, row: int, af
 	if plug:
 		center = Vector3(point.x - PLUG_GAP - width * 0.5, point.y, card.face + PLUG_DEPTH * 0.5)
 	elif card.shape != XREBlueprintShapes.Shape.NONE:
-		# A sign has no room inside: a puck lies left of its port (D-091).
+		# A sign has no room inside: a puck lies left of its port (D-100).
 		center = Vector3(point.x - 0.016 - width * 0.5, point.y, card.face + PUCK_DEPTH * 0.5 + 0.001)
 	elif occupied:
 		center = Vector3(after.position.x + text_width(after.text, 18) + 0.008 + width * 0.5, point.y, card.face + PUCK_DEPTH * 0.5 + 0.001)
@@ -3715,7 +3715,7 @@ func _build_boxes(graph: XREBlueprintGraph) -> void:
 			link.owner = card.id
 			link.edge = link_key(card.id, true)
 			link.stored = XREBlueprintGraph.VARIABLE_BENDS
-			# A Set writes its box: an archetypes' box takes it at its top (D-097).
+			# A Set writes its box: an archetypes' box takes it at its top (D-106).
 			link.writes = block["kind"] == "set_variable"
 			# A link in the socket hides its wire, faint while drawn (D-074).
 			link.link = _link_socket(card, -1, VARIABLE)

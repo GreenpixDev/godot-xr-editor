@@ -37,7 +37,7 @@ var actions := XREBlueprintActions.shared()
 ## as boxes where they are put; the desktop has its Variables dialog for that.
 var offers_variables := false
 ## Whether the view has one Set for a property and a variable (the VR editor's
-## archetypes, D-093): Set Property is listed as Set, the variables' Sets not.
+## archetypes, D-102): Set Property is listed as Set, the variables' Sets not.
 var one_set := false
 var search: LineEdit
 var tree: Tree

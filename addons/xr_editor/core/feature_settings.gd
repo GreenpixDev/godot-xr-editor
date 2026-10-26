@@ -42,7 +42,7 @@ const FLAT := &"flat"
 ## Round, shaded spheres standing out of the card's face.
 const SPHERE := &"sphere"
 
-## What a logic graph card shows of its block ([XREBlueprintCanvas], D-090).
+## What a logic graph card shows of its block ([XREBlueprintCanvas], D-099).
 const NODE_STYLE := &"node_style"
 ## As before: one face in its group's color, the title with the block's id, a trash in the header.
 const CLASSIC := &"classic"
@@ -51,7 +51,7 @@ const CLASSIC := &"classic"
 ## what the ray is on, and the delete button deletes it.
 const ARCHETYPES := &"archetypes"
 
-## Which blocks archetypes draw as signs, not cards ([XREBlueprintShapes], D-091):
+## Which blocks archetypes draw as signs, not cards ([XREBlueprintShapes], D-100):
 ## each value adds to the one before. Classic cards ignore it.
 const NODE_SHRINK := &"node_shrink"
 ## Only the operators: arithmetic a circle, a comparison a diamond, logic a pill.
@@ -59,14 +59,14 @@ const OPERATORS := &"operators"
 ## The math functions too, as sin, abs, √, min, clamp and lerp: a circle with a
 ## second rim and the name, an oval for three inputs.
 const MATH := &"math"
-## Delay too, a bead on the execution's white thread, and Get Time and Random, rings (D-094).
+## Delay too, a bead on the execution's white thread, and Get Time and Random, rings (D-103).
 const SYSTEM := &"system"
 ## Every block with an icon of its own and at most three ports a side, not an
-## event: a function a bead in its group's colour, a pure function a ring (D-094).
+## event: a function a bead in its group's colour, a pure function a ring (D-103).
 const ICONS := &"icons"
 
 ## What an archetype's header says of a block with a member — a signal, a
-## property, an animation, a variable (D-092): the operation, its member
+## property, an animation, a variable (D-101): the operation, its member
 ## then on the adapter, or the member itself, the wire to the object or box
 ## bare. A card may be switched on its own (its block's vr_heading).
 const NODE_HEADING := &"node_heading"
@@ -75,14 +75,14 @@ const OPERATION := &"operation"
 ## "body_entered", "light_energy", "gate_open" over a small "On Signal" or "Set".
 const MEMBER := &"member"
 
-## How a vector's or a colour's variable gives its components (D-096): whole,
+## How a vector's or a colour's variable gives its components (D-105): whole,
 ## a Break taking them apart, or split, an output of each on its box, the
 ## Break under it hidden as an inline Get Variable is (D-061).
 const COMPOSITE_VALUES := &"composite_values"
 const WHOLE := &"whole"
 const SPLIT := &"split"
 ## Whether a logic graph port's shape says its type too, its colour as before
-## (D-095): execution an arrow, bool a diamond, int a square, float a
+## (D-104): execution an arrow, bool a diamond, int a square, float a
 ## circle, text a pill, a vector a triangle, an object a hexagon, a colour a
 ## half-filled circle, any value a ring. Int and float, side by side, differ
 ## by more than their hue (D-080).

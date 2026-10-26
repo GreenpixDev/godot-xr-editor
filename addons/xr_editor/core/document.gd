@@ -194,7 +194,7 @@ func record_graph_operation(operation: StringName, source: Source) -> void:
 
 
 ## The editor's icon of class [param cls], as the desktop's Scene dock shows
-## it, for the cards of the logic graph (D-090); null without an editor or icon.
+## it, for the cards of the logic graph (D-099); null without an editor or icon.
 func get_class_icon(_cls: StringName) -> Texture2D:
 	return null
 

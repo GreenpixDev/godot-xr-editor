@@ -57,7 +57,7 @@ func _test_cuboid(graph: XREBlueprintGraph) -> void:
 	_check(card.node.global_basis.z.dot(Vector3.FORWARD) > 0.99, "billboards turn to the head again")
 
 
-## Archetypes (D-090): an event's header in its group's color with its icon,
+## Archetypes (D-099): an event's header in its group's color with its icon,
 ## the trash in the plus's corner, picked only while the card is in focus; a
 ## pure function framed in its result's color; a call without an icon shows ƒ.
 func _test_archetypes(graph: XREBlueprintGraph) -> void:
@@ -72,7 +72,7 @@ func _test_archetypes(graph: XREBlueprintGraph) -> void:
 	_check(icon != null and (icon.material_override as BaseMaterial3D).albedo_texture != null and card.node.get_node_or_null("Circle") != null, "with Ready's icon on its circle")
 	_check(card.trash_point.x > 0.0 and card.trash_point.y > card.bounds.end.y and not card.trash.visible, "the trash stands over the right corner, hidden out of focus")
 	var corner := Vector3(-card.width * 0.5 + 0.003, card.height * 0.5 - 0.003, 0)
-	_check(not card.outline.is_empty() and _hit(card.node.position + corner, Vector3.FORWARD) < 0, "the event's card is rounded: its top left corner takes no ray (D-100)")
+	_check(not card.outline.is_empty() and _hit(card.node.position + corner, Vector3.FORWARD) < 0, "the event's card is rounded: its top left corner takes no ray (D-109)")
 	_check(_hit(card.node.position + Vector3(0, 0, 0), Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 1, "its middle does")
 	_check(_hit(card.trash_point, Vector3.FORWARD) < 0, "a hidden trash isn't picked")
 	_canvas.set_focus(Vector3i(1, -1, -1))
@@ -101,7 +101,7 @@ func _test_archetypes(graph: XREBlueprintGraph) -> void:
 	_check(card.node.get_node_or_null("Head") == null and card.trash.visible and card.trash_point.x < 0.0, "classic cards have their trash in the left corner again")
 
 
-## Signs (D-091): an archetype's operator is a circle, a comparison a
+## Signs (D-100): an archetype's operator is a circle, a comparison a
 ## diamond, logic a pill, each in its result's color and picked inside its
 ## outline; with Node shrink on + Math a math function of one or two inputs is
 ## a circle with an inner rim and its name, of three an oval whose tokens say
@@ -151,7 +151,7 @@ func _test_signs() -> void:
 	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
 
 
-## An archetype's card (D-092): In and Then on the header's edges, the target
+## An archetype's card (D-101): In and Then on the header's edges, the target
 ## on the row under it, an event's policy a puck in the header; in Member the
 ## header says the member with the operation under it and the target row has
 ## no adapter; a block's own vr_heading wins over the setting; ⇄ shows and is
@@ -188,7 +188,7 @@ func _test_headings() -> void:
 	var band := set_card.node.get_node("Head") as MeshInstance3D
 	var band_front := band.position.z + band.mesh.get_aabb().end.z
 	_check((set_card.node.get_node("Title") as Label3D).position.z > band_front and (set_card.node.get_node("Circle") as Node3D).position.z > band_front and set_card.frame.mesh.get_aabb().end.z > band_front,
-			"the title, the icon's circle and the outline stand before the header, seen out of focus too (D-101)")
+			"the title, the icon's circle and the outline stand before the header, seen out of focus too (D-110)")
 	var chip: XREBlueprintCanvas.Socket = null
 	var adapters := 0
 	for socket: XREBlueprintCanvas.Socket in signal_card.sockets:
@@ -198,7 +198,7 @@ func _test_headings() -> void:
 	_check(adapters == 1, "in Operation the event's Source has its adapter")
 	var kinds: Array[int] = []
 	for socket: XREBlueprintCanvas.Socket in (cards[3] as XREBlueprintCanvas.Card).sockets: kinds.append(socket.kind)
-	_check(not kinds.has(XREBlueprintCanvas.MEMBER), "Rotate X takes its object itself: no adapter on its Target (D-103)")
+	_check(not kinds.has(XREBlueprintCanvas.MEMBER), "Rotate X takes its object itself: no adapter on its Target (D-112)")
 	kinds.clear()
 	for socket: XREBlueprintCanvas.Socket in (cards[4] as XREBlueprintCanvas.Card).sockets: kinds.append(socket.kind)
 	_check(kinds.has(XREBlueprintCanvas.LINK) and not kinds.has(XREBlueprintCanvas.MEMBER), "its link goes into the port, with no adapter")
@@ -210,11 +210,11 @@ func _test_headings() -> void:
 	signal_card = cards[0] as XREBlueprintCanvas.Card
 	set_card = cards[1] as XREBlueprintCanvas.Card
 	_check((signal_card.node.get_node("Member") as Label3D).text == "Body Entered" and (set_card.node.get_node("Member") as Label3D).text == "Light Energy"
-			and (signal_card.node.get_node("Verb") as Label3D).text == "On", "in Member the headers say On Body Entered and Set Light Energy, on one line (D-098)")
+			and (signal_card.node.get_node("Verb") as Label3D).text == "On", "in Member the headers say On Body Entered and Set Light Energy, on one line (D-107)")
 	var source_adapters := 0
 	for socket: XREBlueprintCanvas.Socket in signal_card.sockets:
 		if socket.kind == XREBlueprintCanvas.MEMBER and socket.visual.name != "Member": source_adapters += 1
-	_check(source_adapters == 0, "in Member the event's Source has no adapter (D-098)")
+	_check(source_adapters == 0, "in Member the event's Source has no adapter (D-107)")
 	var members: Array[XREBlueprintCanvas.Socket] = []
 	for socket: XREBlueprintCanvas.Socket in set_card.sockets:
 		if socket.kind == XREBlueprintCanvas.MEMBER: members.append(socket)
@@ -222,16 +222,16 @@ func _test_headings() -> void:
 	var ring: XREBlueprintCanvas.Socket = null
 	for socket: XREBlueprintCanvas.Socket in set_card.sockets:
 		if socket.kind == XREBlueprintCanvas.LINK: ring = socket
-	_check(ring != null and ring.visual.get_node_or_null("Token") == null and ring.visual.has_meta(&"head"), "its link is a ring alone, no plug (D-098)")
+	_check(ring != null and ring.visual.get_node_or_null("Token") == null and ring.visual.has_meta(&"head"), "its link is a ring alone, no plug (D-107)")
 	var ring_words: Array[String] = []
 	for child: Node in (ring.visual.get_meta(&"head") as Node3D).find_children("*", "Label3D", true, false): ring_words.append((child as Label3D).text)
-	_check(ring_words.has("link"), "and says link in it (D-101): %s" % [ring_words])
+	_check(ring_words.has("link"), "and says link in it (D-110): %s" % [ring_words])
 	var member_socket := -1
 	for index: int in set_card.sockets.size():
 		if set_card.sockets[index].visual.name == "Member": member_socket = index
 	_canvas.hover_socket(2, member_socket, true)
 	var member_label := set_card.node.get_node("Member") as Label3D
-	_check(member_label.scale.is_equal_approx(Vector3.ONE) and member_label.modulate.is_equal_approx(XREBlueprintCanvas.MEMBER_HOVER), "the member under the ray changes colour, not size (D-101)")
+	_check(member_label.scale.is_equal_approx(Vector3.ONE) and member_label.modulate.is_equal_approx(XREBlueprintCanvas.MEMBER_HOVER), "the member under the ray changes colour, not size (D-110)")
 	_canvas.hover_socket(-1, -1, true)
 	_check(set_card.swap != null and not set_card.swap.visible, "⇄ waits for the focus")
 	_canvas.set_focus(Vector3i(2, -1, -1))
@@ -244,7 +244,7 @@ func _test_headings() -> void:
 	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
 
 
-## Beads (D-094): with + System Delay is a bead in flow's grey rimmed white,
+## Beads (D-103): with + System Delay is a bead in flow's grey rimmed white,
 ## its ports on its arcs, Get Time and Random rings in their result's colour,
 ## Random's tokens saying their names; with All with icons a Set and a
 ## Branch are beads too, Branch's outputs named outside, but not an event, a
@@ -286,7 +286,7 @@ func _test_beads() -> void:
 	_check(not (cards[3] as XREBlueprintCanvas.Card).bead, "Set is a card with + System")
 	_check(not delay.tip.visible, "a bead's name waits for the ray")
 	_canvas.set_focus(Vector3i(1, -1, -1))
-	_check(delay.tip.visible and delay.tip.text == "Delay" and delay.tip.font_size == XREBlueprintCanvas.TIP_SIZE, "under the ray a bead says its name, large (D-099)")
+	_check(delay.tip.visible and delay.tip.text == "Delay" and delay.tip.font_size == XREBlueprintCanvas.TIP_SIZE, "under the ray a bead says its name, large (D-108)")
 	_canvas.set_focus(Vector3i(-1, -1, -1))
 	_check(_canvas.set_shrink(XREFeatureSettings.ICONS), "Node shrink switches to All with icons")
 	_canvas.rebuild(beads)
@@ -305,7 +305,7 @@ func _test_beads() -> void:
 	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
 
 
-## Port shapes (D-095): with them on a port's mesh is its type's shape, one
+## Port shapes (D-104): with them on a port's mesh is its type's shape, one
 ## mesh a type, flat and facing the front, its colour as before, picked as a
 ## port was; off, ports are discs again.
 func _test_port_shapes() -> void:
@@ -330,7 +330,7 @@ func _test_port_shapes() -> void:
 	_check(((_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card).ports[1].mesh is CylinderMesh, "ports are discs again")
 
 
-## The mockup's details (D-097): an event's policy a narrow chip with its
+## The mockup's details (D-106): an event's policy a narrow chip with its
 ## icon; On Ready says its member too; execution ports arrows on the card's
 ## edges; Branch's True and False tabs; Get Time's dial; a bead's name large;
 ## a variable's box read on its right edge and written from its top, its
@@ -364,15 +364,15 @@ func _test_mockup_details() -> void:
 	var branch := cards[1] as XREBlueprintCanvas.Card
 	var tabs := branch.node.find_children("Tab*", "MeshInstance3D", false, false)
 	_check(tabs.size() == 2 and is_equal_approx(branch.outputs[0].x, branch.width * 0.5), "Branch has True and False tabs, its outputs on the edge")
-	_check((tabs[0] as MeshInstance3D).mesh is ArrayMesh, "the tabs are round at their left ends (D-098)")
+	_check((tabs[0] as MeshInstance3D).mesh is ArrayMesh, "the tabs are round at their left ends (D-107)")
 	_check(is_equal_approx(((tabs[0] as MeshInstance3D).material_override as BaseMaterial3D).albedo_color.a, 1.0) and (tabs[0] as MeshInstance3D).mesh.get_aabb().size.y < XREBlueprintCanvas.ROW_HEIGHT * 0.7,
-			"and opaque and low (D-099)")
+			"and opaque and low (D-108)")
 	_check((tabs[0] as MeshInstance3D).mesh.get_aabb().size.x < 0.08 and is_equal_approx((tabs[0] as MeshInstance3D).mesh.get_aabb().size.x, (tabs[1] as MeshInstance3D).mesh.get_aabb().size.x),
-			"and as narrow as their marks and names, both alike (D-102)")
-	_check(not XREBlueprintCanvas.can_head(XREBlueprintGraph.make_call(9, XREBlueprintFunctions.method("Node3D", "rotate_x"), Vector2.ZERO)), "Rotate X has no member to say, only its operation (D-099)")
+			"and as narrow as their marks and names, both alike (D-111)")
+	_check(not XREBlueprintCanvas.can_head(XREBlueprintGraph.make_call(9, XREBlueprintFunctions.method("Node3D", "rotate_x"), Vector2.ZERO)), "Rotate X has no member to say, only its operation (D-108)")
 	var times := cards[4] as XREBlueprintCanvas.Card
 	_check(((times.ports[1] as MeshInstance3D).material_override as BaseMaterial3D).albedo_color.is_equal_approx(XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]),
-			"an operand with a float token has a float's port, not any value's (D-098)")
+			"an operand with a float token has a float's port, not any value's (D-107)")
 	var time := cards[2] as XREBlueprintCanvas.Card
 	_check(time.bead and (time.node.get_node("Icon") as MeshInstance3D).mesh.get_aabb().size.x > time.width * 0.9, "Get Time's dial fills its ring")
 	var tag := cards[3] as XREBlueprintCanvas.Card
@@ -387,21 +387,21 @@ func _test_mockup_details() -> void:
 	_canvas.rebuild(details)
 	boxes = _canvas.get_boxes()
 	_check(not boxes.component_point("spot", 0).is_equal_approx(boxes.box_point("spot")) and boxes.component_point("aim", 0).is_equal_approx(boxes.box_point("aim")),
-			"with Split a box has its drawer, unless its own is shut (D-099)")
+			"with Split a box has its drawer, unless its own is shut (D-108)")
 	var aim := boxes.box_point("aim")
 	var aim_box: XREBlueprintBoxes.Box = null
 	for item: XREBlueprintBoxes.Box in boxes.get("_boxes") as Array:
 		if item.name == "aim": aim_box = item
 	_check(boxes.intersect_ray(aim + aim_box.drawer_point + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() == XREBlueprintBoxes.DRAWER, "its drawer's switch takes the ray")
 	boxes.hover(boxes.get_hit_index(), XREBlueprintBoxes.DRAWER, true)
-	_check(aim_box.drawer.scale.x > 1.5, "and grows under it (D-101)")
+	_check(aim_box.drawer.scale.x > 1.5, "and grows under it (D-110)")
 	boxes.hover(-1, -1, true)
 	var spot_index := -1
 	for index: int in boxes.box_count():
 		if boxes.box_name(index) == "spot": spot_index = index
 	var spot_box := (boxes.get("_boxes") as Array)[spot_index] as XREBlueprintBoxes.Box
 	boxes.hover(spot_index, XREBlueprintBoxes.COMPONENT, true, 1)
-	_check(spot_box.component_ports[1].scale.x > 1.5 and is_equal_approx(spot_box.component_ports[0].scale.x, 1.0), "the output of y under the ray grows, as a card's port (D-100)")
+	_check(spot_box.component_ports[1].scale.x > 1.5 and is_equal_approx(spot_box.component_ports[0].scale.x, 1.0), "the output of y under the ray grows, as a card's port (D-109)")
 	boxes.hover(-1, -1, true)
 	_check(is_equal_approx(spot_box.component_ports[1].scale.x, 1.0), "and shrinks back")
 	_canvas.set_composite(XREFeatureSettings.WHOLE)

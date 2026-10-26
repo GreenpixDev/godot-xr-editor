@@ -125,7 +125,7 @@ func _look_right() -> void:
 
 func _beam_off() -> void:
 	_check(_simulator.get_beam() == null and not _simulator.beam_on, "V turns the beam off")
-	# Drawn over everything, as over a card in focus with Front (D-075), the beam sorts as its ray (D-100).
+	# Drawn over everything, as over a card in focus with Front (D-075), the beam sorts as its ray (D-109).
 	_rig.right_hand.set_on_top(true)
 	_key(XRESimulator.BEAM_KEY, true)
 	_key(XRESimulator.BEAM_KEY, false)

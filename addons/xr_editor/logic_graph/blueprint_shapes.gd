@@ -1,7 +1,7 @@
 @tool
 class_name XREBlueprintShapes
 extends RefCounted
-## Signs of the archetypes ([constant XREFeatureSettings.NODE_STYLE], D-091):
+## Signs of the archetypes ([constant XREFeatureSettings.NODE_STYLE], D-100):
 ## operators and math functions drawn as shapes, not cards. A circle for
 ## arithmetic, a diamond with rounded corners for a comparison, a pill for
 ## logic by its word; a math function of one or two inputs is a circle with a
@@ -70,7 +70,7 @@ static func outline(shape: Shape) -> PackedVector2Array:
 
 ## A rectangle [param size] wide and high around its centre, its corners
 ## rounded by [param radii] — top left, top right, bottom right, bottom left
-## — counterclockwise (D-097: a variable's box and its lid).
+## — counterclockwise (D-106: a variable's box and its lid).
 static func rounded_rect(size: Vector2, radii: Vector4) -> PackedVector2Array:
 	var points := PackedVector2Array()
 	var half := size * 0.5
@@ -119,12 +119,12 @@ static func output(shape: Shape) -> Vector2:
 	return Vector2(size_of(shape).x * 0.5, 0)
 
 
-## Shared meshes of the ports' shapes by type (D-095).
+## Shared meshes of the ports' shapes by type (D-104).
 static var _ports: Dictionary[int, ArrayMesh] = {}
 
 
 ## A flat port of [param type]'s shape, [param radius] across its middle and
-## [param depth] deep, facing +Z (D-095): execution an arrow, bool a diamond,
+## [param depth] deep, facing +Z (D-104): execution an arrow, bool a diamond,
 ## int a square, float a circle, text a pill, vectors a triangle, an object a
 ## hexagon, a colour a ring half filled, any value a ring. Made once a type.
 static func port_mesh(type: int, radius: float, depth: float) -> ArrayMesh:
@@ -160,7 +160,7 @@ static func port_mesh(type: int, radius: float, depth: float) -> ArrayMesh:
 	return _ports[type]
 
 
-## A circle of [param radius], counterclockwise: a bead's outline (D-094).
+## A circle of [param radius], counterclockwise: a bead's outline (D-103).
 static func circle(radius: float) -> PackedVector2Array:
 	var points := PackedVector2Array()
 	for index: int in SEGMENTS: points.append(Vector2.from_angle(TAU * index / SEGMENTS) * radius)
@@ -169,7 +169,7 @@ static func circle(radius: float) -> PackedVector2Array:
 
 ## Where [param count] ports are on the left ([param side] -1) or the right
 ## (1) arc of a bead of [param radius], top first: from 50° above the middle
-## to 50° below it, one in the middle (D-094).
+## to 50° below it, one in the middle (D-103).
 static func arc(count: int, radius: float, side: float) -> Array[Vector2]:
 	var result: Array[Vector2] = []
 	for index: int in count:
@@ -233,7 +233,7 @@ static func ring(points: PackedVector2Array, inset: float, width: float, z: floa
 	return surface.commit()
 
 
-## What a math function's sign shows (D-091): its usual sign or its name,
+## What a math function's sign shows (D-100): its usual sign or its name,
 ## empty if [param block] isn't one — a pure function of @GlobalScope's math
 ## or of the library's vectors with one to three numbers or vectors in and one
 ## out, without an icon of its own, its name at most [constant LONGEST] long.

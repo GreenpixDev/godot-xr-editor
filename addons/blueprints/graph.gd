@@ -21,9 +21,9 @@ extends Resource
 ## compiler and GraphEdit ignore them.
 ##
 ## A block's [code]vr_heading[/code], "operation" or "member", says what its
-## card's header shows in the VR editor's archetypes (D-092), over the
+## card's header shows in the VR editor's archetypes (D-101), over the
 ## editor's setting; a variable's [code]vr_collapsed[/code] shuts its box's
-## drawer of components there (D-099). The compiler and GraphEdit ignore them too.
+## drawer of components there (D-108). The compiler and GraphEdit ignore them too.
 
 const FORMAT_VERSION := 3
 const MAX_NODES := 256

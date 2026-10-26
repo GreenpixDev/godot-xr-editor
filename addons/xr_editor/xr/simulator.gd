@@ -478,5 +478,5 @@ class _Beam extends Node3D:
 		var material := hand.get_ray_material()
 		if mesh.material_override != material:
 			mesh.material_override = material
-		# Over a card in focus too, as the ray it stands for (D-100).
+		# Over a card in focus too, as the ray it stands for (D-109).
 		mesh.sorting_offset = hand.get_ray_sorting_offset()

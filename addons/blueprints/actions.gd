@@ -71,7 +71,7 @@ func invalidate_scripts() -> void:
 ## [code]query[/code] (words that must all match), [code]advanced[/code]
 ## (whether Advanced is open) and [code]new_variables[/code] (whether the view
 ## adds new variables, D-078), [code]one_set[/code] (whether the view has one Set for
-## a property and a variable, D-093). An Advanced section lists its actions only when
+## a property and a variable, D-102). An Advanced section lists its actions only when
 ## open or searched. The graph's variables are a section of the native blocks,
 ## and of the host's chip, whose script they belong to.
 func sections(context: Dictionary) -> Array[Dictionary]:
@@ -464,7 +464,7 @@ func _operator_actions(title: String, graph: XREBlueprintGraph, host: Node) -> A
 
 
 ## Branch, Value, properties and events; with [param one_set] Set Property is
-## Set, which writes a variable too, by the wire of its Target (D-093).
+## Set, which writes a variable too, by the wire of its Target (D-102).
 func _native_actions(graph: XREBlueprintGraph, host: Node, one_set: bool = false) -> Array[Dictionary]:
 	var actions: Array[Dictionary] = []
 	var natives := [["branch", "Branch", "if condition", "native"], ["value", "Value", "literal constant", "native"],
@@ -507,7 +507,7 @@ func _variable_actions(graph: XREBlueprintGraph, host: Node, context: Dictionary
 		setter["params"]["value"] = variable.get("value", XREBlueprintSchema.default_value(XREBlueprintGraph.variable_type(variable)))
 		actions.append({"id": "variable:get:" + variable["name"], "title": "Get " + variable["name"], "subtitle": "variable: " + type, "kind": "variable",
 				"keywords": "variable get", "category": "Variables", "block": getter, "target": null, "disabled": ""})
-		# One Set (D-093): it writes the variable whose box its Target is wired to.
+		# One Set (D-102): it writes the variable whose box its Target is wired to.
 		if not context.get("one_set", false):
 			actions.append({"id": "variable:set:" + variable["name"], "title": "Set " + variable["name"], "subtitle": "variable: " + type, "kind": "variable",
 					"keywords": "variable set", "category": "Variables", "block": setter, "target": null, "disabled": ""})

@@ -22,9 +22,9 @@ const BELOW := 0.1
 const BODY := 0
 const TRASH := 1
 const TOKEN := 2
-## An output of a component on the box's right side (D-096).
+## An output of a component on the box's right side (D-105).
 const COMPONENT := 3
-## The switch of a box's drawer of components (D-099).
+## The switch of a box's drawer of components (D-108).
 const DRAWER := 4
 const DRAWER_SIZE := 0.018
 ## Components by type, as Break names its outputs; a component's port's
@@ -35,7 +35,7 @@ const COMPONENT_OUT := 0.008
 const COMPONENT_STEP := 0.0135
 ## How far left the start value moves on a box with components: clear of their names.
 const COMPONENT_ROOM := 0.012
-## An archetypes' box (D-097), as the mockup's: a dark rounded card with a rim
+## An archetypes' box (D-106), as the mockup's: a dark rounded card with a rim
 ## and a lid in its type's colour, its name and type on the lid, its start
 ## value below, its reading port on its right edge, its writes coming in at
 ## the top, a faint second card behind it for depth; its components in a
@@ -67,16 +67,16 @@ class Box:
 	var token_text: Label3D
 	var token_point := Vector3.ZERO
 	var token_size := Vector3.ZERO
-	## Its components' outputs (D-096), in the box's space, and their discs.
+	## Its components' outputs (D-105), in the box's space, and their discs.
 	var components: Array[Vector3] = []
 	var component_ports: Array[Node3D] = []
-	## Its size, which an archetypes' box takes from its name and value (D-097).
+	## Its size, which an archetypes' box takes from its name and value (D-106).
 	var size := BOX_SIZE
-	## Its drawer of components shut on its own (D-099), and its switch.
+	## Its drawer of components shut on its own (D-108), and its switch.
 	var collapsed := false
 	var drawer: Node3D
 	var drawer_point := Vector3.ZERO
-	## Where an archetypes' box is read and written, in its space (D-097).
+	## Where an archetypes' box is read and written, in its space (D-106).
 	var read_point := Vector3.ZERO
 	var write_point := Vector3.ZERO
 	## It covers an input in use and is see-through (D-066).
@@ -92,7 +92,7 @@ var _hit_component := -1
 var _split := false
 var _archetype := false
 var _archetype_trash: Material
-## The box part under each hand's ray: the box, the part and its component (D-100), or -1.
+## The box part under each hand's ray: the box, the part and its component (D-109), or -1.
 var _hover_right := Vector3i(-1, -1, -1)
 var _hover_left := Vector3i(-1, -1, -1)
 var _trash_mesh: Mesh
@@ -110,8 +110,8 @@ func _init(trash_mesh: Mesh, trash_material: Material, archetype_trash: Material
 ## [param places] (canvas space, by variable); tokens in the [param style] of
 ## [constant XREFeatureSettings.VALUE_INPUT], text with Window. [param used]
 ## names the variables blocks refer to. With [param split] a vector's or a
-## colour's box has an output for each component (D-096). With
-## [param archetype] the boxes look as archetypes do (D-097).
+## colour's box has an output for each component (D-105). With
+## [param archetype] the boxes look as archetypes do (D-106).
 func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], style: StringName, used: Dictionary, split: bool = false, archetype: bool = false) -> void:
 	_split = split
 	_archetype = archetype
@@ -202,7 +202,7 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 	_boxes.append(box)
 
 
-## An archetypes' box (D-097): see [constant CARD_HEIGHT].
+## An archetypes' box (D-106): see [constant CARD_HEIGHT].
 func _add_card(box: Box, style: StringName, expression: String) -> void:
 	var color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)]
 	var shown := XREBlueprintTokens.shown(box.value, "", expression) if box.value != null else "empty"
@@ -260,7 +260,7 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 		box.node.add_child(box.token)
 		box.token_text = box.token.get_meta(&"text") as Label3D
 		box.token_size = Vector3(value_width, XREBlueprintTokens.HEIGHT, 0.012)
-	# Read on the right edge, written from the top (D-097).
+	# Read on the right edge, written from the top (D-106).
 	box.read_point = Vector3(width * 0.5, 0, front + 0.002)
 	box.write_point = Vector3(0, CARD_HEIGHT * 0.5, front)
 	var read := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(XREBlueprintGraph.port_type(box.type), XREBlueprintCanvas.PORT_RADIUS, XREBlueprintCanvas.PORT_DEPTH * 2.0), XREBlueprintCanvas.material(color, true))
@@ -281,7 +281,7 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 		if not box.collapsed: _add_drawer(box)
 
 
-## The switch of [param box]'s drawer of components at [param point] (D-099):
+## The switch of [param box]'s drawer of components at [param point] (D-108):
 ## ▾ while open, ▸ while shut; the trigger on it opens or shuts it.
 func _add_drawer_switch(box: Box, point: Vector3) -> void:
 	box.drawer_point = point
@@ -295,7 +295,7 @@ func _add_drawer_switch(box: Box, point: Vector3) -> void:
 	box.node.add_child(box.drawer)
 
 
-## An archetypes' box's components (D-096, D-097): a drawer under it, each
+## An archetypes' box's components (D-105, D-106): a drawer under it, each
 ## component's name in its axis's colour and its output on the right edge.
 func _add_drawer(box: Box) -> void:
 	var names: Array = COMPONENTS[box.type]
@@ -326,7 +326,7 @@ func _add_drawer(box: Box) -> void:
 	# The box's centre stays its card's: its picking box grows down by the drawer.
 
 
-## An archetypes' box's face in [param color] (D-097): drawn before the labels
+## An archetypes' box's face in [param color] (D-106): drawn before the labels
 ## and tokens on it, as a card's face is, so that sorting never puts it over them.
 static func under_material(color: Color) -> StandardMaterial3D:
 	var result := XREBlueprintCanvas.material(color, true)
@@ -334,7 +334,7 @@ static func under_material(color: Color) -> StandardMaterial3D:
 	return result
 
 
-## Shows each box's trash while a ray is on it (D-097), as archetypes' cards do:
+## Shows each box's trash while a ray is on it (D-106), as archetypes' cards do:
 ## [param focused] names the boxes in focus.
 func show_trashes(focused: Array[String]) -> void:
 	if not _archetype: return
@@ -343,7 +343,7 @@ func show_trashes(focused: Array[String]) -> void:
 
 
 ## The outputs of [param box]'s components on its right side, top first, in
-## float's colour, each named (D-096).
+## float's colour, each named (D-105).
 func _add_components(box: Box) -> void:
 	var names: Array = COMPONENTS[box.type]
 	var disc := CylinderMesh.new()
@@ -388,7 +388,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		# See-through over an input in use, a box doesn't take the ray (D-067).
 		if box.faded: continue
 		var local_origin := origin - box.node.position
-		# A component's output stands out of the box's side: it takes the ray first (D-096).
+		# A component's output stands out of the box's side: it takes the ray first (D-105).
 		for component: int in box.components.size():
 			var size := Vector3.ONE * COMPONENT_RADIUS * 2.0 + Vector3(0.002, 0.0, 0.006)
 			var at := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.components[component] - size * 0.5, size), nearest)
@@ -398,7 +398,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_part = COMPONENT
 			_hit_component = component
 		if _hit == index and _hit_part == COMPONENT: continue
-		# The drawer's switch takes the ray before the box under it (D-099).
+		# The drawer's switch takes the ray before the box under it (D-108).
 		if box.drawer != null:
 			var switch := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.drawer_point - Vector3(0.012, 0.012, 0.006), Vector3(0.024, 0.024, 0.012)), nearest)
 			if switch >= 0:
@@ -406,7 +406,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit = index
 				_hit_part = DRAWER
 				continue
-		# An archetypes' trash stands over the box, shown under the ray (D-097).
+		# An archetypes' trash stands over the box, shown under the ray (D-106).
 		if _archetype and box.trash.visible:
 			var over := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.trash_point - Vector3(0.012, 0.014, 0.006), Vector3(0.024, 0.028, 0.012)), nearest)
 			if over >= 0:
@@ -447,13 +447,13 @@ func has_hit() -> bool:
 	return _hit >= 0
 
 
-## Which component's output the last ray hit (D-096), -1 for none.
+## Which component's output the last ray hit (D-105), -1 for none.
 func get_hit_component() -> int:
 	return _hit_component if _hit_part == COMPONENT else -1
 
 
 ## Where the output of component [param component] of [param variable]'s box
-## is, in the canvas's space (D-096); the box's centre without one.
+## is, in the canvas's space (D-105); the box's centre without one.
 func component_point(variable: String, component: int) -> Vector3:
 	for box: Box in _boxes:
 		if box.name == variable and component >= 0 and component < box.components.size(): return box.node.position + box.components[component]
@@ -467,7 +467,7 @@ func get_hit_part() -> int:
 
 ## Grows the part under the [param right] hand's ray, or the other's, as a
 ## card's trash grows; -1 for none; a component's output by [param component],
-## as a card's port grows (D-100). Each hand keeps its own, so that an idle
+## as a card's port grows (D-109). Each hand keeps its own, so that an idle
 ## ray can't take the other's away.
 func hover(index: int, part: int, right: bool, component: int = -1) -> void:
 	var key := Vector3i(index, part, component if part == COMPONENT else -1) if index >= 0 else Vector3i(-1, -1, -1)
@@ -480,7 +480,7 @@ func hover(index: int, part: int, right: bool, component: int = -1) -> void:
 		var left_part := _hover_left.y if _hover_left.x == box else -1
 		if item.trash != null: item.trash.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if TRASH in [right_part, left_part] else 1.0)
 		if item.token != null: item.token.scale = Vector3.ONE * (0.85 * XREBlueprintCanvas.SOCKET_HOVER if TOKEN in [right_part, left_part] else 0.85)
-		# The drawer's switch grows under the ray, as the trash does (D-101).
+		# The drawer's switch grows under the ray, as the trash does (D-110).
 		if item.drawer != null: item.drawer.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if DRAWER in [right_part, left_part] else 1.0)
 		item.node.scale = Vector3.ONE * (1.06 if BODY in [right_part, left_part] else 1.0)
 		for output: int in item.component_ports.size():
@@ -538,7 +538,7 @@ func box_point(variable: String) -> Vector3:
 ## canvas's space) leaves it, and its direction there (D-063): aimed at the
 ## box's centre, out of the side that faces that point, so that it comes in
 ## from any side, not only the left.
-## An archetypes' box (D-097) is read from its right edge and written from its
+## An archetypes' box (D-106) is read from its right edge and written from its
 ## top, [param writes].
 func box_end(variable: String, toward: Vector3, writes: bool = false) -> Array[Vector3]:
 	if _archetype:
@@ -557,7 +557,7 @@ func box_end(variable: String, toward: Vector3, writes: bool = false) -> Array[V
 	return [center + along * reach, along]
 
 
-## The box [param box]'s picking bounds in its space: its card, and its drawer under it (D-097).
+## The box [param box]'s picking bounds in its space: its card, and its drawer under it (D-106).
 static func _bounds(box: Box) -> AABB:
 	if box.size == BOX_SIZE or box.components.is_empty(): return AABB(-box.size * 0.5, box.size)
 	var top := CARD_HEIGHT * 0.5

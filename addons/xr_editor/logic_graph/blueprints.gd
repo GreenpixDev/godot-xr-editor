@@ -337,7 +337,7 @@ var _member_hand: XREHand
 var _link_kind := -1
 var _link_block := -1
 var _link_box := ""
-## The component of [member _link_box] a wire is drawn from (D-096), -1 for the whole value.
+## The component of [member _link_box] a wire is drawn from (D-105), -1 for the whole value.
 var _link_component := -1
 var _link_hand: XREHand
 ## Play Animation's output 0 a wire is drawn from: 1 Finished, 0 Then, -1 another port.
@@ -1561,7 +1561,7 @@ func _show_parameters(id: int = -1) -> void:
 
 
 ## Whether input [param port] of block [param id] is the one Target of an
-## archetypes' Set (D-093): a Set Property's Target, which a box's wire turns
+## archetypes' Set (D-102): a Set Property's Target, which a box's wire turns
 ## into a Set Variable of the box.
 func _sets_target(id: int, port: int) -> bool:
 	var block := blueprint.graph.find_node(id)
@@ -1569,13 +1569,13 @@ func _sets_target(id: int, port: int) -> bool:
 
 
 ## Whether the Variable wire being drawn is an archetypes' Set Variable's
-## (D-093): let go on a scene object, it turns the Set into a Set Property of it.
+## (D-102): let go on a scene object, it turns the Set into a Set Property of it.
 func _variable_set_link() -> bool:
 	if _link_kind != XREBlueprintCanvas.VARIABLE or _link_block < 0 or canvas.get_style() != XREFeatureSettings.ARCHETYPES: return false
 	return blueprint.graph.find_node(_link_block).get("kind") == "set_variable"
 
 
-## The one Set of archetypes (D-093): Set [param id], writing a property,
+## The one Set of archetypes (D-102): Set [param id], writing a property,
 ## writes [param variable] instead, under the hood a Set Variable. Its
 ## execution wires stay; a wire into its Value stays if it fits the variable,
 ## else the Value gets the variable's value; its Target and its wires to the
@@ -1597,7 +1597,7 @@ func _set_writes_variable(id: int, variable: String) -> void:
 	else: _message(blueprint.last_error)
 
 
-## The other way (D-093): Set [param id], writing a variable, writes a
+## The other way (D-102): Set [param id], writing a variable, writes a
 ## property of [param node], under the hood a Set Property, its member to
 ## pick from the petals that open. Execution and Value wires stay. One edit.
 func _set_writes_property(id: int, node: Node) -> void:
@@ -1637,7 +1637,7 @@ func _keeps_set_wire(edge: Dictionary, id: int, type: int) -> bool:
 	return int(edge["from_port"]) < outputs.size() and XREBlueprintGraph.ports_compatible(int((outputs[int(edge["from_port"])] as Array)[1]), type)
 
 
-## The policy chip of an archetype's event (D-098): a click takes the next
+## The policy chip of an archetype's event (D-107): a click takes the next
 ## policy — parallel, ignore, restart, parallel —, one edit, no widget.
 func _next_policy(id: int) -> void:
 	var block := blueprint.graph.find_node(id)
@@ -1647,7 +1647,7 @@ func _next_policy(id: int) -> void:
 	if not blueprint.perform(blueprint.set_parameter.bind(id, "policy", next), &"vr_graph"): _message(blueprint.last_error)
 
 
-## Switches what the header of block [param id]'s archetype says (D-092):
+## Switches what the header of block [param id]'s archetype says (D-101):
 ## the member if it said the operation, and back. Kept in the block's
 ## vr_heading, one edit of the graph, which A undoes.
 func switch_heading(id: int) -> void:
@@ -1681,7 +1681,7 @@ func delete_block(id: int = -1) -> void:
 
 ## Removes from [param state] the inline Get Variable blocks (D-061) whose
 ## wire is gone: without it there is nothing of them to see or to take.
-## A hidden Break of a box's components goes the same way (D-096), and then its Get Variable;
+## A hidden Break of a box's components goes the same way (D-105), and then its Get Variable;
 ## with Composite values on Whole that Break is a card, and stays.
 func _drop_orphan_inlines(state: Dictionary) -> void:
 	while true:
@@ -2437,7 +2437,7 @@ func _feature_changed(key: StringName) -> void:
 	if key == XREFeatureSettings.NODE_DISPLAY: switched = canvas.set_display(value)
 	elif key == XREFeatureSettings.NODE_STYLE:
 		switched = canvas.set_style(value)
-		# One Set in archetypes (D-093): the menu lists Set for both.
+		# One Set in archetypes (D-102): the menu lists Set for both.
 		block_menu.one_set = value == XREFeatureSettings.ARCHETYPES
 	elif key == XREFeatureSettings.NODE_SHRINK: switched = canvas.set_shrink(value)
 	elif key == XREFeatureSettings.NODE_HEADING: switched = canvas.set_heading(value)
@@ -3127,7 +3127,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		# A link is a wire again (D-074): nothing of the reference is lost; with Always it stays a link (D-077).
 		elif not link.is_empty():
 			if not _links_only(): _set_link(link, false)
-		# An archetype goes itself, as a box does (D-090); before, the selected block did.
+		# An archetype goes itself, as a box does (D-099); before, the selected block did.
 		else: delete_block(id if canvas.get_style() == XREFeatureSettings.ARCHETYPES else -1)
 
 
@@ -4419,7 +4419,7 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 			else: _start_turn(pointer, -1, "", variable, origin + direction * hit)
 		XREBlueprintBoxes.DRAWER: _switch_drawer(variable)
 		XREBlueprintBoxes.COMPONENT:
-			# A component's output (D-096): into the port a wire waits at, or a wire of its own to a port.
+			# A component's output (D-105): into the port a wire waits at, or a wire of its own to a port.
 			if _pending_id >= 0 and _pending_input: _wire_component_to_port(variable, boxes.get_hit_component(), _pending_id, _pending_port)
 			else:
 				cancel_connection()
@@ -4481,7 +4481,7 @@ func _wire_box_to_port(variable: String, id: int, port: int, added: Dictionary =
 		_message("%s reads %s." % [XREBlueprintGraph.title(target), variable])
 
 
-## Opens or shuts the drawer of components of [param variable]'s box (D-099),
+## Opens or shuts the drawer of components of [param variable]'s box (D-108),
 ## whatever Composite values says for the others: one edit of the graph's
 ## editor-only vr_collapsed. A drawer whose components are wired stays open.
 func _switch_drawer(variable: String) -> void:
@@ -4502,7 +4502,7 @@ func _switch_drawer(variable: String) -> void:
 
 
 ## A wire from component [param component] of [param variable]'s box into
-## input [param port] of block [param id] (D-096): a Break of the variable,
+## input [param port] of block [param id] (D-105): a Break of the variable,
 ## fed by an inline Get Variable, both hidden, its component's output wired
 ## to the port in place of what fed it; one edit. The 2D editor shows them.
 func _wire_component_to_port(variable: String, component: int, id: int, port: int) -> void:

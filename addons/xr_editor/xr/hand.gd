@@ -198,7 +198,7 @@ func get_ray_material() -> Material:
 
 ## How much later the ray sorts than where it is ([method set_on_top]): a beam
 ## drawn for it, as the simulator's, sorts the same, so that it stays over
-## what Front draws over everything (D-075, D-100).
+## what Front draws over everything (D-075, D-109).
 func get_ray_sorting_offset() -> float:
 	return _ray.sorting_offset
 

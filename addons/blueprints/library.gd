@@ -18,7 +18,7 @@ extends RefCounted
 ## [br]- [code]@bp_then[/code] [i]label[/i]: the name of the execution output; [code]@bp_pure[/code]: no execution ports;
 ## [br]- [code]@bp_break[/code] [i]labels[/i]: a pure result split into its components, an output each, numbers (D-084).
 ## [br]- [code]@bp_icon[/code] [i]glyph or path[/i]: the icon of its card in the headset, by the name of a
-##   glyph of [code]XREBlueprintIcons[/code] or a res:// image (D-090).
+##   glyph of [code]XREBlueprintIcons[/code] or a res:// image (D-099).
 ## [br]A last argument of type [XREBlueprintRun] is the event's run, passed by
 ## the block. A static [code]_validate_<function>(target, args) -> String[/code]
 ## beside a function checks a block's settings in the editor; the error it

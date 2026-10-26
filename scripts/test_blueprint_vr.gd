@@ -40,7 +40,7 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.DEFOCUS: XREFeatureSettings.OFF, XREFeatureSettings.LINK_PREVIEW: XREFeatureSettings.OFF,
 	XREFeatureSettings.LINK_WIRES: XREFeatureSettings.OFF, XREFeatureSettings.LINK_CREATE: XREFeatureSettings.WIRE_BUTTON,
 	XREFeatureSettings.WIRE_BENDS: XREFeatureSettings.OFF, XREFeatureSettings.OBJECT_SHORTCUT: XREFeatureSettings.OFF,
-	# The redesign of the cards (D-090 to D-095) starts from Classic, as the checks before it expect.
+	# The redesign of the cards (D-099 to D-104) starts from Classic, as the checks before it expect.
 	XREFeatureSettings.NODE_STYLE: XREFeatureSettings.CLASSIC, XREFeatureSettings.NODE_SHRINK: XREFeatureSettings.OPERATORS,
 	XREFeatureSettings.NODE_HEADING: XREFeatureSettings.OPERATION, XREFeatureSettings.PORT_SHAPES: XREFeatureSettings.OFF,
 	XREFeatureSettings.COMPOSITE_VALUES: XREFeatureSettings.WHOLE,
@@ -532,7 +532,7 @@ func _test_node_display() -> void:
 	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is QuadMesh, "open cards are billboards again")
 
 
-## Archetypes (D-090): a header in the group's color with its icon — signals,
+## Archetypes (D-099): a header in the group's color with its icon — signals,
 ## Set, flow —, none on a pure function, framed in its result's color, and no
 ## id in the title; the trash shows only in focus, and X deletes the card under
 ## the ray, not the selected one. Back to Classic, the cards are as before.
@@ -581,21 +581,21 @@ func _test_node_style() -> void:
 	_service.blueprint.undo()
 	await _frames()
 	_check(not graph.find_node(added[1]).is_empty(), "undo puts it back")
-	# A click on the policy chip takes the next policy (D-098), one edit.
+	# A click on the policy chip takes the next policy (D-107), one edit.
 	var policy := str(graph.find_node(event)["params"]["policy"])
 	_service.call("_next_policy", event)
 	await _frames()
 	_check(str(graph.find_node(event)["params"]["policy"]) != policy, "a click on the chip takes the next policy")
 	_service.blueprint.undo()
 	await _frames()
-	# ⇄ switches one card's heading (D-092): one edit, undone by A.
+	# ⇄ switches one card's heading (D-101): one edit, undone by A.
 	_service.switch_heading(added[0])
 	await _frames()
 	_check(str(graph.find_node(added[0]).get("vr_heading", "")) == "member" and _card(added[0]).node.get_node_or_null("Member") != null, "⇄ makes the Set's header say its member")
 	_service.blueprint.undo()
 	await _frames()
 	_check(not graph.find_node(added[0]).has("vr_heading") and _card(added[0]).node.get_node_or_null("Title") != null, "undo puts the operation back")
-	# One Set (D-093): the menu lists Set; a box's wire into its Target makes it a
+	# One Set (D-102): the menu lists Set; a box's wire into its Target makes it a
 	# Set Variable, a scene object for its Variable a Set Property again, each one edit.
 	_check(_service.block_menu.one_set, "with archetypes the block menu has one Set")
 	_check(_service.blueprint.add_variable("speed", 1.5, {"vr_position": Vector2(-400, 0)}), "a variable for the Set")
@@ -614,19 +614,19 @@ func _test_node_style() -> void:
 	_service.blueprint.undo()
 	await _frames()
 	_check(graph.find_node(added[0])["kind"] == "set_property" and graph.find_variable("speed").is_empty(), "undo takes back each edit")
-	# Port shapes (D-095) redraw the open graph too.
+	# Port shapes (D-104) redraw the open graph too.
 	_check(_document.set_feature(XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.ON, XREDocument.Source.PANEL) and _service.canvas.get_port_shapes(), "port shapes switch on")
 	await _frames()
 	_check(_card(added[1]).ports[1].mesh is ArrayMesh, "Branch's Condition is a shaped port")
 	_check(_document.set_feature(XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.OFF, XREDocument.Source.PANEL), "and off")
 	await _frames()
-	# Node shrink (D-091) redraws the open graph too.
+	# Node shrink (D-100) redraws the open graph too.
 	_check(_document.set_feature(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.MATH, XREDocument.Source.PANEL), "node shrink switches to + Math")
 	await _frames()
 	_check(_service.canvas.get_shrink() == XREFeatureSettings.MATH and (_service.canvas.get("_cards") as Array).size() == count + 4, "the open graph is redrawn with + Math")
 	_check(_document.set_feature(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.ICONS, XREDocument.Source.PANEL), "node shrink switches to All with icons")
 	await _frames()
-	_check(_card(added[2]).bead and _card(added[0]).bead and not _card(event).bead, "Delay and Set are beads, the event a card (D-094)")
+	_check(_card(added[2]).bead and _card(added[0]).bead and not _card(event).bead, "Delay and Set are beads, the event a card (D-103)")
 	_check(_document.set_feature(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.OPERATORS, XREDocument.Source.PANEL), "and back to Operators")
 	await _frames()
 	_aim(Vector3(5, 4, -2))
@@ -640,7 +640,7 @@ func _test_node_style() -> void:
 	_service.select_block(-1)
 
 
-## Composite values on Split (D-096): a Vector3's box has an output for each
+## Composite values on Split (D-105): a Vector3's box has an output for each
 ## component, which the ray picks; wired into a port, a Break fed by a Get
 ## Variable goes under it, both hidden, its wire a number's from the
 ## component; on Whole the Break is a card; deleting the reader takes the
@@ -661,7 +661,7 @@ func _test_composite_values() -> void:
 	var z := boxes.component_point("spot", 2)
 	_check(not z.is_equal_approx(boxes.box_point("spot")) and z.x > boxes.box_point("spot").x, "its box has its components' outputs on its right")
 	_check(boxes.intersect_ray(z + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() == XREBlueprintBoxes.COMPONENT and boxes.get_hit_component() == 2, "the ray picks the z output")
-	# The drawer shuts on its own (D-099), one edit, and opens again.
+	# The drawer shuts on its own (D-108), one edit, and opens again.
 	_service.call("_switch_drawer", "spot")
 	await _frames()
 	_check(bool(graph.find_variable("spot").get("vr_collapsed", false)) and _service.canvas.get_boxes().component_point("spot", 2).is_equal_approx(_service.canvas.get_boxes().box_point("spot")), "its drawer shuts without the setting")
