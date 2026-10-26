@@ -42,6 +42,15 @@ const FLAT := &"flat"
 ## Round, shaded spheres standing out of the card's face.
 const SPHERE := &"sphere"
 
+## What a logic graph card shows of its block ([XREBlueprintCanvas], D-090).
+const NODE_STYLE := &"node_style"
+## As before: one face in its group's color, the title with the block's id, a trash in the header.
+const CLASSIC := &"classic"
+## A header in its group's color with an icon (signals, Set, functions, flow),
+## none on a pure function, framed in its result's color; the trash only on
+## what the ray is on, and the delete button deletes it.
+const ARCHETYPES := &"archetypes"
+
 ## Shape of the windows (rig-locked panels, docs/vr_ui.md; D-043). The tab
 ## launcher is concave either way.
 const WINDOW_SHAPE := &"window_shape"
@@ -167,6 +176,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [SPHERE, FLAT],
 		"labels": ["Sphere", "Flat"],
 		"hint": "Flat: discs on the card. Sphere: round ports standing out of it.",
+	},
+	NODE_STYLE: {
+		"category": Category.FEATURES,
+		"title": "Node style",
+		"values": [CLASSIC, ARCHETYPES],
+		"labels": ["Classic", "Archetypes"],
+		"hint": "Classic: cards as before. Archetypes: a header colored by group with an icon, pure functions framed in their result's color; the trash and X delete the card under the ray.",
 	},
 	WINDOW_SHAPE: {
 		"category": Category.FEATURES,

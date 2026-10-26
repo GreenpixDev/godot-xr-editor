@@ -12,7 +12,9 @@ extends RefCounted
 ## A signature is a Dictionary:
 ## [code]scope[/code] ("method", "static" or "global"), [code]class[/code],
 ## [code]name[/code], [code]title[/code], [code]category[/code],
-## [code]description[/code], [code]keywords[/code], [code]args[/code],
+## [code]description[/code], [code]keywords[/code], [code]icon[/code] (its
+## [code]@bp_icon[/code]: the name of a glyph of the headset's cards or a
+## res:// image, empty for none), [code]args[/code],
 ## [code]return[/code] (a Variant type, TYPE_NIL for none or Variant) and
 ## [code]returns[/code] (whether there is a result), [code]return_class[/code],
 ## [code]pure[/code] (no execution ports), [code]break[/code] (labels of
@@ -126,7 +128,7 @@ static func script_method(script: Script, cls: String, name: String) -> Dictiona
 		var signature := {"scope": "method", "class": global if not global.is_empty() else cls, "name": name,
 				"title": tags.get("name", title_of(name)), "category": tags.get("category", global if not global.is_empty() else script.resource_path.get_file()),
 				"description": tags.get("description", ""), "keywords": tags.get("keywords", ""), "targets": [global if not global.is_empty() else cls],
-				"script": script.resource_path, "awaits": tags.has("coroutine"), "pure": tags.has("pure")}
+				"script": script.resource_path, "awaits": tags.has("coroutine"), "pure": tags.has("pure"), "icon": tags.get("icon", "")}
 		return _complete(signature, info, tags)
 	return {}
 
@@ -146,7 +148,8 @@ static func static_of(script: Script, global_name: String, name: String) -> Dict
 		var tags := script_tags(script, name)
 		var signature := {"scope": "static", "class": global_name, "name": name, "title": tags.get("name", title_of(name)),
 				"category": tags.get("category", global_name), "description": tags.get("description", ""), "keywords": tags.get("keywords", ""),
-				"targets": tags.get("target_types", []), "script": script.resource_path, "awaits": tags.has("coroutine"), "pure": tags.has("pure")}
+				"targets": tags.get("target_types", []), "script": script.resource_path, "awaits": tags.has("coroutine"), "pure": tags.has("pure"),
+				"icon": tags.get("icon", "")}
 		return _complete(signature, info, tags)
 	return {}
 
@@ -207,7 +210,7 @@ static func script_tags(script: Script, name: String) -> Dictionary:
 			var tag := words[0].trim_prefix("@bp_")
 			var rest := words.slice(1)
 			match tag:
-				"name", "category", "then", "keywords":
+				"name", "category", "then", "keywords", "icon":
 					tags[tag] = " ".join(rest)
 				"target":
 					if not rest.is_empty():

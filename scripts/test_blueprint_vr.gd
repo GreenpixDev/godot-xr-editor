@@ -18,6 +18,7 @@ var _hover_pulses := 0
 var _keyboard_clicks := 0
 ## The editor's node display before the test, put back at the end.
 var _saved_display := XREFeatureSettings.BILLBOARD
+var _saved_style := XREFeatureSettings.CLASSIC
 ## The same for the port display and the window shape (D-043).
 var _saved_ports := XREFeatureSettings.FLAT
 var _saved_shape := XREFeatureSettings.FLAT
@@ -115,6 +116,8 @@ func _run() -> void:
 	# The editor's variant is put back at the end; the checks expect the default billboards.
 	_saved_display = _document.features.get_value(XREFeatureSettings.NODE_DISPLAY)
 	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
+	_saved_style = _document.features.get_value(XREFeatureSettings.NODE_STYLE)
+	_document.features.set_value(XREFeatureSettings.NODE_STYLE, XREFeatureSettings.CLASSIC)
 	_saved_ports = _document.features.get_value(XREFeatureSettings.PORT_DISPLAY)
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.FLAT)
 	_saved_shape = _document.features.get_value(XREFeatureSettings.WINDOW_SHAPE)
@@ -168,6 +171,7 @@ func _run() -> void:
 	_check(_service.is_open(), "creation opens spatial workspace")
 	await _test_workspace()
 	await _test_node_display()
+	await _test_node_style()
 	await _test_window_corners()
 	var badge := _service.get("_badge") as XREBlueprintBadge
 	await _test_badge_graph(badge, path)
@@ -418,6 +422,7 @@ func _run() -> void:
 	_viewport.queue_free()
 	await _frames()
 	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, _saved_display)
+	_document.features.set_value(XREFeatureSettings.NODE_STYLE, _saved_style)
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, _saved_ports)
 	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, _saved_shape)
 	for key: StringName in PARAMETER_SETTINGS: _document.features.set_value(key, _saved_parameters[key])
@@ -524,6 +529,64 @@ func _test_node_display() -> void:
 	await _frames()
 	cards = _service.canvas.get("_cards") as Array
 	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is QuadMesh, "open cards are billboards again")
+
+
+## Archetypes (D-090): a header in the group's color with its icon — signals,
+## Set, flow —, none on a pure function, framed in its result's color, and no
+## id in the title; the trash shows only in focus, and X deletes the card under
+## the ray, not the selected one. Back to Classic, the cards are as before.
+func _test_node_style() -> void:
+	var key := XREFeatureSettings.NODE_STYLE
+	var graph := _service.blueprint.graph
+	var count := graph.nodes.size()
+	var event: int = graph.nodes[0]["id"]
+	var added: Array[int] = []
+	for kind: String in ["set_property", "branch", "delay", "get_property"]:
+		_service.add_block(kind)
+		await _frames()
+		added.append(int(graph.nodes.back()["id"]))
+	_check(_document.set_feature(key, XREFeatureSettings.ARCHETYPES, XREDocument.Source.PANEL), "the node style switches to archetypes")
+	await _frames()
+	_check(_service.canvas.get_style() == XREFeatureSettings.ARCHETYPES and (_service.canvas.get("_cards") as Array).size() == count + 4, "the open graph is redrawn with the same cards")
+	var groups: Array[int] = [XREBlueprintIcons.Group.EVENT, XREBlueprintIcons.Group.SET, XREBlueprintIcons.Group.FLOW, XREBlueprintIcons.Group.FLOW]
+	var ids: Array[int] = [event, added[0], added[1], added[2]]
+	for index: int in ids.size():
+		var head := _card(ids[index]).node.get_node_or_null("Head") as MeshInstance3D
+		var shown: Material = head.get_meta(&"unpainted", head.material_override) if head != null else null
+		_check(shown is ShaderMaterial and ((shown as ShaderMaterial).get_shader_parameter(&"face_tint") as Color).is_equal_approx(XREBlueprintIcons.HEADS[groups[index]]),
+				"%s has a header in its group's color" % XREBlueprintGraph.title(graph.find_node(ids[index])))
+		_check(_card(ids[index]).node.get_node_or_null("Icon") != null, "and an icon on it")
+	var pure := _card(added[3])
+	_check(pure.node.get_node_or_null("Head") == null and pure.node.get_node_or_null("Icon") != null, "Get Property, pure, has no header, only its icon")
+	_check((pure.frame_material as BaseMaterial3D).albedo_color.is_equal_approx(XREBlueprintCanvas.COLORS[pure.output_types[0]]), "and is framed in its result's color")
+	var titled := false
+	for child: Node in _card(event).node.get_children():
+		if child is Label3D and (child as Label3D).text.contains(" · "): titled = true
+	_check(not titled, "an archetype's title has no id")
+	_aim(Vector3(5, 4, -2))
+	await _frames()
+	_check(not _card(added[1]).trash.visible, "out of focus, an archetype has no trash")
+	_service.select_block(added[0])
+	await _frames()
+	_aim(_card(added[1]).node.to_global(Vector3(0, -0.02, _card(added[1]).face)))
+	await _frames()
+	_check(_card(added[1]).trash.visible, "the card under the ray shows its trash")
+	_left.set_input(&"ax_button", true)
+	await _frames()
+	_left.set_input(&"ax_button", false)
+	await _frames()
+	_check(graph.find_node(added[1]).is_empty() and not graph.find_node(added[0]).is_empty(), "X deletes the card under the ray, not the selected one")
+	_service.blueprint.undo()
+	await _frames()
+	_check(not graph.find_node(added[1]).is_empty(), "undo puts it back")
+	_aim(Vector3(5, 4, -2))
+	_check(_document.set_feature(key, XREFeatureSettings.CLASSIC, XREDocument.Source.PANEL), "the node style switches back")
+	await _frames()
+	_check(_card(event).node.get_node_or_null("Head") == null and _card(added[1]).trash.visible, "cards are classic again, with the trash in the header")
+	for index: int in added.size(): _service.blueprint.undo()
+	await _frames()
+	_check(graph.nodes.size() == count, "the blocks added for the check are gone")
+	_service.select_block(-1)
 
 
 ## Points the right ray, with [param trigger] and [param grip], at a point

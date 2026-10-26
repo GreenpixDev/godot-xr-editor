@@ -193,6 +193,12 @@ func record_graph_operation(operation: StringName, source: Source) -> void:
 @abstract func list_folder(path: String) -> PackedStringArray
 
 
+## The editor's icon of class [param cls], as the desktop's Scene dock shows
+## it, for the cards of the logic graph (D-090); null without an editor or icon.
+func get_class_icon(_cls: StringName) -> Texture2D:
+	return null
+
+
 ## Resource type of the project file at [param path], like
 ## [code]&"PackedScene"[/code] or [code]&"Texture2D"[/code]; empty if unknown.
 @abstract func get_file_type(path: String) -> StringName

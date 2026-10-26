@@ -110,6 +110,13 @@ func _run() -> void:
 		var face := card.node.global_transform
 		_look(face.origin + face.basis.z.normalized() * 0.35, face.origin)
 		await _shot("02_card_%d" % card.id)
+	# Each card again under the ray: in focus, with its trash as Node style shows it (D-090).
+	for card: XREBlueprintCanvas.Card in cards:
+		var face := card.node.global_transform
+		_aim(face.origin, face.basis.z.normalized())
+		_look(face.origin + face.basis.z.normalized() * 0.35, face.origin)
+		await _shot("02b_card_%d_focus" % card.id)
+	_aim(Vector3(-50, 0, 0), Vector3.BACK)
 	_look(head, host.global_position)
 	await _shot("03_objects")
 	_look(head.lerp(host.global_position, 0.6), host.global_position)
@@ -300,6 +307,17 @@ func _run() -> void:
 	print("shot_blueprint_vr: dimmer shown ", (_service.get("_dimmer") as Node3D).is_visible_in_tree())
 	_service.cancel_connection()
 	_service.close_block_palette()
+	# An engine method's card, Rotate X, under the ray: its class's icon on the header's circle (D-090).
+	_service.call("_add_from_menu", {"id": "shot:rotate_x", "title": "Rotate X", "target": null,
+			"block": XREBlueprintGraph.make_call(0, XREBlueprintFunctions.method("Node3D", "rotate_x"), Vector2.ZERO)})
+	await _frames(6)
+	var added := _service.canvas.get("_cards") as Array
+	var rotate := added.back() as XREBlueprintCanvas.Card
+	var at := rotate.node.global_transform
+	_aim(at.origin, at.basis.z.normalized())
+	_look(at.origin + at.basis.z.normalized() * 0.35, at.origin)
+	await _shot("22_engine_method_focus")
+	_aim(Vector3(-50, 0, 0), Vector3.BACK)
 	while _service.blueprint.history.get_version() > start: _service.blueprint.undo()
 	await _frames()
 	print("shot_blueprint_vr: done, graph back to version %d" % _service.blueprint.history.get_version())

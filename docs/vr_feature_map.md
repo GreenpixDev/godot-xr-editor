@@ -172,6 +172,7 @@
 | Отладочная отрисовка коллизий и навигации (`--debug-collisions` и др.) | `editor/run/editor_run.cpp:51` | П (через `_run_scene`) | Флаг запуска | Ж |
 | Вывод и ошибки | `editor/editor_log.cpp` | В | Панель на запястье | Ж |
 | Удалённое дерево и инспектор, live edit | `editor/debugger/editor_debugger_tree.cpp` | В | Панель внутри игры («заморозить и поправить» из плана) | Ж |
+| Живые значения графа Blueprints: последние значения на выходах узлов и ящиков, ход Get Time, ожидание Delay (отложено 2026-10-25, концепт — [макет «Облик узлов Blueprints»](https://claude.ai/artifact/B6zvVKBPLzUXKXEak8FeYc), раздел «Отложено») | — | В (канал значений из игры в редактор через `EditorDebuggerPlugin`) | 3D: подписи на узлах, обновление раз в 0,2 с без аллокаций в кадре | F |
 | Пауза, следующий кадр, масштаб времени | `editor/run/game_view_plugin.cpp:128` | В (сообщения `scene:*` через `EditorDebuggerSession.send_message`) | Меню внутри игры через автозагрузку | F |
 | Встроенный Game View | `editor/run/embedded_process.cpp:245` | В | Встраивает окно ОС, шлему бесполезен | — |
 | Точки останова, стек, профайлер, мониторы | `editor/debugger/script_editor_debugger.cpp` | В | Стол | — |

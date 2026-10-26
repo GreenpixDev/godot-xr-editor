@@ -444,6 +444,8 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	add_child(_floating_ui)
 	canvas = XREBlueprintCanvas.new()
 	canvas.set_display(document.features.get_value(XREFeatureSettings.NODE_DISPLAY))
+	canvas.set_style(document.features.get_value(XREFeatureSettings.NODE_STYLE))
+	canvas.set_class_icons(document.get_class_icon)
 	canvas.set_plus_shown(document.features.get_value(XREFeatureSettings.CARD_PLUS) == XREFeatureSettings.SHOWN)
 	canvas.set_bends_shown(document.features.get_value(XREFeatureSettings.WIRE_BENDS) == XREFeatureSettings.ON)
 	canvas.set_port_display(document.features.get_value(XREFeatureSettings.PORT_DISPLAY))
@@ -2318,6 +2320,7 @@ func _feature_changed(key: StringName) -> void:
 	var value := _document.features.get_value(key)
 	var switched := false
 	if key == XREFeatureSettings.NODE_DISPLAY: switched = canvas.set_display(value)
+	elif key == XREFeatureSettings.NODE_STYLE: switched = canvas.set_style(value)
 	elif key == XREFeatureSettings.PORT_DISPLAY: switched = canvas.set_port_display(value)
 	elif key == XREFeatureSettings.CARD_PLUS: switched = canvas.set_plus_shown(value == XREFeatureSettings.SHOWN)
 	elif key == XREFeatureSettings.WIRE_BENDS: switched = canvas.set_bends_shown(value == XREFeatureSettings.ON)
@@ -2994,7 +2997,8 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		# A link is a wire again (D-074): nothing of the reference is lost; with Always it stays a link (D-077).
 		elif not link.is_empty():
 			if not _links_only(): _set_link(link, false)
-		else: delete_block()
+		# An archetype goes itself, as a box does (D-090); before, the selected block did.
+		else: delete_block(id if canvas.get_style() == XREFeatureSettings.ARCHETYPES else -1)
 
 
 ## The ray on a wire while wires bend (D-081), as on an edge in draw.io: the

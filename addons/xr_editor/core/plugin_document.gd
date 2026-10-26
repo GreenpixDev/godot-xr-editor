@@ -215,6 +215,11 @@ func list_folder(path: String) -> PackedStringArray:
 	return result
 
 
+func get_class_icon(cls: StringName) -> Texture2D:
+	var theme := EditorInterface.get_editor_theme()
+	return theme.get_icon(cls, &"EditorIcons") if theme != null and theme.has_icon(cls, &"EditorIcons") else null
+
+
 func get_file_type(path: String) -> StringName:
 	return StringName(EditorInterface.get_resource_filesystem().get_file_type(path))
 

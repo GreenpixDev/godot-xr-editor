@@ -57,6 +57,51 @@ func _test_cuboid(graph: XREBlueprintGraph) -> void:
 	_check(card.node.global_basis.z.dot(Vector3.FORWARD) > 0.99, "billboards turn to the head again")
 
 
+## Archetypes (D-090): an event's header in its group's color with its icon,
+## the trash in the plus's corner, picked only while the card is in focus; a
+## pure function framed in its result's color; a call without an icon shows ƒ.
+func _test_archetypes(graph: XREBlueprintGraph) -> void:
+	_check(not _canvas.set_style(&"glyphs"), "an unknown node style is refused")
+	_check(_canvas.set_style(XREFeatureSettings.ARCHETYPES), "the canvas switches to archetypes")
+	_canvas.rebuild(graph)
+	_canvas.face_user(Vector3(0, 0, 2))
+	var card := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var head := card.node.get_node_or_null("Head") as MeshInstance3D
+	_check(head != null and ((head.material_override as ShaderMaterial).get_shader_parameter(&"face_tint") as Color).is_equal_approx(XREBlueprintIcons.HEADS[XREBlueprintIcons.Group.EVENT]), "an event has a red header")
+	var icon := card.node.get_node_or_null("Icon") as MeshInstance3D
+	_check(icon != null and (icon.material_override as BaseMaterial3D).albedo_texture != null and card.node.get_node_or_null("Circle") != null, "with Ready's icon on its circle")
+	_check(card.trash_point.x > 0.0 and card.trash_point.y > card.bounds.end.y and not card.trash.visible, "the trash stands over the right corner, hidden out of focus")
+	_check(_hit(card.trash_point, Vector3.FORWARD) < 0, "a hidden trash isn't picked")
+	_canvas.set_focus(Vector3i(1, -1, -1))
+	_check(card.trash.visible and _hit(card.trash_point, Vector3.FORWARD) >= 0 and _canvas.get_hit_delete(), "in focus the trash shows and is picked")
+	_canvas.set_focus(Vector3i(-1, -1, -1))
+	_check(not card.trash.visible, "and hides when the focus goes")
+	var calls := XREBlueprintGraph.new()
+	calls.nodes = [XREBlueprintGraph.make_call(1, XREBlueprintFunctions.global("lerpf"), Vector2.ZERO),
+			XREBlueprintGraph.make_call(2, XREBlueprintFunctions.method("Node3D", "look_at"), Vector2(0, 300)),
+			XREBlueprintGraph.make_node(3, "delay", Vector2(0, 600))]
+	calls.upgrade()
+	_canvas.rebuild(calls)
+	var pure := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var sign := pure.node.get_node_or_null("Fallback") as Label3D
+	_check(pure.node.get_node_or_null("Head") == null and sign != null and sign.text == "ƒ" and sign.modulate.is_equal_approx(XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]),
+			"a pure function without an icon has no header and a ƒ in its result's color")
+	_check((pure.frame_material as BaseMaterial3D).albedo_color.is_equal_approx(XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]), "and is framed in it")
+	var call := (_canvas.get("_cards") as Array)[1] as XREBlueprintCanvas.Card
+	_check(call.node.get_node_or_null("Head") != null and call.node.get_node_or_null("Circle") != null and call.node.get_node_or_null("Fallback") != null, "a function without an icon has a blue header and a ƒ on its circle")
+	var delay := (_canvas.get("_cards") as Array)[2] as XREBlueprintCanvas.Card
+	_check(((delay.node.get_node("Head") as MeshInstance3D).material_override as ShaderMaterial).get_shader_parameter(&"face_tint") == XREBlueprintIcons.HEADS[XREBlueprintIcons.Group.FLOW], "Delay is in the grey of flow")
+	_check(XREBlueprintIcons.icon_of(delay_block(calls), Callable()) == &"delay", "with the hourglass")
+	_check(_canvas.set_style(XREFeatureSettings.CLASSIC), "the canvas switches back to classic")
+	_canvas.rebuild(graph)
+	card = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_check(card.node.get_node_or_null("Head") == null and card.trash.visible and card.trash_point.x < 0.0, "classic cards have their trash in the left corner again")
+
+
+static func delay_block(graph: XREBlueprintGraph) -> Dictionary:
+	return graph.find_node(3)
+
+
 ## D-044, D-045: a port under the ray thickens one of its wires, which the height of
 ## the hit on the port picks, the top of the port the wire going highest.
 func _test_port_wires() -> void:
@@ -169,6 +214,7 @@ func _run() -> void:
 	_canvas.preview_grab(1, contact, local_contact, head)
 	_check(card.node.to_global(local_contact).is_equal_approx(contact), "minimum horizontal reach cannot detach an off-center grab from the rod")
 	_test_cuboid(graph)
+	_test_archetypes(graph)
 	_test_port_wires()
 	_canvas.queue_free()
 	await process_frame

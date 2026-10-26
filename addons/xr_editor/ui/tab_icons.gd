@@ -100,6 +100,13 @@ static func glyph(glyph_name: StringName, size: int) -> Texture2D:
 	return _texture("glyph:" + glyph_name, GLYPHS[glyph_name], size)
 
 
+## [param body], SVG on a grid of 128 pixels, drawn [param size] pixels across
+## and kept under [param icon_name]: for icons drawn elsewhere, as the logic
+## graph's blocks' ([XREBlueprintIcons]).
+static func from_svg(icon_name: String, body: String, size: int) -> Texture2D:
+	return _texture(icon_name, body, size)
+
+
 static func _texture(icon_name: String, body: String, size: int) -> Texture2D:
 	if size <= 0:
 		return null

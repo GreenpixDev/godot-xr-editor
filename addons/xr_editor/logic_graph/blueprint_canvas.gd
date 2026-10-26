@@ -42,6 +42,11 @@ extends Node3D
 ## each bend to the next; the ray picks wires and knots too, behind ports and
 ## the cards' buttons. A drag previews bends here and [method commit_bends]
 ## keeps them as one edit.
+##
+## [constant XREFeatureSettings.NODE_STYLE] ([method set_style], D-090) says
+## what a card shows of its block: as before, or as an archetype — a header in
+## its group's color with its icon ([XREBlueprintIcons]), none on a pure
+## function, framed in its result's color, and a trash only on the card in focus.
 
 const PIXEL_SIZE := 0.0009
 const CARD_WIDTH := 0.26
@@ -131,6 +136,21 @@ const KNOT_HIT_RADIUS := 0.012
 const BEND_LEAD := 0.05
 ## Keys of links ([method link_key]) start here, above any edge's index.
 const LINK_KEYS := 1 << 20
+## An archetype's header (D-090): its height; its icon's size on the card,
+## the circle's and a pure function's, and in pixels; the trash, coral and
+## larger than a classic card's, standing over the card; the font size of
+## the ƒ a call without an icon shows, larger on a pure function, as its glyphs are.
+const HEAD_HEIGHT := 0.04
+const ICON_SIZE := 0.032
+const PURE_ICON_SIZE := 0.026
+## How much of the circle an image icon (a class's) takes: it has its own margins.
+const IMAGE_SHARE := 0.6
+const ICON_PIXELS := 64
+const TRASH_COLOR := Color("ff6b7a")
+const TRASH_SCALE := 1.3
+const TRASH_RISE := 0.02
+const FALLBACK_SIZE := 30
+const PURE_FALLBACK_SIZE := 38
 
 ## A socket of a card that is not one of its block's ports (D-052).
 class Socket:
@@ -172,6 +192,9 @@ class Card:
 	var mesh: MeshInstance3D
 	var normal: Material
 	var frame: MeshInstance3D
+	## The frame's material while the card is neither selected nor in focus:
+	## a pure function's is its result's type color (D-090).
+	var frame_material: Material
 	var plus: Node3D
 	var plus_point: Vector3
 	var plus_faces: Array[Node3D] = []
@@ -266,6 +289,15 @@ var _hover_left := -1
 var _delete_right := -1
 var _delete_left := -1
 var _body_materials: Array[ShaderMaterial] = []
+## Archetypes (D-090): the headers by [enum XREBlueprintIcons.Group], the faces
+## under a header, of a pure function and of an operator, the frames by port
+## type, the trash.
+var _style := XREFeatureSettings.CLASSIC
+var _head_materials: Array[ShaderMaterial] = []
+var _archetype_faces: Array[ShaderMaterial] = []
+var _type_frames: Dictionary[int, Material] = {}
+var _archetype_trash: Material
+var _class_icon: Callable
 var _faces_user := false
 var _display := XREFeatureSettings.BILLBOARD
 var _port_display := XREFeatureSettings.FLAT
@@ -352,12 +384,10 @@ varying float front;
 void vertex() { front = step(0.5, NORMAL.z); }
 void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 """
-	for tint: Color in CARD_PALETTE:
-		var body := ShaderMaterial.new()
-		body.shader = shader
-		body.render_priority = Material.RENDER_PRIORITY_MAX - 1
-		body.set_shader_parameter(&"face_tint", tint)
-		_body_materials.append(body)
+	for tint: Color in CARD_PALETTE: _body_materials.append(_face(shader, tint))
+	for tint: Color in XREBlueprintIcons.HEADS: _head_materials.append(_face(shader, tint))
+	for tint: Color in [XREBlueprintIcons.BODY, XREBlueprintIcons.PURE_BODY, XREBlueprintIcons.OPERATOR_BODY]: _archetype_faces.append(_face(shader, tint))
+	_archetype_trash = material(TRASH_COLOR, true)
 	_port_mesh = CylinderMesh.new()
 	_port_mesh.top_radius = PORT_RADIUS
 	_port_mesh.bottom_radius = PORT_RADIUS
@@ -385,6 +415,34 @@ void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 	for ghost: MeshInstance3D in [_ghost_right, _ghost_left]:
 		ghost.visible = false
 		add_child(ghost)
+
+
+static func _face(shader: Shader, tint: Color) -> ShaderMaterial:
+	var result := ShaderMaterial.new()
+	result.shader = shader
+	result.render_priority = Material.RENDER_PRIORITY_MAX - 1
+	result.set_shader_parameter(&"face_tint", tint)
+	return result
+
+
+## Switches what cards show of their blocks to [param style], a value of
+## [constant XREFeatureSettings.NODE_STYLE] (D-090). Takes effect on the next
+## [method rebuild]; false if it is unknown or already the current one.
+func set_style(style: StringName) -> bool:
+	if style == _style or not style in XREFeatureSettings.get_values(XREFeatureSettings.NODE_STYLE): return false
+	_style = style
+	return true
+
+
+## What cards show of their blocks: a value of [constant XREFeatureSettings.NODE_STYLE].
+func get_style() -> StringName:
+	return _style
+
+
+## Where archetypes take the editor's icon of an engine class (D-090):
+## [param class_icon] takes a class name and gives a [Texture2D] or null.
+func set_class_icons(class_icon: Callable) -> void:
+	_class_icon = class_icon
 
 
 ## Switches how cards are drawn to [param display], a value of
@@ -535,7 +593,15 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		var body_size := Vector3(card.width, card.height, CUBOID_DEPTH if cuboid else CARD_THICKNESS)
 		card.face = (CUBOID_DEPTH - CARD_THICKNESS) * 0.5 if cuboid else 0.0
 		card.bounds = AABB(-body_size * 0.5, body_size)
+		var archetype := _style == XREFeatureSettings.ARCHETYPES
+		var group := XREBlueprintIcons.group_of(block, inputs, outputs)
 		card.normal = _body_materials[card_group(block)]
+		card.frame_material = _frame_material
+		if archetype:
+			var pure := group == XREBlueprintIcons.Group.PURE
+			card.normal = _archetype_faces[2 if card.compact else 1 if pure else 0]
+			# A pure function is framed in its result's color, as its wire is.
+			if pure and not outputs.is_empty(): card.frame_material = _type_frame(int((outputs[0] as Array)[1]))
 		var body: PrimitiveMesh
 		if cuboid:
 			var box := BoxMesh.new()
@@ -548,13 +614,20 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		card.mesh = XRERig.create_vr_mesh(body, card.normal)
 		card.node.add_child(card.mesh)
 		_add_frame(card, body_size, cuboid)
-		if not card.compact:
+		if archetype and not card.compact: _add_head(card, block, group, outputs)
+		elif not card.compact:
 			var title := label("%s · %d" % [XREBlueprintGraph.title(block), card.id], 21)
 			title.position = Vector3(0, card.height * 0.5 - 0.022, card.face + CARD_THICKNESS * 0.5 + 0.0005)
 			card.node.add_child(title)
 		card.plus_point = Vector3(card.width * 0.5 - 0.023, card.height * 0.5 - 0.022, card.face + CARD_THICKNESS * 0.5 + 0.002)
 		# Above an operator's small card: inside, they would cover its ports.
 		if card.compact: card.plus_point = Vector3(card.width * 0.5 - 0.012, card.height * 0.5 + 0.016, card.face + CARD_THICKNESS * 0.5 + 0.002)
+		# An archetype's icon is where the trash was: the trash stands over the card's right corner, as
+		# over an operator; an operator's plus goes to its left.
+		var trash_point := Vector3(-card.plus_point.x, card.plus_point.y, card.plus_point.z)
+		if archetype:
+			trash_point = card.plus_point if card.compact else Vector3(card.plus_point.x, card.height * 0.5 + TRASH_RISE, card.plus_point.z)
+			if card.compact: card.plus_point.x = -card.plus_point.x
 		card.plus = Node3D.new()
 		card.node.add_child(card.plus)
 		for point: Vector3 in ([card.plus_point] if _plus_shown else []):
@@ -567,11 +640,16 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 				bar.size = size
 				var visual := XRERig.create_vr_mesh(bar, material(Color.WHITE, true))
 				face.add_child(visual)
-		card.trash_point = Vector3(-card.plus_point.x, card.plus_point.y, card.plus_point.z)
+		card.trash_point = trash_point
 		card.trash = Node3D.new()
 		card.trash.position = card.trash_point
 		card.node.add_child(card.trash)
-		card.trash.add_child(XRERig.create_vr_mesh(_trash_mesh, _trash_material))
+		var trash := XRERig.create_vr_mesh(_trash_mesh, _archetype_trash if archetype else _trash_material)
+		card.trash.add_child(trash)
+		# An archetype's trash, larger, shows while its card is in focus ([method _look_card]).
+		if archetype:
+			trash.scale = Vector3.ONE * TRASH_SCALE
+			card.trash.visible = false
 		_add_rows(card, graph, block, inputs, outputs, layout)
 		if card.compact: _add_symbol(card, block)
 		_cards.append(card)
@@ -609,6 +687,67 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	select_block(_selected)
 	_paint_focus()
 	_show_link_wires()
+
+
+## An archetype's header (D-090) on [param card] of [param block], of
+## [param group]: a band in the group's color with the icon on its circle,
+## then the title; a pure function has no band, its icon in its result's
+## color. A call without an icon shows ƒ, circled with execution.
+func _add_head(card: Card, block: Dictionary, group: int, outputs: Array) -> void:
+	var front := card.face + CARD_THICKNESS * 0.5
+	var row := card.height * 0.5 - HEAD_HEIGHT * 0.5
+	var pure := group == XREBlueprintIcons.Group.PURE
+	var tint := COLORS[int((outputs[0] as Array)[1])] if pure and not outputs.is_empty() else Color.WHITE
+	if not pure:
+		var band := QuadMesh.new()
+		band.size = Vector2(card.width, HEAD_HEIGHT)
+		var head := XRERig.create_vr_mesh(band, _head_materials[group])
+		head.name = "Head"
+		head.position = Vector3(0, row, front + 0.0003)
+		card.node.add_child(head)
+	var icon: Variant = XREBlueprintIcons.icon_of(block, _class_icon)
+	var fallback: bool = icon == null and block.get("kind") == "call"
+	var size := PURE_ICON_SIZE if pure else ICON_SIZE
+	var center := Vector3(-card.width * 0.5 + 0.012 + size * 0.5, row, front)
+	# Every icon of a block with execution stands on the header's dark circle: a glyph, an image, ƒ.
+	if not pure: _add_icon(card, "Circle", XREBlueprintIcons.circle(ICON_PIXELS), Color.WHITE, size, center + Vector3(0, 0, 0.0005))
+	if icon is Texture2D:
+		_add_icon(card, "Icon", icon, Color.WHITE, size * IMAGE_SHARE, center + Vector3(0, 0, 0.0007))
+	elif icon is StringName:
+		var glyph: StringName = icon
+		_add_icon(card, "Icon", XREBlueprintIcons.texture(glyph, ICON_PIXELS, not pure), Color.WHITE if glyph in XREBlueprintIcons.COLORED or not pure else tint, size, center + Vector3(0, 0, 0.0007))
+	if fallback:
+		var sign := label("ƒ", PURE_FALLBACK_SIZE if pure else FALLBACK_SIZE)
+		sign.name = "Fallback"
+		sign.modulate = tint
+		sign.position = center + Vector3(0, 0, 0.0008)
+		card.node.add_child(sign)
+	var start := -card.width * 0.5 + 0.012
+	var text := XREBlueprintGraph.title(block)
+	var title := label(text, 21)
+	var left := start + (size + 0.008 if icon != null or fallback or not pure else 0.0)
+	title.position = Vector3(left + text_width(text, 21) * 0.5, row, front + 0.0005)
+	card.node.add_child(title)
+
+
+## A square of [param texture] on [param card], [param size] across at
+## [param point], tinted [param tint]: a part of an archetype's icon (D-090).
+func _add_icon(card: Card, part: String, texture: Texture2D, tint: Color, size: float, point: Vector3) -> void:
+	if texture == null: return
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE * size
+	var face := material(tint, true)
+	face.albedo_texture = texture
+	var visual := XRERig.create_vr_mesh(quad, face)
+	visual.name = part
+	visual.position = point
+	card.node.add_child(visual)
+
+
+## An archetype's frame in the color of port type [param type], made once (D-090).
+func _type_frame(type: int) -> Material:
+	if not _type_frames.has(type): _type_frames[type] = material(COLORS[type], true)
+	return _type_frames[type]
 
 
 ## How wide an operator's card is (D-065): its ports and the widest token on
@@ -1014,7 +1153,7 @@ func select_block(id: int) -> void:
 ## with Focus on (D-072), darker out of focus with Defocus on Dim; one that
 ## keeps a variable from being deleted flashes [constant FLASH_FRAME] (D-079).
 func _paint_frame(card: Card) -> void:
-	var base := _flash_frame if card.flash else _selected_material if card.id == _selected else _focus_frame if card.look.x == XREBlueprintFocus.LIT else _frame_material
+	var base := _flash_frame if card.flash else _selected_material if card.id == _selected else _focus_frame if card.look.x == XREBlueprintFocus.LIT else card.frame_material
 	# A flash isn't darkened out of focus: it is there to be seen.
 	var paint := card.look.x if card.look.x == XREBlueprintFocus.TOP or (card.look.x == XREBlueprintFocus.DARK and not card.flash) else XREBlueprintFocus.PLAIN
 	card.frame.material_override = XREBlueprintFocus.variant(base, paint)
@@ -1175,6 +1314,8 @@ func _keep_port(card: Card, port: int, input: bool) -> void:
 
 
 func _look_card(card: Card) -> void:
+	# An archetype's trash shows on the card a ray is on, with Focus and Defocus off too (D-090).
+	if _style == XREFeatureSettings.ARCHETYPES: card.trash.visible = _in_focus(card.id)
 	var paint := focus_paint(card.focus)
 	var seen := focus_seen(card.focus)
 	var look := Vector4i(paint, 1 if seen < 1.0 else 0, card.keep_ports, card.keep_sockets)
@@ -1416,8 +1557,8 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_port = -1
 				_hit_plus = true
 				_hit_delete = false
-		var trash_size := Vector3.ONE * PLUS_RADIUS * card.trash.scale.x * 2.0
-		var trash_hit := _box_distance(card_origin, card_direction, AABB(card.trash_point - trash_size * 0.5, trash_size), nearest)
+		var trash_size := Vector3.ONE * PLUS_RADIUS * card.trash.scale.x * (TRASH_SCALE if _style == XREFeatureSettings.ARCHETYPES else 1.0) * 2.0
+		var trash_hit := _box_distance(card_origin, card_direction, AABB(card.trash_point - trash_size * 0.5, trash_size), nearest) if card.trash.visible else -1.0
 		if trash_hit >= 0:
 			nearest = trash_hit
 			_hit_id = card.id
