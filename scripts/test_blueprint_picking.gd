@@ -182,6 +182,10 @@ func _test_headings() -> void:
 	var target := XREBlueprintGraph.target_port(setter)
 	_check(set_card.inputs[target].y > set_card.inputs[1 if target != 1 else 2].y, "its Target is on the row under the header, above Value")
 	_check((set_card.node.get_node("Title") as Label3D).text == "Set" and (signal_card.node.get_node("Title") as Label3D).text == "On Signal", "the headers say the operation: Set, On Signal")
+	var band := set_card.node.get_node("Head") as MeshInstance3D
+	var band_front := band.position.z + band.mesh.get_aabb().end.z
+	_check((set_card.node.get_node("Title") as Label3D).position.z > band_front and (set_card.node.get_node("Circle") as Node3D).position.z > band_front and set_card.frame.mesh.get_aabb().end.z > band_front,
+			"the title, the icon's circle and the outline stand before the header, seen out of focus too (D-101)")
 	var chip: XREBlueprintCanvas.Socket = null
 	var adapters := 0
 	for socket: XREBlueprintCanvas.Socket in signal_card.sockets:
@@ -210,6 +214,16 @@ func _test_headings() -> void:
 	for socket: XREBlueprintCanvas.Socket in set_card.sockets:
 		if socket.kind == XREBlueprintCanvas.LINK: ring = socket
 	_check(ring != null and ring.visual.get_node_or_null("Token") == null and ring.visual.has_meta(&"head"), "its link is a ring alone, no plug (D-098)")
+	var ring_words: Array[String] = []
+	for child: Node in (ring.visual.get_meta(&"head") as Node3D).find_children("*", "Label3D", true, false): ring_words.append((child as Label3D).text)
+	_check(ring_words.has("link"), "and says link in it (D-101): %s" % [ring_words])
+	var member_socket := -1
+	for index: int in set_card.sockets.size():
+		if set_card.sockets[index].visual.name == "Member": member_socket = index
+	_canvas.hover_socket(2, member_socket, true)
+	var member_label := set_card.node.get_node("Member") as Label3D
+	_check(member_label.scale.is_equal_approx(Vector3.ONE) and member_label.modulate.is_equal_approx(XREBlueprintCanvas.MEMBER_HOVER), "the member under the ray changes colour, not size (D-101)")
+	_canvas.hover_socket(-1, -1, true)
 	_check(set_card.swap != null and not set_card.swap.visible, "⇄ waits for the focus")
 	_canvas.set_focus(Vector3i(2, -1, -1))
 	_check(set_card.swap.visible and _hit(set_card.node.position + set_card.swap_point, Vector3.FORWARD) >= 0 and _canvas.get_hit_swap() and not _canvas.get_hit_delete(), "in focus ⇄ shows by the trash and is picked")
@@ -368,6 +382,9 @@ func _test_mockup_details() -> void:
 	for item: XREBlueprintBoxes.Box in boxes.get("_boxes") as Array:
 		if item.name == "aim": aim_box = item
 	_check(boxes.intersect_ray(aim + aim_box.drawer_point + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() == XREBlueprintBoxes.DRAWER, "its drawer's switch takes the ray")
+	boxes.hover(boxes.get_hit_index(), XREBlueprintBoxes.DRAWER, true)
+	_check(aim_box.drawer.scale.x > 1.5, "and grows under it (D-101)")
+	boxes.hover(-1, -1, true)
 	var spot_index := -1
 	for index: int in boxes.box_count():
 		if boxes.box_name(index) == "spot": spot_index = index

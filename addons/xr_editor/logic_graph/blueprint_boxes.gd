@@ -480,6 +480,8 @@ func hover(index: int, part: int, right: bool, component: int = -1) -> void:
 		var left_part := _hover_left.y if _hover_left.x == box else -1
 		if item.trash != null: item.trash.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if TRASH in [right_part, left_part] else 1.0)
 		if item.token != null: item.token.scale = Vector3.ONE * (0.85 * XREBlueprintCanvas.SOCKET_HOVER if TOKEN in [right_part, left_part] else 0.85)
+		# The drawer's switch grows under the ray, as the trash does (D-101).
+		if item.drawer != null: item.drawer.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if DRAWER in [right_part, left_part] else 1.0)
 		item.node.scale = Vector3.ONE * (1.06 if BODY in [right_part, left_part] else 1.0)
 		for output: int in item.component_ports.size():
 			var lit := (_hover_right.x == box and _hover_right.y == COMPONENT and _hover_right.z == output) or (_hover_left.x == box and _hover_left.y == COMPONENT and _hover_left.z == output)

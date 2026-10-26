@@ -125,6 +125,8 @@ const FADED := 0.35
 ## How much a token or a member grows under a ray.
 const SOCKET_HOVER := 1.15
 const MEMBER_COLOR := Color("dcc8fa")
+## A member in a header under the ray (D-101): the focus's yellow.
+const MEMBER_HOVER := Color("ffd75e")
 ## An operator's card: how much taller than its rows, its symbol's font sizes
 ## (a sign, a word such as AND) and the room on each side of the symbol.
 const OPERATOR_PAD := 0.03
@@ -188,7 +190,7 @@ const CHIP_BORDER := Color(1, 1, 1, 0.25)
 ## True and False, how much of their colour their opaque face has (D-099: a
 ## see-through tab looked lit only in focus).
 const TAB_WIDTH := 0.1
-const TAB_HEIGHT := 0.028
+const TAB_HEIGHT := PORT_RADIUS * 2.0
 const TAB_COLORS: Array[Color] = [Color("7be5b3"), Color("e8879b")]
 const TAB_TINT := 0.28
 ## A Get Variable's tag (D-097): its height, how much of its type's colour its face has.
@@ -871,7 +873,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		if card.bead: _add_bead(card, block, group, outputs)
 		elif card.tag: _add_tag(card, block, outputs)
 		elif card.shape != XREBlueprintShapes.Shape.NONE: _add_rims(card, block, outputs)
-		elif card.headed: _add_rim(card)
+		elif card.headed: _add_rim(card, group != XREBlueprintIcons.Group.PURE)
 		else: _add_frame(card, body_size, cuboid)
 		if archetype and not card.compact: _add_head(card, block, group, outputs, ((layout[0] as Array)[0] as Dictionary).has("port"))
 		elif not card.compact:
@@ -973,10 +975,12 @@ func _add_head(card: Card, block: Dictionary, group: int, outputs: Array, in_por
 	if not pure:
 		# Its top corners as the card's (D-100).
 		var corners := _corners(block)
-		var band := XREBlueprintShapes.body(XREBlueprintShapes.rounded_rect(Vector2(card.width, HEAD_HEIGHT), Vector4(corners.x, corners.y, 0, 0)), 0.0005)
+		# Thin and just over the face (D-101): 0.5 mm deep it reached past the
+		# labels and icons on it, and the depth test hid them out of focus.
+		var band := XREBlueprintShapes.body(XREBlueprintShapes.rounded_rect(Vector2(card.width, HEAD_HEIGHT), Vector4(corners.x, corners.y, 0, 0)), 0.0001)
 		var head := XRERig.create_vr_mesh(band, _head_materials[group])
 		head.name = "Head"
-		head.position = Vector3(0, row, front + 0.0003)
+		head.position = Vector3(0, row, front + 0.0002)
 		card.node.add_child(head)
 	var icon: Variant = XREBlueprintIcons.icon_of(block, _class_icon)
 	var fallback: bool = icon == null and block.get("kind") == "call"
@@ -1274,9 +1278,17 @@ static func _corners(block: Dictionary) -> Vector4:
 
 
 ## A rounded archetype card's frame along its outline (D-100), as the frame a
-## selection and the focus paint.
-func _add_rim(card: Card) -> void:
-	card.frame = XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, 0.0, 0.0012, card.bounds.end.z + 0.0002), card.frame_material)
+## selection and the focus paint, over its header; with [param headed] a
+## line of it between the header and the body too (D-101).
+func _add_rim(card: Card, headed: bool) -> void:
+	var front := card.bounds.end.z + 0.0004
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.append_from(XREBlueprintShapes.ring(card.outline, 0.0, 0.0012, front), 0, Transform3D.IDENTITY)
+	if headed:
+		var line := XREBlueprintShapes.rounded_rect(Vector2(card.width - 0.0024, 0.0012), Vector4.ZERO)
+		surface.append_from(XREBlueprintShapes.body(line, 0.0001), 0, Transform3D(Basis.IDENTITY, Vector3(0, card.height * 0.5 - HEAD_HEIGHT, front)))
+	card.frame = XRERig.create_vr_mesh(surface.commit(), card.frame_material)
 	card.frame.set_meta(&"painted", true)
 	card.node.add_child(card.frame)
 
@@ -2524,6 +2536,8 @@ func hover_socket(id: int, socket: int, right: bool) -> void:
 			var hovered := Vector2i(card.id, index) == _socket_right or Vector2i(card.id, index) == _socket_left
 			var item := card.sockets[index]
 			if item.kind in [FINISHED, SOURCE, VARIABLE]: item.visual.scale = item.base_scale * (HOVER_SCALE if hovered else 1.0)
+			# The member in a header doesn't grow over its verb: it changes colour (D-101).
+			elif item.visual.name == "Member" and item.visual is Label3D: (item.visual as Label3D).modulate = MEMBER_HOVER if hovered else MEMBER_COLOR
 			else: item.visual.scale = item.base_scale * (SOCKET_HOVER if hovered else 1.0)
 	# The wire of a Variable socket under a ray thickens, as a port's does (D-061).
 	_paint_links()
@@ -3257,7 +3271,8 @@ func _add_target_link(card: Card, block: Dictionary, point: Vector3, port: int, 
 ## With [param projection] its ring waits for the object's projection.
 func _add_link(card: Card, point: Vector3, key: String, type: int, text: String, flag_block: int, port: int, kind: int, value: String, projection: bool = false) -> void:
 	var width := XREBlueprintTokens.width(text)
-	var link := make_link(text, width, type)
+	# A bare ring says link where no projection comes in it (D-101).
+	var link := make_link(text, width, type, "link" if text.is_empty() and not projection else "")
 	link.position = Vector3(point.x, point.y, card.face)
 	card.node.add_child(link)
 	if projection: (link.get_meta(&"head") as Node3D).set_meta(&"projection", true)
@@ -3284,13 +3299,13 @@ func _add_link(card: Card, point: Vector3, key: String, type: int, text: String,
 ## [param text], [param width] wide, in the colour of [param type], and its
 ## ring past the far end. Its ring's node is its "head" metadata, where the wire
 ## it hides leaves its "end", how far it reaches its "extent", its label its "text".
-static func make_link(text: String, width: float, type: int) -> Node3D:
+static func make_link(text: String, width: float, type: int, ring_text: String = "") -> Node3D:
 	# A bare link (D-092) is its ring alone by the port, no plug (D-098).
 	var bare := text.is_empty()
 	var link := make_token(null, "", width, true, false, false, type, text) if not bare else Node3D.new()
 	link.name = "Link"
 	if bare: width = 0.0
-	var head := _make_link_head(type)
+	var head := _make_link_head(type, ring_text)
 	head.position = Vector3((-PLUG_GAP - width - LINK_RING + 0.002) if not bare else -PORT_RADIUS - LINK_RING, 0, PLUG_DEPTH * 0.5)
 	link.add_child(head)
 	link.set_meta(&"head", head)
