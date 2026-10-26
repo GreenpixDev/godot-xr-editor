@@ -4,7 +4,7 @@ extends Node3D
 ## The shortcut of the selected object (D-088), with
 ## [constant XREFeatureSettings.OBJECT_SHORTCUT] on: the trigger held again on
 ## the selected object ([signal XREManipulator.shortcut_requested]) opens round
-## buttons on an arc, as a choice's values are (D-062) — Delete, Rename,
+## buttons on an arc ([XREArcMenu]), as a choice's values are (D-062) — Delete, Rename,
 ## Blueprint — [constant DISTANCE] along the hand's ray, its center where the
 ## ray is. The ray picks a button; letting the trigger go does it, or, on none,
 ## only closes the shortcut. While it is open the rest is darkened, as under an
@@ -31,19 +31,9 @@ const BLUEPRINT := 2
 const TITLES: Array[String] = ["Delete", "Rename", "Blueprint"]
 const GLYPHS: Array[StringName] = [&"trash", &"rename", &"blueprint"]
 const LIT_COLORS: Array[Color] = [Color(0.86, 0.2, 0.18), Color("456e91"), Color("1f8fb5")]
-const IDLE_COLOR := Color(0.12, 0.13, 0.15, 0.94)
 ## How far along the ray from the hand the shortcut opens, in meters: nearer
 ## than most objects, so that it is read at the same size whatever it is for.
 const DISTANCE := 0.45
-## The arc, as a choice's (D-062): its radius, and a button's, in meters.
-const ARC_RADIUS := 0.1
-const BUTTON_RADIUS := 0.03
-## The ray within this of a button's center, on the shortcut's plane, picks it: half the gap between two.
-const PICK_RADIUS := 0.05
-## Lit, a button grows this much.
-const LIT_SCALE := 1.2
-## Drawn after the dimmer and over the scene's widgets, as the graph's inputs are (D-058).
-const ON_TOP_OFFSET := 100.0
 ## Rename's keyboard: this far before the head and below the eyes, as the graph's opens (D-057).
 const KEYBOARD_AHEAD := 0.65
 const KEYBOARD_DROP := 0.38
@@ -53,10 +43,7 @@ var blocked: Callable
 
 var _document: XREDocument
 var _rig: XRERig
-var _menu: Node3D
-var _buttons: Array[Node3D] = []
-var _disc_materials: Array[StandardMaterial3D] = []
-var _name: Label3D
+var _menu: XREArcMenu
 var _keyboard: XREVirtualKeyboard
 var _dimmer: MeshInstance3D
 ## The hand whose trigger holds the shortcut open, or null.
@@ -64,9 +51,6 @@ var _hand: XREHand
 ## The object the shortcut is for, and the one the keyboard renames.
 var _node: Node
 var _renamed: Node
-var _lit := -1
-## Where the ray meets the shortcut's plane, in its space ([method _cast]).
-var _plane_point := Vector3.ZERO
 ## Both hands, and those claimed while the shortcut or its keyboard is open.
 var _hands: Array[XREHand] = []
 var _claimed: Array[XREHand] = []
@@ -77,44 +61,9 @@ func _init(document: XREDocument, rig: XRERig, theme: Theme = null) -> void:
 	_document = document
 	_rig = rig
 	_hands = [rig.left_hand, rig.right_hand]
-	_menu = Node3D.new()
+	_menu = XREArcMenu.new(TITLES, GLYPHS, LIT_COLORS)
 	_menu.name = "Menu"
-	_menu.visible = false
 	add_child(_menu)
-	var disc := QuadMesh.new()
-	disc.size = Vector2.ONE * BUTTON_RADIUS * 2.0
-	var glyph := QuadMesh.new()
-	glyph.size = Vector2.ONE * BUTTON_RADIUS * 1.15
-	var disc_texture := XRETabIcons.glyph(&"disc", 128)
-	for index: int in TITLES.size():
-		# From upper left to upper right, as a choice of three is laid out (D-062).
-		var angle := PI * (5.0 / 6.0) - index * PI * (2.0 / 3.0) / (TITLES.size() - 1)
-		var button := Node3D.new()
-		button.name = TITLES[index]
-		button.position = Vector3(cos(angle), sin(angle), 0.0) * ARC_RADIUS
-		_menu.add_child(button)
-		var material := _material(disc_texture, IDLE_COLOR)
-		var face := XRERig.create_vr_mesh(disc, material)
-		face.sorting_offset = ON_TOP_OFFSET
-		button.add_child(face)
-		var symbol := XRERig.create_vr_mesh(glyph, _material(XRETabIcons.glyph(GLYPHS[index], 96), Color.WHITE))
-		symbol.position.z = 0.001
-		symbol.sorting_offset = ON_TOP_OFFSET + 1.0
-		button.add_child(symbol)
-		var title := _label(TITLES[index], 20)
-		title.position = Vector3(0.0, BUTTON_RADIUS + 0.014, 0.001)
-		button.add_child(title)
-		_buttons.append(button)
-		_disc_materials.append(material)
-	# Where the ray was when the trigger went down: on it, no button is picked.
-	var dot := XRERig.create_vr_mesh(disc, _material(disc_texture, Color(1.0, 1.0, 1.0, 0.85)))
-	dot.scale = Vector3.ONE * 0.2
-	dot.sorting_offset = ON_TOP_OFFSET
-	_menu.add_child(dot)
-	_name = _label("", 18)
-	_name.modulate = Color("dfe4ee")
-	_name.position = Vector3(0.0, -0.028, 0.001)
-	_menu.add_child(_name)
 	_keyboard = XREVirtualKeyboard.new(theme)
 	_keyboard.name = "RenameKeyboard"
 	_keyboard.set_on_top(true)
@@ -151,9 +100,7 @@ func open(hand: XREHand, node: Node3D) -> bool:
 	var head := _rig.camera.global_position
 	var center := hand.global_position - hand.global_basis.z.normalized() * DISTANCE
 	global_transform = Transform3D(XREPanels.facing(center, head, _rig.global_basis.y), center)
-	_name.text = str(node.name)
-	_menu.visible = true
-	_light(-1)
+	_menu.open(str(node.name))
 	_focus(true)
 	_claim_hands()
 	return true
@@ -176,12 +123,12 @@ func is_dimming() -> bool:
 
 ## The button the ray is on ([constant DELETE], [constant RENAME], [constant BLUEPRINT]), or -1.
 func get_lit() -> int:
-	return _lit
+	return _menu.get_lit()
 
 
 ## The center of button [param index], global.
 func get_button_position(index: int) -> Vector3:
-	return _buttons[index].global_position
+	return _menu.get_button_position(index)
 
 
 func get_keyboard() -> XREVirtualKeyboard:
@@ -204,18 +151,8 @@ func _update_menu() -> void:
 		_finish()
 		return
 	_claim_hands()
-	var distance := _cast(_hand.global_position, -_hand.global_basis.z.normalized())
-	var picked := -1
-	if distance >= 0.0:
-		var nearest := PICK_RADIUS
-		for index: int in _buttons.size():
-			var gap := Vector2(_plane_point.x - _buttons[index].position.x, _plane_point.y - _buttons[index].position.y).length()
-			if gap < nearest:
-				nearest = gap
-				picked = index
-	if picked != _lit and picked >= 0:
-		XREEditorHaptics.pulse(1 if _hand.tracker == &"right_hand" else 0, 0.18, 0.018)
-	_light(picked)
+	var distance := _menu.pick(_hand)
+	var picked := _menu.get_lit()
 	_hand.show_ray(distance if distance >= 0.0 else XREHand.RAY_LENGTH, picked >= 0)
 	for hand: XREHand in _claimed:
 		if hand != _hand: hand.show_ray(XREHand.RAY_LENGTH, false)
@@ -285,8 +222,7 @@ func _apply_name(text: String) -> void:
 func _close_menu() -> void:
 	_hand = null
 	_node = null
-	_menu.visible = false
-	_light(-1)
+	_menu.close()
 
 
 ## Gives the hands back and takes the darkness away.
@@ -316,51 +252,3 @@ func _focus(enabled: bool) -> void:
 		hand.set_overlay(enabled)
 		hand.set_on_top(enabled)
 
-
-func _light(index: int) -> void:
-	if index == _lit:
-		return
-	_lit = index
-	for i: int in _buttons.size():
-		var lit := i == index
-		_disc_materials[i].albedo_color = LIT_COLORS[i] if lit else IDLE_COLOR
-		_buttons[i].scale = Vector3.ONE * (LIT_SCALE if lit else 1.0)
-
-
-## How far along the ray from [param origin] it meets the shortcut's plane, or
-## -1; [member _plane_point] is then where, in the shortcut's space. Either
-## side counts: the shortcut faces the head, and a hand held out to the side
-## may be behind its plane.
-func _cast(origin: Vector3, direction: Vector3) -> float:
-	var inverse := global_transform.affine_inverse()
-	var local_origin := inverse * origin
-	var local_direction := inverse.basis * direction
-	if absf(local_direction.z) < 0.000001:
-		return -1.0
-	var distance := -local_origin.z / local_direction.z
-	if distance < 0.0:
-		return -1.0
-	_plane_point = local_origin + local_direction * distance
-	return distance
-
-
-static func _material(texture: Texture2D, color: Color) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.albedo_texture = texture
-	material.albedo_color = color
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.no_depth_test = true
-	material.render_priority = Material.RENDER_PRIORITY_MAX
-	return material
-
-
-static func _label(text: String, font_size: int) -> Label3D:
-	var label := XRERig.create_vr_label(font_size, 0.0007)
-	label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-	label.text = text
-	label.no_depth_test = true
-	label.render_priority = Material.RENDER_PRIORITY_MAX
-	label.outline_render_priority = Material.RENDER_PRIORITY_MAX - 1
-	label.sorting_offset = ON_TOP_OFFSET + 2.0
-	return label

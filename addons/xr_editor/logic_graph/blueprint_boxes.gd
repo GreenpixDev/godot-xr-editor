@@ -11,7 +11,9 @@ extends Node3D
 ## from the block menu. Lives in the canvas's space, built only on document
 ## changes; picked analytically, as the cards are. The start value is a puck
 ## even with plugs (D-065): it goes into no port, and the trigger takes it
-## anywhere on it.
+## anywhere on it. As billboard cards do, a box turns to the head where it
+## stands ([method face], D-090), so that its name and value face the user from
+## the side too; with cuboid cards it keeps the graph's orientation.
 
 const BOX_SIZE := Vector3(0.11, 0.045, 0.05)
 ## Centers of neighbouring boxes in the row of boxes never put anywhere are
@@ -44,6 +46,8 @@ class Box:
 	## Its focus (D-072), a state of [XREBlueprintFocus], and how it is painted now: -1 not yet.
 	var focus := XREBlueprintFocus.NORMAL
 	var look := -1
+	## How much it is grown under a ray, kept as it turns.
+	var size := 1.0
 
 var _boxes: Array[Box] = []
 var _hit := -1
@@ -53,6 +57,9 @@ var _hover_right := Vector2i(-1, -1)
 var _hover_left := Vector2i(-1, -1)
 var _trash_mesh: Mesh
 var _trash_material: Material
+## The head the boxes turn to (D-090), and whether they do: with billboard cards.
+var _head := Vector3.ZERO
+var _facing := false
 
 
 func _init(trash_mesh: Mesh, trash_material: Material) -> void:
@@ -81,13 +88,32 @@ func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], styl
 ## variable), when only the graph's placement changed; creates nothing.
 func place(places: Dictionary[String, Vector3]) -> void:
 	for box: Box in _boxes:
-		if places.has(box.name): box.node.position = places[box.name]
+		if not places.has(box.name): continue
+		box.node.position = places[box.name]
+		_orient(box)
+
+
+## Turns the boxes to [param head] (global) where they stand, as billboard cards
+## turn ([method XREBlueprintCanvas.face_user]), with [param facing]; without it,
+## as with cuboid cards, they keep the graph's orientation.
+func face(head: Vector3, facing: bool) -> void:
+	_head = head
+	_facing = facing
+	for box: Box in _boxes: _orient(box)
+
+
+func _orient(box: Box) -> void:
+	if _facing and box.node.is_inside_tree(): box.node.global_basis = XREBlueprintPetals.face(box.node.global_position, _head, Vector3.UP)
+	else: box.node.basis = Basis.IDENTITY
+	box.node.scale = Vector3.ONE * box.size
 
 
 ## Shows the box of [param variable] at [param point] (canvas space) without editing the graph, as it is carried (D-078).
 func move_box(variable: String, point: Vector3) -> void:
 	for box: Box in _boxes:
-		if box.name == variable: box.node.position = point
+		if box.name != variable: continue
+		box.node.position = point
+		_orient(box)
 
 
 func _add_box(variable: String, value: Variant, type: int, point: Vector3, style: StringName, used: bool, expression: String = "") -> void:
@@ -100,6 +126,7 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 	box.node.name = "Box_" + variable
 	box.node.position = point
 	add_child(box.node)
+	_orient(box)
 	var shape := BoxMesh.new()
 	shape.size = BOX_SIZE
 	var color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)]
@@ -164,14 +191,17 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		var box := _boxes[index]
 		# See-through over an input in use, a box doesn't take the ray (D-067).
 		if box.faded: continue
-		var local_origin := origin - box.node.position
-		var body := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(-BOX_SIZE * 0.5, BOX_SIZE), nearest)
+		# In the box's own space, as it turns to the head; the ray's parameter is the same in both.
+		var inverse := box.node.transform.affine_inverse()
+		var local_origin := inverse * origin
+		var local_direction := inverse.basis * direction
+		var body := XREBlueprintCanvas._box_distance(local_origin, local_direction, AABB(-BOX_SIZE * 0.5, BOX_SIZE), nearest)
 		if body < 0: continue
 		nearest = body
 		_hit = index
 		_hit_part = BODY
-		var trash := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.trash_point - Vector3(0.012, 0.014, 0.006), Vector3(0.024, 0.028, 0.012)), INF)
-		var token := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.token_point - box.token_size * 0.5 - Vector3(0.003, 0.003, 0.003), box.token_size + Vector3(0.006, 0.006, 0.006)), INF)
+		var trash := XREBlueprintCanvas._box_distance(local_origin, local_direction, AABB(box.trash_point - Vector3(0.012, 0.014, 0.006), Vector3(0.024, 0.028, 0.012)), INF)
+		var token := XREBlueprintCanvas._box_distance(local_origin, local_direction, AABB(box.token_point - box.token_size * 0.5 - Vector3(0.003, 0.003, 0.003), box.token_size + Vector3(0.006, 0.006, 0.006)), INF)
 		if trash >= 0 and trash <= nearest + BOX_SIZE.z:
 			_hit_part = TRASH
 		elif token >= 0 and token <= nearest + BOX_SIZE.z:
@@ -217,7 +247,8 @@ func hover(index: int, part: int, right: bool) -> void:
 		var left_part := _hover_left.y if _hover_left.x == box else -1
 		if item.trash != null: item.trash.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if TRASH in [right_part, left_part] else 1.0)
 		if item.token != null: item.token.scale = Vector3.ONE * (0.85 * XREBlueprintCanvas.SOCKET_HOVER if TOKEN in [right_part, left_part] else 0.85)
-		item.node.scale = Vector3.ONE * (1.06 if BODY in [right_part, left_part] else 1.0)
+		item.size = 1.06 if BODY in [right_part, left_part] else 1.0
+		item.node.scale = Vector3.ONE * item.size
 
 
 ## How many boxes there are.
@@ -269,16 +300,21 @@ func box_point(variable: String) -> Vector3:
 ## Where a wire from the box of [param variable] to [param toward] (the
 ## canvas's space) leaves it, and its direction there (D-063): aimed at the
 ## box's centre, out of the side that faces that point, so that it comes in
-## from any side, not only the left.
+## from any side, not only the left; the box as it is turned.
 func box_end(variable: String, toward: Vector3) -> Array[Vector3]:
-	var center := box_point(variable)
-	var along := toward - center
-	if along.length() < 0.0001: return [center, Vector3.LEFT]
-	along = along.normalized()
-	var reach := INF
-	for axis: int in 3:
-		if absf(along[axis]) > 0.0001: reach = minf(reach, BOX_SIZE[axis] * 0.5 / absf(along[axis]))
-	return [center + along * reach, along]
+	for box: Box in _boxes:
+		if box.name != variable or variable.is_empty(): continue
+		var center := box.node.position
+		var along := toward - center
+		if along.length() < 0.0001: return [center, Vector3.LEFT]
+		along = along.normalized()
+		var turn := box.node.basis.orthonormalized()
+		var inside := turn.inverse() * along
+		var reach := INF
+		for axis: int in 3:
+			if absf(inside[axis]) > 0.0001: reach = minf(reach, BOX_SIZE[axis] * 0.5 / absf(inside[axis]))
+		return [center + along * reach, along]
+	return [Vector3.ZERO, Vector3.LEFT]
 
 
 ## Whether a box shows [param variable].

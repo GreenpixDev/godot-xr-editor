@@ -478,3 +478,5 @@ class _Beam extends Node3D:
 		var material := hand.get_ray_material()
 		if mesh.material_override != material:
 			mesh.material_override = material
+		# Drawn over everything as the ray is, after what is drawn over everything too, as the block palette (D-090).
+		mesh.sorting_offset = hand.get_ray_sorting()
