@@ -447,7 +447,7 @@ class _Hud extends Control:
 
 
 ## The beam of the active hand: from the tip of its controller to where its
-## ray, which leaves the eye, ends, in the ray's own material. Processed after
+## ray, which leaves the eye, ends, in the ray's own material and sorting. Processed after
 ## every tool, once they have set the ray for this frame.
 class _Beam extends Node3D:
 	var mesh: MeshInstance3D
@@ -478,3 +478,5 @@ class _Beam extends Node3D:
 		var material := hand.get_ray_material()
 		if mesh.material_override != material:
 			mesh.material_override = material
+		# Over a card in focus too, as the ray it stands for (D-100).
+		mesh.sorting_offset = hand.get_ray_sorting_offset()

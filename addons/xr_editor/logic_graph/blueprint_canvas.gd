@@ -173,6 +173,10 @@ const SIGN_LONG_SIZE := 24
 ## An archetype's card (D-092): the gap between its header and its rows; the
 ## switch of its heading, its size, how far left of the trash it stands.
 const HEAD_GAP := 0.006
+## An archetype card's corners (D-100), as the mockup's: 1,5 cm, an event's top
+## left 2,5 cm — its "hat".
+const CORNER := 0.015
+const HAT := 0.025
 ## An event's policy chip in its header (D-097): its height, its icon's size,
 ## its text's, how dark its face is of the header's colour, its border.
 const CHIP_HEIGHT := 0.024
@@ -850,8 +854,10 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 				card.frame_material = _type_frame(XREBlueprintGraph.EXEC)
 			# A pure function is framed in its result's color, as its wire is.
 			if pure and not outputs.is_empty(): card.frame_material = _type_frame(int((outputs[0] as Array)[1]))
+		# An archetype's card is rounded (D-100), picked by its outline as a sign is.
+		if card.headed: card.outline = XREBlueprintShapes.rounded_rect(Vector2(card.width, card.height), _corners(block))
 		var body: Mesh
-		if card.shape != XREBlueprintShapes.Shape.NONE: body = XREBlueprintShapes.body(card.outline, body_size.z)
+		if card.shape != XREBlueprintShapes.Shape.NONE or card.headed: body = XREBlueprintShapes.body(card.outline, body_size.z)
 		elif cuboid:
 			var box := BoxMesh.new()
 			box.size = body_size
@@ -865,6 +871,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		if card.bead: _add_bead(card, block, group, outputs)
 		elif card.tag: _add_tag(card, block, outputs)
 		elif card.shape != XREBlueprintShapes.Shape.NONE: _add_rims(card, block, outputs)
+		elif card.headed: _add_rim(card)
 		else: _add_frame(card, body_size, cuboid)
 		if archetype and not card.compact: _add_head(card, block, group, outputs, ((layout[0] as Array)[0] as Dictionary).has("port"))
 		elif not card.compact:
@@ -964,8 +971,9 @@ func _add_head(card: Card, block: Dictionary, group: int, outputs: Array, in_por
 	var pure := group == XREBlueprintIcons.Group.PURE
 	var tint := COLORS[int((outputs[0] as Array)[1])] if pure and not outputs.is_empty() else Color.WHITE
 	if not pure:
-		var band := QuadMesh.new()
-		band.size = Vector2(card.width, HEAD_HEIGHT)
+		# Its top corners as the card's (D-100).
+		var corners := _corners(block)
+		var band := XREBlueprintShapes.body(XREBlueprintShapes.rounded_rect(Vector2(card.width, HEAD_HEIGHT), Vector4(corners.x, corners.y, 0, 0)), 0.0005)
 		var head := XRERig.create_vr_mesh(band, _head_materials[group])
 		head.name = "Head"
 		head.position = Vector3(0, row, front + 0.0003)
@@ -1257,6 +1265,20 @@ func _sign_shape(block: Dictionary, inputs: Array, outputs: Array) -> XREBluepri
 	if XREFeatureSettings.get_values(XREFeatureSettings.NODE_SHRINK).find(_shrink) >= 1 and not XREBlueprintShapes.word_of(block, inputs, outputs).is_empty():
 		return XREBlueprintShapes.Shape.CIRCLE if inputs.size() <= 2 else XREBlueprintShapes.Shape.OVAL
 	return XREBlueprintShapes.Shape.NONE
+
+
+## The corners of [param block]'s archetype card (D-100): top left, top right,
+## bottom right, bottom left; an event's top left larger.
+static func _corners(block: Dictionary) -> Vector4:
+	return Vector4(HAT if block.get("kind") == "signal" else CORNER, CORNER, CORNER, CORNER)
+
+
+## A rounded archetype card's frame along its outline (D-100), as the frame a
+## selection and the focus paint.
+func _add_rim(card: Card) -> void:
+	card.frame = XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, 0.0, 0.0012, card.bounds.end.z + 0.0002), card.frame_material)
+	card.frame.set_meta(&"painted", true)
+	card.node.add_child(card.frame)
 
 
 ## A sign's rim in its result's color, as the frame a selection and the focus
@@ -2105,7 +2127,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		var card_direction := card_inverse.basis * local_direction
 		var body := _box_distance(card_origin, card_direction, card.bounds, nearest)
 		# A sign takes the ray inside its outline, not its whole box (D-091).
-		if body >= 0 and card.shape != XREBlueprintShapes.Shape.NONE:
+		if body >= 0 and not card.outline.is_empty():
 			var at := card_origin + card_direction * body
 			if not XREBlueprintShapes.contains(card.outline, Vector2(at.x, at.y)): body = -1.0
 		if body >= 0:

@@ -125,12 +125,17 @@ func _look_right() -> void:
 
 func _beam_off() -> void:
 	_check(_simulator.get_beam() == null and not _simulator.beam_on, "V turns the beam off")
+	# Drawn over everything, as over a card in focus with Front (D-075), the beam sorts as its ray (D-100).
+	_rig.right_hand.set_on_top(true)
 	_key(XRESimulator.BEAM_KEY, true)
 	_key(XRESimulator.BEAM_KEY, false)
 
 
 func _beam_on() -> void:
 	_check(_simulator.get_beam() != null, "V turns it on again")
+	var beam := _simulator.get_beam()
+	_check(beam != null and is_equal_approx(beam.sorting_offset, _rig.right_hand.get_ray_sorting_offset()) and beam.sorting_offset > 0.0, "the beam sorts over a card in focus, as its ray does")
+	_rig.right_hand.set_on_top(false)
 	_mouse(MOUSE_BUTTON_LEFT, true)
 
 

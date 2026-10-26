@@ -92,9 +92,9 @@ var _hit_component := -1
 var _split := false
 var _archetype := false
 var _archetype_trash: Material
-## The box part under each hand's ray: the box and the part, or -1.
-var _hover_right := Vector2i(-1, -1)
-var _hover_left := Vector2i(-1, -1)
+## The box part under each hand's ray: the box, the part and its component (D-100), or -1.
+var _hover_right := Vector3i(-1, -1, -1)
+var _hover_left := Vector3i(-1, -1, -1)
 var _trash_mesh: Mesh
 var _trash_material: Material
 
@@ -119,8 +119,8 @@ func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], styl
 		remove_child(box.node)
 		box.node.queue_free()
 	_boxes.clear()
-	_hover_right = Vector2i(-1, -1)
-	_hover_left = Vector2i(-1, -1)
+	_hover_right = Vector3i(-1, -1, -1)
+	_hover_left = Vector3i(-1, -1, -1)
 	for variable: Dictionary in graph.variables:
 		var key := str(variable["name"])
 		_add_box(key, variable.get("value"), XREBlueprintGraph.variable_type(variable), places.get(key, Vector3.ZERO), style, used.has(key), XREBlueprintTokens.variable_expression(variable), bool(variable.get("vr_collapsed", false)))
@@ -466,10 +466,11 @@ func get_hit_part() -> int:
 
 
 ## Grows the part under the [param right] hand's ray, or the other's, as a
-## card's trash grows; -1 for none. Each hand keeps its own, so that an idle
+## card's trash grows; -1 for none; a component's output by [param component],
+## as a card's port grows (D-100). Each hand keeps its own, so that an idle
 ## ray can't take the other's away.
-func hover(index: int, part: int, right: bool) -> void:
-	var key := Vector2i(index, part) if index >= 0 else Vector2i(-1, -1)
+func hover(index: int, part: int, right: bool, component: int = -1) -> void:
+	var key := Vector3i(index, part, component if part == COMPONENT else -1) if index >= 0 else Vector3i(-1, -1, -1)
 	if key == (_hover_right if right else _hover_left): return
 	if right: _hover_right = key
 	else: _hover_left = key
@@ -480,6 +481,9 @@ func hover(index: int, part: int, right: bool) -> void:
 		if item.trash != null: item.trash.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if TRASH in [right_part, left_part] else 1.0)
 		if item.token != null: item.token.scale = Vector3.ONE * (0.85 * XREBlueprintCanvas.SOCKET_HOVER if TOKEN in [right_part, left_part] else 0.85)
 		item.node.scale = Vector3.ONE * (1.06 if BODY in [right_part, left_part] else 1.0)
+		for output: int in item.component_ports.size():
+			var lit := (_hover_right.x == box and _hover_right.y == COMPONENT and _hover_right.z == output) or (_hover_left.x == box and _hover_left.y == COMPONENT and _hover_left.z == output)
+			item.component_ports[output].scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if lit else 1.0)
 
 
 ## How many boxes there are.

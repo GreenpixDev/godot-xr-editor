@@ -71,6 +71,9 @@ func _test_archetypes(graph: XREBlueprintGraph) -> void:
 	var icon := card.node.get_node_or_null("Icon") as MeshInstance3D
 	_check(icon != null and (icon.material_override as BaseMaterial3D).albedo_texture != null and card.node.get_node_or_null("Circle") != null, "with Ready's icon on its circle")
 	_check(card.trash_point.x > 0.0 and card.trash_point.y > card.bounds.end.y and not card.trash.visible, "the trash stands over the right corner, hidden out of focus")
+	var corner := Vector3(-card.width * 0.5 + 0.003, card.height * 0.5 - 0.003, 0)
+	_check(not card.outline.is_empty() and _hit(card.node.position + corner, Vector3.FORWARD) < 0, "the event's card is rounded: its top left corner takes no ray (D-100)")
+	_check(_hit(card.node.position + Vector3(0, 0, 0), Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 1, "its middle does")
 	_check(_hit(card.trash_point, Vector3.FORWARD) < 0, "a hidden trash isn't picked")
 	_canvas.set_focus(Vector3i(1, -1, -1))
 	_check(card.trash.visible and _hit(card.trash_point, Vector3.FORWARD) >= 0 and _canvas.get_hit_delete(), "in focus the trash shows and is picked")
@@ -365,6 +368,14 @@ func _test_mockup_details() -> void:
 	for item: XREBlueprintBoxes.Box in boxes.get("_boxes") as Array:
 		if item.name == "aim": aim_box = item
 	_check(boxes.intersect_ray(aim + aim_box.drawer_point + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() == XREBlueprintBoxes.DRAWER, "its drawer's switch takes the ray")
+	var spot_index := -1
+	for index: int in boxes.box_count():
+		if boxes.box_name(index) == "spot": spot_index = index
+	var spot_box := (boxes.get("_boxes") as Array)[spot_index] as XREBlueprintBoxes.Box
+	boxes.hover(spot_index, XREBlueprintBoxes.COMPONENT, true, 1)
+	_check(spot_box.component_ports[1].scale.x > 1.5 and is_equal_approx(spot_box.component_ports[0].scale.x, 1.0), "the output of y under the ray grows, as a card's port (D-100)")
+	boxes.hover(-1, -1, true)
+	_check(is_equal_approx(spot_box.component_ports[1].scale.x, 1.0), "and shrinks back")
 	_canvas.set_composite(XREFeatureSettings.WHOLE)
 	_canvas.rebuild(details)
 	boxes = _canvas.get_boxes()

@@ -117,6 +117,15 @@ func _run() -> void:
 		_look(face.origin + face.basis.z.normalized() * 0.35, face.origin)
 		await _shot("02b_card_%d_focus" % card.id)
 	_aim(Vector3(-50, 0, 0), Vector3.BACK)
+	# The ray from a hand below and to the right onto a card in focus: it must stay over the card, its ports and tokens.
+	var target_card := cards[1] as XREBlueprintCanvas.Card
+	var card_pose := target_card.node.global_transform
+	var eye := card_pose.origin + card_pose.basis.z.normalized() * 0.6
+	_look(eye, card_pose.origin)
+	var hand_point := eye + Vector3(0.15, -0.3, -0.05)
+	_right.set_pose(&"aim", Transform3D(Basis.looking_at(card_pose.origin - hand_point), hand_point), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await _shot("24_ray_on_card")
+	_aim(Vector3(-50, 0, 0), Vector3.BACK)
 	_look(head, host.global_position)
 	await _shot("03_objects")
 	_look(head.lerp(host.global_position, 0.6), host.global_position)

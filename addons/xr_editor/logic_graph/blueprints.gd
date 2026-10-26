@@ -4397,7 +4397,7 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 	hand.claim(self)
 	hand.show_ray(hit, true)
 	canvas.hover_actions(-1, false, false, hand == _rig.right_hand, -1, false, -1, true)
-	boxes.hover(boxes.get_hit_index(), boxes.get_hit_part(), hand == _rig.right_hand)
+	boxes.hover(boxes.get_hit_index(), boxes.get_hit_part(), hand == _rig.right_hand, boxes.get_hit_component())
 	var variable := boxes.get_hit_name()
 	var part := boxes.get_hit_part()
 	pointer.focus_box = variable
