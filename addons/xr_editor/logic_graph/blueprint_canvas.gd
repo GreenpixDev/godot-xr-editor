@@ -47,6 +47,9 @@ extends Node3D
 ## what a card shows of its block: as before, or as an archetype — a header in
 ## its group's color with its icon ([XREBlueprintIcons]), none on a pure
 ## function, framed in its result's color, and a trash only on the card in focus.
+## An archetype's operator is a sign ([XREBlueprintShapes], D-091): a circle, a
+## diamond or a pill in its result's color, and so are math functions as
+## [constant XREFeatureSettings.NODE_SHRINK] says ([method set_shrink]).
 
 const PIXEL_SIZE := 0.0009
 const CARD_WIDTH := 0.26
@@ -150,6 +153,15 @@ const TRASH_COLOR := Color("ff6b7a")
 const TRASH_SCALE := 1.3
 const TRASH_RISE := 0.02
 const FALLBACK_SIZE := 30
+## A sign (D-091): the width of its rim and of a math function's inner rim, how
+## far in the inner rim is and how much of it is seen; the font size of a
+## function's name, and of a longer one.
+const RIM := 0.0022
+const INNER_RIM := 0.0012
+const INNER_INSET := 0.0055
+const INNER_SEEN := 0.4
+const SIGN_WORD_SIZE := 30
+const SIGN_LONG_SIZE := 24
 const PURE_FALLBACK_SIZE := 38
 
 ## A socket of a card that is not one of its block's ports (D-052).
@@ -184,6 +196,10 @@ class Card:
 	var width := CARD_WIDTH
 	## An operator's small card (D-065).
 	var compact := false
+	## A sign's shape ([enum XREBlueprintShapes.Shape], D-091), its outline and its inputs' places.
+	var shape := 0
+	var outline: PackedVector2Array
+	var shape_inputs: Array[Vector2] = []
 	## The height of the first row's ports; a compact card's output is in its middle.
 	var first_row := 0.0
 	## How far the front face is in front of a billboard's: ports, labels and icons sit on it.
@@ -298,6 +314,7 @@ var _archetype_faces: Array[ShaderMaterial] = []
 var _type_frames: Dictionary[int, Material] = {}
 var _archetype_trash: Material
 var _class_icon: Callable
+var _shrink := XREFeatureSettings.OPERATORS
 var _faces_user := false
 var _display := XREFeatureSettings.BILLBOARD
 var _port_display := XREFeatureSettings.FLAT
@@ -437,6 +454,20 @@ func set_style(style: StringName) -> bool:
 ## What cards show of their blocks: a value of [constant XREFeatureSettings.NODE_STYLE].
 func get_style() -> StringName:
 	return _style
+
+
+## Switches which blocks archetypes draw as signs to [param shrink], a value of
+## [constant XREFeatureSettings.NODE_SHRINK] (D-091). Takes effect on the next
+## [method rebuild]; false if it is unknown or already the current one.
+func set_shrink(shrink: StringName) -> bool:
+	if shrink == _shrink or not shrink in XREFeatureSettings.get_values(XREFeatureSettings.NODE_SHRINK): return false
+	_shrink = shrink
+	return true
+
+
+## Which blocks archetypes draw as signs: a value of [constant XREFeatureSettings.NODE_SHRINK].
+func get_shrink() -> StringName:
+	return _shrink
 
 
 ## Where archetypes take the editor's icon of an engine class (D-090):
@@ -581,8 +612,16 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		var inputs := graph.ports(block, true)
 		var outputs := graph.ports(block, false)
 		var layout := _layout(graph, block, inputs, outputs)
-		card.compact = XREBlueprintGraph.is_operator(block)
-		if card.compact:
+		var archetype := _style == XREFeatureSettings.ARCHETYPES
+		card.shape = _sign_shape(block, inputs, outputs) if archetype else XREBlueprintShapes.Shape.NONE
+		card.compact = XREBlueprintGraph.is_operator(block) or card.shape != XREBlueprintShapes.Shape.NONE
+		if card.shape != XREBlueprintShapes.Shape.NONE:
+			var size := XREBlueprintShapes.size_of(card.shape)
+			card.width = size.x
+			card.height = size.y
+			card.outline = XREBlueprintShapes.outline(card.shape)
+			card.shape_inputs = XREBlueprintShapes.inputs(card.shape, inputs.size())
+		elif card.compact:
 			card.height = OPERATOR_PAD + maxi((layout[0] as Array).size(), 1) * ROW_HEIGHT
 			card.width = _operator_width(graph, block, inputs)
 			card.first_row = ((layout[0] as Array).size() - 1) * ROW_HEIGHT * 0.5
@@ -593,7 +632,6 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		var body_size := Vector3(card.width, card.height, CUBOID_DEPTH if cuboid else CARD_THICKNESS)
 		card.face = (CUBOID_DEPTH - CARD_THICKNESS) * 0.5 if cuboid else 0.0
 		card.bounds = AABB(-body_size * 0.5, body_size)
-		var archetype := _style == XREFeatureSettings.ARCHETYPES
 		var group := XREBlueprintIcons.group_of(block, inputs, outputs)
 		card.normal = _body_materials[card_group(block)]
 		card.frame_material = _frame_material
@@ -602,8 +640,9 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			card.normal = _archetype_faces[2 if card.compact else 1 if pure else 0]
 			# A pure function is framed in its result's color, as its wire is.
 			if pure and not outputs.is_empty(): card.frame_material = _type_frame(int((outputs[0] as Array)[1]))
-		var body: PrimitiveMesh
-		if cuboid:
+		var body: Mesh
+		if card.shape != XREBlueprintShapes.Shape.NONE: body = XREBlueprintShapes.body(card.outline, body_size.z)
+		elif cuboid:
 			var box := BoxMesh.new()
 			box.size = body_size
 			body = box
@@ -613,7 +652,8 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			body = panel
 		card.mesh = XRERig.create_vr_mesh(body, card.normal)
 		card.node.add_child(card.mesh)
-		_add_frame(card, body_size, cuboid)
+		if card.shape != XREBlueprintShapes.Shape.NONE: _add_rims(card, block, outputs)
+		else: _add_frame(card, body_size, cuboid)
 		if archetype and not card.compact: _add_head(card, block, group, outputs)
 		elif not card.compact:
 			var title := label("%s · %d" % [XREBlueprintGraph.title(block), card.id], 21)
@@ -651,7 +691,8 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			trash.scale = Vector3.ONE * TRASH_SCALE
 			card.trash.visible = false
 		_add_rows(card, graph, block, inputs, outputs, layout)
-		if card.compact: _add_symbol(card, block)
+		if card.shape != XREBlueprintShapes.Shape.NONE: _add_sign_symbol(card, block, inputs, outputs)
+		elif card.compact: _add_symbol(card, block)
 		_cards.append(card)
 	var inline: Array[Wire] = []
 	for edge_index: int in graph.edges.size():
@@ -748,6 +789,46 @@ func _add_icon(card: Card, part: String, texture: Texture2D, tint: Color, size: 
 func _type_frame(type: int) -> Material:
 	if not _type_frames.has(type): _type_frames[type] = material(COLORS[type], true)
 	return _type_frames[type]
+
+
+## The shape of [param block]'s sign as an archetype (D-091), or none: an
+## operator by its group, a math function by its inputs while
+## [constant XREFeatureSettings.NODE_SHRINK] takes math functions.
+func _sign_shape(block: Dictionary, inputs: Array, outputs: Array) -> XREBlueprintShapes.Shape:
+	if XREBlueprintGraph.is_operator(block):
+		match XREBlueprintOperators.group_of(XREBlueprintGraph.operator_of(block)):
+			XREBlueprintOperators.MATH: return XREBlueprintShapes.Shape.CIRCLE
+			XREBlueprintOperators.LOGIC: return XREBlueprintShapes.Shape.PILL
+		return XREBlueprintShapes.Shape.DIAMOND
+	if _shrink == XREFeatureSettings.MATH and not XREBlueprintShapes.word_of(block, inputs, outputs).is_empty():
+		return XREBlueprintShapes.Shape.CIRCLE if inputs.size() <= 2 else XREBlueprintShapes.Shape.OVAL
+	return XREBlueprintShapes.Shape.NONE
+
+
+## A sign's rim in its result's color, as the frame a selection and the focus
+## paint, and a math function's second rim inside it, fainter (D-091).
+func _add_rims(card: Card, block: Dictionary, outputs: Array) -> void:
+	var front := card.bounds.end.z + 0.0004
+	card.frame = XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, 0.0, RIM, front), card.frame_material)
+	card.frame.set_meta(&"painted", true)
+	card.node.add_child(card.frame)
+	if XREBlueprintGraph.is_operator(block) or outputs.is_empty(): return
+	var color := COLORS[int((outputs[0] as Array)[1])]
+	var rim := XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, INNER_INSET, INNER_RIM, front), material(Color(color, INNER_SEEN), true))
+	rim.name = "Rim"
+	card.node.add_child(rim)
+
+
+## A sign's symbol or name in the middle, in its result's color (D-091); an
+## oval's a little right, clear of its three inputs' tokens.
+func _add_sign_symbol(card: Card, block: Dictionary, inputs: Array, outputs: Array) -> void:
+	var text := XREBlueprintGraph.symbol(block) if XREBlueprintGraph.is_operator(block) else XREBlueprintShapes.word_of(block, inputs, outputs)
+	var size := SYMBOL_SIZE if text.length() == 1 else SIGN_WORD_SIZE if text.length() <= 3 else SIGN_LONG_SIZE
+	var symbol := label(text, size)
+	symbol.modulate = COLORS[card.output_types[0]] if not card.output_types.is_empty() else Color.WHITE
+	symbol.position = Vector3(0.006 if card.shape == XREBlueprintShapes.Shape.OVAL else 0.0, 0, card.bounds.end.z + 0.0008)
+	symbol.name = "Symbol"
+	card.node.add_child(symbol)
 
 
 ## How wide an operator's card is (D-065): its ports and the widest token on
@@ -1539,6 +1620,10 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		var card_origin := card_inverse * local_origin
 		var card_direction := card_inverse.basis * local_direction
 		var body := _box_distance(card_origin, card_direction, card.bounds, nearest)
+		# A sign takes the ray inside its outline, not its whole box (D-091).
+		if body >= 0 and card.shape != XREBlueprintShapes.Shape.NONE:
+			var at := card_origin + card_direction * body
+			if not XREBlueprintShapes.contains(card.outline, Vector2(at.x, at.y)): body = -1.0
 		if body >= 0:
 			nearest = body
 			proximity = INF
@@ -2344,6 +2429,10 @@ func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1, 
 ## Where the port of row [param row] is on the left ([param input]) or the right edge of [param card].
 ## An operator's result is in the middle of its card's height.
 func _row_point(card: Card, row: int, input: bool) -> Vector3:
+	# A sign's ports are on its outline (D-091).
+	if card.shape != XREBlueprintShapes.Shape.NONE:
+		var place := XREBlueprintShapes.output(card.shape) if not input else card.shape_inputs[row] if row < card.shape_inputs.size() else Vector2(-card.width * 0.5, -row * ROW_HEIGHT)
+		return Vector3(place.x, place.y, card.face + 0.003)
 	var top := 0.0 if card.compact and not input else card.first_row
 	return Vector3((-card.width * 0.5 + 0.014) if input else (card.width * 0.5 - 0.014), top - row * ROW_HEIGHT, card.face + 0.003)
 
@@ -2837,11 +2926,16 @@ func _add_token(card: Card, key: String, value: Variant, port: int, row: int, af
 	var empty := value == null
 	# A value typed as an expression shows it as typed (D-063).
 	var shown := XREBlueprintTokens.shown(value, key, expression) if not empty else "0.00"
+	# An oval's ports have no names: its second and third tokens say theirs, "min 0" (D-091).
+	if card.shape == XREBlueprintShapes.Shape.OVAL and row > 0: shown = "%s %s" % [key, shown]
 	var width := XREBlueprintTokens.width(shown)
 	var point := _row_point(card, row, true)
 	var center: Vector3
 	if plug:
 		center = Vector3(point.x - PLUG_GAP - width * 0.5, point.y, card.face + PLUG_DEPTH * 0.5)
+	elif card.shape != XREBlueprintShapes.Shape.NONE:
+		# A sign has no room inside: a puck lies left of its port (D-091).
+		center = Vector3(point.x - 0.016 - width * 0.5, point.y, card.face + PUCK_DEPTH * 0.5 + 0.001)
 	elif occupied:
 		center = Vector3(after.position.x + text_width(after.text, 18) + 0.008 + width * 0.5, point.y, card.face + PUCK_DEPTH * 0.5 + 0.001)
 	else:

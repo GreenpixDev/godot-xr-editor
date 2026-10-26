@@ -51,6 +51,15 @@ const CLASSIC := &"classic"
 ## what the ray is on, and the delete button deletes it.
 const ARCHETYPES := &"archetypes"
 
+## Which blocks archetypes draw as signs, not cards ([XREBlueprintShapes], D-091):
+## each value adds to the one before. Classic cards ignore it.
+const NODE_SHRINK := &"node_shrink"
+## Only the operators: arithmetic a circle, a comparison a diamond, logic a pill.
+const OPERATORS := &"operators"
+## The math functions too, as sin, abs, √, min, clamp and lerp: a circle with a
+## second rim and the name, an oval for three inputs.
+const MATH := &"math"
+
 ## Shape of the windows (rig-locked panels, docs/vr_ui.md; D-043). The tab
 ## launcher is concave either way.
 const WINDOW_SHAPE := &"window_shape"
@@ -183,6 +192,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [CLASSIC, ARCHETYPES],
 		"labels": ["Classic", "Archetypes"],
 		"hint": "Classic: cards as before. Archetypes: a header colored by group with an icon, pure functions framed in their result's color; the trash and X delete the card under the ray.",
+	},
+	NODE_SHRINK: {
+		"category": Category.FEATURES,
+		"title": "Node shrink",
+		"values": [OPERATORS, MATH],
+		"labels": ["Operators", "+ Math"],
+		"hint": "With Archetypes. Operators: operators are signs, a circle, a diamond or a pill. + Math: math functions as sin, abs, clamp too, a circle or an oval with their name.",
 	},
 	WINDOW_SHAPE: {
 		"category": Category.FEATURES,

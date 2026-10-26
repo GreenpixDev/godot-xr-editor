@@ -445,6 +445,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	canvas = XREBlueprintCanvas.new()
 	canvas.set_display(document.features.get_value(XREFeatureSettings.NODE_DISPLAY))
 	canvas.set_style(document.features.get_value(XREFeatureSettings.NODE_STYLE))
+	canvas.set_shrink(document.features.get_value(XREFeatureSettings.NODE_SHRINK))
 	canvas.set_class_icons(document.get_class_icon)
 	canvas.set_plus_shown(document.features.get_value(XREFeatureSettings.CARD_PLUS) == XREFeatureSettings.SHOWN)
 	canvas.set_bends_shown(document.features.get_value(XREFeatureSettings.WIRE_BENDS) == XREFeatureSettings.ON)
@@ -2321,6 +2322,7 @@ func _feature_changed(key: StringName) -> void:
 	var switched := false
 	if key == XREFeatureSettings.NODE_DISPLAY: switched = canvas.set_display(value)
 	elif key == XREFeatureSettings.NODE_STYLE: switched = canvas.set_style(value)
+	elif key == XREFeatureSettings.NODE_SHRINK: switched = canvas.set_shrink(value)
 	elif key == XREFeatureSettings.PORT_DISPLAY: switched = canvas.set_port_display(value)
 	elif key == XREFeatureSettings.CARD_PLUS: switched = canvas.set_plus_shown(value == XREFeatureSettings.SHOWN)
 	elif key == XREFeatureSettings.WIRE_BENDS: switched = canvas.set_bends_shown(value == XREFeatureSettings.ON)

@@ -98,6 +98,76 @@ func _test_archetypes(graph: XREBlueprintGraph) -> void:
 	_check(card.node.get_node_or_null("Head") == null and card.trash.visible and card.trash_point.x < 0.0, "classic cards have their trash in the left corner again")
 
 
+## Signs (D-091): an archetype's operator is a circle, a comparison a
+## diamond, logic a pill, each in its result's color and picked inside its
+## outline; with Node shrink on + Math a math function of one or two inputs is
+## a circle with an inner rim and its name, of three an oval whose tokens say
+## their names. Classic and Operators keep the cards.
+func _test_signs() -> void:
+	var signs := XREBlueprintGraph.new()
+	signs.nodes = [XREBlueprintGraph.make_operator(1, "add", Vector2.ZERO), XREBlueprintGraph.make_operator(2, "less", Vector2(0, 200)),
+			XREBlueprintGraph.make_operator(3, "and", Vector2(0, 400)), XREBlueprintGraph.make_call(4, XREBlueprintFunctions.global("sin"), Vector2(0, 600)),
+			XREBlueprintGraph.make_call(5, XREBlueprintFunctions.global("clampf"), Vector2(0, 800)), XREBlueprintGraph.make_call(6, XREBlueprintFunctions.global("absf"), Vector2(0, 1000))]
+	signs.upgrade()
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.rebuild(signs)
+	_canvas.face_user(Vector3(0, 0, 50))
+	var cards := _canvas.get("_cards") as Array
+	var shapes: Array[int] = [XREBlueprintShapes.Shape.CIRCLE, XREBlueprintShapes.Shape.DIAMOND, XREBlueprintShapes.Shape.PILL]
+	for index: int in shapes.size():
+		_check((cards[index] as XREBlueprintCanvas.Card).shape == shapes[index], "operator %d is its group's sign" % (index + 1))
+	var add := cards[0] as XREBlueprintCanvas.Card
+	var origin := add.node.position
+	_check(_hit(origin, Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 1, "a circle takes the ray in its middle")
+	var corner := origin + Vector3(XREBlueprintShapes.CIRCLE_RADIUS * 0.9, XREBlueprintShapes.CIRCLE_RADIUS * 0.9, 0)
+	_check(_hit(corner, Vector3.FORWARD) < 0 or _canvas.get_hit_id() != 1, "but not in the corner of its box, outside the circle")
+	_check(_faces_front(add.frame.mesh) and _faces_front(add.mesh.mesh), "the sign's rim and face wind clockwise toward the front, as Godot draws front faces")
+	var port := _canvas.port_position(1, 0, true) - origin
+	_check(absf(Vector2(port.x, port.y).length() - XREBlueprintShapes.CIRCLE_RADIUS) < 0.0005 and port.y > 0.0, "its first input is on its outline, at the top left")
+	_check(((add.node.get_node("Symbol") as Label3D).modulate).is_equal_approx(XREBlueprintCanvas.COLORS[add.output_types[0]]), "its symbol is in its result's color")
+	_check((cards[1] as XREBlueprintCanvas.Card).frame_material == _canvas.call("_type_frame", XREBlueprintGraph.BOOLEAN), "a comparison's rim is bool's")
+	_check((cards[3] as XREBlueprintCanvas.Card).shape == XREBlueprintShapes.Shape.NONE, "with Operators, sin is a card")
+	_check(_canvas.set_shrink(XREFeatureSettings.MATH) and not _canvas.set_shrink(&"icons"), "Node shrink switches to + Math")
+	var modes := _canvas.get_parameter_modes()
+	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, modes[1], modes[2], modes[3])
+	_canvas.rebuild(signs)
+	cards = _canvas.get("_cards") as Array
+	var sine := cards[3] as XREBlueprintCanvas.Card
+	_check(sine.shape == XREBlueprintShapes.Shape.CIRCLE and sine.node.get_node_or_null("Rim") != null and (sine.node.get_node("Symbol") as Label3D).text == "sin", "with + Math, sin is a circle with an inner rim and its name")
+	var clamp := cards[4] as XREBlueprintCanvas.Card
+	var labels: Array[String] = []
+	for child: Node in clamp.node.find_children("*", "Label3D", true, false): labels.append((child as Label3D).text)
+	_check(clamp.shape == XREBlueprintShapes.Shape.OVAL and (clamp.node.get_node("Symbol") as Label3D).text == "clamp" and labels.any(func(text: String) -> bool: return text.begins_with("min ")),
+			"clampf is an oval, its min token says its name: %s" % [labels])
+	_check(((cards[5] as XREBlueprintCanvas.Card).node.get_node("Symbol") as Label3D).text == "abs", "absf is abs, as a word")
+	_check(_canvas.set_style(XREFeatureSettings.CLASSIC), "classic again")
+	_canvas.rebuild(signs)
+	cards = _canvas.get("_cards") as Array
+	_check((cards[0] as XREBlueprintCanvas.Card).shape == XREBlueprintShapes.Shape.NONE and (cards[0] as XREBlueprintCanvas.Card).compact and not (cards[3] as XREBlueprintCanvas.Card).compact, "classic keeps the operators' cards and sin's")
+	_canvas.set_shrink(XREFeatureSettings.OPERATORS)
+	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
+
+
+## Whether every triangle of [param mesh] that faces +Z winds clockwise seen from there (Godot's front faces).
+static func _faces_front(mesh: Mesh) -> bool:
+	var arrays := mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	var count := indices.size() if not indices.is_empty() else vertices.size()
+	var faced := 0
+	for first: int in range(0, count, 3):
+		var corners: Array[int] = [first, first + 1, first + 2]
+		if not indices.is_empty(): corners.assign([indices[first], indices[first + 1], indices[first + 2]])
+		if normals[corners[0]].z < 0.9: continue
+		var a := Vector2(vertices[corners[0]].x, vertices[corners[0]].y)
+		var b := Vector2(vertices[corners[1]].x, vertices[corners[1]].y)
+		var c := Vector2(vertices[corners[2]].x, vertices[corners[2]].y)
+		if (b - a).cross(c - a) > 0.0: return false
+		faced += 1
+	return faced > 0
+
+
 static func delay_block(graph: XREBlueprintGraph) -> Dictionary:
 	return graph.find_node(3)
 
@@ -215,6 +285,8 @@ func _run() -> void:
 	_check(card.node.to_global(local_contact).is_equal_approx(contact), "minimum horizontal reach cannot detach an off-center grab from the rod")
 	_test_cuboid(graph)
 	_test_archetypes(graph)
+	_test_signs()
+	_canvas.rebuild(graph)
 	_test_port_wires()
 	_canvas.queue_free()
 	await process_frame

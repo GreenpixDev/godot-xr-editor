@@ -19,6 +19,7 @@ var _keyboard_clicks := 0
 ## The editor's node display before the test, put back at the end.
 var _saved_display := XREFeatureSettings.BILLBOARD
 var _saved_style := XREFeatureSettings.CLASSIC
+var _saved_shrink := XREFeatureSettings.OPERATORS
 ## The same for the port display and the window shape (D-043).
 var _saved_ports := XREFeatureSettings.FLAT
 var _saved_shape := XREFeatureSettings.FLAT
@@ -118,6 +119,8 @@ func _run() -> void:
 	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
 	_saved_style = _document.features.get_value(XREFeatureSettings.NODE_STYLE)
 	_document.features.set_value(XREFeatureSettings.NODE_STYLE, XREFeatureSettings.CLASSIC)
+	_saved_shrink = _document.features.get_value(XREFeatureSettings.NODE_SHRINK)
+	_document.features.set_value(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.OPERATORS)
 	_saved_ports = _document.features.get_value(XREFeatureSettings.PORT_DISPLAY)
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.FLAT)
 	_saved_shape = _document.features.get_value(XREFeatureSettings.WINDOW_SHAPE)
@@ -423,6 +426,7 @@ func _run() -> void:
 	await _frames()
 	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, _saved_display)
 	_document.features.set_value(XREFeatureSettings.NODE_STYLE, _saved_style)
+	_document.features.set_value(XREFeatureSettings.NODE_SHRINK, _saved_shrink)
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, _saved_ports)
 	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, _saved_shape)
 	for key: StringName in PARAMETER_SETTINGS: _document.features.set_value(key, _saved_parameters[key])
@@ -579,6 +583,12 @@ func _test_node_style() -> void:
 	_service.blueprint.undo()
 	await _frames()
 	_check(not graph.find_node(added[1]).is_empty(), "undo puts it back")
+	# Node shrink (D-091) redraws the open graph too.
+	_check(_document.set_feature(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.MATH, XREDocument.Source.PANEL), "node shrink switches to + Math")
+	await _frames()
+	_check(_service.canvas.get_shrink() == XREFeatureSettings.MATH and (_service.canvas.get("_cards") as Array).size() == count + 4, "the open graph is redrawn with + Math")
+	_check(_document.set_feature(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.OPERATORS, XREDocument.Source.PANEL), "and back to Operators")
+	await _frames()
 	_aim(Vector3(5, 4, -2))
 	_check(_document.set_feature(key, XREFeatureSettings.CLASSIC, XREDocument.Source.PANEL), "the node style switches back")
 	await _frames()
