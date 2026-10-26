@@ -28,7 +28,7 @@ var _saved_path := ""
 const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.TARGET_INPUT, XREFeatureSettings.ANIMATION_WAIT,
 		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
 		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS,
-		XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.NODE_STYLE, XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.NODE_HEADING, XREFeatureSettings.PORT_SHAPES]
+		XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.NODE_STYLE, XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.NODE_HEADING, XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.COMPOSITE_VALUES]
 ## The values the checks start from: the defaults before D-076 and D-089 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
@@ -43,6 +43,7 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	# The redesign of the cards (D-090 to D-095) starts from Classic, as the checks before it expect.
 	XREFeatureSettings.NODE_STYLE: XREFeatureSettings.CLASSIC, XREFeatureSettings.NODE_SHRINK: XREFeatureSettings.OPERATORS,
 	XREFeatureSettings.NODE_HEADING: XREFeatureSettings.OPERATION, XREFeatureSettings.PORT_SHAPES: XREFeatureSettings.OFF,
+	XREFeatureSettings.COMPOSITE_VALUES: XREFeatureSettings.WHOLE,
 }
 
 
@@ -172,6 +173,7 @@ func _run() -> void:
 	await _test_workspace()
 	await _test_node_display()
 	await _test_node_style()
+	await _test_composite_values()
 	await _test_window_corners()
 	var badge := _service.get("_badge") as XREBlueprintBadge
 	await _test_badge_graph(badge, path)
@@ -629,6 +631,57 @@ func _test_node_style() -> void:
 	await _frames()
 	_check(graph.nodes.size() == count, "the blocks added for the check are gone")
 	_service.select_block(-1)
+
+
+## Composite values on Split (D-096): a Vector3's box has an output for each
+## component, which the ray picks; wired into a port, a Break fed by a Get
+## Variable goes under it, both hidden, its wire a number's from the
+## component; on Whole the Break is a card; deleting the reader takes the
+## hidden two with it; each is one edit.
+func _test_composite_values() -> void:
+	var features := _document.features
+	var variables := features.get_value(XREFeatureSettings.VARIABLE_INPUT)
+	_document.set_feature(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES, XREDocument.Source.PANEL)
+	_check(_document.set_feature(XREFeatureSettings.COMPOSITE_VALUES, XREFeatureSettings.SPLIT, XREDocument.Source.PANEL), "composite values switch to Split")
+	var graph := _service.blueprint.graph
+	var count := graph.nodes.size()
+	_service.add_block("delay")
+	await _frames()
+	var delay: int = graph.nodes.back()["id"]
+	_check(_service.blueprint.add_variable("spot", Vector3(1, 2, 3), {"vr_position": Vector2(-400, 300)}), "a Vector3 variable")
+	await _frames()
+	var boxes := _service.canvas.get_boxes()
+	var z := boxes.component_point("spot", 2)
+	_check(not z.is_equal_approx(boxes.box_point("spot")) and z.x > boxes.box_point("spot").x, "its box has its components' outputs on its right")
+	_check(boxes.intersect_ray(z + Vector3(0, 0, 0.3), Vector3.FORWARD, 1.0) >= 0 and boxes.get_hit_part() == XREBlueprintBoxes.COMPONENT and boxes.get_hit_component() == 2, "the ray picks the z output")
+	var cards := (_service.canvas.get("_cards") as Array).size()
+	_service.call("_wire_component_to_port", "spot", 1, delay, 1)
+	await _frames()
+	var breaker := -1
+	for edge: Dictionary in graph.edges:
+		if edge["to"] == delay and edge["to_port"] == 1: breaker = edge["from"]
+	var block := graph.find_node(breaker)
+	_check(XREBlueprintCanvas.is_split_break(block) and str((block["function"] as Dictionary)["name"]) == "break_vector3", "the y output wired into Seconds is a hidden Break of spot")
+	_check((_service.canvas.get("_cards") as Array).size() == cards, "with no card for it or its Get Variable")
+	var wired: XREBlueprintCanvas.Wire = null
+	for wire: XREBlueprintCanvas.Wire in _service.canvas.get("_wires") as Array:
+		if wire.from == null and wire.to != null and wire.to.id == delay and wire.to_port == 1: wired = wire
+	_check(wired != null and wired.component == 1 and wired.variable == "spot", "its wire comes from the box's y output")
+	_check(_document.set_feature(XREFeatureSettings.COMPOSITE_VALUES, XREFeatureSettings.WHOLE, XREDocument.Source.PANEL), "composite values switch to Whole")
+	await _frames()
+	_check(_card(breaker) != null, "on Whole the Break is a card")
+	_check(_document.set_feature(XREFeatureSettings.COMPOSITE_VALUES, XREFeatureSettings.SPLIT, XREDocument.Source.PANEL), "and Split again")
+	await _frames()
+	_service.delete_block(delay)
+	await _frames()
+	_check(graph.find_node(breaker).is_empty() and not graph.nodes.any(func(entry: Dictionary) -> bool: return entry["kind"] == "get_variable" and entry.get("vr_inline", false) and str(entry["params"]["variable"]) == "spot"),
+			"deleting Delay takes the hidden Break and its Get Variable with it")
+	for step: int in 4: _service.blueprint.undo()
+	await _frames()
+	_check(graph.nodes.size() == count and graph.find_variable("spot").is_empty(), "undo takes back each edit")
+	_document.set_feature(XREFeatureSettings.COMPOSITE_VALUES, XREFeatureSettings.WHOLE, XREDocument.Source.PANEL)
+	_document.set_feature(XREFeatureSettings.VARIABLE_INPUT, variables, XREDocument.Source.PANEL)
+	await _frames()
 
 
 ## Points the right ray, with [param trigger] and [param grip], at a point

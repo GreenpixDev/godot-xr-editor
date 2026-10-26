@@ -75,6 +75,12 @@ const OPERATION := &"operation"
 ## "body_entered", "light_energy", "gate_open" over a small "On Signal" or "Set".
 const MEMBER := &"member"
 
+## How a vector's or a colour's variable gives its components (D-096): whole,
+## a Break taking them apart, or split, an output of each on its box, the
+## Break under it hidden as an inline Get Variable is (D-061).
+const COMPOSITE_VALUES := &"composite_values"
+const WHOLE := &"whole"
+const SPLIT := &"split"
 ## Whether a logic graph port's shape says its type too, its colour as before
 ## (D-095): execution an arrow, bool a diamond, int a square, float a
 ## circle, text a pill, a vector a triangle, an object a hexagon, a colour a
@@ -228,6 +234,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [OPERATION, MEMBER],
 		"labels": ["Operation", "Member"],
 		"hint": "With Archetypes. Operation: the header says what the block does, the member is on the adapter. Member: the header says the signal, property or variable, the wire to it bare. ⇄ by the trash switches one card.",
+	},
+	COMPOSITE_VALUES: {
+		"category": Category.FEATURES,
+		"title": "Composite values",
+		"values": [WHOLE, SPLIT],
+		"labels": ["Whole", "Split"],
+		"hint": "Whole: a vector or colour variable's box gives the whole value, a Break takes it apart. Split: its box has an output for each component, x y z or r g b a, wired straight into a port.",
 	},
 	PORT_SHAPES: {
 		"category": Category.FEATURES,

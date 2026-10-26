@@ -337,6 +337,8 @@ var _member_hand: XREHand
 var _link_kind := -1
 var _link_block := -1
 var _link_box := ""
+## The component of [member _link_box] a wire is drawn from (D-096), -1 for the whole value.
+var _link_component := -1
 var _link_hand: XREHand
 ## Play Animation's output 0 a wire is drawn from: 1 Finished, 0 Then, -1 another port.
 var _pending_finished := -1
@@ -448,6 +450,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	canvas.set_shrink(document.features.get_value(XREFeatureSettings.NODE_SHRINK))
 	canvas.set_heading(document.features.get_value(XREFeatureSettings.NODE_HEADING))
 	canvas.set_port_shapes(document.features.get_value(XREFeatureSettings.PORT_SHAPES) == XREFeatureSettings.ON)
+	canvas.set_composite(document.features.get_value(XREFeatureSettings.COMPOSITE_VALUES))
 	canvas.set_class_icons(document.get_class_icon)
 	canvas.set_plus_shown(document.features.get_value(XREFeatureSettings.CARD_PLUS) == XREFeatureSettings.SHOWN)
 	canvas.set_bends_shown(document.features.get_value(XREFeatureSettings.WIRE_BENDS) == XREFeatureSettings.ON)
@@ -1668,10 +1671,18 @@ func delete_block(id: int = -1) -> void:
 
 ## Removes from [param state] the inline Get Variable blocks (D-061) whose
 ## wire is gone: without it there is nothing of them to see or to take.
+## A hidden Break of a box's components goes the same way (D-096), and then its Get Variable;
+## with Composite values on Whole that Break is a card, and stays.
 func _drop_orphan_inlines(state: Dictionary) -> void:
-	var feeding: Dictionary[int, bool] = {}
-	for edge: Dictionary in state["edges"]: feeding[int(edge["from"])] = true
-	state["nodes"] = (state["nodes"] as Array).filter(func(block: Dictionary) -> bool: return not (canvas.is_inline(block) and not feeding.has(int(block["id"]))))
+	while true:
+		var feeding: Dictionary[int, bool] = {}
+		for edge: Dictionary in state["edges"]: feeding[int(edge["from"])] = true
+		var orphans: Dictionary[int, bool] = {}
+		for block: Dictionary in state["nodes"]:
+			if canvas.is_inline(block) and not feeding.has(int(block["id"])): orphans[int(block["id"])] = true
+		if orphans.is_empty(): return
+		state["nodes"] = (state["nodes"] as Array).filter(func(block: Dictionary) -> bool: return not orphans.has(int(block["id"])))
+		state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return not orphans.has(int(edge["to"])) and not orphans.has(int(edge["from"])))
 
 
 ## Gives every port of the blocks in [param state] that has neither a token
@@ -1806,6 +1817,7 @@ func cancel_connection() -> void:
 	_link_kind = -1
 	_link_block = -1
 	_link_box = ""
+	_link_component = -1
 	_link_hand = null
 	_member_link = {}
 	_member_hand = null
@@ -2420,6 +2432,7 @@ func _feature_changed(key: StringName) -> void:
 	elif key == XREFeatureSettings.NODE_SHRINK: switched = canvas.set_shrink(value)
 	elif key == XREFeatureSettings.NODE_HEADING: switched = canvas.set_heading(value)
 	elif key == XREFeatureSettings.PORT_SHAPES: switched = canvas.set_port_shapes(value == XREFeatureSettings.ON)
+	elif key == XREFeatureSettings.COMPOSITE_VALUES: switched = canvas.set_composite(value)
 	elif key == XREFeatureSettings.PORT_DISPLAY: switched = canvas.set_port_display(value)
 	elif key == XREFeatureSettings.CARD_PLUS: switched = canvas.set_plus_shown(value == XREFeatureSettings.SHOWN)
 	elif key == XREFeatureSettings.WIRE_BENDS: switched = canvas.set_bends_shown(value == XREFeatureSettings.ON)
@@ -3087,6 +3100,8 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 			if _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty(): _wire_variable(id, _link_box)
 			else: _start_link(id, XREBlueprintCanvas.VARIABLE, hand)
 		elif kind == XREBlueprintCanvas.MEMBER: _open_member_petals(id, hand)
+		elif canvas.get_hit_port() >= 0 and canvas.get_hit_input() and _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty() and _link_component >= 0:
+			_wire_component_to_port(_link_box, _link_component, id, canvas.get_hit_port())
 		elif canvas.get_hit_port() >= 0 and canvas.get_hit_input() and _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty() and _sets_target(id, canvas.get_hit_port()):
 			_set_writes_variable(id, _link_box)
 		elif canvas.get_hit_port() >= 0 and canvas.get_hit_input() and _link_kind == XREBlueprintCanvas.VARIABLE and not _link_box.is_empty():
@@ -4391,6 +4406,16 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 				parameters.show_variables()
 				_show_parameters()
 			else: _start_turn(pointer, -1, "", variable, origin + direction * hit)
+		XREBlueprintBoxes.COMPONENT:
+			# A component's output (D-096): into the port a wire waits at, or a wire of its own to a port.
+			if _pending_id >= 0 and _pending_input: _wire_component_to_port(variable, boxes.get_hit_component(), _pending_id, _pending_port)
+			else:
+				cancel_connection()
+				_link_kind = XREBlueprintCanvas.VARIABLE
+				_link_box = variable
+				_link_component = boxes.get_hit_component()
+				_link_hand = hand
+				_message("Press trigger on the input that reads it.")
 		_:
 			if _pending_id >= 0 and _pending_input and _sets_target(_pending_id, _pending_port): _set_writes_variable(_pending_id, variable)
 			elif _pending_id >= 0 and _pending_input: _wire_box_to_port(variable, _pending_id, _pending_port)
@@ -4442,6 +4467,44 @@ func _wire_box_to_port(variable: String, id: int, port: int, added: Dictionary =
 	else:
 		_close_wire_menu()
 		_message("%s reads %s." % [XREBlueprintGraph.title(target), variable])
+
+
+## A wire from component [param component] of [param variable]'s box into
+## input [param port] of block [param id] (D-096): a Break of the variable,
+## fed by an inline Get Variable, both hidden, its component's output wired
+## to the port in place of what fed it; one edit. The 2D editor shows them.
+func _wire_component_to_port(variable: String, component: int, id: int, port: int) -> void:
+	var found := blueprint.graph.find_variable(variable)
+	var target := blueprint.graph.find_node(id)
+	var names: Array = XREBlueprintBoxes.COMPONENTS.get(XREBlueprintGraph.variable_type(found), [])
+	if found.is_empty() or target.is_empty() or component < 0 or component >= names.size(): return
+	var spec: Array = blueprint.graph.ports(target, true)[port]
+	if not XREBlueprintGraph.ports_compatible(XREBlueprintGraph.NUMBER, int(spec[1])):
+		_message("%s takes no number." % spec[0])
+		cancel_connection()
+		return
+	var name := {TYPE_VECTOR2: "break_vector2", TYPE_VECTOR3: "break_vector3", TYPE_COLOR: "break_color"}[XREBlueprintGraph.variable_type(found)] as String
+	var state := blueprint.graph.snapshot()
+	var next := 1
+	for entry: Dictionary in state["nodes"]: next = maxi(next, int(entry["id"]) + 1)
+	var depth := float(target.get("vr_depth", 0.0))
+	var getter := XREBlueprintGraph.make_node(next, "get_variable", target["position"] + Vector2(-600, 40 + 50 * port))
+	getter["params"]["variable"] = variable
+	getter["vr_inline"] = true
+	getter["vr_depth"] = depth
+	var breaker := XREBlueprintGraph.make_call(next + 1, XREBlueprintFunctions.static_function("XREBlueprintLibrary", name), target["position"] + Vector2(-300, 40 + 50 * port))
+	breaker["vr_inline"] = true
+	breaker["vr_depth"] = depth
+	(state["nodes"] as Array).append_array([getter, breaker])
+	# An input takes one wire: what fed it goes, and an inline reader with it.
+	state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return not (edge["to"] == id and edge["to_port"] == port))
+	(state["edges"] as Array).append_array([{"from": next, "from_port": 0, "to": next + 1, "to_port": 0}, {"from": next + 1, "from_port": component, "to": id, "to_port": port}])
+	_drop_orphan_inlines(state)
+	if blueprint.perform(blueprint.commit.bind("Wire Component", state), &"vr_graph"):
+		cancel_connection()
+		_close_wire_menu()
+		_message("%s reads %s.%s." % [XREBlueprintGraph.title(target), variable, names[component]])
+	else: _message(blueprint.last_error)
 
 
 ## Deletes the variable of a box with its wires and links into ports (D-079):
@@ -4525,7 +4588,7 @@ func _free_variable_name(value: Variant) -> String:
 ## The point a Source or Variable wire starts from, in the canvas's space.
 func _link_origin() -> Vector3:
 	if _link_block >= 0: return canvas.socket_position(_link_block, _link_kind)
-	if not _link_box.is_empty(): return canvas.get_boxes().box_point(_link_box)
+	if not _link_box.is_empty(): return canvas.get_boxes().component_point(_link_box, _link_component)
 	return Vector3.ZERO
 
 

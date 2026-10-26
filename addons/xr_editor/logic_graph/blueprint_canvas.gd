@@ -310,6 +310,8 @@ class Wire:
 	## bend shown; and a knot at each. Only [member mesh] while bends are off.
 	var pieces: Array[XREGraphWire] = []
 	var knots: Array[MeshInstance3D] = []
+	## The component of its variable's box it comes from (D-096), -1 for the whole value.
+	var component := -1
 
 var _cards: Array[Card] = []
 var _wires: Array[Wire] = []
@@ -352,6 +354,7 @@ var _class_icon: Callable
 var _shrink := XREFeatureSettings.OPERATORS
 var _heading := XREFeatureSettings.OPERATION
 var _port_shapes := false
+var _composite := XREFeatureSettings.WHOLE
 var _hit_swap := false
 var _faces_user := false
 var _display := XREFeatureSettings.BILLBOARD
@@ -506,6 +509,20 @@ func set_shrink(shrink: StringName) -> bool:
 ## Which blocks archetypes draw as signs: a value of [constant XREFeatureSettings.NODE_SHRINK].
 func get_shrink() -> StringName:
 	return _shrink
+
+
+## Switches how a vector's or a colour's variable gives its components to
+## [param composite], a value of [constant XREFeatureSettings.COMPOSITE_VALUES]
+## (D-096). Takes effect on the next [method rebuild]; false if unchanged or unknown.
+func set_composite(composite: StringName) -> bool:
+	if composite == _composite or not composite in XREFeatureSettings.get_values(XREFeatureSettings.COMPOSITE_VALUES): return false
+	_composite = composite
+	return true
+
+
+## How a vector's or a colour's variable gives its components ([method set_composite]).
+func get_composite() -> StringName:
+	return _composite
 
 
 ## Whether ports are shaped by their types ([constant XREFeatureSettings.PORT_SHAPES],
@@ -857,7 +874,12 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		if wire.to == null: continue
 		if wire.from == null:
 			var source := graph.find_node(edge["from"])
-			if is_inline(source):
+			if is_inline(source) and source["kind"] != "get_variable":
+				# From a box's component through its hidden Break (D-096): no link, the variable of the Break's getter.
+				wire.variable = _split_variable(graph, source)
+				wire.component = edge["from_port"]
+				inline.append(wire)
+			elif is_inline(source):
 				wire.variable = str((source["params"] as Dictionary).get("variable", ""))
 				wire.getter = source["id"]
 				if _linked_inputs.has(Vector2i(wire.to.id, wire.to_port)): wire.link = _link_socket(wire.to, wire.to_port, -1)
@@ -871,6 +893,8 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		# In its variable's color, as a wire from an output is in its source's: the
 		# port it goes into may take any value, as an operator's does (D-065).
 		var color := COLORS[XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(graph.find_variable(wire.variable)))]
+		# A component is a number (D-096).
+		if wire.component >= 0: color = COLORS[XREBlueprintGraph.NUMBER]
 		_add_wire(wire, color, graph.edges[wire.edge])
 		# Drawn at all, the wire a link hides is faint (D-074).
 		if wire.link != null: set_wire_seen(wire, &"link", LINK_SEEN)
@@ -1118,6 +1142,16 @@ func _add_sign_symbol(card: Card, block: Dictionary, inputs: Array, outputs: Arr
 	card.node.add_child(symbol)
 
 
+## The variable whose components the hidden Break [param breaker] gives (D-096):
+## that of the inline Get Variable wired into it, empty for none.
+static func _split_variable(graph: XREBlueprintGraph, breaker: Dictionary) -> String:
+	for edge: Dictionary in graph.edges:
+		if edge["to"] != breaker["id"]: continue
+		var getter := graph.find_node(edge["from"])
+		if getter.get("kind") == "get_variable": return str((getter["params"] as Dictionary).get("variable", ""))
+	return ""
+
+
 ## How wide an operator's card is (D-065): its ports and the widest token on
 ## them on the left, room for its symbol, its result's port on the right.
 func _operator_width(graph: XREBlueprintGraph, block: Dictionary, inputs: Array) -> float:
@@ -1276,8 +1310,20 @@ func _fit_pieces(wire: Wire) -> void:
 
 ## Whether [param block] is an inline Get Variable (D-061): a wire from a
 ## variable's box straight into a port stands for it while variables are boxes.
+## A Break marked inline is one too with Composite values on Split (D-096): its
+## wires come from its variable's box's components.
 func is_inline(block: Dictionary) -> bool:
-	return not block.is_empty() and block.get("kind") == "get_variable" and bool(block.get("vr_inline", false)) and _variable_mode == XREFeatureSettings.BOXES
+	if block.is_empty() or not bool(block.get("vr_inline", false)) or _variable_mode != XREFeatureSettings.BOXES: return false
+	if block.get("kind") == "get_variable": return true
+	return is_split_break(block) and _composite == XREFeatureSettings.SPLIT
+
+
+## Whether [param block] is a Break of a box's components (D-096): a call of
+## the library's break_vector2, break_vector3 or break_color marked inline.
+static func is_split_break(block: Dictionary) -> bool:
+	if block.get("kind") != "call" or not bool(block.get("vr_inline", false)): return false
+	var function: Dictionary = block.get("function", {})
+	return str(function.get("class", "")) == "XREBlueprintLibrary" and str(function.get("name", "")).begins_with("break_")
 
 
 ## The face of [param block]'s card in [constant CARD_PALETTE]: a native
@@ -1841,7 +1887,7 @@ func port_edges(id: int, port: int, input: bool) -> Array[int]:
 
 ## Where [param wire] ends away from the port it is looked at from: its output's end if that port is an input.
 func _far_end(wire: Wire, input: bool) -> Vector3:
-	if input and wire.from == null: return _boxes.box_point(wire.variable)
+	if input and wire.from == null: return _boxes.component_point(wire.variable, wire.component)
 	return _port_position(wire.from, wire.from_port, false) if input else _port_position(wire.to, wire.to_port, true)
 
 
@@ -2458,6 +2504,10 @@ func _update_wire(wire: Wire) -> void:
 		var box := _boxes.box_end(wire.variable, end)
 		start = box[0]
 		start_direction = box[1]
+		# Out of its component's output on the box's right side (D-096).
+		if wire.component >= 0:
+			start = _boxes.component_point(wire.variable, wire.component)
+			start_direction = Vector3.RIGHT
 		front = _front(wire.to)
 	else:
 		start = _port_position(wire.from, wire.from_port, false)
@@ -3447,7 +3497,7 @@ func _build_boxes(graph: XREBlueprintGraph) -> void:
 	var used: Dictionary[String, bool] = {}
 	for block: Dictionary in graph.nodes:
 		if block["kind"] in ["get_variable", "set_variable"]: used[str(block["params"]["variable"])] = true
-	_boxes.rebuild(graph, _box_places(graph), _value_mode, used)
+	_boxes.rebuild(graph, _box_places(graph), _value_mode, used, _composite == XREFeatureSettings.SPLIT)
 	for card: Card in _cards:
 		var block := graph.find_node(card.id)
 		for index: int in card.sockets.size():

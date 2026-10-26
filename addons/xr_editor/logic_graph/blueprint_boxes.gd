@@ -22,6 +22,16 @@ const BELOW := 0.1
 const BODY := 0
 const TRASH := 1
 const TOKEN := 2
+## An output of a component on the box's right side (D-096).
+const COMPONENT := 3
+## Components by type, as Break names its outputs; a component's port's
+## radius, how far out of the box's side it is, the rows apart.
+const COMPONENTS: Dictionary[int, Array] = {TYPE_VECTOR2: ["x", "y"], TYPE_VECTOR3: ["x", "y", "z"], TYPE_COLOR: ["r", "g", "b", "a"]}
+const COMPONENT_RADIUS := 0.005
+const COMPONENT_OUT := 0.008
+const COMPONENT_STEP := 0.0135
+## How far left the start value moves on a box with components: clear of their names.
+const COMPONENT_ROOM := 0.012
 ## How see-through a box is, and a box whose variable is in use behind a dim trash.
 const BOX_ALPHA := 0.55
 const USED_TRASH := 0.3
@@ -39,6 +49,9 @@ class Box:
 	var token_text: Label3D
 	var token_point := Vector3.ZERO
 	var token_size := Vector3.ZERO
+	## Its components' outputs (D-096), in the box's space, and their discs.
+	var components: Array[Vector3] = []
+	var component_ports: Array[Node3D] = []
 	## It covers an input in use and is see-through (D-066).
 	var faded := false
 	## Its focus (D-072), a state of [XREBlueprintFocus], and how it is painted now: -1 not yet.
@@ -48,6 +61,8 @@ class Box:
 var _boxes: Array[Box] = []
 var _hit := -1
 var _hit_part := BODY
+var _hit_component := -1
+var _split := false
 ## The box part under each hand's ray: the box and the part, or -1.
 var _hover_right := Vector2i(-1, -1)
 var _hover_left := Vector2i(-1, -1)
@@ -64,8 +79,10 @@ func _init(trash_mesh: Mesh, trash_material: Material) -> void:
 ## Rebuilds the boxes of [param graph]'s variables, each at its point of
 ## [param places] (canvas space, by variable); tokens in the [param style] of
 ## [constant XREFeatureSettings.VALUE_INPUT], text with Window. [param used]
-## names the variables blocks refer to.
-func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], style: StringName, used: Dictionary) -> void:
+## names the variables blocks refer to. With [param split] a vector's or a
+## colour's box has an output for each component (D-096).
+func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], style: StringName, used: Dictionary, split: bool = false) -> void:
+	_split = split
 	for box: Box in _boxes:
 		remove_child(box.node)
 		box.node.queue_free()
@@ -117,18 +134,19 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 	box.trash.add_child(trash)
 	box.node.add_child(box.trash)
 	var shown := XREBlueprintTokens.shown(value, "", expression) if value != null else "empty"
+	var shift := -COMPONENT_ROOM if _split and COMPONENTS.has(type) else 0.0
 	if value == null:
 		# Its token taken out (D-054): an empty slot that takes one back.
 		var slot := BoxMesh.new()
 		slot.size = Vector3(XREBlueprintTokens.width("0.0"), XREBlueprintTokens.HEIGHT, 0.002)
-		box.token_point = Vector3(0.012, 0, front)
+		box.token_point = Vector3(0.012 + shift, 0, front)
 		var mesh := XRERig.create_vr_mesh(slot, XREBlueprintCanvas.material(Color(1, 1, 1, 0.5), true))
 		mesh.position = box.token_point
 		box.node.add_child(mesh)
 		box.token_size = Vector3(slot.size.x, XREBlueprintTokens.HEIGHT, 0.012)
 	elif style == XREFeatureSettings.WINDOW:
 		box.token_text = XREBlueprintCanvas.label("= " + shown, 16)
-		box.token_text.position = Vector3(0.012, 0, front + 0.001)
+		box.token_text.position = Vector3(0.012 + shift, 0, front + 0.001)
 		box.node.add_child(box.token_text)
 		box.token_point = box.token_text.position
 		box.token_size = Vector3(XREBlueprintTokens.width(shown) * 0.8, XREBlueprintTokens.HEIGHT, 0.01)
@@ -136,12 +154,37 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 		var width := XREBlueprintTokens.width(shown) * 0.85
 		box.token = XREBlueprintCanvas.make_token(value, "", width, false, false, false, -1, shown)
 		box.token.scale = Vector3.ONE * 0.85
-		box.token_point = Vector3(0.012, 0, front)
+		box.token_point = Vector3(0.012 + shift, 0, front)
 		box.token.position = box.token_point
 		box.node.add_child(box.token)
 		box.token_text = box.token.get_meta(&"text") as Label3D
 		box.token_size = Vector3(width, XREBlueprintTokens.HEIGHT, 0.012)
+	if _split and COMPONENTS.has(type): _add_components(box)
 	_boxes.append(box)
+
+
+## The outputs of [param box]'s components on its right side, top first, in
+## float's colour, each named (D-096).
+func _add_components(box: Box) -> void:
+	var names: Array = COMPONENTS[box.type]
+	var disc := CylinderMesh.new()
+	disc.top_radius = COMPONENT_RADIUS
+	disc.bottom_radius = COMPONENT_RADIUS
+	disc.height = 0.002
+	disc.radial_segments = 16
+	var color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]
+	for index: int in names.size():
+		var point := Vector3(BOX_SIZE.x * 0.5 + COMPONENT_OUT, (names.size() - 1) * COMPONENT_STEP * 0.5 - index * COMPONENT_STEP, BOX_SIZE.z * 0.5)
+		var port := XRERig.create_vr_mesh(disc, XREBlueprintCanvas.material(color, true))
+		port.rotation.x = PI * 0.5
+		port.position = point
+		box.node.add_child(port)
+		var text := XREBlueprintCanvas.label(str(names[index]), 12)
+		text.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		text.position = point + Vector3(-COMPONENT_RADIUS - 0.004, 0, 0.001)
+		box.node.add_child(text)
+		box.components.append(point)
+		box.component_ports.append(port)
 
 
 ## Makes the boxes that cover an input in use see-through, as the cards (D-066, [method XREBlueprintCanvas.fade_covering]).
@@ -159,12 +202,23 @@ func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> voi
 func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float:
 	_hit = -1
 	_hit_part = BODY
+	_hit_component = -1
 	var nearest := maximum
 	for index: int in _boxes.size():
 		var box := _boxes[index]
 		# See-through over an input in use, a box doesn't take the ray (D-067).
 		if box.faded: continue
 		var local_origin := origin - box.node.position
+		# A component's output stands out of the box's side: it takes the ray first (D-096).
+		for component: int in box.components.size():
+			var size := Vector3.ONE * COMPONENT_RADIUS * 2.0 + Vector3(0.002, 0.0, 0.006)
+			var at := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(box.components[component] - size * 0.5, size), nearest)
+			if at < 0: continue
+			nearest = at
+			_hit = index
+			_hit_part = COMPONENT
+			_hit_component = component
+		if _hit == index and _hit_part == COMPONENT: continue
 		var body := XREBlueprintCanvas._box_distance(local_origin, direction, AABB(-BOX_SIZE * 0.5, BOX_SIZE), nearest)
 		if body < 0: continue
 		nearest = body
@@ -198,7 +252,20 @@ func has_hit() -> bool:
 	return _hit >= 0
 
 
-## The part of the box the last ray hit: [constant BODY], [constant TRASH] or [constant TOKEN].
+## Which component's output the last ray hit (D-096), -1 for none.
+func get_hit_component() -> int:
+	return _hit_component if _hit_part == COMPONENT else -1
+
+
+## Where the output of component [param component] of [param variable]'s box
+## is, in the canvas's space (D-096); the box's centre without one.
+func component_point(variable: String, component: int) -> Vector3:
+	for box: Box in _boxes:
+		if box.name == variable and component >= 0 and component < box.components.size(): return box.node.position + box.components[component]
+	return box_point(variable)
+
+
+## The part of the box the last ray hit: [constant BODY], [constant TRASH], [constant TOKEN] or [constant COMPONENT].
 func get_hit_part() -> int:
 	return _hit_part
 
