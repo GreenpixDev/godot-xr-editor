@@ -59,6 +59,11 @@ const OPERATORS := &"operators"
 ## The math functions too, as sin, abs, √, min, clamp and lerp: a circle with a
 ## second rim and the name, an oval for three inputs.
 const MATH := &"math"
+## Delay too, a bead on the execution's white thread, and Get Time and Random, rings (D-094).
+const SYSTEM := &"system"
+## Every block with an icon of its own and at most three ports a side, not an
+## event: a function a bead in its group's colour, a pure function a ring (D-094).
+const ICONS := &"icons"
 
 ## What an archetype's header says of a block with a member — a signal, a
 ## property, an animation, a variable (D-092): the operation, its member
@@ -206,9 +211,9 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	NODE_SHRINK: {
 		"category": Category.FEATURES,
 		"title": "Node shrink",
-		"values": [OPERATORS, MATH],
-		"labels": ["Operators", "+ Math"],
-		"hint": "With Archetypes. Operators: operators are signs, a circle, a diamond or a pill. + Math: math functions as sin, abs, clamp too, a circle or an oval with their name.",
+		"values": [OPERATORS, MATH, SYSTEM, ICONS],
+		"labels": ["Operators", "+ Math", "+ System", "All with icons"],
+		"hint": "With Archetypes. Operators: operators are signs. + Math: math functions as sin, abs, clamp too. + System: Delay a bead, Get Time and Random rings. All with icons: every block with its own icon and at most three ports a side; its name shows under the ray.",
 	},
 	NODE_HEADING: {
 		"category": Category.FEATURES,

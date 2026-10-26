@@ -422,3 +422,19 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 5. Node style = Classic: в меню снова Set Property и Set переменных; провод от ящика в Target Set Property не перестраивает блок.
 
 Отметить, понятно ли, куда пишет Set, по строке цели и по заголовку.
+
+## Бусины (D-094)
+
+```bash
+py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+```
+
+В окне без шлема: мышь — взгляд и луч, ЛКМ — trigger, X — удалить, Tab — лаунчер.
+
+1. Node style = Archetypes, Node shrink = + System. Открыть граф куба. Ожидается: Delay — серый круг с белым ободком и песочными часами, In сверху слева, Seconds снизу слева с деталью, Finished справа. Добавить Get Time и Random Int: кольца цвета результата с часами и кубиком, детали Random подписаны «from», «to».
+2. Навести луч на бусину: под ней название («Delay»), над ней корзина. Увести луч: название пропало.
+3. Провести провод исполнения через бусину Delay: входит сверху слева, выходит справа.
+4. Node shrink = All with icons. Ожидается: Set — зелёная бусина с карандашом, Branch — серая с развилкой, True и False подписаны снаружи; Get Property и Make Vector3 — кольца; событие, Make Color и вызовы с «ƒ» — карточки; sin и операторы — знаки, как на + Math.
+5. Node shrink = Operators: все бусины снова карточки.
+
+Отметить, узнаются ли бусины по значку без подписи и успевает ли луч до названия и корзины.

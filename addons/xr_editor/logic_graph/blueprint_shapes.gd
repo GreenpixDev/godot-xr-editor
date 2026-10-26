@@ -98,6 +98,24 @@ static func output(shape: Shape) -> Vector2:
 	return Vector2(size_of(shape).x * 0.5, 0)
 
 
+## A circle of [param radius], counterclockwise: a bead's outline (D-094).
+static func circle(radius: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for index: int in SEGMENTS: points.append(Vector2.from_angle(TAU * index / SEGMENTS) * radius)
+	return points
+
+
+## Where [param count] ports are on the left ([param side] -1) or the right
+## (1) arc of a bead of [param radius], top first: from 50° above the middle
+## to 50° below it, one in the middle (D-094).
+static func arc(count: int, radius: float, side: float) -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	for index: int in count:
+		var angle := 0.0 if count == 1 else deg_to_rad(50.0 - 100.0 * index / (count - 1))
+		result.append(Vector2(side * cos(angle), sin(angle)) * radius)
+	return result
+
+
 ## Whether [param point], in the card's plane, is inside [param points] ([method outline]).
 static func contains(points: PackedVector2Array, point: Vector2) -> bool:
 	return Geometry2D.is_point_in_polygon(point, points)

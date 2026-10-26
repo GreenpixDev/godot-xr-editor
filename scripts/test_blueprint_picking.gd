@@ -127,7 +127,7 @@ func _test_signs() -> void:
 	_check(((add.node.get_node("Symbol") as Label3D).modulate).is_equal_approx(XREBlueprintCanvas.COLORS[add.output_types[0]]), "its symbol is in its result's color")
 	_check((cards[1] as XREBlueprintCanvas.Card).frame_material == _canvas.call("_type_frame", XREBlueprintGraph.BOOLEAN), "a comparison's rim is bool's")
 	_check((cards[3] as XREBlueprintCanvas.Card).shape == XREBlueprintShapes.Shape.NONE, "with Operators, sin is a card")
-	_check(_canvas.set_shrink(XREFeatureSettings.MATH) and not _canvas.set_shrink(&"icons"), "Node shrink switches to + Math")
+	_check(_canvas.set_shrink(XREFeatureSettings.MATH) and not _canvas.set_shrink(&"glyphs"), "Node shrink switches to + Math")
 	var modes := _canvas.get_parameter_modes()
 	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, modes[1], modes[2], modes[3])
 	_canvas.rebuild(signs)
@@ -205,6 +205,67 @@ func _test_headings() -> void:
 	_canvas.rebuild(cards_graph)
 	_check(_canvas.heading_of(own) == XREFeatureSettings.OPERATION and not ((_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card).headed, "classic cards say the operation, as before")
 	_canvas.set_heading(XREFeatureSettings.OPERATION)
+	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
+
+
+## Beads (D-094): with + System Delay is a bead in flow's grey rimmed white,
+## its ports on its arcs, Get Time and Random rings in their result's colour,
+## Random's tokens saying their names; with All with icons a Set and a
+## Branch are beads too, Branch's outputs named outside, but not an event, a
+## function without an icon (ƒ) or Make Color with four inputs. A bead's name
+## shows under the ray.
+func _test_beads() -> void:
+	var beads := XREBlueprintGraph.new()
+	beads.nodes = [XREBlueprintGraph.make_node(1, "delay", Vector2.ZERO),
+			XREBlueprintGraph.make_call(2, XREBlueprintFunctions.static_function("XREBlueprintLibrary", "get_time"), Vector2(0, 200)),
+			XREBlueprintGraph.make_call(3, XREBlueprintFunctions.global("randi_range"), Vector2(0, 400)),
+			XREBlueprintGraph.make_node(4, "set_property", Vector2(0, 600)), XREBlueprintGraph.make_node(5, "branch", Vector2(0, 800)),
+			XREBlueprintGraph.make_call(6, XREBlueprintFunctions.static_function("XREBlueprintLibrary", "make_color"), Vector2(0, 1000)),
+			XREBlueprintGraph.make_node(7, "signal", Vector2(0, 1200)),
+			XREBlueprintGraph.make_call(8, XREBlueprintFunctions.method("Node3D", "look_at"), Vector2(0, 1400)),
+			XREBlueprintGraph.make_call(9, XREBlueprintFunctions.global("sin"), Vector2(0, 1600))]
+	beads.upgrade()
+	var modes := _canvas.get_parameter_modes()
+	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, modes[1], modes[2], modes[3])
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.set_shrink(XREFeatureSettings.MATH)
+	_canvas.rebuild(beads)
+	_canvas.face_user(Vector3(0, 0, 50))
+	_check(not ((_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card).bead, "with + Math Delay is a card")
+	_check(_canvas.set_shrink(XREFeatureSettings.SYSTEM), "Node shrink switches to + System")
+	_canvas.rebuild(beads)
+	var cards := _canvas.get("_cards") as Array
+	var delay := cards[0] as XREBlueprintCanvas.Card
+	var face := (delay.mesh.material_override as ShaderMaterial).get_shader_parameter(&"face_tint") as Color
+	_check(delay.bead and face.is_equal_approx(XREBlueprintIcons.HEADS[XREBlueprintIcons.Group.FLOW]) and (delay.frame_material as BaseMaterial3D).albedo_color.is_equal_approx(XREBlueprintCanvas.COLORS[XREBlueprintGraph.EXEC]),
+			"with + System Delay is a bead in flow's grey rimmed white")
+	var port := delay.inputs[0]
+	_check(port.x < 0.0 and port.y > 0.0 and absf(Vector2(port.x, port.y).length() - XREBlueprintCanvas.BEAD_RADIUS) < 0.0005, "its In is on its left arc, at the top")
+	var time := cards[1] as XREBlueprintCanvas.Card
+	_check(time.bead and (time.frame_material as BaseMaterial3D).albedo_color.is_equal_approx(XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]) and time.node.get_node_or_null("Icon") != null, "Get Time is a ring in float's colour with its dial")
+	var random := cards[2] as XREBlueprintCanvas.Card
+	var texts: Array[String] = []
+	for child: Node in random.node.find_children("*", "Label3D", true, false): texts.append((child as Label3D).text)
+	_check(random.bead and texts.any(func(text: String) -> bool: return text.begins_with("from ")), "Random is a ring whose tokens say their names: %s" % [texts])
+	_check(not (cards[3] as XREBlueprintCanvas.Card).bead, "Set is a card with + System")
+	_check(not delay.tip.visible, "a bead's name waits for the ray")
+	_canvas.set_focus(Vector3i(1, -1, -1))
+	_check(delay.tip.visible and delay.tip.text == "Delay", "under the ray a bead says its name")
+	_canvas.set_focus(Vector3i(-1, -1, -1))
+	_check(_canvas.set_shrink(XREFeatureSettings.ICONS), "Node shrink switches to All with icons")
+	_canvas.rebuild(beads)
+	cards = _canvas.get("_cards") as Array
+	var setter := cards[3] as XREBlueprintCanvas.Card
+	_check(setter.bead and ((setter.mesh.material_override as ShaderMaterial).get_shader_parameter(&"face_tint") as Color).is_equal_approx(XREBlueprintIcons.HEADS[XREBlueprintIcons.Group.SET]), "with All with icons Set is a green bead")
+	var branch := cards[4] as XREBlueprintCanvas.Card
+	var named: Array[String] = []
+	for child: Node in branch.node.find_children("*", "Label3D", true, false): named.append((child as Label3D).text)
+	_check(branch.bead and named.has("True") and named.has("False"), "Branch is a bead, its outputs named outside")
+	_check((cards[8] as XREBlueprintCanvas.Card).shape == XREBlueprintShapes.Shape.CIRCLE and not (cards[8] as XREBlueprintCanvas.Card).bead, "sin stays a math sign with All with icons")
+	_check(not (cards[5] as XREBlueprintCanvas.Card).bead and not (cards[6] as XREBlueprintCanvas.Card).bead and not (cards[7] as XREBlueprintCanvas.Card).bead,
+			"Make Color's four inputs, an event and a function without an icon keep their cards")
+	_canvas.set_shrink(XREFeatureSettings.OPERATORS)
+	_canvas.set_style(XREFeatureSettings.CLASSIC)
 	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
 
 
@@ -347,6 +408,7 @@ func _run() -> void:
 	_test_archetypes(graph)
 	_test_signs()
 	_test_headings()
+	_test_beads()
 	_canvas.rebuild(graph)
 	_test_port_wires()
 	_canvas.queue_free()
