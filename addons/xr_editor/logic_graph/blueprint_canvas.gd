@@ -360,7 +360,8 @@ var _trash_material: Material
 var _preview: XREGraphWire
 var _offset := Vector2.ZERO
 var _structure: Array = []
-var _selected := -1
+## The selected blocks (D-117), drawn with a white frame.
+var _selected: Array[int] = []
 var _hit_id := -1
 var _hit_port := -1
 var _hit_input := false
@@ -999,7 +1000,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		if wire.link != null: set_wire_seen(wire, &"link", LINK_SEEN)
 		_wires.append(wire)
 	update_wires()
-	select_block(_selected)
+	select_blocks(_selected)
 	_paint_focus()
 	_show_link_wires()
 
@@ -1665,6 +1666,31 @@ func commit_move(document: XREBlueprintDocument, id: int) -> bool:
 	return document.perform(document.commit.bind("Move Blocks", state), &"vr_graph")
 
 
+## Commits the places of the cards of [param ids], moved together (D-117), as
+## one step of the graph's history, as [method commit_move] one card's.
+func commit_moves(document: XREBlueprintDocument, ids: Array[int]) -> bool:
+	var state := document.graph.snapshot()
+	for block: Dictionary in state["nodes"]:
+		var card := _find_card(int(block["id"])) if ids.has(block["id"]) else null
+		if card == null: continue
+		block["position"] = Vector2(card.node.position.x, -card.node.position.y) / PIXEL_SIZE + _offset
+		block["vr_depth"] = card.node.position.z
+		block.erase("vr_rotation")
+	return document.perform(document.commit.bind("Move Blocks", state), &"vr_graph")
+
+
+## Moves the cards of [param ids] from [param starts] by [param shift], in
+## the canvas's space, along with a card being held (D-117): live geometry
+## only, as [method preview_move], the wires bent once for all of them.
+func preview_group(ids: Array[int], starts: Array[Vector3], shift: Vector3) -> void:
+	for index: int in ids.size():
+		var card := _find_card(ids[index])
+		if card == null: continue
+		card.node.position = starts[index] + shift
+		_orient(card)
+	update_wires()
+
+
 ## Live geometry only; a preview never modifies the resource or undo history.
 func preview_move(id: int, point: Vector3) -> void:
 	var card := _find_card(id)
@@ -1803,17 +1829,26 @@ func get_block_position(id: int) -> Vector3:
 	return card.node.position if card != null else Vector3.ZERO
 
 
-## Highlights a card without changing the scene selection.
+## Highlights a card without changing the scene selection; -1 highlights none.
 func select_block(id: int) -> void:
-	_selected = id
+	var ids: Array[int] = []
+	if id >= 0: ids.append(id)
+	select_blocks(ids)
+
+
+## Highlights the cards of [param ids], several at once (D-117).
+func select_blocks(ids: Array[int]) -> void:
+	_selected = ids.duplicate()
 	for card: Card in _cards: _paint_frame(card)
+	# A card selected or let go of out of focus is darkened or not (D-117).
+	if _focus_any: _paint_focus()
 
 
 ## A selected card's frame is white, one in focus is [constant XREBlueprintFocus.FRAME]
 ## with Focus on (D-072), darker out of focus with Defocus on Dim; one that
 ## keeps a variable from being deleted flashes [constant FLASH_FRAME] (D-079).
 func _paint_frame(card: Card) -> void:
-	var base := _flash_frame if card.flash else _selected_material if card.id == _selected else _focus_frame if card.look.x == XREBlueprintFocus.LIT else card.frame_material
+	var base := _flash_frame if card.flash else _selected_material if _selected.has(card.id) else _focus_frame if card.look.x == XREBlueprintFocus.LIT else card.frame_material
 	# A flash isn't darkened out of focus: it is there to be seen.
 	var paint := card.look.x if card.look.x == XREBlueprintFocus.TOP or (card.look.x == XREBlueprintFocus.DARK and not card.flash) else XREBlueprintFocus.PLAIN
 	card.frame.material_override = XREBlueprintFocus.variant(base, paint)
@@ -1887,10 +1922,11 @@ func set_focus(cards: Vector3i, box: String = "", other_box: String = "") -> voi
 
 
 ## How block [param id] is in focus: [constant XREBlueprintFocus.FOCUSED],
-## [constant XREBlueprintFocus.OUT], or [constant XREBlueprintFocus.NORMAL] while nothing is.
+## [constant XREBlueprintFocus.OUT], or [constant XREBlueprintFocus.NORMAL] while nothing is
+## and for a selected card out of focus (D-117).
 func focus_state(id: int) -> int:
 	if not _focus_any: return XREBlueprintFocus.NORMAL
-	return XREBlueprintFocus.FOCUSED if _in_focus(id) else XREBlueprintFocus.OUT
+	return XREBlueprintFocus.FOCUSED if _in_focus(id) else XREBlueprintFocus.NORMAL if _selected.has(id) else XREBlueprintFocus.OUT
 
 
 ## How what is in focus [param state] is painted under the settings: lit in
@@ -1921,7 +1957,8 @@ func _in_focus(id: int) -> bool:
 ## of focus, of the graph or of the ports a wire may end on, never every frame.
 ## In focus: the cards and boxes asked for and the wires on them. Out of it:
 ## the rest, but the far ends of those wires — a port, a socket, a box — and
-## the ports a wire being drawn may end on stay as they are.
+## the ports a wire being drawn may end on stay as they are, and so do the
+## selected cards (D-117).
 func _paint_focus() -> void:
 	var used := _focus_mode != XREFeatureSettings.OFF or _defocus_mode != XREFeatureSettings.OFF
 	var any := false
@@ -1930,7 +1967,9 @@ func _paint_focus() -> void:
 		any = any or _boxes.has_box(_focus_box) or _boxes.has_box(_focus_other_box)
 	_focus_any = any
 	for card: Card in _cards:
-		card.focus = (XREBlueprintFocus.FOCUSED if _in_focus(card.id) else XREBlueprintFocus.OUT) if any else XREBlueprintFocus.NORMAL
+		# A selected card out of focus keeps its look: only the others are put back (D-117).
+		card.focus = (XREBlueprintFocus.FOCUSED if _in_focus(card.id) else XREBlueprintFocus.NORMAL if _selected.has(card.id)
+				else XREBlueprintFocus.OUT) if any else XREBlueprintFocus.NORMAL
 		card.keep_ports = 0
 		card.keep_sockets = 0
 	var boxes: Dictionary[String, int] = {}

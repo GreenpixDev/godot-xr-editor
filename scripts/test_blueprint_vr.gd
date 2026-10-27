@@ -327,6 +327,7 @@ func _run() -> void:
 	await _test_left_wire(print_id)
 	await _test_block_menu()
 	await _test_d093()
+	await _test_d117()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -1917,6 +1918,128 @@ func _test_d093() -> void:
 	_document.set_feature(XREFeatureSettings.BLOCK_COPY, XREFeatureSettings.OFF, XREDocument.Source.PANEL)
 	await _frames()
 	_check(_card(source) != null and _card(source).copy == null, "switched off, the button goes")
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## Where the ray takes a card by its title, as a grab does.
+func _card_point(id: int) -> Vector3:
+	return _service.canvas.to_global(_service.canvas.get_block_transform(id).origin + Vector3(0, 0.025, 0))
+
+
+## D-117: with Add to selection on Other grip, the left grip held in empty
+## space makes the right trigger add a card to the selection or take it out;
+## the right grip on a selected card moves them all, the copy button copies
+## them with the wires between them, X deletes them: one undo step each.
+func _test_d117() -> void:
+	var graph := _service.blueprint.graph
+	var history := _service.blueprint.history.get_version()
+	var hand := _rig.right_hand
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.REPLACE, "blocks are selected one at a time by default")
+	var ids: Array[int] = []
+	for index: int in 3:
+		_service.add_block("print")
+		await _frames()
+		ids.append(int((graph.nodes.back() as Dictionary)["id"]))
+	var start := _service.canvas.get_block_position(ids[0]) + Vector3(0, 0.6, 0.1)
+	for index: int in 3:
+		_service.canvas.preview_move(ids[index], start + Vector3(0.45 * index, 0, 0))
+	_check(_service.canvas.commit_moves(_service.blueprint, ids), "three Print blocks are set apart in one step")
+	_check(_service.blueprint.perform(_service.blueprint.connect_blocks.bind(ids[0], 0, ids[1], 0), &"vr_graph"), "a wire joins the first two")
+	await _frames()
+	_document.set_feature(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.GRIP, XREDocument.Source.PANEL)
+	_service.select_block(ids[0])
+	_left.set_pose(&"aim", Transform3D(Basis.IDENTITY, Vector3(-5, 0, 0)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	_left.set_input(&"grip", 1.0)
+	await _frames()
+	await _click(_card_point(ids[1]))
+	_check(_service.get_selected_blocks() == [ids[0], ids[1]], "the left grip held in empty space, the trigger adds a card: %s" % [_service.get_selected_blocks()])
+	_check(not _service.is_parameters_shown(), "with two cards selected, the parameters window is closed")
+	await _click(_card_point(ids[2]))
+	await _click(_card_point(ids[2]))
+	_check(_service.get_selected_blocks() == [ids[0], ids[1]], "the trigger on a selected card takes it out: %s" % [_service.get_selected_blocks()])
+	# With Defocus on Dim, the ray on one card darkens the others, but not a selected one.
+	var canvas := _service.canvas
+	var modes := canvas.get_focus_modes()
+	canvas.set_focus_modes(XREFeatureSettings.ON, XREFeatureSettings.DIM)
+	canvas.set_focus(Vector3i(ids[1], -1, -1))
+	_check(canvas.focus_state(ids[1]) == XREBlueprintFocus.FOCUSED and canvas.focus_state(ids[0]) == XREBlueprintFocus.NORMAL
+			and canvas.focus_state(ids[2]) == XREBlueprintFocus.OUT, "out of focus, a selected card keeps its look, the others are darker")
+	canvas.select_block(ids[2])
+	_check(canvas.focus_state(ids[2]) == XREBlueprintFocus.NORMAL and canvas.focus_state(ids[0]) == XREBlueprintFocus.OUT,
+			"selecting a card out of focus lights it up again, and the one let go of goes dark")
+	canvas.select_blocks(_service.get_selected_blocks())
+	canvas.set_focus(Vector3i(-1, -1, -1))
+	canvas.set_focus_modes(modes[0], modes[1])
+	await _click(_card_point(ids[2]))
+	_check(_service.get_selected_blocks() == [ids[0], ids[1], ids[2]], "and adds it back: %s" % [_service.get_selected_blocks()])
+	_left.set_input(&"grip", 0.0)
+	await _frames()
+	# The right grip on the second card moves all three.
+	var starts: Array[Vector3] = []
+	for id: int in ids: starts.append(_service.canvas.get_block_position(id))
+	var places: Array[Vector2] = []
+	for id: int in ids: places.append(graph.find_node(id)["position"])
+	var version := _service.blueprint.history.get_version()
+	var grab := _card_point(ids[1])
+	_aim(grab)
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
+	_check(pointer.block == ids[1] and pointer.group == [ids[0], ids[2]], "the grip on a selected card carries the others: %s" % [pointer.group])
+	_aim(grab + Vector3(0.1, 0.05, 0))
+	await _frames()
+	var shift := _service.canvas.get_block_position(ids[1]) - starts[1]
+	_check(shift.length() > 0.01, "the held card follows the hand: %s" % shift)
+	for index: int in [0, 2]:
+		_check((_service.canvas.get_block_position(ids[index]) - starts[index]).is_equal_approx(shift), "card %d moves with it" % index)
+	_check(_service.blueprint.history.get_version() == version, "nothing is recorded while they are held")
+	_right.set_input(&"grip", 0.0)
+	await _frames()
+	_check(_service.blueprint.history.get_version() == version + 1, "letting go moves them in one undo step")
+	for index: int in 3:
+		_check(graph.find_node(ids[index])["position"] != places[index], "block %d has its new place in the graph" % index)
+	_check(_service.get_selected_blocks() == [ids[0], ids[1], ids[2]], "and stays selected")
+	# The copy button of a selected card copies all three and the wire between two of them.
+	_document.set_feature(XREFeatureSettings.BLOCK_COPY, XREFeatureSettings.ON, XREDocument.Source.PANEL)
+	await _frames()
+	var card := _card(ids[0])
+	_check(card != null and card.copy != null, "cards have the copy button")
+	if card == null or card.copy == null: return
+	var blocks := graph.nodes.size()
+	var edges := graph.edges.size()
+	version = _service.blueprint.history.get_version()
+	_aim(Vector3(5, 4, -2))
+	await _frames()
+	_service.call("_start_copy", ids[0], hand, card.node.global_transform * card.copy_point)
+	await _frames()
+	var copies := _service.get_selected_blocks()
+	_check(graph.nodes.size() == blocks + 3 and graph.edges.size() == edges + 1, "a click copies the three blocks and the wire between two of them")
+	_check(_service.blueprint.history.get_version() == version + 1 and &"duplicate_blocks" in _operations, "one undo step, Duplicate Blocks in the log")
+	_check(copies.size() == 3 and not ids.any(func(id: int) -> bool: return copies.has(id)), "the copies are selected, not the originals: %s" % [copies])
+	if copies.size() == 3:
+		var below := (graph.find_node(copies[0])["position"] as Vector2) - (graph.find_node(ids[0])["position"] as Vector2)
+		_check(is_zero_approx(below.x) and below.y > 0.0, "let go at once, the copies go below the originals: %s" % below)
+		var wired := graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == copies[0] and edge["to"] == copies[1])
+		_check(wired, "the copied wire joins the copies")
+	# X deletes the three copies.
+	version = _service.blueprint.history.get_version()
+	_left.set_input(&"ax_button", true)
+	await _frames()
+	_left.set_input(&"ax_button", false)
+	await _frames()
+	_check(graph.nodes.size() == blocks and _service.blueprint.history.get_version() == version + 1, "X deletes every selected block in one undo step")
+	_check(_service.get_selected_blocks().is_empty(), "and nothing is selected")
+	# Replace: the trigger replaces the selection, though the left grip is held.
+	_document.set_feature(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE, XREDocument.Source.PANEL)
+	_document.set_feature(XREFeatureSettings.BLOCK_COPY, XREFeatureSettings.OFF, XREDocument.Source.PANEL)
+	_service.select_block(ids[0])
+	_left.set_input(&"grip", 1.0)
+	await _frames()
+	await _click(_card_point(ids[1]))
+	_check(_service.get_selected_blocks() == [ids[1]], "with Replace, the trigger selects one card: %s" % [_service.get_selected_blocks()])
+	_left.set_input(&"grip", 0.0)
+	_service.select_block(-1)
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	await _frames()
 
@@ -4367,6 +4490,8 @@ func _test_d072() -> void:
 		if item.from != null and item.from.id == feeder and item.to.id == waiter: wire = item
 	var feeder_out := _card(feeder).ports[_card(feeder).inputs.size()]
 
+	# No card selected: a selected one would keep its look out of focus (D-117).
+	_service.select_block(-1)
 	# Off: the ray on a card changes nothing.
 	_aim_from(canvas.to_global(canvas.get_block_position(waiter) + Vector3(0.0, 0.02, 0.0)), _card(waiter).node.global_basis.z.normalized())
 	await _frames()
@@ -4483,6 +4608,8 @@ func _test_d072() -> void:
 	canvas.commit_move(_service.blueprint, getter)
 	await _frames()
 	_service.call("_wire_variable", getter, "focus_count")
+	# Not selected, the getter goes dark out of focus (D-117).
+	_service.select_block(-1)
 	await _frames(3)
 	var shelf := canvas.get_boxes()
 	var links := (canvas.get("_variable_links") as Array).filter(func(link: XREBlueprintCanvas.Wire) -> bool: return link.variable == "focus_count")

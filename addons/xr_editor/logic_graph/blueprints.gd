@@ -144,6 +144,13 @@ const _OPEN_NAMES: Dictionary[int, String] = {
 
 class Pointer:
 	var hand: XREHand
+	## The grip went down in empty space and is still held: with
+	## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP],
+	## the other hand adds blocks to the selection (D-117), as it adds scene objects (D-115).
+	var adding := false
+	## The other selected blocks the held card carries (D-117), and where each was when the hold began.
+	var group: Array[int] = []
+	var group_starts: Array[Vector3] = []
 	var surface: XREPanelSurface
 	var drives := false
 	var held: Node3D
@@ -463,7 +470,10 @@ var _pointers: Array[Pointer] = []
 var _markers: Array[Marker] = []
 var _target_wires: Array[TargetWire] = []
 var _catalog := PackedStringArray()
+## The block selected last, -1 for none; the parameters window is for it.
 var _selected := -1
+## Every selected block (D-117): several with Add to selection, the last one [member _selected].
+var _selected_blocks: Array[int] = []
 var _pending_id := -1
 var _pending_port := -1
 var _pending_input := false
@@ -1069,6 +1079,7 @@ func show_graph() -> void:
 	cancel_connection()
 	_target_pick = -1
 	_selected = -1
+	_selected_blocks.clear()
 	canvas.center_graph(blueprint.graph)
 	canvas.rebuild(blueprint.graph)
 	var head := _rig.camera.global_position
@@ -1530,7 +1541,8 @@ func _end_drag(place: bool) -> void:
 	var moved := _ghost.global_position.distance_to(_copy_start) if is_instance_valid(_ghost) else 0.0
 	if is_instance_valid(_ghost): _ghost.queue_free()
 	_ghost = null
-	if place and action.get("origin", "") == "copy": _place_copy(action, point, moved < COPY_CLICK)
+	if place and action.get("origin", "") == "copy" and action.has("blocks"): _place_group_copy(action, point, moved < COPY_CLICK)
+	elif place and action.get("origin", "") == "copy": _place_copy(action, point, moved < COPY_CLICK)
 	elif place: _add_from_menu(action, point)
 
 
@@ -1540,6 +1552,9 @@ func _end_drag(place: bool) -> void:
 func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	var block := blueprint.graph.find_node(id)
 	if block.is_empty(): return
+	if _selected_blocks.size() > 1 and _selected_blocks.has(id):
+		_start_group_copy(id, hand, point)
+		return
 	var copy := block.duplicate(true)
 	copy.erase("id")
 	copy.erase("position")
@@ -1549,6 +1564,78 @@ func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	_copy_start = hand.global_position - hand.global_basis.z.normalized() * distance
 	# The stand-in looks as the card does (D-114).
 	_start_drag({"id": "copy", "title": XREBlueprintGraph.title(block), "block": copy, "target": blueprint.target_node(id), "origin": "copy"}, hand, distance, canvas.stand_in(id))
+
+
+## The trigger on the copy button of card [param id], one of several selected
+## (D-117): copies of them all and of the wires between them follow the ray
+## of [param hand], the card's at the ray, until the trigger lets go
+## ([method _place_group_copy]). An inline block (D-061) that feeds one of
+## them is copied with it: it is drawn as part of the card.
+func _start_group_copy(id: int, hand: XREHand, point: Vector3) -> void:
+	var graph := blueprint.graph
+	var ids: Dictionary[int, bool] = {}
+	for selected: int in _selected_blocks:
+		if not graph.find_node(selected).is_empty(): ids[selected] = true
+	var grown := true
+	while grown:
+		grown = false
+		for edge: Dictionary in graph.edges:
+			var from := int(edge["from"])
+			if ids.has(int(edge["to"])) and not ids.has(from) and canvas.is_inline(graph.find_node(from)):
+				ids[from] = true
+				grown = true
+	var blocks: Array[Dictionary] = []
+	for block: Dictionary in graph.nodes:
+		if ids.has(int(block["id"])): blocks.append(block.duplicate(true))
+	var edges: Array[Dictionary] = []
+	for edge: Dictionary in graph.edges:
+		if ids.has(int(edge["from"])) and ids.has(int(edge["to"])): edges.append(edge.duplicate(true))
+	_copy_source = id
+	var distance := clampf(hand.global_position.distance_to(point), 0.3, 2.0)
+	_copy_start = hand.global_position - hand.global_basis.z.normalized() * distance
+	# The stand-ins keep the cards' places around the card at the ray.
+	var stand_ins := Node3D.new()
+	var center := canvas.get_block_position(id)
+	var scale := canvas.global_basis.get_scale()
+	for selected: int in _selected_blocks:
+		var stand_in := canvas.stand_in(selected)
+		if stand_in == null: continue
+		stand_in.position += (canvas.get_block_position(selected) - center) * scale
+		stand_ins.add_child(stand_in)
+	_start_drag({"id": "copy", "title": "%d blocks" % _selected_blocks.size(), "blocks": blocks, "edges": edges, "origin": "copy"}, hand, distance, stand_ins)
+
+
+## Adds the copies of [param action]'s blocks and wires (D-117), the source
+## card's at workspace point [param point], the others where they are around
+## it; with [param beside], let go where they started, below the selection by
+## its height: one undo step, Duplicate Blocks in the log. The copies are selected.
+func _place_group_copy(action: Dictionary, point: Vector3, beside: bool) -> void:
+	var source := blueprint.graph.find_node(_copy_source)
+	if source.is_empty(): return
+	var blocks: Array[Dictionary] = []
+	blocks.assign(action["blocks"])
+	var edges: Array[Dictionary] = []
+	edges.assign(action["edges"])
+	var offset := canvas.block_position(point) - (source["position"] as Vector2)
+	var depth := point.z - float(source.get("vr_depth", 0.0))
+	if beside:
+		var top := INF
+		var bottom := -INF
+		for block: Dictionary in blocks:
+			top = minf(top, (block["position"] as Vector2).y)
+			bottom = maxf(bottom, (block["position"] as Vector2).y)
+		offset = Vector2(0.0, bottom - top + 160.0)
+		depth = 0.0
+	var ids: Array[int] = blueprint.perform(blueprint.paste_blocks.bind(blocks, edges, offset, depth, "Duplicate Blocks"), &"vr_graph")
+	if ids.is_empty():
+		_message(blueprint.last_error)
+		return
+	var selected: Array[int] = []
+	for index: int in blocks.size():
+		if not canvas.is_inline(blocks[index]): selected.append(ids[index])
+	select_block(-1)
+	for id: int in selected: toggle_block(id)
+	_message("Copied %s." % action["title"])
 
 
 ## Adds the copy of [param action] (D-093) at workspace point [param point], or
@@ -1579,6 +1666,8 @@ func _place_copy(action: Dictionary, point: Vector3, beside: bool) -> void:
 ## the window is left as it is: the plus opens only the block palette.
 func select_block(id: int, open_parameters: bool = true) -> void:
 	_selected = id
+	_selected_blocks.clear()
+	if id >= 0: _selected_blocks.append(id)
 	canvas.select_block(id)
 	parameters.select_block(id)
 	if id >= 0:
@@ -1586,6 +1675,38 @@ func select_block(id: int, open_parameters: bool = true) -> void:
 		elif open_parameters: _dismiss_window(XREBlueprintParametersTab, false)
 	else: _dismiss_window(XREBlueprintParametersTab, false)
 	changed.emit()
+
+
+## Adds block [param id] to the selected blocks, or takes it out if it is
+## selected (D-117). The parameters window is for one block: with several, it closes.
+func toggle_block(id: int) -> void:
+	var ids: Array[int] = _selected_blocks.duplicate()
+	if ids.has(id): ids.erase(id)
+	else: ids.append(id)
+	if ids.size() <= 1:
+		select_block(ids[0] if ids.size() == 1 else -1, false)
+		return
+	_selected_blocks = ids
+	_selected = ids.back()
+	canvas.select_blocks(ids)
+	parameters.select_block(-1)
+	_dismiss_window(XREBlueprintParametersTab, false)
+	changed.emit()
+
+
+## The selected blocks, the last selected last (D-117).
+func get_selected_blocks() -> Array[int]:
+	return _selected_blocks.duplicate()
+
+
+## Whether the trigger or the grip of [param pointer]'s hand adds blocks to
+## the selection: the other hand's grip is held in empty space, with
+## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP] (D-117).
+func _adds_blocks(pointer: Pointer) -> bool:
+	if _document.features.get_value(XREFeatureSettings.SELECT_ADD) != XREFeatureSettings.GRIP: return false
+	for other: Pointer in _pointers:
+		if other != pointer and other.adding: return true
+	return false
 
 
 ## Closes the parameters window, pinned too, keeping what was typed in it; the block stays selected.
@@ -1828,18 +1949,21 @@ func switch_heading(id: int) -> void:
 
 
 ## Removes the selected block and incident wires through the graph document.
+## A block of several selected takes them all along, as one undo step (D-117).
 func delete_block(id: int = -1) -> void:
 	var target := id if id >= 0 else _selected
 	if target < 0 or blueprint.graph.find_node(target).is_empty(): return
+	var targets: Array[int] = [target]
+	if _selected_blocks.size() > 1 and _selected_blocks.has(target): targets = _selected_blocks.duplicate()
 	for pointer: Pointer in _pointers:
-		if pointer.block == target: _finish_hold(pointer, false)
+		if targets.has(pointer.block) or pointer.group.any(func(held: int) -> bool: return targets.has(held)): _finish_hold(pointer, false)
 	cancel_connection()
-	if _target_pick == target: _target_pick = -1
-	var was_selected := target == _selected
+	if targets.has(_target_pick): _target_pick = -1
+	var was_selected := targets.has(_selected)
 	# As the document's remove_blocks, but the ports its wires fed get default tokens (D-059).
 	var state := blueprint.graph.snapshot()
-	state["nodes"] = (state["nodes"] as Array).filter(func(block: Dictionary) -> bool: return block["id"] != target)
-	state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return edge["from"] != target and edge["to"] != target)
+	state["nodes"] = (state["nodes"] as Array).filter(func(block: Dictionary) -> bool: return not targets.has(block["id"]))
+	state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return not targets.has(edge["from"]) and not targets.has(edge["to"]))
 	_drop_orphan_inlines(state)
 	_fill_sockets(state)
 	blueprint.perform(blueprint.commit.bind("Delete Blocks", state), &"vr_graph")
@@ -2041,6 +2165,7 @@ func set_logic_mode(enabled: bool) -> void:
 
 func _update_pointer(pointer: Pointer, delta: float) -> void:
 	var hand := pointer.hand
+	if not hand.grip_held or not hand.is_free_for(self): pointer.adding = false
 	if pointer.swallow and not (hand.trigger_held and hand.get_has_tracking_data()):
 		pointer.swallow = false
 		if hand.get_claimant() == self: hand.unclaim(self)
@@ -2080,7 +2205,9 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				if not pointer.touched: _reel(pointer)
 				var contact := _rig.hand_pose(hand, pointer.depth_uses_grip).origin if pointer.touched else hand.global_position - hand.global_basis.z.normalized() * pointer.distance
 				if pointer.box.is_empty(): canvas.preview_grab(pointer.block, contact, pointer.grab_point, _rig.camera.global_position)
-				else: canvas.preview_box_grab(pointer.box, contact, pointer.grab_point)
+				if pointer.box.is_empty() and not pointer.group.is_empty():
+					canvas.preview_group(pointer.group, pointer.group_starts, canvas.get_block_position(pointer.block) - pointer.before.origin)
+				elif not pointer.box.is_empty(): canvas.preview_box_grab(pointer.box, contact, pointer.grab_point)
 				if pointer.touched: hand.hide_ray()
 				else: hand.show_ray(pointer.distance, true)
 			else:
@@ -2328,6 +2455,8 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				hand.show_ray(along, true)
 				if hand.trigger_pressed: open_graph(marker.path)
 				return
+	# The grip in empty space: the other hand's trigger adds blocks (D-117).
+	if hand.grip_pressed and hand.is_free_for(self): pointer.adding = true
 	# A click away that closed an input goes on to the graph, but selects no
 	# scene object (D-063): the hand stays the graph's until it is let go.
 	if pointer.swallow and hand.is_free_for(self):
@@ -2359,7 +2488,7 @@ func _start_hold(pointer: Pointer, node: Node3D, block: int, point: Vector3 = Ve
 	pointer.by_trigger = false
 	var target := node.global_transform
 	if block >= 0 or not box.is_empty():
-		if block >= 0: select_block(block)
+		if block >= 0: _hold_group(pointer, block)
 		pointer.before = canvas.get_block_transform(block) if box.is_empty() else Transform3D(Basis.IDENTITY, canvas.get_boxes().box_point(box))
 		pointer.touched = touched
 		target = canvas.global_transform * pointer.before
@@ -2385,6 +2514,21 @@ func _hold_window(pointer: Pointer, window: XREPanelSurface, corner: int, by_tri
 	pointer.corner = corner
 	pointer.by_trigger = by_trigger
 	pointer.window_before = pointer.held.global_transform
+
+
+## Selects block [param block], taken by [param pointer]'s hand, and the other
+## selected blocks it carries (D-117): a selected block keeps the selection,
+## one the other hand's grip adds joins it, any other replaces it.
+func _hold_group(pointer: Pointer, block: int) -> void:
+	if not _selected_blocks.has(block):
+		if _adds_blocks(pointer): toggle_block(block)
+		else: select_block(block)
+	pointer.group.clear()
+	pointer.group_starts.clear()
+	for id: int in _selected_blocks:
+		if id == block or not canvas.has_block(id): continue
+		pointer.group.append(id)
+		pointer.group_starts.append(canvas.get_block_position(id))
 
 
 ## Distance from [param point] to the body: a vertical shoulder-to-hip segment
@@ -2422,7 +2566,15 @@ func _reel(pointer: Pointer) -> void:
 
 
 func _finish_hold(pointer: Pointer, commit: bool) -> void:
-	if pointer.block >= 0:
+	if pointer.block >= 0 and not pointer.group.is_empty():
+		if commit:
+			var moved: Array[int] = [pointer.block]
+			moved.append_array(pointer.group)
+			canvas.commit_moves(blueprint, moved)
+		else:
+			canvas.preview_transform(pointer.block, pointer.before)
+			canvas.preview_group(pointer.group, pointer.group_starts, Vector3.ZERO)
+	elif pointer.block >= 0:
 		if commit: canvas.commit_move(blueprint, pointer.block)
 		else: canvas.preview_transform(pointer.block, pointer.before)
 	elif not pointer.box.is_empty():
@@ -2433,6 +2585,8 @@ func _finish_hold(pointer: Pointer, commit: bool) -> void:
 				_place_window.bind(pointer.held, pointer.held.global_transform))
 	pointer.held = null
 	pointer.block = -1
+	pointer.group.clear()
+	pointer.group_starts.clear()
 	pointer.box = ""
 	pointer.window = null
 	pointer.by_trigger = false
@@ -3449,6 +3603,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		elif canvas.get_hit_port() >= 0:
 			var finished := (1 if canvas.get_hit_finished() else 0) if canvas.get_hit_port() == 0 and not canvas.get_hit_input() and canvas.has_finished(id) else -1
 			click_port(id, canvas.get_hit_port(), canvas.get_hit_input(), hand, canvas.get_hit_edge(), finished)
+		elif _adds_blocks(pointer): toggle_block(id)
 		else: select_block(id)
 	if _deletes_now():
 		_consume_delete()
