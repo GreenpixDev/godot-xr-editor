@@ -3,9 +3,16 @@ class_name XREBlueprintCanvas
 extends Node3D
 ## Spatial cards and typed ports over the same resource used by GraphEdit.
 ## Cached card/port arrays are picked analytically; wires reuse meshes during dragging.
-## Cards are drawn as the feature setting [constant XREFeatureSettings.NODE_DISPLAY]
-## says ([method set_display], D-039): flat billboards turned to the head, or
-## solid cuboids that keep the graph's orientation. Ports are drawn as
+## Cards turn to the head as [constant XREFeatureSettings.NODE_FACING] says — all,
+## only the shorthands, or none, which stand in their graph's or part's
+## orientation — and are flat or solid as [constant XREFeatureSettings.NODE_VOLUME]
+## says ([method set_node_modes], D-115, after D-039's Node display). A card
+## that doesn't turn shows from behind its blank back or its face as a
+## mirror's ([constant XREFeatureSettings.NODE_BACK]); a card that turns lays
+## itself out as a mirror's past 90° from its front with
+## [constant XREFeatureSettings.CARD_MIRROR]. The graph, or each of its parts,
+## may turn to the head ([constant XREFeatureSettings.GRAPH_TURN],
+## [method set_turn_modes]); wires may carry arrowheads ([method set_arrow_modes]). Ports are drawn as
 ## [constant XREFeatureSettings.PORT_DISPLAY] says ([method set_port_display],
 ## D-043): flat discs, or shaded spheres standing out of the face. A port under
 ## a ray grows, as the plus and the trash do, and one wire on it thickens: the
@@ -62,8 +69,10 @@ extends Node3D
 const PIXEL_SIZE := 0.0009
 const CARD_WIDTH := 0.26
 const CARD_THICKNESS := 0.001
-## Depth of a card drawn as a cuboid: thick enough to read as a solid from the side.
-const CUBOID_DEPTH := 0.03
+## Depth of a solid card (Node volume 3D): it reads as a solid from the side,
+## and is thinner than a port's 2 cm, so that ports on its edge stand out of
+## its faces too (D-115; 3 cm before).
+const CUBOID_DEPTH := 0.012
 const ROW_HEIGHT := 0.045
 const PORT_RADIUS := 0.010
 const PORT_DEPTH := 0.001
@@ -216,6 +225,22 @@ const TIP_SIZE := 26
 ## How much of a bead the face of Get Time and Random covers, in its radii.
 const BEAD_FACE := 1.9
 const PURE_FALLBACK_SIZE := 38
+## How far past a threshold the head must go before a node or a part changes
+## its mind (D-115): mirrored, turned round, its pins on its back, its turn.
+const MARGIN := deg_to_rad(5.0)
+## How fast a graph or a part turns to its new front: the gap left after a second, as a share.
+const TURN_RATE := 12.0
+## A turn of a held card about the vertical goes in steps of 15° (D-115).
+const YAW_STEP := deg_to_rad(15.0)
+## Wire arrowheads (D-115): how far apart chevrons are, how fast they run, how
+## much of a wire at each end has none, how far before its input the one at the
+## end is and how much larger, and the most drawn of each style.
+const ARROW_STEP := 0.09
+const ARROW_SPEED := 0.12
+const ARROW_MARGIN := 0.035
+const ARROW_END := 0.025
+const ARROW_END_SCALE := 1.5
+const ARROW_LIMIT := 1024
 
 ## A socket of a card that is not one of its block's ports (D-052).
 class Socket:
@@ -241,6 +266,8 @@ class Socket:
 	var flag_block := -1
 	var link_kind := -1
 	var end := Vector3.ZERO
+	## Where it was built: a sign's token goes round with its port from there (Sign ports Rim, D-115).
+	var home := Vector3.ZERO
 
 class Card:
 	var id: int
@@ -306,6 +333,43 @@ class Card:
 	var look := Vector4i(-1, 0, 0, 0)
 	## It keeps a variable from being deleted: its frame flashes (D-079).
 	var flash := false
+	## Its orientation in its graph about the vertical (D-115), its block's
+	## [code]vr_rotation.y[/code] in radians; a held card's preview of it, and its block's own.
+	var yaw := 0.0
+	var block_yaw := 0.0
+	## Its place in the graph before its part's turn, and its part's index in the canvas's parts.
+	var base := Vector3.ZERO
+	var part := 0
+	## Laid out as a mirror's (D-115): its node's x scaled by -1, its labels by -1 again, their sides swapped.
+	var mirrored := false
+	## Not turned to the head and seen from behind: turned round to show its face as a mirror's (Node back Labelled).
+	var turned_round := false
+	## Its ports on its back face, turned to the head (Pins Both faces).
+	var pins_back := false
+	## Its labels, which a mirror leaves readable.
+	var labels: Array[Label3D] = []
+	## The words of a heading of two labels, verb and member, and the sum of its
+	## left and right ends, about which a mirror swaps them back to read in order.
+	var heading: Array[Label3D] = []
+	var heading_ends := 0.0
+	## While held and not facing the head: its yaw towards the head, in steps of 15°; INF when not held.
+	var held_face := INF
+	## A sign's ports on its rim (Sign ports Rim): where each was built, by its index in [member ports].
+	var rim_built: Array[Vector3] = []
+
+## A part of the graph (D-115): its cards of one orientation wired together,
+## or every card while the graph turns as a whole. It turns about its centre.
+class Part:
+	var cards: Array[Card] = []
+	## Its centre in the canvas's space and its front's yaw.
+	var pivot := Vector3.ZERO
+	var yaw := 0.0
+	## Its turn now and the turn it goes to, in radians; whether its cards are mirrored.
+	var turn := 0.0
+	var target := 0.0
+	var mirrored := false
+	## Its cards' ids, sorted: a part keeps its turn across rebuilds while it keeps its cards.
+	var key := PackedInt32Array()
 
 ## A wire that bends (D-081): a graph's edge, or a link — a block's wire to
 ## its object in the scene, or from its Variable socket to the variable's box.
@@ -349,6 +413,8 @@ class Wire:
 	var component := -1
 	## Whether it is a Set's wire to its variable's box: it writes it (D-106).
 	var writes := false
+	## Its colour, its arrowheads' too (D-115).
+	var color := Color.WHITE
 
 var _cards: Array[Card] = []
 var _wires: Array[Wire] = []
@@ -404,7 +470,35 @@ var _port_shapes := false
 var _composite := XREFeatureSettings.WHOLE
 var _hit_swap := false
 var _faces_user := false
-var _display := XREFeatureSettings.BILLBOARD
+## Node facing, Node volume, Node back, Pins and Card mirror (D-115).
+var _facing := XREFeatureSettings.ON
+var _solid := false
+var _labelled_back := false
+var _pins := XREFeatureSettings.FACE
+var _card_mirror := false
+## Sign ports on the rim (D-115).
+var _rim_ports := false
+## Graph turn and Graph parts (D-115): the parts, and whether nothing may turn
+## now — something is held or drawn.
+var _turn_mode := XREFeatureSettings.FIXED
+var _by_parts := false
+var _parts: Array[Part] = []
+var _turn_frozen := false
+## Wire arrowheads (D-115): the modes of execution and data wires, open or
+## filled, a multimesh of each style, and the time the running ones run by.
+var _exec_arrows := XREFeatureSettings.OFF
+var _data_arrows := XREFeatureSettings.OFF
+var _open_arrows := false
+## An execution port's arrowhead on a node's edge (Pins On the edge), made once.
+var _edge_arrow: CylinderMesh
+var _arrows_filled: MultiMeshInstance3D
+var _arrows_open: MultiMeshInstance3D
+var _arrow_clock := 0.0
+## The arrowheads' poses as drawn, kept here too: a renderer need not give them back.
+var _arrow_poses: Array[Transform3D] = []
+## Arc lengths along a wire's points, reused for every wire; a sign's ports' angles on its rim.
+var _arc := PackedFloat32Array()
+var _rim_angles := PackedFloat32Array()
 var _port_display := XREFeatureSettings.FLAT
 var _plus_shown := true
 var _value_mode := XREFeatureSettings.WINDOW
@@ -523,6 +617,70 @@ void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 	for ghost: MeshInstance3D in [_ghost_right, _ghost_left]:
 		ghost.visible = false
 		add_child(ghost)
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 0.0085
+	cone.height = 0.018
+	cone.radial_segments = 10
+	cone.rings = 1
+	_arrows_filled = _arrow_layer(cone)
+	_arrows_open = _arrow_layer(_open_arrow_mesh())
+	_arc.resize(XREGraphWire.SAMPLES)
+	_arrow_poses.resize(ARROW_LIMIT)
+
+
+## A multimesh of up to [constant ARROW_LIMIT] arrowheads of [param mesh] on the
+## VR layer, each in its wire's colour (D-115), over the wires as they are drawn.
+func _arrow_layer(mesh: Mesh) -> MultiMeshInstance3D:
+	var multimesh := MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.use_colors = true
+	multimesh.mesh = mesh
+	multimesh.instance_count = ARROW_LIMIT
+	multimesh.visible_instance_count = 0
+	var layer := MultiMeshInstance3D.new()
+	layer.name = "Arrows"
+	layer.multimesh = multimesh
+	layer.layers = XRERig.VR_LAYER
+	layer.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	layer.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	var face := StandardMaterial3D.new()
+	face.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	face.vertex_color_use_as_albedo = true
+	# The instances' colours are the wires' own, in sRGB as the wires' tints are.
+	face.vertex_color_is_srgb = true
+	face.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# In the transparent pass like the wires, above the scene dimmer.
+	face.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	face.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
+	face.render_priority = Material.RENDER_PRIORITY_MAX
+	layer.material_override = face
+	layer.visible = false
+	add_child(layer)
+	return layer
+
+
+## An open arrowhead, two strokes meeting at its tip as ">" with no base (D-115):
+## the tip on +Y, flat in the XY plane, 1.6 cm long and wide, its strokes 3.2 mm.
+static func _open_arrow_mesh() -> ArrayMesh:
+	var half := 0.008
+	var stroke := 0.0032
+	var points := PackedVector3Array()
+	for side: float in [-1.0, 1.0]:
+		var tip := Vector2(0, half)
+		var end := Vector2(side * half, -half)
+		var along := (end - tip).normalized()
+		var across := Vector2(-along.y, along.x) * stroke * 0.5
+		# Run a little past the tip, so that the strokes close the joint.
+		var start := tip - along * stroke * 0.5
+		var corners: Array[Vector2] = [start + across, start - across, end + across, end - across]
+		for index: int in [0, 1, 2, 2, 1, 3]: points.append(Vector3(corners[index].x, corners[index].y, 0))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = points
+	var result := ArrayMesh.new()
+	result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return result
 
 
 static func _face(shader: Shader, tint: Color) -> ShaderMaterial:
@@ -672,18 +830,81 @@ func set_class_icons(class_icon: Callable) -> void:
 	_class_icon = class_icon
 
 
-## Switches how cards are drawn to [param display], a value of
-## [constant XREFeatureSettings.NODE_DISPLAY]. Takes effect on the next
-## [method rebuild]; false if it is unknown or already the current one.
-func set_display(display: StringName) -> bool:
-	if display == _display or not display in XREFeatureSettings.get_values(XREFeatureSettings.NODE_DISPLAY): return false
-	_display = display
+## Switches how nodes are drawn (D-115): which turn to the head — a value of
+## [constant XREFeatureSettings.NODE_FACING] —, whether they are [param solid],
+## whether a node that doesn't turn shows its face from behind
+## ([param labelled_back]), where their ports are — a value of
+## [constant XREFeatureSettings.PIN_PLACE] —, and whether cards that turn
+## mirror themselves past 90° ([param mirror]). Takes effect on the next
+## [method rebuild]; false if nothing changed or a value is unknown.
+func set_node_modes(facing: StringName, solid: bool, labelled_back: bool, pins: StringName, mirror: bool) -> bool:
+	if not facing in XREFeatureSettings.get_values(XREFeatureSettings.NODE_FACING) or not pins in XREFeatureSettings.get_values(XREFeatureSettings.PIN_PLACE): return false
+	if [facing, solid, labelled_back, pins, mirror] == [_facing, _solid, _labelled_back, _pins, _card_mirror]: return false
+	_facing = facing
+	_solid = solid
+	_labelled_back = labelled_back
+	_pins = pins
+	_card_mirror = mirror
 	return true
 
 
-## How cards are drawn: a value of [constant XREFeatureSettings.NODE_DISPLAY].
-func get_display() -> StringName:
-	return _display
+## The node modes, as [method set_node_modes] takes them.
+func get_node_modes() -> Array:
+	return [_facing, _solid, _labelled_back, _pins, _card_mirror]
+
+
+## Whether [param card] turns to the head (Node facing, D-115): every card, or only a shorthand's.
+func _faces(card: Card) -> bool:
+	return _facing == XREFeatureSettings.ON or (_facing == XREFeatureSettings.SHORTHANDS and card.compact)
+
+
+## Whether card [param id] stands at its own yaw, which a grab turns (D-115):
+## it doesn't face the head.
+func turns_on_grab(id: int) -> bool:
+	var card := _find_card(id)
+	return card != null and not _faces(card)
+
+
+## Switches where signs' ports are to their rims ([param rim], D-115). Takes
+## effect on the next [method rebuild]; true if it changed.
+func set_rim_ports(rim: bool) -> bool:
+	if rim == _rim_ports: return false
+	_rim_ports = rim
+	return true
+
+
+## Switches how the graph turns to the head — a value of
+## [constant XREFeatureSettings.GRAPH_TURN] — and whether by its parts (D-115).
+## Takes effect on the next [method rebuild]; false if nothing changed or the mode is unknown.
+func set_turn_modes(turn: StringName, by_parts: bool) -> bool:
+	if not turn in XREFeatureSettings.get_values(XREFeatureSettings.GRAPH_TURN) or [turn, by_parts] == [_turn_mode, _by_parts]: return false
+	_turn_mode = turn
+	_by_parts = by_parts
+	for part: Part in _parts: part.target = 0.0
+	return true
+
+
+## The turn modes, as [method set_turn_modes] takes them.
+func get_turn_modes() -> Array:
+	return [_turn_mode, _by_parts]
+
+
+## Switches the arrowheads of execution and data wires to values of
+## [constant XREFeatureSettings.EXEC_ARROWS], open ones if [param open] (D-115).
+## Takes effect at once; false if nothing changed or a mode is unknown.
+func set_arrow_modes(execution: StringName, data: StringName, open: bool) -> bool:
+	var modes := XREFeatureSettings.get_values(XREFeatureSettings.EXEC_ARROWS)
+	if not execution in modes or not data in modes or [execution, data, open] == [_exec_arrows, _data_arrows, _open_arrows]: return false
+	_exec_arrows = execution
+	_data_arrows = data
+	_open_arrows = open
+	_lay_arrows()
+	return true
+
+
+## Whether nothing may turn now: something in the graph is held or drawn (D-115).
+func set_turn_frozen(frozen: bool) -> void:
+	_turn_frozen = frozen
 
 
 ## Switches how ports are drawn to [param display], a value of
@@ -812,9 +1033,11 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		card.id = block["id"]
 		card.node = Node3D.new()
 		card.node.name = "Block%d" % card.id
-		card.node.position = position_from_block(block)
+		card.base = position_from_block(block)
+		card.block_yaw = yaw_of(block)
+		card.yaw = card.block_yaw
+		card.node.position = card.base
 		add_child(card.node)
-		_orient(card)
 		var inputs := graph.ports(block, true)
 		var outputs := graph.ports(block, false)
 		var layout := _layout(graph, block, inputs, outputs)
@@ -867,7 +1090,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		else:
 			card.height = 0.08 + maxi((layout[0] as Array).size(), (layout[1] as Array).size()) * ROW_HEIGHT
 			card.first_row = card.height * 0.5 - 0.064
-		var cuboid := _display == XREFeatureSettings.CUBOID
+		var cuboid := _solid
 		var body_size := Vector3(card.width, card.height, CUBOID_DEPTH if cuboid else CARD_THICKNESS)
 		card.face = (CUBOID_DEPTH - CARD_THICKNESS) * 0.5 if cuboid else 0.0
 		card.bounds = AABB(-body_size * 0.5, body_size)
@@ -960,6 +1183,16 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		if card.bead or card.tag: pass
 		elif card.shape != XREBlueprintShapes.Shape.NONE: _add_sign_symbol(card, block, inputs, outputs)
 		elif card.compact: _add_symbol(card, block)
+		card.labels.assign(card.node.find_children("", "Label3D", true, false))
+		var verb := card.node.get_node_or_null(^"Verb") as Label3D
+		var member := card.node.get_node_or_null(^"Member") as Label3D
+		if verb != null and member != null:
+			card.heading = [verb, member]
+			card.heading_ends = verb.position.x - text_width(verb.text, 21) * 0.5 + member.position.x + text_width(member.text, 21) * 0.5
+		if card.shape != XREBlueprintShapes.Shape.NONE:
+			for port: MeshInstance3D in card.ports: card.rim_built.append(port.position)
+			for socket: Socket in card.sockets: socket.home = socket.center
+		_orient(card)
 		_cards.append(card)
 	var inline: Array[Wire] = []
 	for edge_index: int in graph.edges.size():
@@ -998,6 +1231,9 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 		# Drawn at all, the wire a link hides is faint (D-074).
 		if wire.link != null: set_wire_seen(wire, &"link", LINK_SEEN)
 		_wires.append(wire)
+	_build_parts()
+	# New cards show the head what the settings say at once, not when it next moves (D-115).
+	_face_cards()
 	update_wires()
 	select_block(_selected)
 	_paint_focus()
@@ -1423,6 +1659,7 @@ func _add_symbol(card: Card, block: Dictionary) -> void:
 ## Gives [param wire] its tube in [param color] and the bends that
 ## [param entry] — its edge, or a link's block — keeps under [member Wire.stored].
 func _add_wire(wire: Wire, color: Color, entry: Dictionary) -> void:
+	wire.color = color
 	wire.mesh = create_scene_wire(color)
 	wire.normal = wire.mesh.material_override
 	wire.lit = wire_material(color, LIT_WIRE_GROW)
@@ -1632,11 +1869,15 @@ func sync_placement(graph: XREBlueprintGraph) -> bool:
 		if not is_inline(block): blocks.append(block)
 	if blocks.size() != _cards.size(): return false
 	for index: int in _cards.size():
+		if _cards[index].id != blocks[index]["id"]: return false
+	for index: int in _cards.size():
 		var card := _cards[index]
-		var block: Dictionary = blocks[index]
-		if card.id != block["id"]: return false
-		card.node.position = position_from_block(block)
-		_orient(card)
+		card.base = position_from_block(blocks[index])
+		card.block_yaw = yaw_of(blocks[index])
+		card.yaw = card.block_yaw
+	# A turned card may join or leave a part (D-115).
+	_build_parts()
+	_face_cards()
 	if _boxes.visible: _boxes.place(_box_places(graph))
 	for wire: Wire in _wires: _reload_bends(graph, wire)
 	for link: Wire in _variable_links: _reload_bends(graph, link)
@@ -1656,12 +1897,16 @@ func _reload_bends(graph: XREBlueprintGraph, wire: Wire) -> void:
 func commit_move(document: XREBlueprintDocument, id: int) -> bool:
 	var card := _find_card(id)
 	if card == null: return false
+	card.held_face = INF
 	var state := document.graph.snapshot()
+	# Its place in the graph, its part's turn undone; its yaw as its own (D-115).
+	var point := _unshown(card, card.node.position)
 	for block: Dictionary in state["nodes"]:
 		if block["id"] == id:
-			block["position"] = Vector2(card.node.position.x, -card.node.position.y) / PIXEL_SIZE + _offset
-			block["vr_depth"] = card.node.position.z
-			block.erase("vr_rotation")
+			block["position"] = Vector2(point.x, -point.y) / PIXEL_SIZE + _offset
+			block["vr_depth"] = point.z
+			if is_zero_approx(card.yaw): block.erase("vr_rotation")
+			else: block["vr_rotation"] = Vector3(0, card.yaw, 0)
 	return document.perform(document.commit.bind("Move Blocks", state), &"vr_graph")
 
 
@@ -1674,10 +1919,13 @@ func preview_move(id: int, point: Vector3) -> void:
 	update_wires()
 
 
-## Previews position and orientation without touching the graph resource.
+## Previews position and orientation without touching the graph resource; a
+## turn of a held card's yaw goes back to its block's (D-115).
 func preview_transform(id: int, pose: Transform3D) -> void:
 	var card := _find_card(id)
 	if card == null: return
+	card.yaw = card.block_yaw
+	card.held_face = INF
 	card.node.transform = pose
 	_orient(card)
 	update_wires()
@@ -1714,6 +1962,7 @@ func preview_box_grab(variable: String, contact: Vector3, local_contact: Vector3
 ## the inputs are the first [param count] spheres of [param targets]
 ## ([XREBlueprintFade]). Only a card that changes is touched.
 func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> void:
+	var arrows_change := false
 	for card: Card in _cards:
 		var faded := count > 0 and card.node.visible and XREBlueprintFade.covers(eye, targets, count, card.node.global_transform * card.bounds)
 		if faded == card.faded: continue
@@ -1730,6 +1979,8 @@ func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> voi
 		if faded == wire.faded: continue
 		wire.faded = faded
 		set_wire_seen(wire, &"cover", XREBlueprintFade.SEEN if faded else 1.0)
+		arrows_change = true
+	if arrows_change: _lay_arrows()
 	_boxes.fade_covering(eye, targets, count)
 
 
@@ -1739,51 +1990,310 @@ func is_faded(id: int) -> bool:
 	return card != null and card.faded
 
 
-## Turns flat cards towards the head without moving their centers or editing the graph,
-## and the variables' boxes with them (D-090). Cuboids stay as they are, and so
-## do the boxes then; the head is kept for a switch back to billboards.
-func face_user(head: Vector3) -> void:
-	if _faces_user and head.is_equal_approx(_head_position) and global_transform.is_equal_approx(_view_transform): return
+## Turns the nodes that face the head towards it without moving their centers or
+## editing the graph, and the variables' boxes with them (D-090); turns the graph
+## or its parts as Graph turn says, mirrors cards as Card mirror says, and turns
+## round or flips the pins of the cards that don't face the head as Node back and
+## Pins say (D-115), [param delta] seconds after the last call (0: at once).
+## The head is kept for a switch of the settings.
+func face_user(head: Vector3, delta: float = 0.0) -> void:
+	_arrow_clock += delta
+	var turned := _turn_parts(head, delta)
+	if not turned and _faces_user and head.is_equal_approx(_head_position) and global_transform.is_equal_approx(_view_transform):
+		if _runs_arrows(): _lay_arrows()
+		return
 	_faces_user = true
 	_head_position = head
 	_view_transform = global_transform
-	_boxes.face(head, _display != XREFeatureSettings.CUBOID)
-	if _display == XREFeatureSettings.CUBOID: return
-	for card: Card in _cards:
-		_orient(card)
+	_boxes.face(head, _facing != XREFeatureSettings.OFF)
+	_face_cards()
 	update_wires()
 
 
-## Billboards face the last head position square on, tilting up or down to it
-## too, their rows level (D-061, after D-034 turned them around the vertical
-## only); cuboids keep the graph's orientation.
+## Decides what each card shows the last head and turns it so (D-115): its part
+## mirrored or not, turned round, its pins on its back, its sign's ports on the rim.
+func _face_cards() -> void:
+	for part: Part in _parts: _mirror_part(part)
+	var local_head := to_local(_head_position)
+	for card: Card in _cards:
+		if _faces_user: _decide_sides(card, local_head)
+		_orient(card)
+	if _rim_ports and _faces_user: _lay_rims()
+
+
+## Nodes that face the head face its last position square on, tilting up or down
+## to it too, their rows level (D-061, after D-034 turned them around the vertical
+## only); the others stand at their yaw in their part, turned with it, and turned
+## round while they show their face from behind (D-115). A mirrored card's x is scaled by -1.
 func _orient(card: Card) -> void:
-	if _display == XREFeatureSettings.CUBOID: card.node.basis = Basis.IDENTITY
-	elif _faces_user: card.node.global_basis = XREBlueprintPetals.face(card.node.global_position, _head_position, Vector3.UP)
+	var mirror := Basis.from_scale(Vector3(-1, 1, 1)) if card.mirrored else Basis.IDENTITY
+	if not _faces(card): card.node.basis = Basis(Vector3.UP, card.yaw + _part_turn(card) + (PI if card.turned_round else 0.0)) * mirror
+	elif _faces_user: card.node.global_basis = XREBlueprintPetals.face(card.node.global_position, _head_position, Vector3.UP) * mirror
 
 
-## Keeps a captured point on the rod while its upright panel faces the user.
-func preview_grab(id: int, contact: Vector3, local_contact: Vector3, head: Vector3) -> void:
-	if _display == XREFeatureSettings.CUBOID:
-		# A solid keeps the graph's orientation: only the captured point follows the rod.
-		var held := _find_card(id)
-		if held == null: return
-		held.node.global_transform = Transform3D(global_basis, contact - global_basis * local_contact)
+## The turn of [param card]'s part about its centre: 0 while the whole graph turns, which turns the canvas itself (D-115).
+func _part_turn(card: Card) -> float:
+	return _parts[card.part].turn if _by_parts and card.part < _parts.size() else 0.0
+
+
+## Where [param point], a place in the graph, is shown for [param card]: turned with its part about the part's centre (D-115).
+func _shown(card: Card, point: Vector3) -> Vector3:
+	if not _by_parts or card.part >= _parts.size(): return point
+	var part := _parts[card.part]
+	return part.pivot + Basis(Vector3.UP, part.turn) * (point - part.pivot)
+
+
+## The place in the graph [param point], shown for [param card], stands for: [method _shown] undone.
+func _unshown(card: Card, point: Vector3) -> Vector3:
+	if not _by_parts or card.part >= _parts.size(): return point
+	var part := _parts[card.part]
+	return part.pivot + Basis(Vector3.UP, -part.turn) * (point - part.pivot)
+
+
+## Puts [param card] where its part's turn shows its place in the graph.
+func _place(card: Card) -> void:
+	card.node.position = _shown(card, card.base)
+
+
+## A block's yaw in its graph about the vertical (D-115): its [code]vr_rotation.y[/code], in radians.
+static func yaw_of(block: Dictionary) -> float:
+	var rotation: Variant = block.get("vr_rotation")
+	return wrapf((rotation as Vector3).y, -PI, PI) if rotation is Vector3 else 0.0
+
+
+## Splits the cards into parts (D-115): all of them while the graph turns as a
+## whole, else cards of one yaw wired together, each about the centre of its
+## cards. A part with the cards of one before keeps its turn.
+func _build_parts() -> void:
+	var previous := _parts
+	_parts = []
+	if not _by_parts:
+		var whole := Part.new()
+		whole.cards = _cards.duplicate()
+		whole.key = PackedInt32Array([-1])
+		_parts.append(whole)
+	else:
+		var lead: Array[int] = []
+		var index_of: Dictionary[int, int] = {}
+		for index: int in _cards.size():
+			lead.append(index)
+			index_of[_cards[index].id] = index
+		for wire: Wire in _wires:
+			if wire.from == null or wire.to == null or not is_zero_approx(angle_difference(wire.from.block_yaw, wire.to.block_yaw)): continue
+			lead[_root(lead, index_of[wire.from.id])] = _root(lead, index_of[wire.to.id])
+		var by_root: Dictionary[int, Part] = {}
+		for index: int in _cards.size():
+			var root := _root(lead, index)
+			if not by_root.has(root):
+				var part := Part.new()
+				part.yaw = _cards[index].block_yaw
+				by_root[root] = part
+				_parts.append(part)
+			by_root[root].cards.append(_cards[index])
+	for part: Part in _parts:
+		if part.cards.is_empty(): continue
+		var bounds := AABB(part.cards[0].base, Vector3.ZERO)
+		var ids := PackedInt32Array()
+		for card: Card in part.cards:
+			bounds = bounds.expand(card.base)
+			ids.append(card.id)
+		ids.sort()
+		if _by_parts: part.key = ids
+		part.pivot = bounds.get_center()
+	for index: int in _parts.size():
+		var part := _parts[index]
+		for card: Card in part.cards: card.part = index
+		for old: Part in previous:
+			if old.key != part.key: continue
+			part.turn = old.turn
+			part.target = old.target
+			part.mirrored = old.mirrored
+	if not _by_parts: _turn_whole()
+	else: transform = Transform3D.IDENTITY
+	for card: Card in _cards: _place(card)
+
+
+static func _root(lead: Array[int], index: int) -> int:
+	while lead[index] != index: index = lead[index]
+	return index
+
+
+## Where [param head] (global) is seen from [param part] (D-115): its angle about
+## the vertical from the part's front before its turn, -PI to PI.
+func _bearing(part: Part, head: Vector3) -> float:
+	var offset := to_local(head) - part.pivot
+	# The whole graph turns the canvas itself: undo that turn.
+	if not _by_parts: offset = Basis(Vector3.UP, part.turn) * offset
+	return angle_difference(part.yaw, atan2(offset.x, offset.z))
+
+
+## Turns the parts towards their targets as Graph turn sets them for [param head]
+## (D-115), [param delta] seconds on (0: at once); nothing while something is held.
+## True if a part turned.
+func _turn_parts(head: Vector3, delta: float) -> bool:
+	if _turn_frozen or _parts.is_empty(): return false
+	var changed := false
+	for part: Part in _parts:
+		if _turn_mode != XREFeatureSettings.AIM: part.target = _turn_target(part, _bearing(part, head))
+		var gap := angle_difference(part.turn, part.target)
+		if is_zero_approx(gap): continue
+		part.turn = part.target if delta <= 0.0 or absf(gap) < 0.001 else wrapf(part.turn + gap * minf(1.0, delta * TURN_RATE), -PI, PI)
+		changed = true
+	if not changed: return false
+	if _by_parts:
+		for card: Card in _cards: _place(card)
+	else: _turn_whole()
+	return true
+
+
+## Turns the canvas with the whole graph's part about the centre of its cards (D-115).
+func _turn_whole() -> void:
+	var part := _parts[0]
+	var turn := Basis(Vector3.UP, part.turn)
+	transform = Transform3D(turn, part.pivot - turn * part.pivot)
+
+
+## The turn [param part] goes to with the head at [param bearing] from its front
+## (D-115): none while Fixed; round past 95°, back under 85°, while Flip; the
+## nearest of four fronts once the head is past 50° from the current, while Steps.
+func _turn_target(part: Part, bearing: float) -> float:
+	match _turn_mode:
+		XREFeatureSettings.FLIP:
+			var limit := PI * 0.5 - MARGIN if absf(part.target) > PI * 0.5 else PI * 0.5 + MARGIN
+			return PI if absf(bearing) > limit else 0.0
+		XREFeatureSettings.STEPS:
+			if absf(angle_difference(part.target, bearing)) <= PI * 0.25 + MARGIN: return part.target
+			return wrapf(snappedf(bearing, PI * 0.5), -PI, PI)
+	return 0.0
+
+
+## Turns the part of card [param id] to the last head once (Graph turn On aim,
+## D-115), as a ray comes onto it; nothing while something is held.
+func aim_at(id: int) -> void:
+	var card := _find_card(id)
+	if card == null or _turn_mode != XREFeatureSettings.AIM or _turn_frozen or card.part >= _parts.size(): return
+	var part := _parts[card.part]
+	part.target = _bearing(part, _head_position)
+
+
+## The turn of the part of card [param id] now, in radians (D-115).
+func get_part_turn(id: int) -> float:
+	var card := _find_card(id)
+	return _parts[card.part].turn if card != null and card.part < _parts.size() else 0.0
+
+
+## Whether [param part]'s cards that face the head are mirrored (Card mirror, D-115):
+## past 95° from the part's front, back under 85°, while the graph doesn't turn.
+func _mirror_part(part: Part) -> void:
+	if not _card_mirror or _turn_mode != XREFeatureSettings.FIXED:
+		part.mirrored = false
+		return
+	var bearing := absf(_bearing(part, _head_position))
+	if bearing > PI * 0.5 + MARGIN: part.mirrored = true
+	elif bearing < PI * 0.5 - MARGIN: part.mirrored = false
+
+
+## What [param card] shows the head at [param local_head] (the canvas's space,
+## D-115): a card that faces the head is mirrored with its part, a sign on the
+## rim never; one that doesn't face it is turned round to show its face as a
+## mirror's (Node back Labelled), or has its pins on its back (Pins Both faces),
+## while the head is past 95° behind it, until it is back under 85°.
+func _decide_sides(card: Card, local_head: Vector3) -> void:
+	var mirrored := false
+	var pins_back := false
+	if _faces(card):
+		mirrored = card.part < _parts.size() and _parts[card.part].mirrored and not (_rim_ports and card.shape != XREBlueprintShapes.Shape.NONE)
+		card.turned_round = false
+	else:
+		var front := Basis(Vector3.UP, card.yaw + _part_turn(card)) * Vector3.BACK
+		var offset := local_head - card.node.position
+		offset.y = 0.0
+		var angle := front.angle_to(offset) if not offset.is_zero_approx() else 0.0
+		var was := card.turned_round or card.pins_back
+		var behind := angle > PI * 0.5 + MARGIN or (was and angle > PI * 0.5 - MARGIN)
+		card.turned_round = behind and _labelled_back
+		mirrored = card.turned_round
+		pins_back = behind and not _labelled_back and _pins == XREFeatureSettings.BOTH_FACES
+	if mirrored != card.mirrored: _set_mirrored(card, mirrored)
+	if pins_back != card.pins_back: _flip_pins(card)
+
+
+## Lays [param card] out as a mirror's, or back (D-115): its node mirrors in
+## [method _orient]; its labels mirror back to read, their left and right swapped.
+func _set_mirrored(card: Card, mirrored: bool) -> void:
+	card.mirrored = mirrored
+	for text: Label3D in card.labels:
+		text.scale.x = -text.scale.x
+		if text.horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT: text.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		elif text.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT: text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	# Each word reads by itself; swapped back about the heading's middle, they read in order.
+	for word: Label3D in card.heading: word.position.x = card.heading_ends - word.position.x
+	for socket: Socket in card.sockets:
+		if socket.visual is Label3D: socket.base_scale.x = -socket.base_scale.x
+		if not card.heading.is_empty() and socket.visual == card.heading[1]: socket.center = socket.visual.position
+
+
+## Moves [param card]'s ports to its other face (Pins Both faces, D-115).
+func _flip_pins(card: Card) -> void:
+	card.pins_back = not card.pins_back
+	for port: MeshInstance3D in card.ports: port.position.z = -port.position.z
+	for index: int in card.inputs.size():
+		var point := card.inputs[index]
+		card.inputs[index] = Vector3(point.x, point.y, -point.z)
+	for index: int in card.outputs.size():
+		var point := card.outputs[index]
+		card.outputs[index] = Vector3(point.x, point.y, -point.z)
+
+
+## Keeps a captured point on the rod. A card that faces the head keeps facing it;
+## one that doesn't keeps its orientation, which the hand's [param twist] about
+## the vertical since the grab, in radians, turns in steps of 15° (D-115).
+func preview_grab(id: int, contact: Vector3, local_contact: Vector3, head: Vector3, twist: float = 0.0) -> void:
+	var card := _find_card(id)
+	if card == null: return
+	if not _faces(card):
+		# It turns to the head about the vertical, in steps of 15° with a margin, so
+		# that it doesn't flick between two while carried; the twist steps it further.
+		var local_head := to_local(head)
+		var exact := _yaw_to(local_head, to_local(contact)) - _part_turn(card)
+		if is_inf(card.held_face) or absf(angle_difference(card.held_face, exact)) > YAW_STEP * 0.5 + MARGIN * 0.5:
+			card.held_face = snappedf(exact, YAW_STEP)
+		card.yaw = wrapf(card.held_face + snappedf(twist, YAW_STEP), -PI, PI)
+		_decide_sides(card, local_head)
+		_orient(card)
+		card.node.global_position = contact - card.node.global_basis * local_contact
 		update_wires()
 		return
+	var mirror := Basis.from_scale(Vector3(-1, 1, 1)) if card.mirrored else Basis.IDENTITY
+	var across := -local_contact.x if card.mirrored else local_contact.x
 	var orientation := XREBlueprintPetals.face(contact, head, Vector3.UP)
 	var span := head - contact
 	span.y = 0.0
 	# Solve yaw around the captured point, rather than rotating around the center
 	# afterwards and moving that point away from the controller's straight ray.
-	if span.length() > absf(local_contact.x) + 0.001:
+	if span.length() > absf(across) + 0.001:
 		# Around the vertical, so that the rows stay level on a card tilted to the head.
-		orientation = Basis(Vector3.UP, asin(local_contact.x / span.length())) * orientation
-	var pose := Transform3D(orientation, contact - orientation * local_contact)
-	var card := _find_card(id)
-	if card == null: return
-	card.node.global_transform = pose
+		orientation = Basis(Vector3.UP, asin(across / span.length())) * orientation
+	orientation *= mirror
+	card.node.global_transform = Transform3D(orientation, contact - orientation * local_contact)
 	update_wires()
+
+
+## The yaw about the vertical, in the canvas's space, that turns a card at
+## [param point] to [param local_head] (D-115).
+static func _yaw_to(local_head: Vector3, point: Vector3) -> float:
+	var toward := local_head - point
+	return atan2(toward.x, toward.z) if not Vector2(toward.x, toward.z).is_zero_approx() else 0.0
+
+
+## Gives [param block], new at [param point] in the canvas's space, a
+## [code]vr_rotation[/code] that turns its card to the last head, in steps of
+## 15°, where cards don't all face the head (D-115): as a held card turns.
+func turn_to_head(block: Dictionary, point: Vector3) -> void:
+	if _facing == XREFeatureSettings.ON or not _faces_user: return
+	var yaw := wrapf(snappedf(_yaw_to(to_local(_head_position), point), YAW_STEP), -PI, PI)
+	if is_zero_approx(yaw): block.erase("vr_rotation")
+	else: block["vr_rotation"] = Vector3(0, yaw, 0)
 
 
 ## Current card pose in workspace coordinates, including a grip preview.
@@ -1959,6 +2469,7 @@ func _paint_focus() -> void:
 	for card: Card in _cards: _look_card(card)
 	for wire: Wire in _wires: _look_wire(wire)
 	for link: Wire in _variable_links: _look_link(link)
+	_lay_arrows()
 	for index: int in _boxes.box_count():
 		var state: int = boxes.get(_boxes.box_name(index), XREBlueprintFocus.OUT if any else XREBlueprintFocus.NORMAL)
 		_boxes.paint_box(index, state, focus_paint(state), focus_seen(state))
@@ -2508,7 +3019,8 @@ static func _box_distance(origin: Vector3, direction: Vector3, bounds: AABB, max
 
 
 func _port_distance(origin: Vector3, direction: Vector3, center: Vector3, scale: Vector3, maximum: float) -> float:
-	if _port_display == XREFeatureSettings.SPHERE:
+	# A port on the edge is round too, seen from every side (D-115).
+	if _port_display == XREFeatureSettings.SPHERE or _pins == XREFeatureSettings.EDGE:
 		# The sphere and the same margin as a disc's around it.
 		var radius := (PORT_RADIUS + PORT_HIT_MARGIN) * scale.x
 		var along := (center - origin).dot(direction) / direction.length_squared()
@@ -2733,15 +3245,16 @@ func port_position(id: int, port: int, input: bool) -> Vector3:
 	return _port_position(card, port, input)
 
 
-## A wire leaves a disc from its face and a sphere from its center; Play
-## Animation's output 0 leaves Finished while it waits (D-052).
+## A wire leaves a disc from its face — the back one with its pins there — and
+## a sphere or a port on the edge from its center; Play Animation's output 0
+## leaves Finished while it waits (D-052, D-115).
 func _port_position(card: Card, port: int, input: bool, finished: int = -1) -> Vector3:
 	if not input and port == 0 and card.finished >= 0 and (card.waits if finished < 0 else finished == 1):
 		return card.node.transform * (card.sockets[card.finished].center + Vector3.BACK * PORT_DEPTH)
 	var visual := card.ports[port if input else card.inputs.size() + port]
 	var center := card.inputs[port] if input else card.outputs[port]
-	if _port_display == XREFeatureSettings.SPHERE: return card.node.transform * center
-	return card.node.transform * (center + Vector3.BACK * PORT_DEPTH * visual.scale.z)
+	if _port_display == XREFeatureSettings.SPHERE or _pins == XREFeatureSettings.EDGE: return card.node.transform * center
+	return card.node.transform * (center + (Vector3.FORWARD if card.pins_back else Vector3.BACK) * PORT_DEPTH * visual.scale.z)
 
 
 ## Wires leave outputs rightwards and enter inputs from the left, as in GraphEdit: the card's
@@ -2815,6 +3328,179 @@ func hide_connection() -> void:
 func update_wires() -> void:
 	for wire: Wire in _wires: _update_wire(wire)
 	for link: Wire in _variable_links: _update_variable_link(link)
+	_lay_arrows()
+
+
+## Whether arrowheads run along their wires, and so are laid every frame (D-115).
+func _runs_arrows() -> bool:
+	return _exec_arrows == XREFeatureSettings.RUNNING or _data_arrows == XREFeatureSettings.RUNNING
+
+
+## Puts the wires' arrowheads along them as Execution arrows and Data arrows say
+## (D-115): along the flow — from an output to its input, from a box to the
+## input it feeds and from a Set to the box it writes, from an object to its
+## Target —, filled cones or open ones turned about their wire to the head. Allocates nothing.
+func _lay_arrows() -> void:
+	var layer := _arrows_open if _open_arrows else _arrows_filled
+	var other := _arrows_filled if _open_arrows else _arrows_open
+	other.multimesh.visible_instance_count = 0
+	other.visible = false
+	var count := 0
+	if _exec_arrows != XREFeatureSettings.OFF or _data_arrows != XREFeatureSettings.OFF:
+		var head := to_local(_head_position) if is_inside_tree() else _head_position
+		for wire: Wire in _wires:
+			var execution := wire.from != null and wire.from.output_types[wire.from_port] == XREBlueprintGraph.EXEC
+			count = _arrows_on(layer.multimesh, wire, execution, true, head, count)
+		for link: Wire in _variable_links: count = _arrows_on(layer.multimesh, link, false, link.writes, head, count)
+		for link: Wire in _scene_links: count = _arrows_on(layer.multimesh, link, false, false, head, count)
+	layer.multimesh.visible_instance_count = count
+	layer.visible = count > 0
+
+
+## Lays [param wire]'s arrowheads into [param arrows] from instance [param count]
+## on, along its tubes [param forward] or against them; the count after them.
+func _arrows_on(arrows: MultiMesh, wire: Wire, execution: bool, forward: bool, head: Vector3, count: int) -> int:
+	var mode := _exec_arrows if execution else _data_arrows
+	if mode == XREFeatureSettings.OFF or not wire.mesh.visible: return count
+	var size := 1.0 if execution else 0.8
+	var color := _arrow_color(wire)
+	var last := wire.pieces.size() - 1
+	for index: int in wire.pieces.size():
+		var piece := wire.pieces[index]
+		var points := piece.get_point_count()
+		if points < 2 or points > _arc.size(): continue
+		_arc[0] = 0.0
+		for point: int in range(1, points): _arc[point] = _arc[point - 1] + piece.get_point(point).distance_to(piece.get_point(point - 1))
+		var length := _arc[points - 1]
+		# One at the end of the flow: the last tube's end, or the first's start against it.
+		if mode == XREFeatureSettings.AT_END:
+			if index == (last if forward else 0) and length > ARROW_END * 2.0 and count < ARROW_LIMIT:
+				count = _put_arrow(arrows, piece, points, length - ARROW_END, forward, head, color, size * ARROW_END_SCALE, count)
+			continue
+		if length < ARROW_MARGIN * 2.0 + 0.02: continue
+		var along := ARROW_MARGIN + (fmod(_arrow_clock * ARROW_SPEED, ARROW_STEP) if mode == XREFeatureSettings.RUNNING else ARROW_STEP * 0.5)
+		while along < length - ARROW_MARGIN and count < ARROW_LIMIT:
+			count = _put_arrow(arrows, piece, points, along, forward, head, color, size, count)
+			along += ARROW_STEP
+	return count
+
+
+## The colour of [param wire]'s arrowheads (D-115): its own, lit or darker by
+## its focus as its tubes are, and as see-through as they are.
+func _arrow_color(wire: Wire) -> Color:
+	var color := wire.color
+	match focus_paint(wire.focus):
+		XREBlueprintFocus.LIT: color = color.lerp(Color.WHITE, XREBlueprintFocus.LIGHT)
+		XREBlueprintFocus.DARK: color = Color(color.r * XREBlueprintFocus.DIM, color.g * XREBlueprintFocus.DIM, color.b * XREBlueprintFocus.DIM)
+	color.a = wire.color.a * (1.0 - wire.mesh.transparency)
+	return color
+
+
+## One arrowhead [param along] meters down [param piece] in the flow's
+## direction, into instance [param count] of [param arrows]; the next instance.
+func _put_arrow(arrows: MultiMesh, piece: XREGraphWire, points: int, along: float, forward: bool, head: Vector3, color: Color, size: float, count: int) -> int:
+	var length := _arc[points - 1]
+	var at := along if forward else length - along
+	var index := 0
+	while index < points - 2 and _arc[index + 1] < at: index += 1
+	var start := piece.get_point(index)
+	var end := piece.get_point(index + 1)
+	var span := _arc[index + 1] - _arc[index]
+	var point := start.lerp(end, clampf((at - _arc[index]) / span, 0.0, 1.0) if span > 0.0 else 0.0)
+	var tangent := (end - start).normalized() * (1.0 if forward else -1.0)
+	if tangent.is_zero_approx(): return count
+	var basis: Basis
+	if _open_arrows:
+		# Flat along the wire, turned about it to the head.
+		var toward := head - point
+		toward -= tangent * toward.dot(tangent)
+		if toward.is_zero_approx(): toward = tangent.cross(Vector3.UP) if not tangent.cross(Vector3.UP).is_zero_approx() else Vector3.BACK
+		toward = toward.normalized()
+		basis = Basis(tangent.cross(toward).normalized(), tangent, toward)
+	else: basis = Basis(Quaternion(Vector3.UP, tangent))
+	var pose := Transform3D(basis.scaled(Vector3.ONE * size), point)
+	arrows.set_instance_transform(count, pose)
+	arrows.set_instance_color(count, color)
+	_arrow_poses[count] = pose
+	return count + 1
+
+
+## Where arrowhead [param index] of those drawn now is, in the canvas's space (D-115).
+func get_arrow_pose(index: int) -> Transform3D:
+	return _arrow_poses[index] if index >= 0 and index < _arrow_poses.size() else Transform3D()
+
+
+## Puts each port of a sign on its rim towards the far ends of its wires, as the
+## head sees them (Sign ports Rim, D-115): an input without a wire across from
+## the result, no two nearer than 50°; a token goes round with its port.
+func _lay_rims() -> void:
+	for card: Card in _cards:
+		if card.shape == XREBlueprintShapes.Shape.NONE or card.rim_built.size() != card.ports.size(): continue
+		var inverse := card.node.transform.affine_inverse()
+		var count := card.ports.size()
+		if _rim_angles.size() < count: _rim_angles.resize(count)
+		var output := 0.0
+		var has_output := false
+		for index: int in count:
+			var input := index < card.inputs.size()
+			var pull := Vector2.ZERO
+			for wire: Wire in _wires:
+				var far := Vector3.INF
+				if input and wire.to == card and wire.to_port == index:
+					far = wire.from.node.position if wire.from != null else _boxes.box_point(wire.variable)
+				elif not input and wire.from == card and wire.from_port == index - card.inputs.size() and wire.to != null:
+					far = wire.to.node.position
+				if far == Vector3.INF: continue
+				var local := inverse * far
+				var flat := Vector2(local.x, local.y)
+				if not flat.is_zero_approx(): pull += flat.normalized()
+			_rim_angles[index] = pull.angle() if not pull.is_zero_approx() else INF
+			if not input and not has_output and _rim_angles[index] != INF:
+				output = _rim_angles[index]
+				has_output = true
+		for index: int in count:
+			if _rim_angles[index] != INF: continue
+			var built := card.rim_built[index]
+			# A port without a wire stays where it was built, an input across from the result.
+			_rim_angles[index] = output + PI if index < card.inputs.size() and has_output else atan2(built.y, built.x)
+		for _sweep: int in 24:
+			for first: int in count:
+				for second: int in range(first + 1, count):
+					var gap := angle_difference(_rim_angles[first], _rim_angles[second])
+					var need := deg_to_rad(50.0) - absf(gap)
+					if need <= 0.0: continue
+					var push := need * 0.5 * (1.0 if gap >= 0.0 else -1.0)
+					_rim_angles[first] -= push
+					_rim_angles[second] += push
+		for index: int in count:
+			var spot := _rim_point(card, _rim_angles[index])
+			var port := card.ports[index]
+			port.position = Vector3(spot.x, spot.y, port.position.z)
+			if index < card.inputs.size(): card.inputs[index] = port.position
+			else: card.outputs[index - card.inputs.size()] = port.position
+		for socket: Socket in card.sockets:
+			if socket.kind != TOKEN or socket.port < 0 or socket.port >= card.inputs.size(): continue
+			var built := card.rim_built[socket.port]
+			var turn := angle_difference(atan2(built.y, built.x), _rim_angles[socket.port])
+			var offset := Vector2(socket.home.x - built.x, socket.home.y - built.y).rotated(turn)
+			var port_at := card.ports[socket.port].position
+			var center := Vector3(port_at.x + offset.x, port_at.y + offset.y, socket.home.z)
+			socket.visual.position += center - socket.center
+			socket.center = center
+
+
+## The point of [param card]'s outline at [param angle] from its centre: on a
+## circle at its radius, else the outline's point nearest that angle (D-115).
+func _rim_point(card: Card, angle: float) -> Vector2:
+	if card.shape == XREBlueprintShapes.Shape.CIRCLE: return Vector2.from_angle(angle) * card.width * 0.5
+	var best := Vector2.ZERO
+	var nearest := INF
+	for point: Vector2 in card.outline:
+		var gap := absf(angle_difference(point.angle(), angle))
+		if gap < nearest:
+			nearest = gap
+			best = point
+	return best
 
 
 ## Lays the wire of [param link]'s Variable socket to its variable's box.
@@ -3103,9 +3789,13 @@ func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1, 
 	var spherical := _port_display == XREFeatureSettings.SPHERE and not _port_shapes and not (type == XREBlueprintGraph.EXEC and _style == XREFeatureSettings.ARCHETYPES)
 	# An archetype card's execution ports stand on its edges, half out (D-106).
 	if type == XREBlueprintGraph.EXEC and card.headed: point.x = card.width * (-0.5 if input else 0.5)
+	var label_point := point
+	var edge := _pins == XREFeatureSettings.EDGE
+	# On the edge, in the middle of the node's depth (D-115); its name stays on the face.
+	if edge: point = Vector3(point.x if card.shape != XREBlueprintShapes.Shape.NONE else card.width * (-0.5 if input else 0.5), point.y, 0.0)
 	# Shaded by the view angle, as wires are, so that it reads as round.
-	if spherical: point.z = card.face + CARD_THICKNESS * 0.5 + PORT_RADIUS * SPHERE_LIFT
-	var mesh := _port_visual(type, color, spherical)
+	elif spherical: point.z = card.face + CARD_THICKNESS * 0.5 + PORT_RADIUS * SPHERE_LIFT
+	var mesh := _edge_visual(type, color) if edge else _port_visual(type, color, spherical)
 	mesh.position = point
 	card.node.add_child(mesh)
 	# By the port's index, not its row: an archetype's rows are in another order (D-101).
@@ -3119,9 +3809,26 @@ func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1, 
 	# An operator's ports have no names (D-065): its symbol says what they are.
 	var text := label(spec[0] if not card.compact else "", 18)
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if input else HORIZONTAL_ALIGNMENT_RIGHT
-	text.position = point + Vector3(0.022 if input else -0.022, 0, 0)
+	text.position = label_point + Vector3(0.022 if input else -0.022, 0, 0)
 	card.node.add_child(text)
 	return text
+
+
+## A port on a node's edge (Pins On the edge, D-115): an arrowhead along the flow
+## for execution, else a ball, shaded by the view angle as wires are.
+func _edge_visual(type: int, color: Color) -> MeshInstance3D:
+	if type != XREBlueprintGraph.EXEC: return XRERig.create_vr_mesh(_sphere_mesh, wire_material(color))
+	if _edge_arrow == null:
+		_edge_arrow = CylinderMesh.new()
+		_edge_arrow.top_radius = 0.0
+		_edge_arrow.bottom_radius = PORT_RADIUS * 0.95
+		_edge_arrow.height = PORT_RADIUS * 2.4
+		_edge_arrow.radial_segments = 16
+		_edge_arrow.rings = 1
+	var arrow := XRERig.create_vr_mesh(_edge_arrow, wire_material(color))
+	# Its tip along the card's rows, the way execution flows.
+	arrow.rotation.z = -PI * 0.5
+	return arrow
 
 
 ## Where the port of row [param row] is on the left ([param input]) or the right edge of [param card].
@@ -3859,7 +4566,7 @@ func _build_boxes(graph: XREBlueprintGraph) -> void:
 	for block: Dictionary in graph.nodes:
 		if block["kind"] in ["get_variable", "set_variable"]: used[str(block["params"]["variable"])] = true
 	# Turned as the cards are, with the display they are rebuilt for (D-090).
-	_boxes.face(_head_position, _faces_user and _display != XREFeatureSettings.CUBOID)
+	_boxes.face(_head_position, _faces_user and _facing != XREFeatureSettings.OFF)
 	_boxes.rebuild(graph, _box_places(graph), _value_mode, used, _composite == XREFeatureSettings.SPLIT, _style == XREFeatureSettings.ARCHETYPES, _port_shapes)
 	for card: Card in _cards:
 		var block := graph.find_node(card.id)

@@ -112,7 +112,7 @@ var _small: CSGBox3D
 var _scroll_panel: XREPanelSurface
 var _scroll_list: ItemList
 var _scroll_value := 0.0
-## A row too long for its panel, for sideways scrolling (D-116).
+## A row too long for its panel, for sideways scrolling (D-117).
 var _scroll_row: XRESegmentRow
 var _panels: XREPanels
 var _manipulator: XREManipulator
@@ -948,26 +948,33 @@ func _test_feature_store() -> void:
 	var path := "user://test_feature_settings.cfg"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	var store := XREFeatureSettings.new(path)
-	var key := XREFeatureSettings.NODE_DISPLAY
-	_check(store.get_value(key) == XREFeatureSettings.BILLBOARD, "the first value of a setting is its default")
-	_check(not store.set_value(key, &"sphere") and not store.set_value(&"no_such_setting", XREFeatureSettings.CUBOID),
+	var key := XREFeatureSettings.NODE_FACING
+	_check(store.get_value(key) == XREFeatureSettings.ON, "the first value of a setting is its default")
+	_check(not store.set_value(key, &"sphere") and not store.set_value(&"no_such_setting", XREFeatureSettings.OFF),
 			"unknown values and settings are refused")
-	_check(not store.set_value(key, XREFeatureSettings.BILLBOARD), "setting the current value changes nothing")
+	_check(not store.set_value(key, XREFeatureSettings.ON), "setting the current value changes nothing")
 	var keys: Array[StringName] = []
 	store.changed.connect(func(changed: StringName) -> void: keys.append(changed))
-	_check(store.set_value(key, XREFeatureSettings.CUBOID) and keys == [key], "a new value is set and announced")
-	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.CUBOID, "the value persists in the file")
+	_check(store.set_value(key, XREFeatureSettings.OFF) and keys == [key], "a new value is set and announced")
+	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.OFF, "the value persists in the file")
 	var config := ConfigFile.new()
 	config.set_value("features", String(key), "sphere")
 	config.save(path)
-	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.BILLBOARD, "a saved value no longer known falls back to the default")
+	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.ON, "a saved value no longer known falls back to the default")
+	# Node display's Cuboid, saved before Node facing and Node volume took its place (D-115), is both of theirs.
+	config = ConfigFile.new()
+	config.set_value("features", "node_display", "cuboid")
+	config.save(path)
+	var migrated := XREFeatureSettings.new(path)
+	_check(migrated.get_value(XREFeatureSettings.NODE_FACING) == XREFeatureSettings.OFF and migrated.get_value(XREFeatureSettings.NODE_VOLUME) == XREFeatureSettings.SOLID,
+			"a saved Cuboid becomes Node facing Off and Node volume 3D")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	_check(XREFeatureSettings.get_keys(XREFeatureSettings.Category.CONTROLS).is_empty(), "the controls page has no variant settings")
 	_test_feature_groups()
 	_test_controls_store(path)
 
 
-## Sections, subsections and what a setting needs to act (D-115).
+## Sections, subsections and what a setting needs to act (D-116).
 func _test_feature_groups() -> void:
 	var editor := XREFeatureSettings.get_keys(XREFeatureSettings.Category.EDITOR)
 	var grouped := 0
@@ -988,7 +995,7 @@ func _test_feature_groups() -> void:
 	_check(store.is_active(XREFeatureSettings.NODE_SHRINK) and store.count_changed(editor) == 0, "by default every setting acts and none is changed")
 	store.set_value(XREFeatureSettings.NODE_STYLE, XREFeatureSettings.CLASSIC)
 	_check(not store.is_active(XREFeatureSettings.NODE_SHRINK) and not store.is_active(XREFeatureSettings.NODE_HEADING)
-			and store.is_active(XREFeatureSettings.NODE_DISPLAY), "classic cards don't shrink nor take a heading")
+			and store.is_active(XREFeatureSettings.NODE_VOLUME), "classic cards don't shrink nor take a heading")
 	_check(store.is_changed(XREFeatureSettings.NODE_STYLE) and not store.is_changed(XREFeatureSettings.NODE_SHRINK)
 			and store.count_changed(editor) == 1, "the changed setting counts")
 	store.set_value(XREFeatureSettings.VALUE_INPUT, XREFeatureSettings.WINDOW)
@@ -1078,30 +1085,30 @@ func _open_settings() -> void:
 
 
 func _hover_cuboid() -> void:
-	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
+	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF)), 0.0)
 
 
 func _press_cuboid() -> void:
-	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
+	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON)
 	_check(billboard != null and billboard.button_pressed, "the features page shows the node display at its current value")
 	_check(not _rig.left_hand.is_free_for(_manipulator), "the left hand points at the window on the right forearm")
 	_operation_count = _operations.size()
-	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 1.0)
+	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF)), 1.0)
 
 
 func _release_cuboid() -> void:
-	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
+	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF)), 0.0)
 
 
 func _cuboid_set() -> void:
-	_check(_document.features.get_value(XREFeatureSettings.NODE_DISPLAY) == XREFeatureSettings.CUBOID,
+	_check(_document.features.get_value(XREFeatureSettings.NODE_FACING) == XREFeatureSettings.OFF,
 			"a click on Cuboid switches the node display")
 	_check(_operations.slice(_operation_count) == ["set_feature PANEL []"],
 			"the switch is one operation from a panel: %s" % [_operations.slice(_operation_count)])
-	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
-	_check(not billboard.button_pressed and _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID).button_pressed,
+	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON)
+	_check(not billboard.button_pressed and _settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF).button_pressed,
 			"only the current value's button is down")
-	_document.set_feature(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD, XREDocument.Source.TOOL)
+	_document.set_feature(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON, XREDocument.Source.TOOL)
 	# D-043: concave windows; one on a forearm stays flat, and the launcher stays concave when they are flat again.
 	_check(_settings_tab().get_button(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.SPHERE) != null
 			and _settings_tab().get_button(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.CONCAVE) == null,
@@ -1124,7 +1131,7 @@ func _cuboid_set() -> void:
 
 func _controls_page() -> void:
 	var tab := _settings_tab()
-	_check(tab.get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD) == null,
+	_check(tab.get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON) == null,
 			"the controls page doesn't show feature settings")
 	var features := _document.features
 	_check(tab.get_layout_button(XREFeatureSettings.HORIZON_LINK) != null and tab.get_layout_button(XREFeatureSettings.CUSTOM) != null,
@@ -1172,7 +1179,7 @@ func _controls_page_released() -> void:
 	tab.get_layout_button(XREFeatureSettings.STEAMVR).pressed.emit()
 	_check(features.get_binding(delete) == &"left_x" and _operations.back() == "set_layout PANEL []", "a click on a preset picks it, as one operation")
 	_check(tab.get_layout_row().get_choices().size() == XREFeatureSettings.LAYOUTS.size(), "the layouts are one row")
-	# D-115: Reset gives the layout back to the runtime, the custom bindings kept.
+	# D-116: Reset gives the layout back to the runtime, the custom bindings kept.
 	var reset := tab.get_reset_button(XRESettingsTab.RESET_LAYOUT)
 	_check(reset != null and not reset.disabled, "a picked layout can be reset")
 	reset.pressed.emit()
@@ -1186,7 +1193,7 @@ func _controls_page_released() -> void:
 	_settings_tab().select_section(XREFeatureSettings.Category.EDITOR, &"cards")
 
 
-## D-115: the Editor's subsections in a row over the settings, a setting that
+## D-116: the Editor's subsections in a row over the settings, a setting that
 ## doesn't act dimmed, Reset.
 func _settings_editor_page() -> void:
 	var tab := _settings_tab()
@@ -1206,7 +1213,7 @@ func _settings_dimmed() -> void:
 	var tab := _settings_tab()
 	var features := _document.features
 	_check(tab.is_dimmed(XREFeatureSettings.NODE_SHRINK) and tab.is_dimmed(XREFeatureSettings.NODE_HEADING)
-			and not tab.is_dimmed(XREFeatureSettings.NODE_DISPLAY), "classic cards dim the settings of archetypes")
+			and not tab.is_dimmed(XREFeatureSettings.NODE_VOLUME), "classic cards dim the settings of archetypes")
 	_check(tab.get_button(XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.OPERATORS).disabled, "a dimmed setting's values can't be clicked")
 	_check(tab.is_marked(XREFeatureSettings.NODE_STYLE) and tab.get_nav_count(&"editor") == 1, "the changed setting is marked and counted")
 	var reset := tab.get_reset_button(XRESettingsTab.RESET_GROUP)
@@ -1277,7 +1284,7 @@ func _settings_back_to_row() -> void:
 	tab.select_section(XREFeatureSettings.Category.EDITOR, &"cards")
 
 
-## The explanation of the row under the ray, at the bottom of a window tall enough (D-115).
+## The explanation of the row under the ray, at the bottom of a window tall enough (D-116).
 func _test_settings_hint() -> void:
 	var keys: Array[StringName] = []
 	keys.assign(XREFeatureSettings.DEFINITIONS.keys())
@@ -1287,15 +1294,15 @@ func _test_settings_hint() -> void:
 	root.add_child(tab)
 	tab.size = XRESettingsTab.WINDOW_SIZE
 	_check(tab.get_hint_text() == "%s: %s" % [XRESettingsTab.HINT_TITLE, XRESettingsTab.HINT_TEXT], "a full window shows what the bottom is for")
-	tab.get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID).mouse_entered.emit()
-	_check(tab.get_hint_text().begins_with("Node display: "), "the ray on a row explains it: %s" % tab.get_hint_text())
+	tab.get_button(XREFeatureSettings.NODE_VOLUME, XREFeatureSettings.SOLID).mouse_entered.emit()
+	_check(tab.get_hint_text().begins_with("Node volume: "), "the ray on a row explains it: %s" % tab.get_hint_text())
 	tab.select_section(XREFeatureSettings.Category.CONTROLS)
 	tab.size = XRESettingsTab.WINDOW_SIZE
 	_check(tab.get_hint_text() == "", "the controls have no explanation at the bottom")
 	tab.queue_free()
 
 
-## The sections fold to their icons, and the window, no longer pinned, narrows (D-115).
+## The sections fold to their icons, and the window, no longer pinned, narrows (D-116).
 func _settings_collapse() -> void:
 	var tab := _settings_tab()
 	_check(not _settings_window().is_pinned() and not tab.is_collapsed(), "the settings window is a window again, its sections unfolded")
@@ -1628,7 +1635,7 @@ func _list_glided() -> void:
 	surface.queue_free()
 
 
-## D-116: a row too long for its place scrolls sideways, dragged by the ray or
+## D-117: a row too long for its place scrolls sideways, dragged by the ray or
 ## by the stick; a click on it still picks. A panel with a long row, laid out by the next frame.
 func _test_drag_row() -> void:
 	_scroll_panel = XREPanelSurface.new(Vector2(300, 120), 0.001, 1.0, null)

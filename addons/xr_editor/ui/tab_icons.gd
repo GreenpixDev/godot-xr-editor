@@ -56,7 +56,7 @@ stroke="#fff" stroke-width="6" stroke-linejoin="round"/>"""],
 ## Glyphs for buttons: the launcher's library, a window, a pin, close; the
 ## object's badge's Blueprint, add a block and delete (D-085); the object's
 ## shortcut's rename and the disc of its buttons (D-088); the wire menu's link and bend (D-090);
-## the sections of Settings (D-115).
+## the sections of Settings (D-116).
 const GLYPHS: Dictionary[StringName, String] = {
 	&"blueprint": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <rect x="14" y="28" width="40" height="32" rx="8"/><rect x="74" y="68" width="40" height="32" rx="8"/>
@@ -82,7 +82,7 @@ const GLYPHS: Dictionary[StringName, String] = {
 <rect x="16" y="50" width="50" height="28" rx="14"/><circle cx="92" cy="64" r="18"/><path d="M66 64H74"/></g>""",
 	&"bend": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round">
 <path d="M16 96C40 96 44 40 64 40S88 96 112 96"/></g><circle cx="64" cy="40" r="13" fill="#fff"/>""",
-	# The sections of Settings (D-115): the editor a box, the controls a controller, global a globe.
+	# The sections of Settings (D-116): the editor a box, the controls a controller, global a globe.
 	&"editor": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linejoin="round">
 <path d="M64 16L106 40V88L64 112L22 88V40Z"/><path d="M22 40L64 64L106 40M64 64V112"/></g>""",
 	&"controller": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">

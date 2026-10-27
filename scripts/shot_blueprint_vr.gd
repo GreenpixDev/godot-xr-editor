@@ -49,6 +49,47 @@ func _look(from: Vector3, at: Vector3) -> void:
 	_rig.camera.global_transform = Transform3D(Basis.looking_at(at - from, Vector3.UP), from)
 
 
+## D-115: the graph from its side and from behind, where Card mirror and Node
+## back lay the cards out as a mirror's; the head back where it was.
+func _shot_sides(head: Vector3, cards: Array) -> void:
+	if cards.is_empty(): return
+	var center := Vector3.ZERO
+	for card: XREBlueprintCanvas.Card in cards: center += card.node.global_position
+	center /= cards.size()
+	var away := head - center
+	away.y = 0.0
+	for step: Array in [["25_side", PI * 0.5], ["25b_behind", PI * 0.8], ["25c_back", PI]]:
+		_look(center + away.rotated(Vector3.UP, step[1] as float) + Vector3.UP * (head.y - center.y), center)
+		await _frames(4)
+		await _shot(step[0] as String)
+	# From where the graph reads left to right: square to the sum of its wires'
+	# directions, 1 m out from its cards' nearest edge.
+	var bases: Dictionary[int, Vector3] = {}
+	var middle := Vector3.ZERO
+	for card: XREBlueprintCanvas.Card in cards:
+		bases[card.id] = card.base
+		middle += card.base
+	middle /= cards.size()
+	var flow := Vector3.ZERO
+	for edge: Dictionary in _service.blueprint.graph.edges:
+		if not bases.has(edge["from"]) or not bases.has(edge["to"]): continue
+		var step: Vector3 = bases[edge["to"]] - bases[edge["from"]]
+		step.y = 0.0
+		if not step.is_zero_approx(): flow += step.normalized()
+	flow = flow.normalized() if not flow.is_zero_approx() else Vector3.RIGHT
+	var forward := Vector3(flow.z, 0, -flow.x)
+	var nearest := 0.0
+	for point: Vector3 in bases.values(): nearest = minf(nearest, (point - middle).dot(forward))
+	var canvas := _service.canvas
+	var view := middle + forward * (nearest - 1.0)
+	view.y = middle.y + 0.12
+	_look(canvas.to_global(view), canvas.to_global(middle))
+	await _frames(4)
+	await _shot("25d_view")
+	_look(head, center)
+	await _frames(4)
+
+
 ## D-093: the palette's tiles and task chips, the ring at a card's plus, the
 ## next-block suggestions there and the copy button; the user's settings back.
 func _shot_d090(head: Vector3, host: Node3D) -> void:
@@ -155,9 +196,11 @@ func _run() -> void:
 	_service = XREBlueprints.new(_document, _rig, icons, EditorInterface.get_editor_theme())
 	_rig.add_child(_service)
 	panels.set_blueprints(_service)
-	var host := scene.get_node_or_null(^"GreenCube") as Node3D
+	# XRE_SHOT_HOST names another object of the scene whose graph to shoot.
+	var host_name := OS.get_environment("XRE_SHOT_HOST") if OS.has_environment("XRE_SHOT_HOST") else "GreenCube"
+	var host := scene.get_node_or_null(NodePath(host_name)) as Node3D
 	if host == null:
-		printerr("shot_blueprint_vr: no GreenCube")
+		printerr("shot_blueprint_vr: no " + host_name)
 		get_tree().quit(1)
 		return
 	# Standing about where the user stood: a step back from the table, eyes at 1.6 m.
@@ -171,6 +214,7 @@ func _run() -> void:
 	_look(head, host.global_position)
 	await _shot("01_overview")
 	var cards := _service.canvas.get("_cards") as Array
+	await _shot_sides(head, cards)
 	for card: XREBlueprintCanvas.Card in cards:
 		var face := card.node.global_transform
 		_look(face.origin + face.basis.z.normalized() * 0.35, face.origin)

@@ -8,7 +8,7 @@ extends RefCounted
 ##
 ## Every setting belongs to a [enum Category], which is a section of the
 ## settings tab, and in the Editor section to a subsection of [constant GROUPS]
-## (D-115). A setting that only acts with certain values of others names them
+## (D-116). A setting that only acts with certain values of others names them
 ## in [code]requires[/code] ([method is_active]). Its first value is the default. Values are switched through
 ## [method XREDocument.set_feature], so that the switch is an operation in the
 ## study's log; tools read them with [method get_value] and redraw on
@@ -22,7 +22,7 @@ extends RefCounted
 ## controls layout or rebinding an action emits it with [constant CONTROLS].
 signal changed(key: StringName)
 
-## Sections of the settings tab, in its order (D-115).
+## Sections of the settings tab, in its order (D-116).
 enum Category {
 	## What isn't one tool's: the settings tab itself.
 	GLOBAL,
@@ -43,19 +43,72 @@ const GROUPS: Dictionary[StringName, String] = {
 	&"blocks": "Blocks",
 }
 
-## Where the settings tab shows a section's subsections (D-115).
+## Where the settings tab shows a section's subsections (D-116).
 const SETTINGS_SUBSECTIONS := &"settings_subsections"
 ## A row over the settings, dragged sideways when it doesn't fit, as the controls layouts are.
 const ROW := &"row"
 ## Under the section's name on the left, opened and closed by it.
 const TREE := &"tree"
 
-## How logic graph cards are drawn ([XREBlueprintCanvas]).
-const NODE_DISPLAY := &"node_display"
-## Flat cards that turn towards the head around the vertical (D-033).
-const BILLBOARD := &"billboard"
-## Solid boxes in the graph's orientation, seen from the side when walked around.
-const CUBOID := &"cuboid"
+## Which logic graph nodes turn towards the head ([XREBlueprintCanvas], D-115;
+## with [constant NODE_VOLUME] it took the place of Node display, D-039):
+## [constant ON] all of them, as Billboard did; only the shorthands — signs,
+## beads, tags, operators and the variables' boxes —; [constant OFF] none, as
+## Cuboid did: they stand in the orientation of the graph, or of their part.
+const NODE_FACING := &"node_facing"
+const SHORTHANDS := &"shorthands"
+## Whether nodes are flat ([constant FLAT]) or solid, 1.2 cm deep (D-115).
+const NODE_VOLUME := &"node_volume"
+const SOLID := &"solid"
+## What a node that doesn't turn to the head shows from behind (D-115): its
+## blank back, or its face laid out as a mirror's — inputs on the right, the
+## text readable, icons and execution arrows along the flow.
+const NODE_BACK := &"node_back"
+const BLANK := &"blank"
+const LABELLED := &"labelled"
+## Where a node's ports are (D-115): on its face, as before; on whichever of
+## its faces is turned to the head; or on its edge, balls and arrowheads that
+## stand out of a node thinner than they are, seen from every side.
+const PIN_PLACE := &"pin_place"
+const FACE := &"face"
+const BOTH_FACES := &"both_faces"
+const EDGE := &"edge"
+## Whether cards turned to the head lay themselves out as a mirror's past 90°
+## from the front of their graph or part (D-115): inputs on the right, so that
+## seen from behind their wires leave towards their neighbours.
+const CARD_MIRROR := &"card_mirror"
+## Where the ports of the shorthands' signs are (D-115): inputs on the left,
+## the result on the right, as before; or each on the rim towards the far end of its wire.
+const SIGN_PORTS := &"sign_ports"
+const SIDES := &"sides"
+const RIM := &"rim"
+## Whether the graph turns to the head about the vertical (D-115): never; by
+## 180° past 95° from its front; to the nearest of its four fronts past 50°;
+## or once to the head when a ray first comes onto it. Never while a card, a
+## box, a bend or a wire is held.
+const GRAPH_TURN := &"graph_turn"
+const FIXED := &"fixed"
+const FLIP := &"flip"
+const STEPS := &"steps"
+const AIM := &"aim"
+## What turns and mirrors as one (D-115): the whole graph about its centre, or
+## each of its parts about its own — cards of one orientation
+## ([code]vr_rotation[/code]) wired together.
+const GRAPH_PARTS := &"graph_parts"
+const PARTS := &"parts"
+## Arrowheads on logic graph wires along their flow, from output to input and
+## from an object to its Target (D-115), for execution wires and data wires
+## apart: chevrons every 9 cm, the same running, or one at the end.
+const EXEC_ARROWS := &"exec_arrows"
+const DATA_ARROWS := &"data_arrows"
+const CHEVRONS := &"chevrons"
+const RUNNING := &"running"
+const AT_END := &"at_end"
+## How wires' arrowheads are drawn (D-115): filled cones, or open ones, two
+## strokes as ">", turned about the wire to the head.
+const ARROW_STYLE := &"arrow_style"
+const FILLED := &"filled"
+const OPEN := &"open"
 
 ## How the ports of logic graph cards are drawn ([XREBlueprintCanvas], D-043).
 const PORT_DISPLAY := &"port_display"
@@ -252,13 +305,71 @@ const BLOCK_COPY := &"block_copy"
 ## author's picks after the headset checks, D-076, D-114), the values' titles
 ## and a line of explanation.
 const DEFINITIONS: Dictionary[StringName, Dictionary] = {
-	NODE_DISPLAY: {
+	NODE_FACING: {
 		"category": Category.EDITOR,
 		"group": &"cards",
-		"title": "Node display",
-		"values": [BILLBOARD, CUBOID],
-		"labels": ["Billboard", "Cuboid"],
-		"hint": "Billboard: flat cards facing you. Cuboid: solid boxes fixed in the graph.",
+		"title": "Node facing",
+		"values": [ON, SHORTHANDS, OFF],
+		"labels": ["On", "Shorthands", "Off"],
+		"hint": "On: every node turns to you. Shorthands: only signs, beads, tags, operators and boxes do; cards stand in the graph. Off: nothing turns.",
+	},
+	NODE_VOLUME: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"title": "Node volume",
+		"values": [FLAT, SOLID],
+		"labels": ["2D", "3D"],
+		"hint": "2D: flat nodes. 3D: solid nodes 1.2 cm deep, thinner than their ports.",
+	},
+	NODE_BACK: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"requires": {NODE_FACING: [SHORTHANDS, OFF]},
+		"title": "Node back",
+		"values": [BLANK, LABELLED],
+		"labels": ["Blank", "Labelled"],
+		"hint": "For nodes that don't turn to you. Blank: their back is plain. Labelled: from behind a card shows its face as a mirror's, inputs on the right, the text readable.",
+	},
+	PIN_PLACE: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"title": "Pins",
+		"values": [FACE, BOTH_FACES, EDGE],
+		"labels": ["On the face", "Both faces", "On the edge"],
+		"hint": "On the face: as before. Both faces: on whichever face is turned to you. On the edge: balls and arrowheads on the node's edge, seen from every side.",
+	},
+	CARD_MIRROR: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"requires": {NODE_FACING: [ON], GRAPH_TURN: [FIXED]},
+		"title": "Card mirror",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "With Node facing On and Graph turn Fixed. On: past 90° from the graph's front, cards lay out as a mirror's, inputs on the right, so their wires leave towards their neighbours.",
+	},
+	SIGN_PORTS: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"title": "Sign ports",
+		"values": [SIDES, RIM],
+		"labels": ["Sides", "Rim"],
+		"hint": "Sides: a sign's inputs on its left, its result on its right. Rim: each port slides along the rim towards the other end of its wire.",
+	},
+	GRAPH_TURN: {
+		"category": Category.EDITOR,
+		"group": &"view",
+		"title": "Graph turn",
+		"values": [FIXED, FLIP, STEPS, AIM],
+		"labels": ["Fixed", "Flip 180°", "Steps 90°", "On aim"],
+		"hint": "Fixed: the graph stays. Flip: it turns round past 95° from its front. Steps: to the nearest of four fronts past 50°. On aim: to you once, when your ray first comes onto it. Never while something in it is held.",
+	},
+	GRAPH_PARTS: {
+		"category": Category.EDITOR,
+		"group": &"view",
+		"title": "Graph parts",
+		"values": [WHOLE, PARTS],
+		"labels": ["Whole", "Parts"],
+		"hint": "Whole: the graph turns and mirrors as one, by its front. Parts: cards of one orientation wired together do so by their own; turn a card with the grip while nodes don't face you.",
 	},
 	PORT_DISPLAY: {
 		"category": Category.EDITOR,
@@ -503,7 +614,35 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"labels": ["On top", "On the left"],
 		"hint": "Where Settings shows a section's subsections. On top: a row over the settings; drag it sideways when it doesn't fit. On the left: under the section's name, which opens and closes them.",
 	},
+	EXEC_ARROWS: {
+		"category": Category.EDITOR,
+		"group": &"wires",
+		"title": "Execution arrows",
+		"values": [OFF, CHEVRONS, RUNNING, AT_END],
+		"labels": ["Off", "Chevrons", "Running", "At the end"],
+		"hint": "Arrowheads on execution wires along the flow. Chevrons: every 9 cm. Running: the same, moving. At the end: one before the input.",
+	},
+	DATA_ARROWS: {
+		"category": Category.EDITOR,
+		"group": &"wires",
+		"title": "Data arrows",
+		"values": [OFF, CHEVRONS, RUNNING, AT_END],
+		"labels": ["Off", "Chevrons", "Running", "At the end"],
+		"hint": "Arrowheads on data wires, from output to input and from an object to its Target. Chevrons: every 9 cm. Running: the same, moving. At the end: one before the input.",
+	},
+	ARROW_STYLE: {
+		"category": Category.EDITOR,
+		"group": &"wires",
+		"title": "Arrow style",
+		"values": [FILLED, OPEN],
+		"labels": ["Filled", "Open"],
+		"hint": "Filled: cones, seen from every side. Open: two strokes as >, turned about the wire to you.",
+	},
 }
+
+## Node display (D-039), saved before Node facing and Node volume took its
+## place (D-115): Cuboid is Node facing Off with Node volume 3D.
+const _OLD_NODE_DISPLAY := "node_display"
 
 ## Key [signal changed] carries when the controls layout or a binding changed.
 const CONTROLS := &"controls"
@@ -595,6 +734,9 @@ func _init(file: String = "") -> void:
 		var saved: Variant = config.get_value(_SECTION, String(key), "")
 		if saved is String and StringName(saved) in get_values(key):
 			_values[key] = StringName(saved)
+	if config.get_value(_SECTION, _OLD_NODE_DISPLAY, "") == "cuboid":
+		if not NODE_FACING in _values: _values[NODE_FACING] = OFF
+		if not NODE_VOLUME in _values: _values[NODE_VOLUME] = SOLID
 	for action: StringName in ACTIONS:
 		var button: Variant = config.get_value(_CONTROLS_SECTION, String(action), "")
 		if button is String and StringName(button) in BUTTONS:

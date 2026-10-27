@@ -24,7 +24,8 @@ nodes = Array[Dictionary]([{
 },
 "position": Vector2(1209.5933, 176.3121),
 "property_type": 9,
-"vr_depth": 0.31558692
+"vr_depth": 0.31558692,
+"vr_rotation": Vector3(0, -0.5235988, 0)
 }, {
 "function": {
 "advanced_shown": false,
@@ -76,7 +77,8 @@ nodes = Array[Dictionary]([{
 "z": 0.0
 },
 "position": Vector2(974.44244, 582.91833),
-"vr_depth": 0.44976082
+"vr_depth": 0.44976082,
+"vr_rotation": Vector3(0, -0.5235988, 0)
 }, {
 "function": {
 "advanced_shown": false,
@@ -129,7 +131,8 @@ nodes = Array[Dictionary]([{
 "variable": "x"
 },
 "position": Vector2(491.01944, 210.74304),
-"vr_depth": 0.041986376
+"vr_depth": 0.041986376,
+"vr_rotation": Vector3(0, -0.2617994, 0)
 }, {
 "id": 7,
 "kind": "operator",
@@ -139,7 +142,8 @@ nodes = Array[Dictionary]([{
 "op": "add"
 },
 "position": Vector2(-11.112556, 346.88586),
-"vr_depth": 0.057391495
+"vr_depth": 0.057391495,
+"vr_rotation": Vector3(0, 0.2617994, 0)
 }, {
 "id": 8,
 "kind": "get_variable",
@@ -193,7 +197,8 @@ nodes = Array[Dictionary]([{
 "seconds": 0.01
 },
 "position": Vector2(1338.2538, -37.93138),
-"vr_depth": 0.661464
+"vr_depth": 0.661464,
+"vr_rotation": Vector3(0, -0.7853982, 0)
 }, {
 "id": 10,
 "kind": "operator",
@@ -203,7 +208,8 @@ nodes = Array[Dictionary]([{
 "op": "divide"
 },
 "position": Vector2(757.8206, 561.73987),
-"vr_depth": 0.23535241
+"vr_depth": 0.23535241,
+"vr_rotation": Vector3(0, -0.2617994, 0)
 }])
 edges = Array[Dictionary]([{
 "from": 3,

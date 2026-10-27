@@ -2,9 +2,9 @@
 class_name XRESegmentRow
 extends VBoxContainer
 ## Choices on a dark track, the one picked white, as Meta Horizon OS draws a
-## segmented control (D-115). A row longer than its place scrolls sideways: the
+## segmented control (D-116). A row longer than its place scrolls sideways: the
 ## ray drags it and the right stick's left and right move it
-## ([XREPanelSurface], D-116). A fade at an edge says there is more that way,
+## ([XREPanelSurface], D-117). A fade at an edge says there is more that way,
 ## and a bar under the row how much of it is in view. A choice may carry a
 ## count, a blue badge after its name.
 

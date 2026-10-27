@@ -93,7 +93,7 @@ func set_feature(key: StringName, value: StringName, source: Source) -> bool:
 
 
 ## Puts feature settings [param keys] back to their defaults and records one
-## [code]&"reset_features"[/code] operation, undone in one step (D-115).
+## [code]&"reset_features"[/code] operation, undone in one step (D-116).
 ## Returns how many changed; none, nothing is recorded.
 func reset_features(keys: Array[StringName], source: Source) -> int:
 	var count := 0

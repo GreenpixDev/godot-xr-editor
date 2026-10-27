@@ -1009,7 +1009,7 @@ func _carry(pointer: Pointer, delta: float) -> void:
 
 ## How far [param value], a stick axis, is tilted past the dead zone, -1 to 1.
 ## Scrolls [param surface] where its pointer is by [param hand]'s thumbstick:
-## up and down the wheel, left and right a row that scrolls sideways (D-116).
+## up and down the wheel, left and right a row that scrolls sideways (D-117).
 static func scroll_by_stick(surface: XREPanelSurface, hand: XREHand, delta: float) -> void:
 	var stick := hand.get_vector2(&"primary")
 	var tilt := _tilt(stick.y)

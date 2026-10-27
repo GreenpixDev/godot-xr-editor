@@ -1,7 +1,7 @@
 @tool
 class_name XRESwitch
 extends Button
-## An On and Off switch as Meta Horizon OS draws one (D-115): a grey pill,
+## An On and Off switch as Meta Horizon OS draws one (D-116): a grey pill,
 ## blue when on, its white knob then at the right.
 
 ## Sizes in interface pixels at editor scale 1.

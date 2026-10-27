@@ -66,6 +66,8 @@ const KEYPAD_TOP := 0.6
 const KEYPAD_LEAD := 0.03
 ## Petals scrolled by the right stick tilted all the way, in rows a second (D-067: smoothly).
 const FAN_SPEED := 8.0
+## How fast the stick tilted all the way turns a held card that doesn't face the head, in radians a second (D-115).
+const CARD_STICK_RATE := PI / 3.0
 ## How many blocks the next-block suggestions offer, and a group of the ring (D-093).
 const SUGGESTIONS := 5
 const RING_BLOCKS := 8
@@ -154,6 +156,14 @@ class Pointer:
 	var before := Transform3D.IDENTITY
 	var touched := false
 	var grab_point := Vector3.ZERO
+	## The hand's basis when it took a card: its wrist's roll since turns a card
+	## that doesn't face the head (D-115).
+	var grab_basis := Basis.IDENTITY
+	## The turn the thumbstick added since then, in radians: for those who don't
+	## roll the wrist, and in the window, where the hand can't roll.
+	var stick_turn := 0.0
+	## The card the ray was on last frame, -1 for none: coming onto the graph aims it (D-115).
+	var aimed := -1
 	var distance := 0.0
 	var body_offset := Vector3.ZERO
 	var along := Vector3.FORWARD
@@ -503,7 +513,10 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_floating_ui.name = "FloatingUI"
 	add_child(_floating_ui)
 	canvas = XREBlueprintCanvas.new()
-	canvas.set_display(document.features.get_value(XREFeatureSettings.NODE_DISPLAY))
+	_set_node_modes(document.features)
+	canvas.set_rim_ports(document.features.get_value(XREFeatureSettings.SIGN_PORTS) == XREFeatureSettings.RIM)
+	canvas.set_turn_modes(document.features.get_value(XREFeatureSettings.GRAPH_TURN), document.features.get_value(XREFeatureSettings.GRAPH_PARTS) == XREFeatureSettings.PARTS)
+	_set_arrow_modes(document.features)
 	canvas.set_style(document.features.get_value(XREFeatureSettings.NODE_STYLE))
 	canvas.set_shrink(document.features.get_value(XREFeatureSettings.NODE_SHRINK))
 	canvas.set_heading(document.features.get_value(XREFeatureSettings.NODE_HEADING))
@@ -689,7 +702,9 @@ func _process(delta: float) -> void:
 	for marker: Marker in _markers:
 		marker.visual.visible = logic_mode and is_instance_valid(marker.host) and marker.host.is_inside_tree() and is_instance_valid(marker.anchor) and marker.anchor.is_inside_tree()
 		if marker.visual.visible: marker.visual.global_position = marker.anchor.global_position + _rig.global_basis.y * 0.22
-	if _workspace.visible: canvas.face_user(_rig.camera.global_position)
+	if _workspace.visible:
+		canvas.set_turn_frozen(_holds_graph())
+		canvas.face_user(_rig.camera.global_position, delta)
 	_delete_consumed = false
 	_close_on_click_away()
 	for wire: TargetWire in _target_wires:
@@ -1289,6 +1304,7 @@ func _add_from_menu(action: Dictionary, point: Variant = null) -> void:
 	var box := str(_menu_wire.get("box", ""))
 	# Where the block was picked is in the operation's name (D-093): the log tells the palette's variants apart.
 	var title: String = ADD_TITLES.get(str(action.get("origin", "")), "Add Block")
+	canvas.turn_to_head(block, canvas.position_from_block({"position": position, "vr_depth": place.z}))
 	var id: int = blueprint.perform(blueprint.insert_block.bind(block, position, _menu_wire if box.is_empty() else {}, action.get("target") as Node, title), &"vr_panel")
 	if id < 0:
 		_message(blueprint.last_error)
@@ -1564,6 +1580,7 @@ func _place_copy(action: Dictionary, point: Vector3, beside: bool) -> void:
 		var place := _free_place(Vector3(below.x, below.y, float(source.get("vr_depth", 0.0))))
 		position = Vector2(place.x, place.y)
 		block["vr_depth"] = place.z
+	canvas.turn_to_head(block, canvas.position_from_block({"position": position, "vr_depth": block["vr_depth"]}))
 	var id: int = blueprint.perform(blueprint.insert_block.bind(block, position, {}, action.get("target") as Node, "Duplicate Block"), &"vr_graph")
 	if id < 0:
 		_message(blueprint.last_error)
@@ -2079,7 +2096,10 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 			if on_rod:
 				if not pointer.touched: _reel(pointer)
 				var contact := _rig.hand_pose(hand, pointer.depth_uses_grip).origin if pointer.touched else hand.global_position - hand.global_basis.z.normalized() * pointer.distance
-				if pointer.box.is_empty(): canvas.preview_grab(pointer.block, contact, pointer.grab_point, _rig.camera.global_position)
+				if pointer.box.is_empty():
+					# The stick turns the card too, about four steps of 15° a second at full tilt, right clockwise.
+					if hand.is_stick_free_for(self): pointer.stick_turn -= XREPanels._tilt(hand.get_vector2(&"primary").x) * CARD_STICK_RATE * delta
+					canvas.preview_grab(pointer.block, contact, pointer.grab_point, _rig.camera.global_position, _wrist_twist(pointer) + pointer.stick_turn)
 				else: canvas.preview_box_grab(pointer.box, contact, pointer.grab_point)
 				if pointer.touched: hand.hide_ray()
 				else: hand.show_ray(pointer.distance, true)
@@ -2180,6 +2200,10 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		if canvas_hit >= 0 and canvas_hit < distance and not (surface != null and surface.is_on_top()):
 			surface = null
 			handle = null
+		# A ray coming onto the graph turns its part to the head once (Graph turn On aim, D-115).
+		var aimed := canvas.get_hit_id() if _workspace.visible and canvas_hit >= 0 and canvas_hit <= distance else -1
+		if aimed >= 0 and pointer.aimed < 0: canvas.aim_at(aimed)
+		pointer.aimed = aimed
 	if _workspace.visible and (hand.grip_pressed or hand.trigger_pressed) and _take_from_tray(pointer, origin, direction): return
 	if handle != null:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
@@ -2362,6 +2386,9 @@ func _start_hold(pointer: Pointer, node: Node3D, block: int, point: Vector3 = Ve
 		pointer.touched = touched
 		target = canvas.global_transform * pointer.before
 		pointer.grab_point = target.affine_inverse() * point
+		pointer.grab_basis = pointer.hand.global_basis.orthonormalized()
+		pointer.stick_turn = 0.0
+		if block >= 0 and canvas.turns_on_grab(block): pointer.hand.claim_stick(self)
 		pointer.distance = pointer.hand.to_local(point).length()
 		pointer.depth_uses_grip = _rig.has_grip_pose(pointer.hand)
 		var physical := _rig.hand_pose(pointer.hand, pointer.depth_uses_grip).origin
@@ -2395,6 +2422,17 @@ static func body_reach(head: Transform3D, up: Vector3, point: Vector3) -> float:
 
 func _body_reach(point: Vector3) -> float:
 	return body_reach(_rig.camera.global_transform, _rig.global_basis.y.normalized(), point)
+
+
+## How far [param pointer]'s wrist rolled since it took its card, in radians
+## (D-115): clockwise as the user sees it is negative, so that the card turns
+## clockwise seen from above, as a knob would.
+func _wrist_twist(pointer: Pointer) -> float:
+	var now := pointer.hand.global_basis.orthonormalized()
+	var forward := -now.z
+	var start := pointer.grab_basis.y - forward * pointer.grab_basis.y.dot(forward)
+	if start.is_zero_approx(): return 0.0
+	return -start.signed_angle_to(now.y, forward)
 
 
 ## Where [param point] is relative to the neck pivot, in rig space: walking, turning
@@ -2436,6 +2474,7 @@ func _finish_hold(pointer: Pointer, commit: bool) -> void:
 	pointer.by_trigger = false
 	pointer.hand.show_ray(XREHand.RAY_LENGTH, false)
 	pointer.hand.unclaim(self)
+	pointer.hand.unclaim_stick(self)
 
 
 func _finish_holds() -> void:
@@ -2623,9 +2662,17 @@ func _feature_changed(key: StringName) -> void:
 		_update_tray()
 		_schedule_rebuild()
 		return
+	# Arrowheads are laid again at once, with no rebuild (D-115).
+	if key in [XREFeatureSettings.EXEC_ARROWS, XREFeatureSettings.DATA_ARROWS, XREFeatureSettings.ARROW_STYLE]:
+		_set_arrow_modes(_document.features)
+		return
 	var value := _document.features.get_value(key)
 	var switched := false
-	if key == XREFeatureSettings.NODE_DISPLAY: switched = canvas.set_display(value)
+	if key in [XREFeatureSettings.NODE_FACING, XREFeatureSettings.NODE_VOLUME, XREFeatureSettings.NODE_BACK, XREFeatureSettings.PIN_PLACE, XREFeatureSettings.CARD_MIRROR]:
+		switched = _set_node_modes(_document.features)
+	elif key == XREFeatureSettings.SIGN_PORTS: switched = canvas.set_rim_ports(value == XREFeatureSettings.RIM)
+	elif key in [XREFeatureSettings.GRAPH_TURN, XREFeatureSettings.GRAPH_PARTS]:
+		switched = canvas.set_turn_modes(_document.features.get_value(XREFeatureSettings.GRAPH_TURN), _document.features.get_value(XREFeatureSettings.GRAPH_PARTS) == XREFeatureSettings.PARTS)
 	elif key == XREFeatureSettings.NODE_STYLE:
 		switched = canvas.set_style(value)
 		# One Set in archetypes (D-102): the menu lists Set for both.
@@ -2644,6 +2691,29 @@ func _feature_changed(key: StringName) -> void:
 	cancel_connection()
 	canvas.rebuild(blueprint.graph)
 	_schedule_rebuild()
+
+
+## Whether something in the graph is held or drawn — a card, a box, a bend, a
+## token, a wire —: the graph doesn't turn then (D-115).
+func _holds_graph() -> bool:
+	if _pending_id >= 0: return true
+	for pointer: Pointer in _pointers:
+		if pointer.held != null or pointer.bend_edge >= 0 or pointer.carried != null or not pointer.pull.is_empty() or not pointer.token_key.is_empty(): return true
+	return false
+
+
+## Gives the canvas Node facing, Node volume, Node back, Pins and Card mirror
+## of [param features] (D-115); true if they changed, for a rebuild.
+func _set_node_modes(features: XREFeatureSettings) -> bool:
+	return canvas.set_node_modes(features.get_value(XREFeatureSettings.NODE_FACING), features.get_value(XREFeatureSettings.NODE_VOLUME) == XREFeatureSettings.SOLID,
+			features.get_value(XREFeatureSettings.NODE_BACK) == XREFeatureSettings.LABELLED, features.get_value(XREFeatureSettings.PIN_PLACE),
+			features.get_value(XREFeatureSettings.CARD_MIRROR) == XREFeatureSettings.ON)
+
+
+## Gives the canvas Execution arrows, Data arrows and Arrow style of [param features] (D-115).
+func _set_arrow_modes(features: XREFeatureSettings) -> void:
+	canvas.set_arrow_modes(features.get_value(XREFeatureSettings.EXEC_ARROWS), features.get_value(XREFeatureSettings.DATA_ARROWS),
+			features.get_value(XREFeatureSettings.ARROW_STYLE) == XREFeatureSettings.OPEN)
 
 
 func _graph_operation(operation: StringName, source: StringName, _time_usec: int) -> void:
@@ -5410,6 +5480,7 @@ func _create_member_block(kind: String) -> void:
 	if not key.is_empty() and not str(item["member"]).is_empty(): block["params"][key] = item["member"]
 	if item.get("anchor") is Vector3: block["vr_anchor"] = item["anchor"]
 	block["vr_depth"] = _choice_point.z
+	canvas.turn_to_head(block, _choice_point)
 	var id: int = blueprint.perform(blueprint.insert_block.bind(block, canvas.block_position(_choice_point), {}, item["node"] as Node, "Create From Scene"), &"vr_graph")
 	cancel_connection()
 	if id < 0:

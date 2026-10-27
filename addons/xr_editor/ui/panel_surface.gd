@@ -27,7 +27,7 @@ extends Node3D
 ## list follows the ray, with no click, and, let go while moving, glides on
 ## and slows down. Moved further sideways, a row that scrolls sideways — a
 ## [ScrollContainer] with horizontal scrolling, as [XRESegmentRow] — follows
-## the ray the same way (D-116); without one it is the press it was, and the
+## the ray the same way (D-117); without one it is the press it was, and the
 ## drag goes on as a mouse drag (a slider's).
 ## [br][br]
 ## A window (rig-locked, docs/vr_ui.md, D-040) has corner handles
@@ -892,7 +892,7 @@ func pointer_scroll(notches: float) -> void:
 
 
 ## Turns the mouse wheel sideways by [param notches] where the pointer is:
-## positive scrolls a row to the right (D-116).
+## positive scrolls a row to the right (D-117).
 func pointer_scroll_sideways(notches: float) -> void:
 	if not _inside or is_zero_approx(notches):
 		return

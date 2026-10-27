@@ -1,7 +1,7 @@
 @tool
 class_name XRESettingsTab
 extends XREPanelTab
-## Settings in the headset (D-039, D-115), drawn as the mockup "Новое меню
+## Settings in the headset (D-039, D-116), drawn as the mockup "Новое меню
 ## Settings" is. Sections are on the left: Global, Editor and Controls
 ## ([enum XREFeatureSettings.Category]). The Editor's subsections
 ## ([constant XREFeatureSettings.GROUPS]) are a row over the settings or open
