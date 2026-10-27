@@ -32,7 +32,7 @@ VR-редактор сцен для Godot 4.7 в виде EditorPlugin, дипл
 
 Отступление — только с записью в `docs/decisions.md`. Обоснования — в [docs/conventions.md](docs/conventions.md).
 
-1. Сцена меняется только через `XREDocument`; `EditorInterface`, `EditorUndoRedoManager` и запись в ноды сцены напрямую запрещены. Перетаскивание: `preview_transform` каждый кадр и один `commit_transform` (группа — `commit_transforms`, D-115).
+1. Сцена меняется только через `XREDocument`; `EditorInterface`, `EditorUndoRedoManager` и запись в ноды сцены напрямую запрещены. Перетаскивание: `preview_transform` каждый кадр и один `commit_transform` (группа — `commit_transforms`, D-120).
 2. VR-слой не попадает в .tscn: не под `get_edited_scene_root()`, без `owner`, на отдельном visual layer.
 3. Один `World3D`: XR-`SubViewport` берёт `world_3d` вьюпорта редактора, копий нет.
 4. Бюджет кадра 11,1 мс: в покадровом коде нет аллокаций, `get_node`, `find_child`, рейкастов по всей сцене.

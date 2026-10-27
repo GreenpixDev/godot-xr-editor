@@ -14,8 +14,8 @@ addons/xr_editor/          плагин (всё, что поставляется
   xr/controller_models/    glTF контроллеров из WebXR Input Profiles, папка на контроллер (D-010)
   tools/                   инструменты VR-слоя: манипуляция и удаление (XREManipulator), снап (XRESnap), обводка рёбер выбора и наведения (XREOutline, рёбра меша — XREEdgeMesh) с запасной рамкой (XREBoundsBox),
                            значки нод без геометрии — пока света (XREIcons), полёт и поворот стиками (XRELocomotion),
-                           отмена и повтор кнопками A и B (XREUndo, D-087), шорткат выделенного объекта: удалить, копировать, переименовать, Blueprint (XREObjectShortcut, D-088, D-116),
-                           счётчик выделенного на левой руке (XRESelectionCounter, D-118), буфер обмена на левой руке (XREClipboard, D-123)
+                           отмена и повтор кнопками A и B (XREUndo, D-087), шорткат выделенного объекта: удалить, копировать, переименовать, Blueprint (XREObjectShortcut, D-088, D-121),
+                           счётчик выделенного на левой руке (XRESelectionCounter, D-123), буфер обмена на левой руке (XREClipboard, D-128)
   ui/                      меню в шлеме: палитра объектов в окне Objects (XREPalette, XREObjectsTab, D-045); кнопки на дуге поверх всего — шорткат объекта и меню провода (XREArcMenu, D-090); панели (XREPanels): хост с вводом от луча (XREPanelSurface),
                            лаунчер вкладок по X как Navigator Meta (XRETabLauncher, XRETabIcons, D-041, D-042), окна с угловыми ручками и Control Bar
                            с закреплением на руке (XREPanelWindow, D-040 — D-042), вкладки сцены, инспектора с прокси документа,

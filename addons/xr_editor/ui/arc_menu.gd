@@ -17,7 +17,7 @@ const BUTTON_RADIUS := 0.03
 ## The ray within this of a button's center, on the menu's plane, picks it: half the gap between two.
 const PICK_RADIUS := 0.05
 ## Neighbouring buttons' centers are at least this far apart, in meters, so
-## that their titles stay clear of each other: four on the arc spread it (D-124).
+## that their titles stay clear of each other: four on the arc spread it (D-129).
 const MIN_SPACING := 0.1
 ## Lit, a button grows this much.
 const LIT_SCALE := 1.2
@@ -94,7 +94,7 @@ func open(caption: String, items: Array[int] = []) -> void:
 
 
 ## The arc's radius for [param count] buttons: [constant ARC_RADIUS], or more
-## for many, so that neighbours stay [constant MIN_SPACING] apart (D-124).
+## for many, so that neighbours stay [constant MIN_SPACING] apart (D-129).
 static func arc_radius(count: int) -> float:
 	if count < 2:
 		return ARC_RADIUS

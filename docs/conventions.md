@@ -4,7 +4,7 @@
 
 ## Инварианты
 
-1. Через `XREDocument` ([core/document.gd](../addons/xr_editor/core/document.gd)) действие из шлема отменяется с клавиатуры, попадает в лог и не ломает запасной путь. Перетаскивание — `preview_transform` каждый кадр и один `commit_transform` в конце; группа — один `commit_transforms` на все узлы (D-115).
+1. Через `XREDocument` ([core/document.gd](../addons/xr_editor/core/document.gd)) действие из шлема отменяется с клавиатуры, попадает в лог и не ломает запасной путь. Перетаскивание — `preview_transform` каждый кадр и один `commit_transform` в конце; группа — один `commit_transforms` на все узлы (D-120).
 2. Риг, руки, меню, гизмо живут в дереве редактора (под плагином / его SubViewport), никогда под `get_edited_scene_root()` и без `owner`. Они рисуются на отдельном visual layer, скрытом от камеры настольного 3D-вьюпорта.
 3. XR-`SubViewport` (`use_xr = true`) берёт `world_3d` 3D-вьюпорта редактора; синхронизировать нечего.
 4. В покадровом коде нет аллокаций, `get_node`, `find_child` и рейкастов по всей сцене; горячие пути — в GDExtension. При входе в VR low-processor mode выключается, ограничение FPS снимается.

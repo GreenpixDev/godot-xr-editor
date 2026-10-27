@@ -14,27 +14,27 @@ extends Node
 ## [br]- Trigger: select the pointed node, or clear the selection over empty space.
 ## With [constant XREFeatureSettings.OBJECT_SHORTCUT] on, the trigger on a
 ## node already selected asks for its shortcut ([signal shortcut_requested], D-088),
-## for every selected node (D-116).
+## for every selected node (D-121).
 ## [br]- With [constant XREFeatureSettings.SELECT_ADD] at
 ## [constant XREFeatureSettings.GRIP], while the other hand's grip is held in
-## empty space (D-115): the trigger adds the pointed node to the selection, or
+## empty space (D-120): the trigger adds the pointed node to the selection, or
 ## takes it out if it is selected, and keeps the selection over empty space;
 ## the grip adds the pointed node before grabbing.
 ## [br]- With [constant XREFeatureSettings.SELECT_AREA] at
-## [constant XREFeatureSettings.BRUSH] (D-119): while the trigger is held,
+## [constant XREFeatureSettings.BRUSH] (D-124): while the trigger is held,
 ## every node the ray crosses joins the stroke, outlined; letting go selects
 ## the stroke, or adds it to the selection if the trigger went down while the
-## other hand added (D-115), as one selection. A click is a stroke of one
+## other hand added (D-120), as one selection. A click is a stroke of one
 ## node, or of none, which clears the selection.
 ## [br]- With [constant XREFeatureSettings.SELECT_AREA] at
-## [constant XREFeatureSettings.BOX] (D-120): the trigger held draws a
+## [constant XREFeatureSettings.BOX] (D-125): the trigger held draws a
 ## rectangle on a plane [constant BOX_DISTANCE] before the head, between where
 ## the ray met it when the trigger went down and where it meets it now.
 ## Letting go selects, or adds, the nodes whose middle the head sees inside
 ## it and not behind something else, counted once then. A click, a rectangle
 ## smaller than [constant BOX_CLICK], selects as the trigger did before.
 ## [br]- Grip: grab the pointed node, which also selects it. Grabbing a
-## selected node grabs every selected one (D-115): the others keep their place
+## selected node grabs every selected one (D-120): the others keep their place
 ## relative to it, as if they were one rigid node. A touched node
 ## follows the hand rigidly. A node grabbed with the ray follows the hand
 ## with the hand's motion scaled by how much farther from the body the node
@@ -44,7 +44,7 @@ extends Node
 ## a node held while the user flies ([XRELocomotion]) travels along rigidly.
 ## [br]- With [constant XREFeatureSettings.OBJECT_COPY] at
 ## [constant XREFeatureSettings.GRIP] or [constant XREFeatureSettings.BOTH],
-## while the other hand's grip is held in empty space (D-116): the grip takes copies of the selected nodes instead,
+## while the other hand's grip is held in empty space (D-121): the grip takes copies of the selected nodes instead,
 ## drawn as edges, and the originals stay. Letting go copies them there through
 ## [method XREDocument.duplicate_nodes], one undo step, and selects the copies;
 ## let go where they were taken, the copies go beside the originals ([method copy_offset]).
@@ -73,14 +73,14 @@ extends Node
 
 ## Emitted when the trigger of [param hand] goes down on [param node], a
 ## selected node, with [constant XREFeatureSettings.OBJECT_SHORTCUT] on (D-088):
-## [XREObjectShortcut] opens for it, and the rest of the selection (D-116), and claims the hand.
+## [XREObjectShortcut] opens for it, and the rest of the selection (D-121), and claims the hand.
 signal shortcut_requested(hand: XREHand, node: Node3D)
 
 ## Whether the logic graph is open ([method XREBlueprints.is_open]): then only
 ## blocks are selected together, and of the scene the trigger only picks an
 ## object alone, without the modifier, which opens its graph (D-063). The grip
 ## takes no object, the delete action deletes none, and neither the brush nor
-## the box selects any (D-125).
+## the box selects any (D-130).
 var graph_open: Callable
 
 ## How far the ray reaches, in meters.
@@ -102,9 +102,9 @@ const PANEL_REACH := 1.0
 const MIN_SCALE_FACTOR := 0.01
 ## Selected nodes beyond this many are not outlined, to bound the work per frame.
 const MAX_OUTLINED := 64
-## How many frames a stroke let go of stays shown at most, waiting for the editor's selection (D-119).
+## How many frames a stroke let go of stays shown at most, waiting for the editor's selection (D-124).
 const BRUSH_SETTLE_FRAMES := 10
-## How far before the head the selection box is drawn, in meters (D-120).
+## How far before the head the selection box is drawn, in meters (D-125).
 const BOX_DISTANCE := 1.0
 ## A box smaller than this both ways, in meters on its plane, is a click.
 const BOX_CLICK := 0.02
@@ -112,10 +112,10 @@ const BOX_CLICK := 0.02
 const BOX_HIDDEN_MARGIN := 0.05
 const HOVER_COLOR := Color(1.0, 1.0, 1.0)
 const SELECTION_COLOR := Color.WHITE
-## The edges of copies being carried (D-116): the light blue of the graph's copy button (D-093).
+## The edges of copies being carried (D-121): the light blue of the graph's copy button (D-093).
 const COPY_COLOR := Color("a9d4ff")
 ## Copies let go of within this of where they were taken, in meters, go beside
-## the originals instead of over them (D-116), as a block's copy does (D-093).
+## the originals instead of over them (D-121), as a block's copy does (D-093).
 const COPY_CLICK := 0.02
 ## The gap between the originals and copies put beside them, in meters.
 const COPY_GAP := 0.1
@@ -149,7 +149,7 @@ class HandState:
 	var hold_start: Transform3D
 	## The grip went down in empty space and is still held: with
 	## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP],
-	## the other hand adds to the selection (D-115).
+	## the other hand adds to the selection (D-120).
 	var adding := false
 
 	func _init(controller: XREHand) -> void:
@@ -176,7 +176,7 @@ var _selection_outlines: Array[XREOutline] = []
 ## Hands holding [member _grabbed]; empty when nothing is grabbed.
 var _holders: Array[HandState] = []
 var _grabbed: Node3D
-## The nodes the grab moves (D-115): [member _grabbed] and the other selected
+## The nodes the grab moves (D-120): [member _grabbed] and the other selected
 ## nodes, but none under another of them, which carries it. Filled when the grab begins.
 var _movers: Array[Node3D] = []
 ## Local transform of each of [member _movers] before the grab: the undo
@@ -187,7 +187,7 @@ var _mover_befores: Array[Transform3D] = []
 var _mover_offsets: Array[Transform3D] = []
 ## From global space to the parent space of each of [member _movers], fixed for the grab.
 var _mover_to_parents: Array[Transform3D] = []
-## The grab carries copies of [member _movers], which stay (D-116).
+## The grab carries copies of [member _movers], which stay (D-121).
 var _copying := false
 ## Where the copies are: the global move from the originals, which the grab
 ## changes instead of the nodes.
@@ -199,7 +199,7 @@ var _mover_bounds: Array[AABB] = []
 ## The outline of each copy being carried, and spare ones after them.
 var _copy_outlines: Array[XREOutline] = []
 
-## The hand sweeping a brush stroke (D-119), or null.
+## The hand sweeping a brush stroke (D-124), or null.
 var _brush_hand: HandState
 ## The stroke replaces the selection when it ends, rather than adding to it.
 var _brush_replace := false
@@ -213,7 +213,7 @@ var _brushed_bounds: Array[AABB] = []
 var _brushed_icons: Array[bool] = []
 ## The outline of each of [member _brushed], and spare ones after them.
 var _brush_outlines: Array[XREOutline] = []
-## The hand drawing a selection box (D-120), or null; whether the box replaces
+## The hand drawing a selection box (D-125), or null; whether the box replaces
 ## the selection, rather than adding to it; the node under the ray when the
 ## trigger went down, which a click selects.
 var _box_hand: HandState
@@ -320,7 +320,7 @@ func _process(_delta: float) -> void:
 			if state == _box_hand:
 				continue
 		if graph and state.hand.grip_pressed:
-			# The grip held in empty space is still the modifier, for the graph's blocks (D-117).
+			# The grip held in empty space is still the modifier, for the graph's blocks (D-122).
 			state.adding = state.hover == null
 		elif graph and state.hand.trigger_pressed:
 			if state.hover != null and not _other_adding(state):
@@ -490,7 +490,7 @@ func _update_hover(state: HandState, root: Node) -> void:
 
 ## Whether the trigger on [param node] opens its shortcut rather than selects
 ## it (D-088): the node is selected, alone or with others, for which the
-## shortcut acts together (D-116).
+## shortcut acts together (D-121).
 func _opens_shortcut(node: Node3D) -> bool:
 	if node == null or _document.features.get_value(XREFeatureSettings.OBJECT_SHORTCUT) != XREFeatureSettings.ON:
 		return false
@@ -508,7 +508,7 @@ func _select(node: Node3D) -> void:
 
 ## Whether the trigger or the grip of [param state]'s hand adds to the
 ## selection: the other hand's grip is held in empty space, with
-## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP] (D-115).
+## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP] (D-120).
 func _adds_to_selection(state: HandState) -> bool:
 	return _document.features.get_value(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.GRIP \
 			and _other_adding(state)
@@ -516,14 +516,14 @@ func _adds_to_selection(state: HandState) -> bool:
 
 ## Whether the grip of [param state]'s hand takes copies: the other hand's grip
 ## is held in empty space, with [constant XREFeatureSettings.OBJECT_COPY] at
-## [constant XREFeatureSettings.GRIP] or [constant XREFeatureSettings.BOTH] (D-116).
+## [constant XREFeatureSettings.GRIP] or [constant XREFeatureSettings.BOTH] (D-121).
 func _copies_on_grab(state: HandState) -> bool:
 	return _document.features.get_value(XREFeatureSettings.OBJECT_COPY) in [XREFeatureSettings.GRIP, XREFeatureSettings.BOTH] \
 			and _other_adding(state)
 
 
 ## Whether a hand holds its grip down in empty space, which makes the other
-## hand add to the selection (D-115): for the selection's counter (D-118).
+## hand add to the selection (D-120): for the selection's counter (D-123).
 func is_adding() -> bool:
 	for state: HandState in _hands:
 		if state.adding:
@@ -531,7 +531,7 @@ func is_adding() -> bool:
 	return false
 
 
-## Whether the hand other than [param state]'s holds its grip down in empty space (D-115).
+## Whether the hand other than [param state]'s holds its grip down in empty space (D-120).
 func _other_adding(state: HandState) -> bool:
 	for other: HandState in _hands:
 		if other != state and other.adding:
@@ -539,7 +539,7 @@ func _other_adding(state: HandState) -> bool:
 	return false
 
 
-## Whether the trigger sweeps a brush stroke (D-119).
+## Whether the trigger sweeps a brush stroke (D-124).
 func _brushes() -> bool:
 	return _document.features.get_value(XREFeatureSettings.SELECT_AREA) == XREFeatureSettings.BRUSH
 
@@ -690,7 +690,7 @@ func _clear_box() -> void:
 
 
 ## The nodes of the edited scene that a box [param rect] on [param plane]
-## (D-120) selects, in tree order: those that geometry or an icon stands for
+## (D-125) selects, in tree order: those that geometry or an icon stands for
 ## ([method XREPicker.get_selectable_node]), whose middle the head sees
 ## through the box and not behind other geometry. Walks the scene: for the
 ## end of a box, not for every frame.
@@ -945,7 +945,7 @@ func _place_copies() -> void:
 		_document.select(copies, XREDocument.Source.TOOL)
 
 
-## Where copies of [param nodes] go when they are put beside them (D-116): to
+## Where copies of [param nodes] go when they are put beside them (D-121): to
 ## the right of the head, whose basis is [param head], level with the floor
 ## under [param up], by the width of the nodes' bounds that way and
 ## [constant COPY_GAP] more, as a global move.

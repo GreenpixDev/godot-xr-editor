@@ -161,9 +161,9 @@ var _manipulator: XREManipulator
 var _shortcut: XREObjectShortcut
 var _counter: XRESelectionCounter
 var _clipboard: XREClipboard
-## Whether the manipulator is told the logic graph is open (D-125).
+## Whether the manipulator is told the logic graph is open (D-130).
 var _graph_open := false
-## How many children the scene had before Copy (D-123): copying adds none.
+## How many children the scene had before Copy (D-128): copying adds none.
 var _scene_children := 0
 var _blueprint_requests := 0
 ## The box the manipulator tests grab, in the scene's first lane.
@@ -177,9 +177,9 @@ var _taken: Node3D
 var _operation_count := 0
 var _commit_count := 0
 var _rig_before: Vector3
-## Global positions of the boxes grabbed together (D-115), by path, before the grab.
+## Global positions of the boxes grabbed together (D-120), by path, before the grab.
 var _group_before: Dictionary[String, Vector3] = {}
-## How many copies the fake document made before a copy step (D-116), and the copies' parent's children then.
+## How many copies the fake document made before a copy step (D-121), and the copies' parent's children then.
 var _duplicate_count := 0
 var _target_before: Vector3
 
@@ -447,21 +447,21 @@ func _build() -> void:
 	room.custom_aabb = AABB(Vector3(-3.0, -3.0, -3.0), Vector3(6.0, 6.0, 6.0))
 	_add_node(_scene, room, "Room", Vector3(20.0, 0.0, 0.0))
 	_add_box(_scene, "InRoom", Vector3(20.0, 0.0, -1.0), 0.2)
-	# Lanes 30–33: boxes selected and grabbed together (D-115); the cart carries its load.
+	# Lanes 30–33: boxes selected and grabbed together (D-120); the cart carries its load.
 	_add_box(_scene, "PairA", Vector3(30.0, 0.0, -1.0), 0.2)
 	_add_box(_scene, "PairB", Vector3(31.0, 0.0, -1.0), 0.2)
 	_add_box(_scene, "PairC", Vector3(32.0, 0.0, -1.0), 0.2)
 	_add_box(_add_box(_scene, "Cart", Vector3(33.0, 0.0, -1.0), 0.2), "Load", Vector3(0.0, 0.5, 0.0), 0.2)
-	# Lanes 36–37: boxes copied (D-116); the twin's part is copied with it.
+	# Lanes 36–37: boxes copied (D-121); the twin's part is copied with it.
 	_add_box(_add_box(_scene, "Twin", Vector3(36.0, 0.0, -1.0), 0.2), "Part", Vector3(0.0, 0.5, 0.0), 0.2)
 	_add_box(_scene, "Pal", Vector3(37.0, 0.0, -1.0), 0.2)
-	# High before the head: boxes a selection box takes (D-120), one beside it,
+	# High before the head: boxes a selection box takes (D-125), one beside it,
 	# and one hidden behind the middle one, seen from the head at the origin.
 	for index: int in 3:
 		_add_box(_scene, "High%d" % (index + 1), Vector3(-0.6 + 0.6 * index, 3.0, -3.0), 0.2)
 	_add_box(_scene, "High4", Vector3(2.0, 3.0, -3.0), 0.2)
 	_add_box(_scene, "Behind2", Vector3(0.0, 4.0, -4.0), 0.2)
-	# Lanes 40–43: boxes a brush stroke crosses (D-119).
+	# Lanes 40–43: boxes a brush stroke crosses (D-124).
 	for index: int in 4:
 		_add_box(_scene, "Brush%d" % (index + 1), Vector3(40.0 + index, 0.0, -1.0), 0.2)
 
@@ -612,7 +612,7 @@ func _start_manipulator() -> void:
 	_document.root = _scene
 	# The manipulator's checks press the trigger on what is selected: no shortcut until its own checks (D-088).
 	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
-	# Selecting and copying several (D-115 to D-120) start from one at a time, as before D-126: each check switches to its variant.
+	# Selecting and copying several (D-120 to D-125) start from one at a time, as before D-131: each check switches to its variant.
 	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
 	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SHORTCUT)
 	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.OFF)
@@ -628,7 +628,7 @@ func _start_manipulator() -> void:
 	_rig.add_child(_locomotion)
 	_icons = XREIcons.new(_document, _rig)
 	_rig.add_child(_icons)
-	# The pills on the left hand come first, as in the plugin: their buttons take the right ray (D-123).
+	# The pills on the left hand come first, as in the plugin: their buttons take the right ray (D-128).
 	_counter = XRESelectionCounter.new(_document, _rig)
 	_rig.add_child(_counter)
 	_clipboard = XREClipboard.new(_document, _rig)
@@ -1122,7 +1122,7 @@ func _shortcut_opened() -> void:
 	var shown := _shortcut.get_shown()
 	for slot: int in range(1, shown.size()):
 		var gap := _shortcut.get_button_position(shown[slot]).distance_to(_shortcut.get_button_position(shown[slot - 1]))
-		_check(gap > XREArcMenu.MIN_SPACING - EPSILON, "four buttons stay apart, their titles clear (D-124): %.3f m" % gap)
+		_check(gap > XREArcMenu.MIN_SPACING - EPSILON, "four buttons stay apart, their titles clear (D-129): %.3f m" % gap)
 	_aim_right(Vector3(1.0, 0.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.RENAME), 1.0)
 
 
@@ -1215,7 +1215,7 @@ func _shortcut_blocked() -> void:
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 
-# Adding to the selection (D-115): with Other grip, the left grip held in
+# Adding to the selection (D-120): with Other grip, the left grip held in
 # empty space makes the right trigger add a box or take it out, and the right
 # grip add one before grabbing. A grip on a selected box grabs the selection.
 
@@ -1231,7 +1231,7 @@ func _remember_group() -> void:
 
 func _multi_start() -> void:
 	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.GRIP,
-			"the other hand's grip adds to the selection by default (D-126)")
+			"the other hand's grip adds to the selection by default (D-131)")
 	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
 	_set_hand(_right, Vector3(30.0, 0.0, 1.0), 1.0, 0.0)
 
@@ -1377,7 +1377,7 @@ func _group_cancelled() -> void:
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 
-# Copying (D-116): Duplicate in the shortcut of two selected boxes puts their
+# Copying (D-121): Duplicate in the shortcut of two selected boxes puts their
 # copies beside them; with Other grip, the left grip held in empty space makes
 # the right grip carry copies, which letting go puts in the scene.
 
@@ -1409,7 +1409,7 @@ func _select_twin_and_pal() -> void:
 
 func _copy_start() -> void:
 	_check(XREFeatureSettings.get_default(XREFeatureSettings.OBJECT_COPY) == XREFeatureSettings.BOTH,
-			"both ways of copying are on by default (D-126)")
+			"both ways of copying are on by default (D-131)")
 	var twin: Array[Node] = [_node3d("Twin")]
 	var offset := XREManipulator.copy_offset(twin, Basis.IDENTITY, Vector3.UP)
 	var bounds := _node3d("Twin").global_transform * XREPicker.get_local_bounds(_node3d("Twin"))
@@ -1576,11 +1576,11 @@ func _copy_cancelled() -> void:
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 
-# The selection's counter (D-118): a pill over the left controller with how
+# The selection's counter (D-123): a pill over the left controller with how
 # many objects are selected, a plus while the left grip held in empty space adds.
 
 func _counter_start() -> void:
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECTION_COUNTER) == XREFeatureSettings.ON, "the counter is on by default (D-126)")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECTION_COUNTER) == XREFeatureSettings.ON, "the counter is on by default (D-131)")
 	_check(not _counter.get_label().visible, "off, there is no pill")
 	_check(_counter.get_label().get_parent() == _rig.left_hand, "the pill goes with the left hand")
 	_select_twin_and_pal()
@@ -1595,7 +1595,7 @@ func _counter_counts() -> void:
 	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
 
 
-## The counter comes before the manipulator in the tree (D-123): it sees the grip held a frame later.
+## The counter comes before the manipulator in the tree (D-128): it sees the grip held a frame later.
 func _counter_one_frame() -> void:
 	pass
 
@@ -1618,11 +1618,11 @@ func _counter_hidden() -> void:
 	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.OFF)
 
 
-# A brush stroke (D-119): the trigger held, the ray swept across lanes 40–42
+# A brush stroke (D-124): the trigger held, the ray swept across lanes 40–42
 # selects the three boxes as one selection; with the left grip held, a stroke adds.
 
 func _brush_start() -> void:
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_AREA) == XREFeatureSettings.BRUSH, "the brush is on by default (D-126)")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_AREA) == XREFeatureSettings.BRUSH, "the brush is on by default (D-131)")
 	_document.features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.BRUSH)
 	_document.select([], XREDocument.Source.PANEL)
 	_operation_count = _operations.size()
@@ -1716,7 +1716,7 @@ func _brush_late_told() -> void:
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 
-# A selection box (D-120): drawn a meter before the head, from (-0.4, 0.8) to
+# A selection box (D-125): drawn a meter before the head, from (-0.4, 0.8) to
 # (0.4, 1.2) on its plane, it takes the three high boxes, not the one beside
 # them nor the one hidden behind the middle one.
 
@@ -1779,7 +1779,7 @@ func _box_clicked() -> void:
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 
-# The clipboard (D-123): Copy in the shortcut puts two high boxes on it; the
+# The clipboard (D-128): Copy in the shortcut puts two high boxes on it; the
 # right ray on the pill's Paste, held, takes them along and lets go of them in
 # empty space; × empties it. The counter's × lets go of the selection.
 
@@ -1884,7 +1884,7 @@ func _counter_cleared() -> void:
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 
-# The graph open (D-125): the grip takes no object, the trigger with the
+# The graph open (D-130): the grip takes no object, the trigger with the
 # other hand adding adds none, alone it picks one, which opens its graph;
 # the trigger in empty space and the delete action leave the scene be.
 

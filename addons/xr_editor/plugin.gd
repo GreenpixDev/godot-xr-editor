@@ -102,7 +102,7 @@ func _add_tools(rig: XRERig) -> void:
 	_icons.name = "XREIcons"
 	rig.add_child(_icons)
 	# First of the tools that take the right hand: the pills on the left hand
-	# have buttons its ray picks (D-118, D-123). What they show comes from
+	# have buttons its ray picks (D-123, D-128). What they show comes from
 	# the manipulator and the graph, made later.
 	_counter = XRESelectionCounter.new(document, rig)
 	_counter.name = "XRESelectionCounter"

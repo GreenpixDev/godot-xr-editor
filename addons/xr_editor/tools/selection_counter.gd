@@ -1,11 +1,11 @@
 @tool
 class_name XRESelectionCounter
 extends Node
-## How many things are selected, on a pill over the left controller (D-118),
+## How many things are selected, on a pill over the left controller (D-123),
 ## with [constant XREFeatureSettings.SELECTION_COUNTER] on: the scene objects,
 ## or the blocks of the graph while it is open ([XREBlueprints]). While a hand
 ## holds its grip in empty space, which makes the other hand add to the
-## selection (D-115, D-117), the pill shows a plus and turns blue, also before
+## selection (D-120, D-122), the pill shows a plus and turns blue, also before
 ## anything is selected. With nothing selected and no plus, it hides.
 ## [br][br]
 ## The scene's selection is counted when it changes, not every frame; each
@@ -14,14 +14,14 @@ extends Node
 ## follows it, and is drawn over the controller.
 ## [br][br]
 ## A × beside the pill, picked by the right hand's ray, lets go of the whole
-## selection (D-123): the scene's, or the graph's blocks. Lives under the
+## selection (D-128): the scene's, or the graph's blocks. Lives under the
 ## [XRERig] before the tools that take the right hand, so that the × under
 ## its ray is the counter's.
 
 ## Where the pill is in the left hand's space, in meters: above the controller, towards the head.
 const OFFSET := Vector3(0.0, 0.07, 0.04)
 const IDLE_COLOR := Color(0.92, 0.93, 0.95)
-## The plus's color: the light blue of copies (D-116), as adding is a step towards them.
+## The plus's color: the light blue of copies (D-121), as adding is a step towards them.
 const ADDING_COLOR := Color("a9d4ff")
 
 var _document: XREDocument
@@ -143,7 +143,7 @@ func _pick_clear(shown: bool, blocks: bool) -> void:
 
 ## Whether the grip held in empty space does anything: it adds to the
 ## selection with Add to selection on Other grip, and, in the scene, takes
-## copies with Copy objects on Other grip or Both (D-116).
+## copies with Copy objects on Other grip or Both (D-121).
 func _modifier_used(blocks: bool) -> bool:
 	var features := _document.features
 	if features.get_value(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.GRIP:

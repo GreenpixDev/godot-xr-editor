@@ -31,7 +31,7 @@ const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, X
 		XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.AUTO_LINK, XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY,
 		XREFeatureSettings.NODE_STYLE, XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.NODE_HEADING, XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.COMPOSITE_VALUES,
 		XREFeatureSettings.SELECT_ADD, XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.SELECT_AREA]
-## The values the checks start from: the defaults before D-076, D-089, D-097, D-114 and D-126 made the
+## The values the checks start from: the defaults before D-076, D-089, D-097, D-114 and D-131 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.VALUE_INPUT: XREFeatureSettings.WINDOW, XREFeatureSettings.TARGET_INPUT: XREFeatureSettings.WINDOW,
@@ -49,7 +49,7 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.NODE_STYLE: XREFeatureSettings.CLASSIC, XREFeatureSettings.NODE_SHRINK: XREFeatureSettings.OPERATORS,
 	XREFeatureSettings.NODE_HEADING: XREFeatureSettings.OPERATION, XREFeatureSettings.PORT_SHAPES: XREFeatureSettings.OFF,
 	XREFeatureSettings.COMPOSITE_VALUES: XREFeatureSettings.WHOLE,
-	# Selecting and copying several (D-115 to D-120) start from one at a time, as before D-126.
+	# Selecting and copying several (D-120 to D-125) start from one at a time, as before D-131.
 	XREFeatureSettings.SELECT_ADD: XREFeatureSettings.REPLACE, XREFeatureSettings.OBJECT_COPY: XREFeatureSettings.SHORTCUT,
 	XREFeatureSettings.SELECTION_COUNTER: XREFeatureSettings.OFF, XREFeatureSettings.SELECT_AREA: XREFeatureSettings.OFF,
 }
@@ -1939,7 +1939,7 @@ func _card_point(id: int) -> Vector3:
 	return _service.canvas.to_global(_service.canvas.get_block_transform(id).origin + Vector3(0, 0.025, 0))
 
 
-## D-117: with Add to selection on Other grip, the left grip held in empty
+## D-122: with Add to selection on Other grip, the left grip held in empty
 ## space makes the right trigger add a card to the selection or take it out;
 ## the right grip on a selected card moves them all, the copy button copies
 ## them with the wires between them, X deletes them: one undo step each.
@@ -1947,7 +1947,7 @@ func _test_d117() -> void:
 	var graph := _service.blueprint.graph
 	var history := _service.blueprint.history.get_version()
 	var hand := _rig.right_hand
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.GRIP, "blocks are added with the other grip by default (D-126)")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.GRIP, "blocks are added with the other grip by default (D-131)")
 	var ids: Array[int] = []
 	for index: int in 3:
 		_service.add_block("print")
@@ -1983,14 +1983,14 @@ func _test_d117() -> void:
 	canvas.select_blocks(_service.get_selected_blocks())
 	canvas.set_focus(Vector3i(-1, -1, -1))
 	_check(canvas.focus_state(ids[0]) == XREBlueprintFocus.NORMAL and canvas.focus_state(ids[2]) == XREBlueprintFocus.OUT,
-			"with the ray in the air, a selection keeps the rest darker (D-124)")
+			"with the ray in the air, a selection keeps the rest darker (D-129)")
 	canvas.select_block(-1)
 	_check(canvas.focus_state(ids[2]) == XREBlueprintFocus.NORMAL, "with nothing selected, nothing is darker")
 	canvas.select_blocks(_service.get_selected_blocks())
 	canvas.set_focus_modes(modes[0], modes[1])
 	await _click(_card_point(ids[2]))
 	_check(_service.get_selected_blocks() == [ids[0], ids[1], ids[2]], "and adds it back: %s" % [_service.get_selected_blocks()])
-	# D-118: in the open graph the counter tells the blocks, with the plus while the left grip adds.
+	# D-123: in the open graph the counter tells the blocks, with the plus while the left grip adds.
 	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.ON)
 	var counter := XRESelectionCounter.new(_document, _rig, null, _service)
 	add_child(counter)
@@ -2070,9 +2070,9 @@ func _test_d117() -> void:
 	await _frames()
 
 
-## D-119: with Select area on Brush, the trigger held and swept over the cards
+## D-124: with Select area on Brush, the trigger held and swept over the cards
 ## selects every card the ray crossed when it lets go; the cards of the stroke
-## keep their look out of focus, as selected ones (D-117); with the left grip
+## keep their look out of focus, as selected ones (D-122); with the left grip
 ## held in empty space, a stroke adds.
 func _test_d119() -> void:
 	var graph := _service.blueprint.graph
@@ -2138,7 +2138,7 @@ func _test_d119() -> void:
 	await _frames()
 
 
-## D-120: with Select area on Box, the trigger in the graph's empty space
+## D-125: with Select area on Box, the trigger in the graph's empty space
 ## draws a rectangle on its plane; letting go selects the cards whose middle
 ## is in it; a click there lets go of the selected blocks.
 func _test_d120() -> void:
@@ -2188,7 +2188,7 @@ func _test_d120() -> void:
 	await _frames()
 
 
-## D-121: with Copy outer wires on, a block's copy keeps the data wire into it
+## D-126: with Copy outer wires on, a block's copy keeps the data wire into it
 ## from a block not copied, from the same output; an execution wire stays with
 ## the original. Off, the copy has no wires, as before.
 func _test_d121() -> void:
@@ -2239,7 +2239,7 @@ func _test_d121() -> void:
 	await _frames()
 
 
-## D-122: a copied object shares its Blueprint by default; with Blueprint of a
+## D-127: a copied object shares its Blueprint by default; with Blueprint of a
 ## copy on Own, it gets a graph of its own beside the scene, with the copy as
 ## its host, and its own generated script; the original keeps its own.
 func _test_d122() -> void:
@@ -2276,7 +2276,7 @@ func _test_d122() -> void:
 		if not file.is_empty() and FileAccess.file_exists(file): DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
 
 
-## D-123: with Copy objects on Clipboard, a card's copy button puts the block
+## D-128: with Copy objects on Clipboard, a card's copy button puts the block
 ## on the graph's clipboard, the graph unchanged; Paste puts it where the ray
 ## meets the graph's plane, one undo step, selected.
 func _test_d123() -> void:
@@ -2318,7 +2318,7 @@ func _test_d123() -> void:
 	await _frames()
 
 
-## D-125: a click in the graph's empty space lets go of the selected blocks;
+## D-130: a click in the graph's empty space lets go of the selected blocks;
 ## with the other hand adding, it keeps them.
 func _test_d125() -> void:
 	var graph := _service.blueprint.graph
@@ -4805,7 +4805,7 @@ func _test_d072() -> void:
 		if item.from != null and item.from.id == feeder and item.to.id == waiter: wire = item
 	var feeder_out := _card(feeder).ports[_card(feeder).inputs.size()]
 
-	# No card selected: a selected one would keep its look out of focus (D-117).
+	# No card selected: a selected one would keep its look out of focus (D-122).
 	_service.select_block(-1)
 	# Off: the ray on a card changes nothing.
 	_aim_from(canvas.to_global(canvas.get_block_position(waiter) + Vector3(0.0, 0.02, 0.0)), _card(waiter).node.global_basis.z.normalized())
@@ -4923,7 +4923,7 @@ func _test_d072() -> void:
 	canvas.commit_move(_service.blueprint, getter)
 	await _frames()
 	_service.call("_wire_variable", getter, "focus_count")
-	# Not selected, the getter goes dark out of focus (D-117).
+	# Not selected, the getter goes dark out of focus (D-122).
 	_service.select_block(-1)
 	await _frames(3)
 	var shelf := canvas.get_boxes()

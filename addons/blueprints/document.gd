@@ -267,14 +267,14 @@ func insert_block(block: Dictionary, position: Vector2, wire: Dictionary = {}, t
 
 
 ## Adds copies of [param blocks] and of the wires [param edges] between them,
-## as one undo step [param title] (D-117): each copy gets a new ID, its
+## as one undo step [param title] (D-122): each copy gets a new ID, its
 ## position moved by [param offset] and its [code]vr_depth[/code] by
 ## [param depth]; a wire with an end outside [param blocks] is left out, and a
 ## Target keeps its path. Returns the copies' IDs in the order of
 ## [param blocks], or none if the edit was refused. [param outer] are wires
-## into [param blocks] from blocks not copied (D-121): each copy's input gets
+## into [param blocks] from blocks not copied (D-126): each copy's input gets
 ## one from the same output. Of [param variables], those the graph has no
-## variable of the name of are added in the same step (D-123).
+## variable of the name of are added in the same step (D-128).
 func paste_blocks(blocks: Array[Dictionary], edges: Array[Dictionary], offset: Vector2, depth: float, title: String = "Paste Blocks", outer: Array[Dictionary] = [], variables: Array[Dictionary] = []) -> Array[int]:
 	var state := graph.snapshot()
 	for variable: Dictionary in variables:

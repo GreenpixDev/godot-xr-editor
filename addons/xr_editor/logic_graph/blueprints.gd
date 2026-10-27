@@ -146,19 +146,19 @@ class Pointer:
 	var hand: XREHand
 	## The grip went down in empty space and is still held: with
 	## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP],
-	## the other hand adds blocks to the selection (D-117), as it adds scene objects (D-115).
+	## the other hand adds blocks to the selection (D-122), as it adds scene objects (D-120).
 	var adding := false
-	## The other selected blocks the held card carries (D-117), and where each was when the hold began.
+	## The other selected blocks the held card carries (D-122), and where each was when the hold began.
 	var group: Array[int] = []
 	var group_starts: Array[Vector3] = []
-	## A brush stroke over the cards (D-119): whether one is swept, whether it
+	## A brush stroke over the cards (D-124): whether one is swept, whether it
 	## replaces the selection, the block it began on when it adds (the trigger
 	## added it or took it out already), and the blocks it crossed.
 	var brushing := false
 	var brush_replace := false
 	var brush_start := -1
 	var brushed: Array[int] = []
-	## A selection box on the graph's plane (D-120): whether one is drawn,
+	## A selection box on the graph's plane (D-125): whether one is drawn,
 	## whether it replaces the selection, and its corners in the canvas's space.
 	var boxing := false
 	var box_replace := false
@@ -485,11 +485,11 @@ var _target_wires: Array[TargetWire] = []
 var _catalog := PackedStringArray()
 ## The block selected last, -1 for none; the parameters window is for it.
 var _selected := -1
-## Every selected block (D-117): several with Add to selection, the last one [member _selected].
+## Every selected block (D-122): several with Add to selection, the last one [member _selected].
 var _selected_blocks: Array[int] = []
-## The selection box drawn on the graph's plane (D-120).
+## The selection box drawn on the graph's plane (D-125).
 var _box_lines: XREBoundsBox
-## Blocks Copy put aside (D-123), to paste into this graph or another:
+## Blocks Copy put aside (D-128), to paste into this graph or another:
 ## [code]{"blocks", "edges", "variables", "cards"}[/code], or empty.
 var _block_clipboard: Dictionary = {}
 var _pending_id := -1
@@ -978,7 +978,7 @@ func create_unassigned() -> bool:
 ## Gives [param copy], which [method XREDocument.duplicate_nodes] just put in
 ## the scene as a copy of [param original], its own Blueprints, with
 ## [constant XREFeatureSettings.COPY_BLUEPRINT] at [constant XREFeatureSettings.OWN]
-## (D-122): each host in it gets a copy of its graph beside the scene
+## (D-127): each host in it gets a copy of its graph beside the scene
 ## ([method _new_path]), with the copy as its host, and of its generated
 ## script, which it takes with its values kept. The files stay if the copy is
 ## undone, as a graph made for an object does. At Shared, the default, a copy
@@ -1020,7 +1020,7 @@ func prepare_copy(copy: Node, original: Node) -> void:
 
 
 ## Gives [param host] [param script] in place of its own, the values of its
-## script variables kept: a copy's script is the same code (D-122).
+## script variables kept: a copy's script is the same code (D-127).
 static func _take_script(host: Node, script: Script) -> void:
 	var values: Dictionary[StringName, Variant] = {}
 	for property: Dictionary in host.get_property_list():
@@ -1629,7 +1629,7 @@ func _end_drag(place: bool) -> void:
 func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	var block := blueprint.graph.find_node(id)
 	if block.is_empty(): return
-	# With the clipboard, the button copies there, to paste anywhere (D-123).
+	# With the clipboard, the button copies there, to paste anywhere (D-128).
 	if _document.features.get_value(XREFeatureSettings.OBJECT_COPY) == XREFeatureSettings.CLIPBOARD:
 		var chosen: Array[int] = [id]
 		if _selected_blocks.size() > 1 and _selected_blocks.has(id): chosen = _selected_blocks.duplicate()
@@ -1638,7 +1638,7 @@ func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	if _selected_blocks.size() > 1 and _selected_blocks.has(id):
 		_start_group_copy(id, hand, point, _selected_blocks)
 		return
-	# With its outer wires, one block goes the way of a group: wires are what it copies (D-121).
+	# With its outer wires, one block goes the way of a group: wires are what it copies (D-126).
 	if _document.features.get_value(XREFeatureSettings.COPY_OUTER_WIRES) == XREFeatureSettings.ON:
 		_start_group_copy(id, hand, point, [id])
 		return
@@ -1654,12 +1654,12 @@ func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 
 
 ## The trigger on the copy button of card [param id], one of [param chosen]
-## (D-117): copies of them all and of the wires between them follow the ray
+## (D-122): copies of them all and of the wires between them follow the ray
 ## of [param hand], the card's at the ray, until the trigger lets go
 ## ([method _place_group_copy]). An inline block (D-061) that feeds one of
 ## them is copied with it: it is drawn as part of the card. With
 ## [constant XREFeatureSettings.COPY_OUTER_WIRES] on, so are the data wires
-## into them from blocks not copied (D-121); an execution output holds one
+## into them from blocks not copied (D-126); an execution output holds one
 ## wire, so those stay with the originals.
 func _start_group_copy(id: int, hand: XREHand, point: Vector3, chosen: Array[int]) -> void:
 	var graph := blueprint.graph
@@ -1703,7 +1703,7 @@ func _start_group_copy(id: int, hand: XREHand, point: Vector3, chosen: Array[int
 	_start_drag({"id": "copy", "title": title, "blocks": blocks, "edges": edges, "outer": outer, "single": chosen.size() == 1, "origin": "copy"}, hand, distance, stand_ins)
 
 
-## Adds the copies of [param action]'s blocks and wires (D-117), the source
+## Adds the copies of [param action]'s blocks and wires (D-122), the source
 ## card's at workspace point [param point], the others where they are around
 ## it; with [param beside], let go where they started, below the selection by
 ## its height: one undo step, Duplicate Blocks in the log. The copies are selected.
@@ -1779,7 +1779,7 @@ func select_block(id: int, open_parameters: bool = true) -> void:
 
 
 ## Adds block [param id] to the selected blocks, or takes it out if it is
-## selected (D-117). The parameters window is for one block: with several, it closes.
+## selected (D-122). The parameters window is for one block: with several, it closes.
 func toggle_block(id: int) -> void:
 	var ids: Array[int] = _selected_blocks.duplicate()
 	if ids.has(id): ids.erase(id)
@@ -1795,7 +1795,7 @@ func toggle_block(id: int) -> void:
 	changed.emit()
 
 
-## Selects the blocks of [param ids], the last of them last (D-117): one
+## Selects the blocks of [param ids], the last of them last (D-122): one
 ## with its parameters window, as [method select_block] does; several with it closed.
 func select_blocks(ids: Array[int]) -> void:
 	if ids.size() <= 1:
@@ -1809,7 +1809,7 @@ func select_blocks(ids: Array[int]) -> void:
 	changed.emit()
 
 
-## Whether the trigger sweeps a brush stroke over the cards (D-119), as it does over the scene.
+## Whether the trigger sweeps a brush stroke over the cards (D-124), as it does over the scene.
 func _brushes() -> bool:
 	return _document.features.get_value(XREFeatureSettings.SELECT_AREA) == XREFeatureSettings.BRUSH
 
@@ -1836,7 +1836,7 @@ func _brush_block(pointer: Pointer, id: int) -> void:
 
 
 ## Frames the stroke's cards as selected ones, without selecting them yet:
-## out of focus they keep their look, as selected cards do (D-117). A stroke
+## out of focus they keep their look, as selected cards do (D-122). A stroke
 ## that replaces the selection shows only what it crossed.
 func _show_brush(pointer: Pointer) -> void:
 	var ids: Array[int] = []
@@ -1861,8 +1861,8 @@ func _end_block_brush(pointer: Pointer) -> void:
 ## Starts a selection box of [param pointer] on the graph's plane where its
 ## ray, from [param origin] along [param direction], meets it, with
 ## [constant XREFeatureSettings.SELECT_AREA] at [constant XREFeatureSettings.BOX]
-## (D-120): one that replaces the selection, or adds to it while the other
-## hand adds (D-117). The hand is the graph's until the trigger lets go.
+## (D-125): one that replaces the selection, or adds to it while the other
+## hand adds (D-122). The hand is the graph's until the trigger lets go.
 func _begin_block_box(pointer: Pointer, origin: Vector3, direction: Vector3) -> bool:
 	if _document.features.get_value(XREFeatureSettings.SELECT_AREA) != XREFeatureSettings.BOX: return false
 	var point: Variant = _on_canvas_plane(origin, direction)
@@ -1940,7 +1940,7 @@ func _cancel_block_brush(pointer: Pointer) -> void:
 	canvas.select_blocks(_selected_blocks)
 
 
-## Puts copies of the blocks of [param chosen] on the clipboard (D-123), with
+## Puts copies of the blocks of [param chosen] on the clipboard (D-128), with
 ## the inline blocks that feed them (D-061), the wires between them and the
 ## variables they read or write, to paste into this graph or another.
 func _copy_to_clipboard(chosen: Array[int]) -> void:
@@ -1975,18 +1975,18 @@ func _copy_to_clipboard(chosen: Array[int]) -> void:
 	_message("Copied %d %s to the clipboard." % [chosen.size(), "block" if chosen.size() == 1 else "blocks"])
 
 
-## How many blocks the clipboard holds, for its pill ([XREClipboard], D-123).
+## How many blocks the clipboard holds, for its pill ([XREClipboard], D-128).
 func get_clipboard_count() -> int:
 	return int(_block_clipboard.get("cards", 0))
 
 
-## Empties the blocks' clipboard (D-123).
+## Empties the blocks' clipboard (D-128).
 func clear_clipboard() -> void:
 	_block_clipboard = {}
 
 
 ## Where the ray from [param origin] along [param direction] meets the graph's
-## plane, global, or null if it doesn't: where a paste goes (D-123).
+## plane, global, or null if it doesn't: where a paste goes (D-128).
 func plane_point(origin: Vector3, direction: Vector3) -> Variant:
 	var point: Variant = _on_canvas_plane(origin, direction)
 	if point == null: return null
@@ -1995,7 +1995,7 @@ func plane_point(origin: Vector3, direction: Vector3) -> Variant:
 
 
 ## Pastes the clipboard's blocks where the ray from [param origin] along
-## [param direction] meets the graph's plane (D-123): its first block there,
+## [param direction] meets the graph's plane (D-128): its first block there,
 ## the others around it as they were, the variables the graph lacks added,
 ## one undo step, Paste Blocks in the log. The pasted cards are selected.
 ## False if the ray misses the plane or the clipboard is empty.
@@ -2028,18 +2028,18 @@ func paste_clipboard(origin: Vector3, direction: Vector3) -> bool:
 	return true
 
 
-## The selected blocks, the last selected last (D-117).
+## The selected blocks, the last selected last (D-122).
 func get_selected_blocks() -> Array[int]:
 	return _selected_blocks.duplicate()
 
 
-## How many blocks are selected, without a copy of them: for the selection's counter (D-118).
+## How many blocks are selected, without a copy of them: for the selection's counter (D-123).
 func get_selected_count() -> int:
 	return _selected_blocks.size()
 
 
 ## Whether a hand holds its grip down in the graph's empty space, which makes
-## the other hand add blocks to the selection (D-117).
+## the other hand add blocks to the selection (D-122).
 func is_adding() -> bool:
 	for pointer: Pointer in _pointers:
 		if pointer.adding: return true
@@ -2048,7 +2048,7 @@ func is_adding() -> bool:
 
 ## Whether the trigger or the grip of [param pointer]'s hand adds blocks to
 ## the selection: the other hand's grip is held in empty space, with
-## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP] (D-117).
+## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP] (D-122).
 func _adds_blocks(pointer: Pointer) -> bool:
 	if _document.features.get_value(XREFeatureSettings.SELECT_ADD) != XREFeatureSettings.GRIP: return false
 	for other: Pointer in _pointers:
@@ -2296,7 +2296,7 @@ func switch_heading(id: int) -> void:
 
 
 ## Removes the selected block and incident wires through the graph document.
-## A block of several selected takes them all along, as one undo step (D-117).
+## A block of several selected takes them all along, as one undo step (D-122).
 func delete_block(id: int = -1) -> void:
 	var target := id if id >= 0 else _selected
 	if target < 0 or blueprint.graph.find_node(target).is_empty(): return
@@ -2806,11 +2806,11 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				hand.show_ray(along, true)
 				if hand.trigger_pressed: open_graph(marker.path)
 				return
-	# The trigger in empty space draws a selection box on the graph's plane (D-120).
+	# The trigger in empty space draws a selection box on the graph's plane (D-125).
 	if hand.trigger_pressed and _workspace.visible and _begin_block_box(pointer, origin, direction): return
-	# Without a box, it lets go of the selected blocks, unless the other hand adds (D-125).
+	# Without a box, it lets go of the selected blocks, unless the other hand adds (D-130).
 	if hand.trigger_pressed and _workspace.visible and not _selected_blocks.is_empty() and not _adds_blocks(pointer): select_block(-1)
-	# The grip in empty space: the other hand's trigger adds blocks (D-117).
+	# The grip in empty space: the other hand's trigger adds blocks (D-122).
 	if hand.grip_pressed and hand.is_free_for(self): pointer.adding = true
 	# A click away that closed an input goes on to the graph, but selects no
 	# scene object (D-063): the hand stays the graph's until it is let go.
@@ -2872,7 +2872,7 @@ func _hold_window(pointer: Pointer, window: XREPanelSurface, corner: int, by_tri
 
 
 ## Selects block [param block], taken by [param pointer]'s hand, and the other
-## selected blocks it carries (D-117): a selected block keeps the selection,
+## selected blocks it carries (D-122): a selected block keeps the selection,
 ## one the other hand's grip adds joins it, any other replaces it.
 func _hold_group(pointer: Pointer, block: int) -> void:
 	if not _selected_blocks.has(block):

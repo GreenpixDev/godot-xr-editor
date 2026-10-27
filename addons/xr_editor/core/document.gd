@@ -24,7 +24,7 @@ signal scene_changed
 signal files_changed
 ## Assignments/scene history changed; graph widgets refresh outside the frame loop.
 signal blueprint_bindings_changed
-## Emitted when [method copy_nodes] or [method clear_clipboard] changed what the clipboard holds (D-123).
+## Emitted when [method copy_nodes] or [method clear_clipboard] changed what the clipboard holds (D-128).
 signal clipboard_changed
 ## Emitted once for every operation made through this document, after it took
 ## effect. [param operation] names it ([code]&"select"[/code],
@@ -49,7 +49,7 @@ enum Source {
 var prepare_play: Callable
 ## Optional: called by [method duplicate_nodes] with each copy, once it is in
 ## the scene, and its original, before the operation is recorded. The
-## Blueprint layer gives a copy its own graph there (D-122); unset, copies
+## Blueprint layer gives a copy its own graph there (D-127); unset, copies
 ## share what their originals have.
 var prepare_copy: Callable
 ## Variants of features under study (D-039), shared by every tool and panel.
@@ -58,7 +58,7 @@ var features := XREFeatureSettings.new()
 ## What was done in the headset, to undo and redo there (D-087).
 var history := XREHistory.new()
 
-## What [method copy_nodes] put aside (D-123): each copied node packed, so
+## What [method copy_nodes] put aside (D-128): each copied node packed, so
 ## that changing or deleting the original, or switching scenes, leaves it as
 ## it was; the global transform its original had; and its bounds in its own space.
 var _clipboard: Array[PackedScene] = []
@@ -170,7 +170,7 @@ func commit_transform(node: Node3D, before: Transform3D, source: Source) -> void
 
 ## Records one undo step that moves each of [param nodes] from its
 ## [param befores] entry to its current local transform, and one
-## [code]&"transform"[/code] operation naming them all (D-115): a group
+## [code]&"transform"[/code] operation naming them all (D-120): a group
 ## dragged together is undone together.
 @abstract func commit_transforms(nodes: Array[Node3D], befores: Array[Transform3D], source: Source) -> void
 
@@ -201,7 +201,7 @@ func commit_transform(node: Node3D, before: Transform3D, source: Source) -> void
 
 ## Copies [param nodes] as one undo step, as Duplicate (Ctrl+D) does on the
 ## desktop, and records one [code]&"duplicate"[/code] operation naming the
-## copies (D-116). The same nodes are copied as [method nodes_to_remove] would
+## copies (D-121). The same nodes are copied as [method nodes_to_remove] would
 ## remove; each copy ([method copy_node]) goes under its original's parent,
 ## right after it, its global transform moved by [param move], so that a group
 ## keeps its shape; then [member prepare_copy] sees it. Returns the copies in
@@ -314,7 +314,7 @@ static func _owned_copies(original: Node, top: Node, copy: Node, root: Node, r_o
 
 
 ## Puts copies of [param nodes] on the clipboard in place of what it held
-## (D-123), the same nodes [method nodes_to_remove] would remove, and records
+## (D-128), the same nodes [method nodes_to_remove] would remove, and records
 ## one [code]&"copy"[/code] operation: the scene doesn't change, there is
 ## nothing to undo. Returns how many were copied; none leaves the clipboard as it was.
 func copy_nodes(nodes: Array[Node], source: Source) -> int:
@@ -344,7 +344,7 @@ func copy_nodes(nodes: Array[Node], source: Source) -> int:
 	return originals.size()
 
 
-## How many nodes the clipboard holds (D-123).
+## How many nodes the clipboard holds (D-128).
 func get_clipboard_count() -> int:
 	return _clipboard.size()
 
@@ -370,7 +370,7 @@ func clear_clipboard() -> void:
 
 
 ## Puts the clipboard's nodes in the edited scene, under its root, as one
-## undo step and one [code]&"paste"[/code] operation (D-123): each where its
+## undo step and one [code]&"paste"[/code] operation (D-128): each where its
 ## original was when copied, moved by [param move], a global transform, so
 ## that a group keeps its shape. The clipboard stays, to paste again. Returns
 ## the pasted nodes, none if the clipboard is empty or no scene is open.

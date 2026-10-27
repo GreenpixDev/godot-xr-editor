@@ -127,7 +127,7 @@ func _exit_tree() -> void:
 ## Marks [param node] by drawing its edges; call it every frame it stays marked.
 ## [param bounds], in the node's own space, is for the box that stands in where
 ## it has no edges to draw. The edges are drawn moved by [param moved], in
-## global space: where a copy of the node would be (D-116).
+## global space: where a copy of the node would be (D-121).
 func show_node(node: Node3D, bounds: AABB, moved := Transform3D.IDENTITY) -> void:
 	_active = true
 	if node.get_instance_id() != _node_id:

@@ -1089,7 +1089,7 @@ func _test_insert_block() -> void:
 	_check(doc.insert_block(XREBlueprintGraph.make_node(0, "print", Vector2.ZERO), Vector2.ZERO, {"from": 1, "from_port": 0}) == -1 and not doc.last_error.is_empty(), "an occupied execution output refuses another wire")
 
 
-## D-117, D-121, D-123: pasted blocks get new IDs, their wires among them and
+## D-122, D-126, D-128: pasted blocks get new IDs, their wires among them and
 ## the outer ones into them follow, and the variables they use that the graph
 ## lacks come in the same undo step.
 func _test_paste_blocks() -> void:

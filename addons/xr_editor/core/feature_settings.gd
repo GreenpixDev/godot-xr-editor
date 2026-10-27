@@ -223,24 +223,24 @@ const NEXT_SUGGESTIONS := &"next_suggestions"
 ## takes a copy of the block along the ray, to let go where it goes, or, let
 ## go at once, puts it beside the card.
 const BLOCK_COPY := &"block_copy"
-## How the trigger adds scene objects to the selection (D-115). Other grip
-## (the default since D-126): while the
+## How the trigger adds scene objects to the selection (D-120). Other grip
+## (the default since D-131): while the
 ## other hand's grip is held in empty space, the trigger adds the object under
 ## the ray, or takes it out if it is selected already, and a grip adds it
-## before grabbing. Replace, as before D-126: it selects only the object
+## before grabbing. Replace, as before D-131: it selects only the object
 ## under the ray. A grip on a selected object grabs every selected one with
 ## either value.
 const SELECT_ADD := &"select_add"
 const REPLACE := &"replace"
 const GRIP := &"grip"
-## How scene objects are copied in the headset (D-116; Both by default since D-126). Shortcut: Duplicate in
+## How scene objects are copied in the headset (D-121; Both by default since D-131). Shortcut: Duplicate in
 ## the object's shortcut puts copies of the selection beside it. Other grip:
 ## while the other hand's grip is held in empty space, a grip on an object
 ## takes copies of the selection, drawn as edges, and letting go puts them
 ## there; the originals stay. Both: either way. Clipboard: Copy in the
 ## shortcut, and the card's copy button in the graph, put copies on a
 ## clipboard shown on the left hand, which pastes them where the ray lets go,
-## in this scene or another, in this graph or another (D-123). Off: no copy
+## in this scene or another, in this graph or another (D-128). Off: no copy
 ## in the headset, as before.
 const OBJECT_COPY := &"object_copy"
 const SHORTCUT := &"shortcut"
@@ -248,33 +248,33 @@ const BOTH := &"both"
 const CLIPBOARD := &"clipboard"
 ## Whether a pill over the left controller tells how many scene objects, or
 ## blocks of the open graph, are selected, with a plus while the other hand's
-## grip held in empty space adds to the selection (D-118; on by default since D-126).
+## grip held in empty space adds to the selection (D-123; on by default since D-131).
 const SELECTION_COUNTER := &"selection_counter"
-## How the trigger selects several scene objects in one stroke (D-119).
-## Brush (the default since D-126): while the trigger is held, everything the
+## How the trigger selects several scene objects in one stroke (D-124).
+## Brush (the default since D-131): while the trigger is held, everything the
 ## ray crosses is selected too, and the stroke is one selection when the
 ## trigger lets go. Off, as before: a trigger selects what is under the ray
 ## when it goes down. Box: the
 ## trigger held draws a rectangle before the head, as the mouse does on the
-## desktop, and letting go selects what is in it and not hidden (D-120); in
+## desktop, and letting go selects what is in it and not hidden (D-125); in
 ## the graph, a rectangle on the graph's plane from its empty space.
 const SELECT_AREA := &"select_area"
 const BRUSH := &"brush"
 const BOX := &"box"
-## Whether a copy of blocks (D-093, D-117) keeps the data wires that come into
-## them from blocks not copied, from the same outputs (D-121). Off, as before:
+## Whether a copy of blocks (D-093, D-122) keeps the data wires that come into
+## them from blocks not copied, from the same outputs (D-126). Off, as before:
 ## the inputs those wires fed get default tokens (D-059).
 const COPY_OUTER_WIRES := &"copy_outer_wires"
-## Whether a scene object copied in the headset (D-116) shares its Blueprint
+## Whether a scene object copied in the headset (D-121) shares its Blueprint
 ## with the original — the same graph and script, as Duplicate on the desktop
 ## — or gets its own: a copy of the graph beside the scene, with the copy as
-## its host, and of its generated script (D-122).
+## its host, and of its generated script (D-127).
 const COPY_BLUEPRINT := &"copy_blueprint"
 const SHARED := &"shared"
 const OWN := &"own"
 
 ## Every setting by key: its page, title, values (the first is the default;
-## the defaults are the author's picks after the headset checks, D-076, D-114, D-126),
+## the defaults are the author's picks after the headset checks, D-076, D-114, D-131),
 ## the values' titles and a line of explanation.
 const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	NODE_DISPLAY: {

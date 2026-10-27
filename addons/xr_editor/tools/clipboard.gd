@@ -1,7 +1,7 @@
 @tool
 class_name XREClipboard
 extends Node
-## The clipboard on the left hand (D-123), with
+## The clipboard on the left hand (D-128), with
 ## [constant XREFeatureSettings.OBJECT_COPY] at [constant XREFeatureSettings.CLIPBOARD]:
 ## a pill under the selection's counter tells what it holds — the scene
 ## objects Copy put there ([method XREDocument.copy_nodes]), or, while the graph

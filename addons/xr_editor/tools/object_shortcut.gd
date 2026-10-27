@@ -14,11 +14,11 @@ extends Node3D
 ## Delete removes the object through [XREDocument], as X does (D-087).
 ## Duplicate, with [constant XREFeatureSettings.OBJECT_COPY] at
 ## [constant XREFeatureSettings.SHORTCUT] or [constant XREFeatureSettings.BOTH], copies it beside itself
-## ([method XREManipulator.copy_offset]) and selects the copy (D-116). Opened on
+## ([method XREManipulator.copy_offset]) and selects the copy (D-121). Opened on
 ## one of several selected objects, the shortcut is for all of them: Delete
-## and Duplicate only, under how many there are (D-116). With Copy objects at
+## and Duplicate only, under how many there are (D-121). With Copy objects at
 ## [constant XREFeatureSettings.CLIPBOARD], Copy takes Duplicate's place and
-## puts the objects on the clipboard ([XREClipboard], D-123). Rename
+## puts the objects on the clipboard ([XREClipboard], D-128). Rename
 ## opens a keyboard with the object's name: Done renames it, a trigger off the
 ## keyboard or its × leaves the name as it was. Blueprint opens the object's
 ## graph or creates one, as the badge's button does (D-085).
@@ -33,7 +33,7 @@ signal blueprint_requested
 ## on them — the badge's red for delete and Blueprints' blue for the graph
 ## (D-085), the keyboard's for rename, the light blue of the graph's copy
 ## button for duplicate and copy (D-093). Shown left to right on the arc as
-## Delete, Duplicate or Copy, Rename, Blueprint (D-116, D-123).
+## Delete, Duplicate or Copy, Rename, Blueprint (D-121, D-128).
 const DELETE := 0
 const RENAME := 1
 const BLUEPRINT := 2

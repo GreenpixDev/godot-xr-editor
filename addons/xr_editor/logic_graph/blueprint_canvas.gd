@@ -360,7 +360,7 @@ var _trash_material: Material
 var _preview: XREGraphWire
 var _offset := Vector2.ZERO
 var _structure: Array = []
-## The selected blocks (D-117), drawn with a white frame.
+## The selected blocks (D-122), drawn with a white frame.
 var _selected: Array[int] = []
 var _hit_id := -1
 var _hit_port := -1
@@ -1666,7 +1666,7 @@ func commit_move(document: XREBlueprintDocument, id: int) -> bool:
 	return document.perform(document.commit.bind("Move Blocks", state), &"vr_graph")
 
 
-## Commits the places of the cards of [param ids], moved together (D-117), as
+## Commits the places of the cards of [param ids], moved together (D-122), as
 ## one step of the graph's history, as [method commit_move] one card's.
 func commit_moves(document: XREBlueprintDocument, ids: Array[int]) -> bool:
 	var state := document.graph.snapshot()
@@ -1680,7 +1680,7 @@ func commit_moves(document: XREBlueprintDocument, ids: Array[int]) -> bool:
 
 
 ## Moves the cards of [param ids] from [param starts] by [param shift], in
-## the canvas's space, along with a card being held (D-117): live geometry
+## the canvas's space, along with a card being held (D-122): live geometry
 ## only, as [method preview_move], the wires bent once for all of them.
 func preview_group(ids: Array[int], starts: Array[Vector3], shift: Vector3) -> void:
 	for index: int in ids.size():
@@ -1837,7 +1837,7 @@ func select_block(id: int) -> void:
 
 
 ## The blocks whose cards have their middle in [param rect], on the canvas's
-## plane in its space (D-120), in the order of the cards.
+## plane in its space (D-125), in the order of the cards.
 func blocks_in_rect(rect: Rect2) -> Array[int]:
 	var ids: Array[int] = []
 	for card: Card in _cards:
@@ -1845,12 +1845,12 @@ func blocks_in_rect(rect: Rect2) -> Array[int]:
 	return ids
 
 
-## Highlights the cards of [param ids], several at once (D-117).
+## Highlights the cards of [param ids], several at once (D-122).
 func select_blocks(ids: Array[int]) -> void:
 	_selected = ids.duplicate()
 	for card: Card in _cards: _paint_frame(card)
-	# A card selected or let go of out of focus is darkened or not (D-117), and a
-	# selection keeps the rest darker with nothing in focus (D-124).
+	# A card selected or let go of out of focus is darkened or not (D-122), and a
+	# selection keeps the rest darker with nothing in focus (D-129).
 	if _focus_mode != XREFeatureSettings.OFF or _defocus_mode != XREFeatureSettings.OFF: _paint_focus()
 
 
@@ -1933,7 +1933,7 @@ func set_focus(cards: Vector3i, box: String = "", other_box: String = "") -> voi
 
 ## How block [param id] is in focus: [constant XREBlueprintFocus.FOCUSED],
 ## [constant XREBlueprintFocus.OUT], or [constant XREBlueprintFocus.NORMAL] while nothing is
-## and for a selected card out of focus (D-117).
+## and for a selected card out of focus (D-122).
 func focus_state(id: int) -> int:
 	if not _focus_any: return XREBlueprintFocus.NORMAL
 	return XREBlueprintFocus.FOCUSED if _in_focus(id) else XREBlueprintFocus.NORMAL if _selected.has(id) else XREBlueprintFocus.OUT
@@ -1968,21 +1968,21 @@ func _in_focus(id: int) -> bool:
 ## In focus: the cards and boxes asked for and the wires on them. Out of it:
 ## the rest, but the far ends of those wires — a port, a socket, a box — and
 ## the ports a wire being drawn may end on stay as they are, and so do the
-## selected cards (D-117). With nothing asked for, selected cards put the rest
-## out of focus all the same (D-124).
+## selected cards (D-122). With nothing asked for, selected cards put the rest
+## out of focus all the same (D-129).
 func _paint_focus() -> void:
 	var used := _focus_mode != XREFeatureSettings.OFF or _defocus_mode != XREFeatureSettings.OFF
 	var any := false
 	if used:
 		for card: Card in _cards: any = any or _in_focus(card.id)
 		any = any or _boxes.has_box(_focus_box) or _boxes.has_box(_focus_other_box)
-		# With the ray in the air, a selected card keeps the rest darker, so that it stands out (D-124).
+		# With the ray in the air, a selected card keeps the rest darker, so that it stands out (D-129).
 		for card: Card in _cards:
 			if any: break
 			any = _selected.has(card.id)
 	_focus_any = any
 	for card: Card in _cards:
-		# A selected card out of focus keeps its look: only the others are put back (D-117).
+		# A selected card out of focus keeps its look: only the others are put back (D-122).
 		card.focus = (XREBlueprintFocus.FOCUSED if _in_focus(card.id) else XREBlueprintFocus.NORMAL if _selected.has(card.id)
 				else XREBlueprintFocus.OUT) if any else XREBlueprintFocus.NORMAL
 		card.keep_ports = 0

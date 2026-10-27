@@ -30,7 +30,7 @@ var _sun: DirectionalLight3D
 var _energy_before := 0.0
 ## A node the headset adds and deletes, undone and redone (D-087).
 var _added: Node3D
-## A node with a child the headset copies, and its copy (D-116).
+## A node with a child the headset copies, and its copy (D-121).
 var _original: Node3D
 var _copy: Node3D
 ## The proxy the inspector edited before another node was selected, and
@@ -279,7 +279,7 @@ func _undo_remove() -> void:
 	_next()
 
 
-## D-116: a copy is one step, after its original, moved, and owned by the
+## D-121: a copy is one step, after its original, moved, and owned by the
 ## scene with its child, so that it is saved; undo takes it out, redo puts it back owned.
 func _duplicate_node() -> void:
 	var root := _document.get_scene_root()
@@ -323,7 +323,7 @@ func _undo_duplicate() -> void:
 	_next()
 
 
-## D-123: Copy puts a node with a child on the clipboard, and Paste puts a
+## D-128: Copy puts a node with a child on the clipboard, and Paste puts a
 ## copy of it under the scene's root, moved, owned with its child: one step
 ## that undo takes out and redo puts back owned.
 func _add_for_paste() -> void:
