@@ -248,9 +248,13 @@ const SELECTION_COUNTER := &"selection_counter"
 ## How the trigger selects several scene objects in one stroke (D-119). Off,
 ## as before: a trigger selects what is under the ray when it goes down.
 ## Brush: while the trigger is held, everything the ray crosses is selected
-## too, and the stroke is one selection when the trigger lets go.
+## too, and the stroke is one selection when the trigger lets go. Box: the
+## trigger held draws a rectangle before the head, as the mouse does on the
+## desktop, and letting go selects what is in it and not hidden (D-120); in
+## the graph, a rectangle on the graph's plane from its empty space.
 const SELECT_AREA := &"select_area"
 const BRUSH := &"brush"
+const BOX := &"box"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076, D-114),
@@ -490,9 +494,9 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	SELECT_AREA: {
 		"category": Category.FEATURES,
 		"title": "Select area",
-		"values": [OFF, BRUSH],
-		"labels": ["Off", "Brush"],
-		"hint": "Brush: hold the trigger and sweep the ray; everything it crosses is selected, as one selection when the trigger lets go. With the other hand's grip held in empty space, the stroke adds to the selection.",
+		"values": [OFF, BRUSH, BOX],
+		"labels": ["Off", "Brush", "Box"],
+		"hint": "Brush: hold the trigger and sweep the ray; everything it crosses is selected, as one selection when the trigger lets go. Box: hold the trigger and draw a rectangle; what is in it and not hidden is selected when the trigger lets go; in the graph, draw it from the graph's empty space. With the other hand's grip held in empty space, either adds to the selection.",
 	},
 }
 

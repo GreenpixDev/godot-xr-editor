@@ -26,6 +26,13 @@ extends Node
 ## the stroke, or adds it to the selection if the trigger went down while the
 ## other hand added (D-115), as one selection. A click is a stroke of one
 ## node, or of none, which clears the selection.
+## [br]- With [constant XREFeatureSettings.SELECT_AREA] at
+## [constant XREFeatureSettings.BOX] (D-120): the trigger held draws a
+## rectangle on a plane [constant BOX_DISTANCE] before the head, between where
+## the ray met it when the trigger went down and where it meets it now.
+## Letting go selects, or adds, the nodes whose middle the head sees inside
+## it and not behind something else, counted once then. A click, a rectangle
+## smaller than [constant BOX_CLICK], selects as the trigger did before.
 ## [br]- Grip: grab the pointed node, which also selects it. Grabbing a
 ## selected node grabs every selected one (D-115): the others keep their place
 ## relative to it, as if they were one rigid node. A touched node
@@ -90,6 +97,12 @@ const MIN_SCALE_FACTOR := 0.01
 const MAX_OUTLINED := 64
 ## How many frames a stroke let go of stays shown at most, waiting for the editor's selection (D-119).
 const BRUSH_SETTLE_FRAMES := 10
+## How far before the head the selection box is drawn, in meters (D-120).
+const BOX_DISTANCE := 1.0
+## A box smaller than this both ways, in meters on its plane, is a click.
+const BOX_CLICK := 0.02
+## A node's middle farther than this behind what the head sees first is hidden, in meters.
+const BOX_HIDDEN_MARGIN := 0.05
 const HOVER_COLOR := Color(1.0, 1.0, 1.0)
 const SELECTION_COLOR := Color.WHITE
 ## The edges of copies being carried (D-116): the light blue of the graph's copy button (D-093).
@@ -193,6 +206,18 @@ var _brushed_bounds: Array[AABB] = []
 var _brushed_icons: Array[bool] = []
 ## The outline of each of [member _brushed], and spare ones after them.
 var _brush_outlines: Array[XREOutline] = []
+## The hand drawing a selection box (D-120), or null; whether the box replaces
+## the selection, rather than adding to it; the node under the ray when the
+## trigger went down, which a click selects.
+var _box_hand: HandState
+var _box_replace := false
+var _box_click: Node3D
+## The plane the box is drawn on, fixed when it began: before the head,
+## facing it; and the box's corners on it, in its space.
+var _box_plane: Transform3D
+var _box_from: Vector2
+var _box_to: Vector2
+var _box_lines: XREBoundsBox
 ## Frames left to show a stroke let go of until the document tells of the
 ## selection it made: the editor does in a later frame, and without this the
 ## selection before the stroke would flash back in between. 0 when none waits.
@@ -225,6 +250,9 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons) -> void:
 		var state := HandState.new(hand)
 		add_child(state.outline)
 		_hands.append(state)
+	_box_lines = XREBoundsBox.new(SELECTION_COLOR)
+	_box_lines.name = "SelectionBox"
+	add_child(_box_lines)
 
 
 func _enter_tree() -> void:
@@ -240,6 +268,7 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	_cancel_grab()
 	_clear_brush()
+	_clear_box()
 	_document.selection_changed.disconnect(_on_selection_changed)
 	_document.scene_changed.disconnect(_on_scene_changed)
 
@@ -263,11 +292,17 @@ func _process(_delta: float) -> void:
 			state.adding = false
 			if state == _brush_hand:
 				_clear_brush()
+			if state == _box_hand:
+				_clear_box()
 			continue
 		_update_hover(state, root)
 		if state == _brush_hand:
 			_brush(state)
 			if state == _brush_hand:
+				continue
+		if state == _box_hand:
+			_drag_box(state)
+			if state == _box_hand:
 				continue
 		if state.hand.grip_pressed:
 			if _holders.is_empty():
@@ -279,11 +314,12 @@ func _process(_delta: float) -> void:
 			if _adds_to_selection(state):
 				_toggle(state.hover)
 				_begin_brush(state, false)
+				_begin_box(state, false)
 			elif _opens_shortcut(state.hover):
 				shortcut_requested.emit(state.hand, state.hover)
 			elif _brushes():
 				_begin_brush(state, true)
-			else:
+			elif not _begin_box(state, true):
 				_select(state.hover)
 
 	var delete_hand := _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE)
@@ -552,6 +588,122 @@ func _clear_brush() -> void:
 	_brushed_icons.clear()
 	for outline: XREOutline in _brush_outlines:
 		outline.clear()
+
+
+## Starts a selection box of [param state]'s hand, with
+## [constant XREFeatureSettings.SELECT_AREA] at [constant XREFeatureSettings.BOX]:
+## one that replaces the selection, or adds to it. False if there is none:
+## the setting is another, or the ray doesn't meet the box's plane.
+func _begin_box(state: HandState, replace: bool) -> bool:
+	if _document.features.get_value(XREFeatureSettings.SELECT_AREA) != XREFeatureSettings.BOX:
+		return false
+	var head := _rig.camera.global_transform
+	var facing := head.basis.orthonormalized()
+	var plane := Transform3D(facing, head.origin - facing.z * BOX_DISTANCE)
+	var point: Variant = _on_plane(plane, state.hand)
+	if point == null:
+		return false
+	_box_hand = state
+	_box_replace = replace
+	_box_click = state.hover
+	_box_plane = plane
+	_box_from = point
+	_box_to = point
+	return true
+
+
+## Where [param hand]'s ray meets [param plane]'s XY plane, in its space, or null if it doesn't, ahead.
+static func _on_plane(plane: Transform3D, hand: XREHand) -> Variant:
+	var normal := plane.basis.z
+	var direction := -hand.global_basis.z.normalized()
+	var facing := direction.dot(normal)
+	if is_zero_approx(facing):
+		return null
+	var along := (plane.origin - hand.global_position).dot(normal) / facing
+	if along <= 0.0:
+		return null
+	var local := plane.affine_inverse() * (hand.global_position + direction * along)
+	return Vector2(local.x, local.y)
+
+
+## Draws the box to where the ray meets its plane now; ends it when the
+## trigger lets go, or the grip goes down to grab.
+func _drag_box(state: HandState) -> void:
+	if not state.hand.trigger_held or state.hand.grip_pressed:
+		_end_box()
+		return
+	var point: Variant = _on_plane(_box_plane, state.hand)
+	if point != null:
+		_box_to = point
+	var rect := Rect2(_box_from, Vector2.ZERO).expand(_box_to)
+	_box_lines.show_bounds(_box_plane, AABB(Vector3(rect.position.x, rect.position.y, 0.0), Vector3(rect.size.x, rect.size.y, 0.0)))
+
+
+## Selects what is in the box, or adds it to the selection, as one selection;
+## a click selects as the trigger did before.
+func _end_box() -> void:
+	var rect := Rect2(_box_from, Vector2.ZERO).expand(_box_to)
+	var replace := _box_replace
+	var click := _box_click
+	var plane := _box_plane
+	_clear_box()
+	if rect.size.x < BOX_CLICK and rect.size.y < BOX_CLICK:
+		if replace:
+			_select(click)
+		return
+	var nodes: Array[Node] = []
+	if not replace:
+		nodes = _document.get_selection()
+	for node: Node3D in nodes_in_box(plane, rect):
+		if not nodes.has(node):
+			nodes.append(node)
+	if _document.get_selection() != nodes:
+		_document.select(nodes, XREDocument.Source.TOOL)
+
+
+## Ends the box without selecting anything.
+func _clear_box() -> void:
+	_box_hand = null
+	_box_click = null
+	_box_lines.visible = false
+
+
+## The nodes of the edited scene that a box [param rect] on [param plane]
+## (D-120) selects, in tree order: those that geometry or an icon stands for
+## ([method XREPicker.get_selectable_node]), whose middle the head sees
+## through the box and not behind other geometry. Walks the scene: for the
+## end of a box, not for every frame.
+func nodes_in_box(plane: Transform3D, rect: Rect2) -> Array[Node3D]:
+	var found: Array[Node3D] = []
+	var root: Node = _root if is_instance_valid(_root) else null
+	if root == null:
+		return found
+	var picker := _hands[0].picker
+	var head := _rig.camera.global_position
+	var normal := plane.basis.z
+	var to_plane := plane.affine_inverse()
+	for child: Node in root.find_children("*", "VisualInstance3D", true, false):
+		var visual := child as VisualInstance3D
+		if not visual.is_visible_in_tree() or not (visual is GeometryInstance3D or _icons.has_icon(visual)):
+			continue
+		var node := picker.get_selectable_node(visual, root)
+		if node == null or node == root or found.has(node):
+			continue
+		var middle := (node.global_transform * XREPicker.get_local_bounds(node)).get_center()
+		var sight := middle - head
+		var facing := sight.dot(normal)
+		# The plane faces the head: what is ahead of it has a negative facing.
+		if facing >= 0.0:
+			continue
+		var along := (plane.origin - head).dot(normal) / facing
+		var local := to_plane * (head + sight * along)
+		if not rect.has_point(Vector2(local.x, local.y)):
+			continue
+		if picker.cast_segment(root, head, middle) and picker.get_hit_node() != node \
+				and picker.get_hit_distance() < head.distance_to(middle) - BOX_HIDDEN_MARGIN:
+			continue
+		found.append(node)
+	return found
 
 
 ## Adds [param node] to the selection, or takes it out if it is selected; null changes nothing.
@@ -861,6 +1013,7 @@ func _on_selection_changed() -> void:
 func _on_scene_changed() -> void:
 	_cancel_grab()
 	_clear_brush()
+	_clear_box()
 	_root = _document.get_scene_root()
 	for state: HandState in _hands:
 		state.hover = null

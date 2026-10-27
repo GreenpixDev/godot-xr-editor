@@ -329,6 +329,7 @@ func _run() -> void:
 	await _test_d093()
 	await _test_d117()
 	await _test_d119()
+	await _test_d120()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -2118,6 +2119,56 @@ func _test_d119() -> void:
 	features.set_value(XREFeatureSettings.FOCUS, BASELINE[XREFeatureSettings.FOCUS])
 	features.set_value(XREFeatureSettings.DEFOCUS, BASELINE[XREFeatureSettings.DEFOCUS])
 	_service.select_block(-1)
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## D-120: with Select area on Box, the trigger in the graph's empty space
+## draws a rectangle on its plane; letting go selects the cards whose middle
+## is in it; a click there lets go of the selected blocks.
+func _test_d120() -> void:
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var features := _document.features
+	var history := _service.blueprint.history.get_version()
+	var ids: Array[int] = []
+	for index: int in 3:
+		_service.add_block("print")
+		await _frames()
+		ids.append(int((graph.nodes.back() as Dictionary)["id"]))
+	var start := canvas.get_block_position(ids[0]) + Vector3(0, 0.6, 0.1)
+	for index: int in 3:
+		canvas.preview_move(ids[index], start + Vector3(0.45 * index, 0, 0))
+	canvas.commit_moves(_service.blueprint, ids)
+	features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.BOX)
+	_service.select_block(-1)
+	var normal := canvas.global_basis.z.normalized()
+	var first := canvas.get_block_position(ids[0])
+	var second := canvas.get_block_position(ids[1])
+	var corner := canvas.to_global(Vector3(first.x - 0.35, first.y - 0.25, 0.0))
+	_aim_from(corner, normal)
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	var pointer := (_service.get("_pointers") as Array)[0] as XREBlueprints.Pointer
+	_check(pointer.boxing and _rig.right_hand.get_claimant() == _service, "the trigger in the graph's empty space starts a box, the hand the graph's")
+	_aim_from(canvas.to_global(Vector3(second.x + 0.05, second.y + 0.25, 0.0)), normal)
+	await _frames()
+	_check((_service.get_node(^"SelectionBox") as XREBoundsBox).visible and _service.get_selected_blocks().is_empty(),
+			"while the trigger is held, the box is drawn and nothing is selected yet")
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(_service.get_selected_blocks() == [ids[0], ids[1]], "letting go selects the cards whose middle is in the box: %s" % [_service.get_selected_blocks()])
+	_check(not (_service.get_node(^"SelectionBox") as XREBoundsBox).visible, "and the box goes")
+	_aim_from(corner, normal)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(_service.get_selected_blocks().is_empty(), "a click in the graph's empty space lets go of them: %s" % [_service.get_selected_blocks()])
+	features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.OFF)
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	await _frames()
 

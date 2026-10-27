@@ -292,6 +292,16 @@ func _initialize() -> void:
 		_brush_late_release,
 		_brush_late_shown,
 		_brush_late_told,
+		_box_start,
+		_box_drag,
+		_box_drawn,
+		_box_done,
+		_box_add_press,
+		_box_add_drag,
+		_box_add_release,
+		_box_added,
+		_box_click,
+		_box_clicked,
 		_grab_for_flight,
 		_fly,
 		_flown,
@@ -402,6 +412,12 @@ func _build() -> void:
 	# Lanes 36–37: boxes copied (D-116); the twin's part is copied with it.
 	_add_box(_add_box(_scene, "Twin", Vector3(36.0, 0.0, -1.0), 0.2), "Part", Vector3(0.0, 0.5, 0.0), 0.2)
 	_add_box(_scene, "Pal", Vector3(37.0, 0.0, -1.0), 0.2)
+	# High before the head: boxes a selection box takes (D-120), one beside it,
+	# and one hidden behind the middle one, seen from the head at the origin.
+	for index: int in 3:
+		_add_box(_scene, "High%d" % (index + 1), Vector3(-0.6 + 0.6 * index, 3.0, -3.0), 0.2)
+	_add_box(_scene, "High4", Vector3(2.0, 3.0, -3.0), 0.2)
+	_add_box(_scene, "Behind2", Vector3(0.0, 4.0, -4.0), 0.2)
 	# Lanes 40–43: boxes a brush stroke crosses (D-119).
 	for index: int in 4:
 		_add_box(_scene, "Brush%d" % (index + 1), Vector3(40.0 + index, 0.0, -1.0), 0.2)
@@ -1633,6 +1649,69 @@ func _brush_late_shown() -> void:
 
 func _brush_late_told() -> void:
 	_check(_active_outlines(XREManipulator.SELECTION_COLOR).size() == 1, "told, the selection's outline takes over")
+	_document.features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.OFF)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+# A selection box (D-120): drawn a meter before the head, from (-0.4, 0.8) to
+# (0.4, 1.2) on its plane, it takes the three high boxes, not the one beside
+# them nor the one hidden behind the middle one.
+
+func _box_start() -> void:
+	_document.features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.BOX)
+	_document.select([], XREDocument.Source.PANEL)
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(-0.4, 0.8, 1.0), 1.0, 0.0)
+
+
+func _box_drag() -> void:
+	_set_hand(_right, Vector3(0.4, 1.2, 1.0), 1.0, 0.0)
+
+
+func _box_drawn() -> void:
+	var lines := _manipulator.get_node(^"SelectionBox") as XREBoundsBox
+	_check(lines.visible, "while the trigger is held, the box is drawn")
+	_check(_document.get_selection().is_empty() and _operations.size() == _operation_count, "and nothing is selected yet")
+	_check(absf(lines.global_position.z + XREManipulator.BOX_DISTANCE) < 0.01, "a meter before the head: %s" % lines.global_position)
+	_set_hand(_right, Vector3(0.4, 1.2, 1.0), 0.0, 0.0)
+
+
+func _box_done() -> void:
+	_check(_selection_names() == ["High1", "High2", "High3"], "letting go selects what is in the box and not hidden: %s" % [_selection_names()])
+	_check(_operations.slice(_operation_count).size() == 1, "as one selection: %s" % [_operations.slice(_operation_count)])
+	_check(not (_manipulator.get_node(^"SelectionBox") as XREBoundsBox).visible, "and the box goes")
+	var nodes: Array[Node] = [_scene.get_node(^"High4")]
+	_document.select(nodes, XREDocument.Source.PANEL)
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.GRIP)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
+	_set_hand(_right, Vector3(-0.3, 0.9, 1.0), 0.0, 0.0)
+
+
+func _box_add_press() -> void:
+	_set_hand(_right, Vector3(-0.3, 0.9, 1.0), 1.0, 0.0)
+
+
+func _box_add_drag() -> void:
+	_set_hand(_right, Vector3(-0.1, 1.1, 1.0), 1.0, 0.0)
+
+
+func _box_add_release() -> void:
+	_set_hand(_right, Vector3(-0.1, 1.1, 1.0), 0.0, 0.0)
+
+
+func _box_added() -> void:
+	_check(_selection_names() == ["High4", "High1"], "the left grip held, the box adds: %s" % [_selection_names()])
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_set_hand(_right, Vector3(0.6, 3.0, 1.0), 1.0, 0.0)
+
+
+func _box_click() -> void:
+	_set_hand(_right, Vector3(0.6, 3.0, 1.0), 0.0, 0.0)
+
+
+func _box_clicked() -> void:
+	_check(_selection_names() == ["High3"], "a click selects what is under the ray, as before: %s" % [_selection_names()])
 	_document.features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.OFF)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 

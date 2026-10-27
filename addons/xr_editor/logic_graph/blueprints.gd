@@ -158,6 +158,12 @@ class Pointer:
 	var brush_replace := false
 	var brush_start := -1
 	var brushed: Array[int] = []
+	## A selection box on the graph's plane (D-120): whether one is drawn,
+	## whether it replaces the selection, and its corners in the canvas's space.
+	var boxing := false
+	var box_replace := false
+	var box_from := Vector2.ZERO
+	var box_to := Vector2.ZERO
 	var surface: XREPanelSurface
 	var drives := false
 	var held: Node3D
@@ -481,6 +487,8 @@ var _catalog := PackedStringArray()
 var _selected := -1
 ## Every selected block (D-117): several with Add to selection, the last one [member _selected].
 var _selected_blocks: Array[int] = []
+## The selection box drawn on the graph's plane (D-120).
+var _box_lines: XREBoundsBox
 var _pending_id := -1
 var _pending_port := -1
 var _pending_input := false
@@ -512,6 +520,9 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_rig = rig
 	_icons = icons
 	blueprint = XREBlueprintDocument.retain_editor_shared()
+	_box_lines = XREBoundsBox.new(Color.WHITE)
+	_box_lines.name = "SelectionBox"
+	add_child(_box_lines)
 	_workspace = Node3D.new()
 	_workspace.name = "Workspace"
 	_workspace.top_level = true
@@ -1764,6 +1775,81 @@ func _end_block_brush(pointer: Pointer) -> void:
 	else: canvas.select_blocks(_selected_blocks)
 
 
+## Starts a selection box of [param pointer] on the graph's plane where its
+## ray, from [param origin] along [param direction], meets it, with
+## [constant XREFeatureSettings.SELECT_AREA] at [constant XREFeatureSettings.BOX]
+## (D-120): one that replaces the selection, or adds to it while the other
+## hand adds (D-117). The hand is the graph's until the trigger lets go.
+func _begin_block_box(pointer: Pointer, origin: Vector3, direction: Vector3) -> bool:
+	if _document.features.get_value(XREFeatureSettings.SELECT_AREA) != XREFeatureSettings.BOX: return false
+	var point: Variant = _on_canvas_plane(origin, direction)
+	if point == null: return false
+	pointer.boxing = true
+	pointer.box_replace = not _adds_blocks(pointer)
+	pointer.box_from = point
+	pointer.box_to = point
+	pointer.hand.claim(self)
+	_drag_block_box(pointer)
+	return true
+
+
+## Where the ray from [param origin] along [param direction] meets the graph's
+## plane, in the canvas's space, or null if it doesn't, ahead.
+func _on_canvas_plane(origin: Vector3, direction: Vector3) -> Variant:
+	var plane := canvas.global_transform
+	var normal := plane.basis.z.normalized()
+	var facing := direction.dot(normal)
+	if is_zero_approx(facing): return null
+	var along := (plane.origin - origin).dot(normal) / facing
+	if along <= 0.0: return null
+	var local := plane.affine_inverse() * (origin + direction * along)
+	return Vector2(local.x, local.y)
+
+
+## Draws the box of [param pointer] to where the ray meets the graph's plane
+## now; ends it when the trigger lets go, or cancels it when the hand is lost.
+## False once it ended: the hand goes on as without it.
+func _drag_block_box(pointer: Pointer) -> bool:
+	var hand := pointer.hand
+	if not hand.get_has_tracking_data() or not hand.is_free_for(self):
+		_clear_block_box(pointer)
+		return false
+	if not hand.trigger_held or hand.grip_pressed:
+		_end_block_box(pointer)
+		return false
+	var origin := hand.global_position
+	var direction := -hand.global_basis.z.normalized()
+	var point: Variant = _on_canvas_plane(origin, direction)
+	if point != null: pointer.box_to = point
+	var rect := Rect2(pointer.box_from, Vector2.ZERO).expand(pointer.box_to)
+	_box_lines.show_bounds(canvas.global_transform, AABB(Vector3(rect.position.x, rect.position.y, 0.0), Vector3(rect.size.x, rect.size.y, 0.0)))
+	var end := canvas.to_global(Vector3(pointer.box_to.x, pointer.box_to.y, 0.0))
+	hand.show_ray(origin.distance_to(end), true)
+	return true
+
+
+## Selects the cards in the box of [param pointer], or adds them, as one
+## selection; a click in the graph's empty space lets go of the selected blocks.
+func _end_block_box(pointer: Pointer) -> void:
+	var rect := Rect2(pointer.box_from, Vector2.ZERO).expand(pointer.box_to)
+	var replace := pointer.box_replace
+	_clear_block_box(pointer)
+	if rect.size.x < XREManipulator.BOX_CLICK and rect.size.y < XREManipulator.BOX_CLICK:
+		if replace: select_block(-1)
+		return
+	var ids: Array[int] = []
+	if not replace: ids.append_array(_selected_blocks)
+	for id: int in canvas.blocks_in_rect(rect):
+		if not ids.has(id): ids.append(id)
+	select_blocks(ids)
+
+
+func _clear_block_box(pointer: Pointer) -> void:
+	pointer.boxing = false
+	_box_lines.visible = false
+	if pointer.hand.get_claimant() == self: pointer.hand.unclaim(self)
+
+
 ## Ends the stroke of [param pointer] without selecting anything.
 func _cancel_block_brush(pointer: Pointer) -> void:
 	pointer.brushing = false
@@ -2259,6 +2345,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	if pointer.brushing:
 		if not hand.get_has_tracking_data() or not hand.is_free_for(self): _cancel_block_brush(pointer)
 		elif not hand.trigger_held or hand.grip_pressed: _end_block_brush(pointer)
+	if pointer.boxing and _drag_block_box(pointer): return
 	if pointer.swallow and not (hand.trigger_held and hand.get_has_tracking_data()):
 		pointer.swallow = false
 		if hand.get_claimant() == self: hand.unclaim(self)
@@ -2548,6 +2635,8 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				hand.show_ray(along, true)
 				if hand.trigger_pressed: open_graph(marker.path)
 				return
+	# The trigger in empty space draws a selection box on the graph's plane (D-120).
+	if hand.trigger_pressed and _workspace.visible and _begin_block_box(pointer, origin, direction): return
 	# The grip in empty space: the other hand's trigger adds blocks (D-117).
 	if hand.grip_pressed and hand.is_free_for(self): pointer.adding = true
 	# A click away that closed an input goes on to the graph, but selects no

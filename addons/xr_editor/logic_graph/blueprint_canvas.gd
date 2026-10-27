@@ -1836,6 +1836,15 @@ func select_block(id: int) -> void:
 	select_blocks(ids)
 
 
+## The blocks whose cards have their middle in [param rect], on the canvas's
+## plane in its space (D-120), in the order of the cards.
+func blocks_in_rect(rect: Rect2) -> Array[int]:
+	var ids: Array[int] = []
+	for card: Card in _cards:
+		if rect.has_point(Vector2(card.node.position.x, card.node.position.y)): ids.append(card.id)
+	return ids
+
+
 ## Highlights the cards of [param ids], several at once (D-117).
 func select_blocks(ids: Array[int]) -> void:
 	_selected = ids.duplicate()
