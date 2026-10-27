@@ -143,6 +143,7 @@ var _icons: XREIcons
 var _palette: XREPalette
 var _manipulator: XREManipulator
 var _shortcut: XREObjectShortcut
+var _counter: XRESelectionCounter
 var _blueprint_requests := 0
 ## The box the manipulator tests grab, in the scene's first lane.
 var _target: MeshInstance3D
@@ -267,6 +268,11 @@ func _initialize() -> void:
 		_copy_click_let_go,
 		_copy_clicked,
 		_copy_cancelled,
+		_counter_start,
+		_counter_counts,
+		_counter_adding,
+		_counter_modifier_unused,
+		_counter_hidden,
 		_grab_for_flight,
 		_fly,
 		_flown,
@@ -546,6 +552,8 @@ func _start_manipulator() -> void:
 	_shortcut.blueprint_requested.connect(func() -> void: _blueprint_requests += 1)
 	_manipulator.shortcut_requested.connect(_shortcut.open)
 	_rig.add_child(_shortcut)
+	_counter = XRESelectionCounter.new(_document, _rig, _manipulator)
+	_rig.add_child(_counter)
 	root.add_child(_rig)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
@@ -1470,6 +1478,43 @@ func _copy_cancelled() -> void:
 	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SHORTCUT)
 	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+# The selection's counter (D-118): a pill over the left controller with how
+# many objects are selected, a plus while the left grip held in empty space adds.
+
+func _counter_start() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECTION_COUNTER) == XREFeatureSettings.OFF, "the counter is off by default")
+	_check(not _counter.get_label().visible, "off, there is no pill")
+	_check(_counter.get_label().get_parent() == _rig.left_hand, "the pill goes with the left hand")
+	_select_twin_and_pal()
+	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.ON)
+
+
+func _counter_counts() -> void:
+	var label := _counter.get_label()
+	_check(label.visible and label.text == "2 objects", "on, the pill tells how many objects are selected: %s" % label.text)
+	_check(label.modulate == XRESelectionCounter.IDLE_COLOR, "in its plain color")
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.GRIP)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
+
+
+func _counter_adding() -> void:
+	var label := _counter.get_label()
+	_check(label.text == "+ 2 objects" and label.modulate == XRESelectionCounter.ADDING_COLOR,
+			"the left grip held in empty space, the pill shows the plus in blue: %s" % label.text)
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
+
+
+func _counter_modifier_unused() -> void:
+	_check(_counter.get_label().text == "2 objects", "with Replace and copies by the shortcut, the grip adds nothing: no plus")
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_document.select([], XREDocument.Source.PANEL)
+
+
+func _counter_hidden() -> void:
+	_check(not _counter.get_label().visible, "with nothing selected the pill hides")
+	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.OFF)
 
 
 # Locomotion: flying with a node grabbed by the ray, which HOMER would

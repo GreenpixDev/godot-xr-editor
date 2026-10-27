@@ -1699,6 +1699,19 @@ func get_selected_blocks() -> Array[int]:
 	return _selected_blocks.duplicate()
 
 
+## How many blocks are selected, without a copy of them: for the selection's counter (D-118).
+func get_selected_count() -> int:
+	return _selected_blocks.size()
+
+
+## Whether a hand holds its grip down in the graph's empty space, which makes
+## the other hand add blocks to the selection (D-117).
+func is_adding() -> bool:
+	for pointer: Pointer in _pointers:
+		if pointer.adding: return true
+	return false
+
+
 ## Whether the trigger or the grip of [param pointer]'s hand adds blocks to
 ## the selection: the other hand's grip is held in empty space, with
 ## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP] (D-117).

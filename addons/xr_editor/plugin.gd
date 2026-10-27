@@ -27,6 +27,7 @@ var _panels: XREPanels
 var _blueprints: XREBlueprints
 var _manipulator: XREManipulator
 var _shortcut: XREObjectShortcut
+var _counter: XRESelectionCounter
 var _play_mode: XREPlayMode
 var _undo: XREUndo
 var _launcher: XREStandaloneLauncher
@@ -126,6 +127,10 @@ func _add_tools(rig: XRERig) -> void:
 	_shortcut.blueprint_requested.connect(_blueprints.open_selected)
 	_manipulator.shortcut_requested.connect(_shortcut.open)
 	rig.add_child(_shortcut)
+	# After the manipulator and the graph: it reads what they selected in the frame (D-118).
+	_counter = XRESelectionCounter.new(document, rig, _manipulator, _blueprints)
+	_counter.name = "XRESelectionCounter"
+	rig.add_child(_counter)
 	_play_mode = XREPlayMode.new(document, _session, rig)
 	_play_mode.name = "XREPlayMode"
 	rig.add_child(_play_mode)
@@ -171,6 +176,7 @@ func _forget_tools() -> void:
 	_blueprints = null
 	_manipulator = null
 	_shortcut = null
+	_counter = null
 	_play_mode = null
 	_undo = null
 	# What the history would put back in the panels and the graph went with them.

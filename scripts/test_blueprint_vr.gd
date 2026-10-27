@@ -1973,8 +1973,17 @@ func _test_d117() -> void:
 	canvas.set_focus_modes(modes[0], modes[1])
 	await _click(_card_point(ids[2]))
 	_check(_service.get_selected_blocks() == [ids[0], ids[1], ids[2]], "and adds it back: %s" % [_service.get_selected_blocks()])
+	# D-118: in the open graph the counter tells the blocks, with the plus while the left grip adds.
+	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.ON)
+	var counter := XRESelectionCounter.new(_document, _rig, null, _service)
+	add_child(counter)
+	await _frames()
+	_check(counter.get_label().visible and counter.get_label().text == "+ 3 blocks", "the counter tells the selected blocks, with the plus: %s" % counter.get_label().text)
 	_left.set_input(&"grip", 0.0)
 	await _frames()
+	_check(counter.get_label().text == "3 blocks", "the left grip let go, no plus: %s" % counter.get_label().text)
+	counter.queue_free()
+	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.OFF)
 	# The right grip on the second card moves all three.
 	var starts: Array[Vector3] = []
 	for id: int in ids: starts.append(_service.canvas.get_block_position(id))

@@ -240,6 +240,11 @@ const GRIP := &"grip"
 const OBJECT_COPY := &"object_copy"
 const SHORTCUT := &"shortcut"
 const BOTH := &"both"
+## Whether a pill over the left controller tells how many scene objects, or
+## blocks of the open graph, are selected, with a plus while the other hand's
+## grip held in empty space adds to the selection (D-118). Off by default: it
+## adds to what is drawn, and the selection's outlines and frames already show it.
+const SELECTION_COUNTER := &"selection_counter"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076, D-114),
@@ -468,6 +473,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [SHORTCUT, GRIP, BOTH, OFF],
 		"labels": ["Shortcut", "Other grip", "Both", "Off"],
 		"hint": "Shortcut: Duplicate in the object's shortcut puts copies of the selected objects beside them. Other grip: hold the other hand's grip in empty space, and a grip on an object takes copies of the selected ones to let go where they go. Both: either way. Off: no copies in the headset.",
+	},
+	SELECTION_COUNTER: {
+		"category": Category.FEATURES,
+		"title": "Selection counter",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: a pill over the left controller tells how many objects, or blocks of the open graph, are selected, with a plus while the other hand's grip held in empty space adds to the selection.",
 	},
 }
 

@@ -428,6 +428,15 @@ func _copies_on_grab(state: HandState) -> bool:
 			and _other_adding(state)
 
 
+## Whether a hand holds its grip down in empty space, which makes the other
+## hand add to the selection (D-115): for the selection's counter (D-118).
+func is_adding() -> bool:
+	for state: HandState in _hands:
+		if state.adding:
+			return true
+	return false
+
+
 ## Whether the hand other than [param state]'s holds its grip down in empty space (D-115).
 func _other_adding(state: HandState) -> bool:
 	for other: HandState in _hands:
