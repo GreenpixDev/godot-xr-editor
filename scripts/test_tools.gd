@@ -1101,6 +1101,10 @@ func _shortcut_opened() -> void:
 	_check(_shortcut.get_lit() == -1, "the ray where the trigger went down picks nothing")
 	_check(_shortcut.get_shown() == [XREObjectShortcut.DELETE, XREObjectShortcut.DUPLICATE, XREObjectShortcut.RENAME,
 			XREObjectShortcut.BLUEPRINT], "for one object, Delete, Duplicate, Rename, Blueprint: %s" % [_shortcut.get_shown()])
+	var shown := _shortcut.get_shown()
+	for slot: int in range(1, shown.size()):
+		var gap := _shortcut.get_button_position(shown[slot]).distance_to(_shortcut.get_button_position(shown[slot - 1]))
+		_check(gap > XREArcMenu.MIN_SPACING - EPSILON, "four buttons stay apart, their titles clear (D-124): %.3f m" % gap)
 	_aim_right(Vector3(1.0, 0.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.RENAME), 1.0)
 
 

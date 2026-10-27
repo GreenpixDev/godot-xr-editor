@@ -1975,6 +1975,11 @@ func _test_d117() -> void:
 			"selecting a card out of focus lights it up again, and the one let go of goes dark")
 	canvas.select_blocks(_service.get_selected_blocks())
 	canvas.set_focus(Vector3i(-1, -1, -1))
+	_check(canvas.focus_state(ids[0]) == XREBlueprintFocus.NORMAL and canvas.focus_state(ids[2]) == XREBlueprintFocus.OUT,
+			"with the ray in the air, a selection keeps the rest darker (D-124)")
+	canvas.select_block(-1)
+	_check(canvas.focus_state(ids[2]) == XREBlueprintFocus.NORMAL, "with nothing selected, nothing is darker")
+	canvas.select_blocks(_service.get_selected_blocks())
 	canvas.set_focus_modes(modes[0], modes[1])
 	await _click(_card_point(ids[2]))
 	_check(_service.get_selected_blocks() == [ids[0], ids[1], ids[2]], "and adds it back: %s" % [_service.get_selected_blocks()])

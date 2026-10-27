@@ -1849,8 +1849,9 @@ func blocks_in_rect(rect: Rect2) -> Array[int]:
 func select_blocks(ids: Array[int]) -> void:
 	_selected = ids.duplicate()
 	for card: Card in _cards: _paint_frame(card)
-	# A card selected or let go of out of focus is darkened or not (D-117).
-	if _focus_any: _paint_focus()
+	# A card selected or let go of out of focus is darkened or not (D-117), and a
+	# selection keeps the rest darker with nothing in focus (D-124).
+	if _focus_mode != XREFeatureSettings.OFF or _defocus_mode != XREFeatureSettings.OFF: _paint_focus()
 
 
 ## A selected card's frame is white, one in focus is [constant XREBlueprintFocus.FRAME]
@@ -1967,13 +1968,18 @@ func _in_focus(id: int) -> bool:
 ## In focus: the cards and boxes asked for and the wires on them. Out of it:
 ## the rest, but the far ends of those wires — a port, a socket, a box — and
 ## the ports a wire being drawn may end on stay as they are, and so do the
-## selected cards (D-117).
+## selected cards (D-117). With nothing asked for, selected cards put the rest
+## out of focus all the same (D-124).
 func _paint_focus() -> void:
 	var used := _focus_mode != XREFeatureSettings.OFF or _defocus_mode != XREFeatureSettings.OFF
 	var any := false
 	if used:
 		for card: Card in _cards: any = any or _in_focus(card.id)
 		any = any or _boxes.has_box(_focus_box) or _boxes.has_box(_focus_other_box)
+		# With the ray in the air, a selected card keeps the rest darker, so that it stands out (D-124).
+		for card: Card in _cards:
+			if any: break
+			any = _selected.has(card.id)
 	_focus_any = any
 	for card: Card in _cards:
 		# A selected card out of focus keeps its look: only the others are put back (D-117).

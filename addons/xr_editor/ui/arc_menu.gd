@@ -16,6 +16,9 @@ const ARC_RADIUS := 0.1
 const BUTTON_RADIUS := 0.03
 ## The ray within this of a button's center, on the menu's plane, picks it: half the gap between two.
 const PICK_RADIUS := 0.05
+## Neighbouring buttons' centers are at least this far apart, in meters, so
+## that their titles stay clear of each other: four on the arc spread it (D-124).
+const MIN_SPACING := 0.1
 ## Lit, a button grows this much.
 const LIT_SCALE := 1.2
 ## Drawn after the dimmer and over the scene's widgets, as the graph's inputs are (D-058).
@@ -78,15 +81,25 @@ func open(caption: String, items: Array[int] = []) -> void:
 		for index: int in _buttons.size(): _shown.append(index)
 	else: _shown.append_array(items)
 	for button: Node3D in _buttons: button.visible = false
+	var radius := arc_radius(_shown.size())
 	for slot: int in _shown.size():
 		# From upper left to upper right, as a choice's values are laid out (D-062); one alone on top.
 		var angle := PI * 0.5 if _shown.size() == 1 else PI * (5.0 / 6.0) - slot * PI * (2.0 / 3.0) / (_shown.size() - 1)
 		var button := _buttons[_shown[slot]]
-		button.position = Vector3(cos(angle), sin(angle), 0.0) * ARC_RADIUS
+		button.position = Vector3(cos(angle), sin(angle), 0.0) * radius
 		button.visible = true
 	_caption.text = caption
 	visible = true
 	_light(-1)
+
+
+## The arc's radius for [param count] buttons: [constant ARC_RADIUS], or more
+## for many, so that neighbours stay [constant MIN_SPACING] apart (D-124).
+static func arc_radius(count: int) -> float:
+	if count < 2:
+		return ARC_RADIUS
+	var step := PI * (2.0 / 3.0) / (count - 1)
+	return maxf(ARC_RADIUS, MIN_SPACING / (2.0 * sin(step * 0.5)))
 
 
 func close() -> void:
