@@ -2222,9 +2222,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		if hand.trigger_pressed: surface.pointer_button(true)
 		if hand.trigger_released: surface.pointer_button(false)
 		if hand.grip_pressed and surface != _badge and not surface.is_pressed(): _hold_window(pointer, surface, -1, false)
-		elif hand == _rig.right_hand:
-			var tilt := XREPanels._tilt(hand.get_vector2(&"primary").y)
-			if tilt != 0: surface.pointer_scroll(tilt * XREPanels.SCROLL_SPEED * delta)
+		elif hand == _rig.right_hand: XREPanels.scroll_by_stick(surface, hand, delta)
 		return
 	_leave(pointer)
 	# A link button stands in front of what put it up (D-074): it takes the ray first.

@@ -15,7 +15,7 @@ mkdir -p logs && godot --path . --editor --xr-mode on --log-file logs/xr.log   #
 godot --path . --log-file logs/xr_game.log res://benchmarks/xr_game_check.tscn  # контроль: обычная XR-игра без редактора
 py benchmarks/frametime_report.py benchmarks/results/frametime_<stamp>.csv  # сводка, гистограмма и график замера кадра
 godot --path . --editor --xr-mode on --log-file logs/xr_handoff.log -- --xre-handoff  # замер передачи шлема игре и обратно
-godot --path . --editor --xr-mode off --log-file logs/shots.log res://benchmarks/play_check.tscn -- --xre-shot-blueprint-vr  # снимки графа GreenCube с головы в build/shots/ (с сохранёнными настройками Features), редактор закрывается сам
+godot --path . --editor --xr-mode off --log-file logs/shots.log res://benchmarks/play_check.tscn -- --xre-shot-blueprint-vr  # снимки графа GreenCube с головы в build/shots/ (с сохранёнными настройками Settings), редактор закрывается сам
 py scripts/xr_editor.py [сцена] -- --xre-session-frames  # покадровый замер (CPU, GPU) каждого отрезка, пока шлем у редактора: до игры и после каждого возврата; CSV в benchmarks/results/
 ```
 

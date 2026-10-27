@@ -25,7 +25,9 @@ extends Node3D
 ## or [RichTextLabel], or a control in one — waits. Let go within
 ## [constant CLICK_SLOP_PX], it is a click; moved further up or down, the
 ## list follows the ray, with no click, and, let go while moving, glides on
-## and slows down. Moved further sideways, it is the press it was, and the
+## and slows down. Moved further sideways, a row that scrolls sideways — a
+## [ScrollContainer] with horizontal scrolling, as [XRESegmentRow] — follows
+## the ray the same way (D-116); without one it is the press it was, and the
 ## drag goes on as a mouse drag (a slider's).
 ## [br][br]
 ## A window (rig-locked, docs/vr_ui.md, D-040) has corner handles
@@ -127,13 +129,16 @@ var _on_top := false
 var _top_sorting := TOP_SORTING
 ## Seconds into the pulse, or -1 without one.
 var _pulse := -1.0
-## Drag scrolling: the list a press waits on, the one being dragged, the one
-## gliding, the content's speed in pixels per second, and the last drag.
+## Drag scrolling: the list and the sideways row a press waits on, the bar
+## being dragged and whether sideways, the one gliding, the content's speed in
+## pixels per second, and the last drag.
 var _waiting_bar: ScrollBar
+var _waiting_row: ScrollBar
 var _drag_bar: ScrollBar
+var _drag_sideways := false
 var _glide_bar: ScrollBar
 var _scroll_speed := 0.0
-var _drag_y := 0.0
+var _drag_from := 0.0
 var _drag_usec := 0
 var _scene_material: ShaderMaterial
 var _overlay_material: ShaderMaterial
@@ -707,21 +712,24 @@ func is_pressed() -> bool:
 
 ## Moves the pointer to [param pixel], entering the panel if it was off it.
 func pointer_move(pixel: Vector2) -> void:
-	if _waiting_bar != null:
+	if _waiting_bar != null or _waiting_row != null:
 		var moved := pixel - _press_position
 		if moved.length() < CLICK_SLOP_PX:
 			return
 		_pinned = false
-		if absf(moved.y) >= absf(moved.x) and is_instance_valid(_waiting_bar):
-			# Up or down: the list follows, and no click is made.
-			_drag_bar = _waiting_bar
-			_waiting_bar = null
-			_drag_y = _press_position.y
+		var sideways := absf(moved.x) > absf(moved.y)
+		var bar := _waiting_row if sideways else _waiting_bar
+		_waiting_bar = null
+		_waiting_row = null
+		if bar != null and is_instance_valid(bar):
+			# Up or down a list, or along a row: it follows, and no click is made.
+			_drag_bar = bar
+			_drag_sideways = sideways
+			_drag_from = _press_position.x if sideways else _press_position.y
 			_drag_usec = Time.get_ticks_usec()
 			_scroll_speed = 0.0
 		else:
-			# Sideways: the press it was, then a mouse drag.
-			_waiting_bar = null
+			# Nothing to scroll that way: the press it was, then a mouse drag.
 			_send_button(true)
 	if _drag_bar != null:
 		_drag(pixel)
@@ -757,14 +765,17 @@ func pointer_button(pressed: bool) -> void:
 		_glide_bar = null
 		_press_position = _pointer
 		_pinned = true
-		_waiting_bar = _scroll_bar_at_pointer()
-		if _waiting_bar == null:
+		var bars := _scroll_bars_at_pointer()
+		_waiting_bar = bars[0]
+		_waiting_row = bars[1]
+		if _waiting_bar == null and _waiting_row == null:
 			_send_button(true)
 		return
 	_pinned = false
-	if _waiting_bar != null:
+	if _waiting_bar != null or _waiting_row != null:
 		# Let go where it was pressed: a click.
 		_waiting_bar = null
+		_waiting_row = null
 		_send_button(true)
 		_send_button(false)
 	elif _drag_bar != null:
@@ -778,14 +789,16 @@ func pointer_button(pressed: bool) -> void:
 	pointer_released.emit()
 
 
-## Scrolls the dragged list so that its content follows the pointer, up or down, and keeps its speed.
+## Scrolls the dragged list so that its content follows the pointer, up or
+## down, or along a row sideways, and keeps its speed.
 func _drag(pixel: Vector2) -> void:
 	_pointer = pixel
 	if not is_instance_valid(_drag_bar):
 		_drag_bar = null
 		return
 	var now := Time.get_ticks_usec()
-	var moved := pixel.y - _drag_y
+	var along := pixel.x if _drag_sideways else pixel.y
+	var moved := along - _drag_from
 	var seconds := float(now - _drag_usec) / 1000000.0
 	if is_zero_approx(moved):
 		if seconds > 0.05:
@@ -794,16 +807,19 @@ func _drag(pixel: Vector2) -> void:
 	_drag_bar.value -= moved
 	if seconds > 0.0:
 		_scroll_speed = lerpf(_scroll_speed, -moved / seconds, 0.6)
-	_drag_y = pixel.y
+	_drag_from = along
 	_drag_usec = now
 
 
 ## The vertical scroll bar of the innermost list under the pointer that can
-## scroll; null otherwise, and on a scroll bar itself. Found by the controls'
+## scroll, and the horizontal one of the innermost row that can scroll
+## sideways, each null if there is none; both null on a scroll bar itself.
+## A row's bar may be hidden: it scrolls all the same. Found by the controls'
 ## rectangles, not by the viewport's hover, which a quick press right after
 ## the ray moved can find a frame old (D-046).
-func _scroll_bar_at_pointer() -> ScrollBar:
+func _scroll_bars_at_pointer() -> Array[ScrollBar]:
 	var found: ScrollBar = null
+	var row: ScrollBar = null
 	var pending: Array[Control] = [root]
 	while not pending.is_empty():
 		var control: Control = pending.pop_back()
@@ -812,13 +828,19 @@ func _scroll_bar_at_pointer() -> ScrollBar:
 		var bar := _vertical_bar(control)
 		if bar != null and bar.is_visible_in_tree():
 			if bar.get_global_rect().has_point(_pointer):
-				return null
+				return [null, null]
 			if bar.max_value - bar.page > 0.5:
 				found = bar
+		if control is ScrollContainer and (control as ScrollContainer).horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+			var sideways := (control as ScrollContainer).get_h_scroll_bar()
+			if sideways.is_visible_in_tree() and sideways.get_global_rect().has_point(_pointer):
+				return [null, null]
+			if sideways.max_value - sideways.page > 0.5:
+				row = sideways
 		for child: Node in control.get_children():
 			if child is Control and not (child as Control).top_level:
 				pending.append(child as Control)
-	return found
+	return [found, row]
 
 
 ## The vertical scroll bar of [param control] if it is a list, or null.
@@ -869,10 +891,26 @@ func pointer_scroll(notches: float) -> void:
 		_viewport.push_input(event, true)
 
 
+## Turns the mouse wheel sideways by [param notches] where the pointer is:
+## positive scrolls a row to the right (D-116).
+func pointer_scroll_sideways(notches: float) -> void:
+	if not _inside or is_zero_approx(notches):
+		return
+	for pressed: bool in [true, false]:
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_WHEEL_RIGHT if notches > 0.0 else MOUSE_BUTTON_WHEEL_LEFT
+		event.factor = absf(notches)
+		event.pressed = pressed
+		event.position = _pointer
+		event.global_position = _pointer
+		_viewport.push_input(event, true)
+
+
 ## Takes the pointer off the panel, letting go of its button first.
 func pointer_exit() -> void:
 	# A press waiting on a list, or a drag, ends without a click.
 	_waiting_bar = null
+	_waiting_row = null
 	_drag_bar = null
 	if not _inside or not _viewport.is_inside_tree():
 		_inside = false

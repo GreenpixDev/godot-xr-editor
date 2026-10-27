@@ -18,7 +18,8 @@ addons/xr_editor/          плагин (всё, что поставляется
   ui/                      меню в шлеме: палитра объектов в окне Objects (XREPalette, XREObjectsTab, D-045); кнопки на дуге поверх всего — шорткат объекта и меню провода (XREArcMenu, D-090); панели (XREPanels): хост с вводом от луча (XREPanelSurface),
                            лаунчер вкладок по X как Navigator Meta (XRETabLauncher, XRETabIcons, D-041, D-042), окна с угловыми ручками и Control Bar
                            с закреплением на руке (XREPanelWindow, D-040 — D-042), вкладки сцены, инспектора с прокси документа,
-                           сигналов и файлов (XRE*Tab, XREInspectorProxy), настроек вариантов фич (XRESettingsTab), отладки — частота кадров (XREDebugTab); дальше — радиальное меню
+                           сигналов и файлов (XRE*Tab, XREInspectorProxy), настроек вариантов фич с разделами и подразделами (XRESettingsTab, D-115),
+                           ряд значений, прокручиваемый вбок (XRESegmentRow, D-116), переключатель (XRESwitch), отладки — частота кадров (XREDebugTab); дальше — радиальное меню
   playmode/                запуск игры из шлема (XREPlayMode) и возврат из неё: автозагрузка XREReturnToEditor, работает только в игре;
                            экран загрузки на время перехода, общий для редактора и игры (XRETransitionScreen)
   telemetry/               замеры спайка: время кадра (XREFrameBenchmark), передача шлема игре (XREHandoffBenchmark)
