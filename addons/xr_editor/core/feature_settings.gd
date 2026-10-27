@@ -255,6 +255,10 @@ const SELECTION_COUNTER := &"selection_counter"
 const SELECT_AREA := &"select_area"
 const BRUSH := &"brush"
 const BOX := &"box"
+## Whether a copy of blocks (D-093, D-117) keeps the data wires that come into
+## them from blocks not copied, from the same outputs (D-121). Off, as before:
+## the inputs those wires fed get default tokens (D-059).
+const COPY_OUTER_WIRES := &"copy_outer_wires"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076, D-114),
@@ -490,6 +494,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [OFF, ON],
 		"labels": ["Off", "On"],
 		"hint": "On: a pill over the left controller tells how many objects, or blocks of the open graph, are selected, with a plus while the other hand's grip held in empty space adds to the selection.",
+	},
+	COPY_OUTER_WIRES: {
+		"category": Category.FEATURES,
+		"title": "Copy outer wires",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: a copy of blocks keeps the data wires coming into them from blocks not copied. Off: those inputs get default tokens. Execution wires stay with the originals either way.",
 	},
 	SELECT_AREA: {
 		"category": Category.FEATURES,

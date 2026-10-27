@@ -330,6 +330,7 @@ func _run() -> void:
 	await _test_d117()
 	await _test_d119()
 	await _test_d120()
+	await _test_d121()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -2169,6 +2170,57 @@ func _test_d120() -> void:
 	await _frames()
 	_check(_service.get_selected_blocks().is_empty(), "a click in the graph's empty space lets go of them: %s" % [_service.get_selected_blocks()])
 	features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.OFF)
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## D-121: with Copy outer wires on, a block's copy keeps the data wire into it
+## from a block not copied, from the same output; an execution wire stays with
+## the original. Off, the copy has no wires, as before.
+func _test_d121() -> void:
+	var graph := _service.blueprint.graph
+	var features := _document.features
+	var history := _service.blueprint.history.get_version()
+	var hand := _rig.right_hand
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.COPY_OUTER_WIRES) == XREFeatureSettings.OFF, "outer wires aren't copied by default")
+	var made: Array[int] = []
+	for kind: String in ["value", "delay", "print"]:
+		_service.add_block(kind)
+		await _frames()
+		made.append(int((graph.nodes.back() as Dictionary)["id"]))
+	var feeder := made[0]
+	var waiter := made[1]
+	var printer := made[2]
+	_check(_service.blueprint.connect_blocks(feeder, 0, waiter, graph.input_port(graph.find_node(waiter), "seconds")), "a value feeds the delay's seconds")
+	_check(_service.blueprint.connect_blocks(printer, 0, waiter, 0), "and Print's Then runs it")
+	features.set_value(XREFeatureSettings.BLOCK_COPY, XREFeatureSettings.ON)
+	features.set_value(XREFeatureSettings.COPY_OUTER_WIRES, XREFeatureSettings.ON)
+	await _frames()
+	var card := _card(waiter)
+	_check(card != null and card.copy != null, "the delay has the copy button")
+	if card == null or card.copy == null: return
+	var edges := graph.edges.size()
+	var before := graph.nodes.map(func(block: Dictionary) -> int: return int(block["id"]))
+	_aim(Vector3(5, 4, -2))
+	await _frames()
+	_service.call("_start_copy", waiter, hand, card.node.global_transform * card.copy_point)
+	await _frames()
+	var added := graph.nodes.filter(func(block: Dictionary) -> bool: return not before.has(int(block["id"])))
+	var copy := int((added[0] as Dictionary)["id"]) if added.size() == 1 else -1
+	_check(copy >= 0 and graph.find_node(copy)["function"] == graph.find_node(waiter)["function"], "the delay is copied, alone: %s" % [added])
+	_check(graph.edges.size() == edges + 1 and graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == feeder and edge["to"] == copy),
+			"its copy keeps the value's wire, from the same output; not Print's execution wire")
+	_check(&"duplicate_block" in _operations, "one block: Duplicate Block in the log")
+	features.set_value(XREFeatureSettings.COPY_OUTER_WIRES, XREFeatureSettings.OFF)
+	await _frames()
+	edges = graph.edges.size()
+	card = _card(waiter)
+	if card == null or card.copy == null: return
+	_service.call("_start_copy", waiter, hand, card.node.global_transform * card.copy_point)
+	await _frames()
+	_check(graph.edges.size() == edges, "off, a copy has no wires, as before")
+	features.set_value(XREFeatureSettings.BLOCK_COPY, BASELINE[XREFeatureSettings.BLOCK_COPY])
+	_service.select_block(-1)
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	await _frames()
 
@@ -5212,3 +5264,4 @@ func _line_edits(node: Node, found: Array[LineEdit]) -> Array[LineEdit]:
 		if child is LineEdit: found.append(child as LineEdit)
 		_line_edits(child, found)
 	return found
+

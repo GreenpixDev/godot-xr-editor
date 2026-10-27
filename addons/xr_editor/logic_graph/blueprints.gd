@@ -1571,7 +1571,11 @@ func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	var block := blueprint.graph.find_node(id)
 	if block.is_empty(): return
 	if _selected_blocks.size() > 1 and _selected_blocks.has(id):
-		_start_group_copy(id, hand, point)
+		_start_group_copy(id, hand, point, _selected_blocks)
+		return
+	# With its outer wires, one block goes the way of a group: wires are what it copies (D-121).
+	if _document.features.get_value(XREFeatureSettings.COPY_OUTER_WIRES) == XREFeatureSettings.ON:
+		_start_group_copy(id, hand, point, [id])
 		return
 	var copy := block.duplicate(true)
 	copy.erase("id")
@@ -1584,15 +1588,18 @@ func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	_start_drag({"id": "copy", "title": XREBlueprintGraph.title(block), "block": copy, "target": blueprint.target_node(id), "origin": "copy"}, hand, distance, canvas.stand_in(id))
 
 
-## The trigger on the copy button of card [param id], one of several selected
+## The trigger on the copy button of card [param id], one of [param chosen]
 ## (D-117): copies of them all and of the wires between them follow the ray
 ## of [param hand], the card's at the ray, until the trigger lets go
 ## ([method _place_group_copy]). An inline block (D-061) that feeds one of
-## them is copied with it: it is drawn as part of the card.
-func _start_group_copy(id: int, hand: XREHand, point: Vector3) -> void:
+## them is copied with it: it is drawn as part of the card. With
+## [constant XREFeatureSettings.COPY_OUTER_WIRES] on, so are the data wires
+## into them from blocks not copied (D-121); an execution output holds one
+## wire, so those stay with the originals.
+func _start_group_copy(id: int, hand: XREHand, point: Vector3, chosen: Array[int]) -> void:
 	var graph := blueprint.graph
 	var ids: Dictionary[int, bool] = {}
-	for selected: int in _selected_blocks:
+	for selected: int in chosen:
 		if not graph.find_node(selected).is_empty(): ids[selected] = true
 	var grown := true
 	while grown:
@@ -1606,8 +1613,15 @@ func _start_group_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	for block: Dictionary in graph.nodes:
 		if ids.has(int(block["id"])): blocks.append(block.duplicate(true))
 	var edges: Array[Dictionary] = []
+	var outer: Array[Dictionary] = []
+	var outer_wires := _document.features.get_value(XREFeatureSettings.COPY_OUTER_WIRES) == XREFeatureSettings.ON
 	for edge: Dictionary in graph.edges:
-		if ids.has(int(edge["from"])) and ids.has(int(edge["to"])): edges.append(edge.duplicate(true))
+		var inside := ids.has(int(edge["from"]))
+		if inside and ids.has(int(edge["to"])): edges.append(edge.duplicate(true))
+		elif outer_wires and not inside and ids.has(int(edge["to"])):
+			var outputs := graph.ports(graph.find_node(int(edge["from"])), false)
+			var port := int(edge["from_port"])
+			if port < outputs.size() and (outputs[port] as Array)[1] != XREBlueprintGraph.EXEC: outer.append(edge.duplicate(true))
 	_copy_source = id
 	var distance := clampf(hand.global_position.distance_to(point), 0.3, 2.0)
 	_copy_start = hand.global_position - hand.global_basis.z.normalized() * distance
@@ -1615,12 +1629,13 @@ func _start_group_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	var stand_ins := Node3D.new()
 	var center := canvas.get_block_position(id)
 	var scale := canvas.global_basis.get_scale()
-	for selected: int in _selected_blocks:
+	for selected: int in chosen:
 		var stand_in := canvas.stand_in(selected)
 		if stand_in == null: continue
 		stand_in.position += (canvas.get_block_position(selected) - center) * scale
 		stand_ins.add_child(stand_in)
-	_start_drag({"id": "copy", "title": "%d blocks" % _selected_blocks.size(), "blocks": blocks, "edges": edges, "origin": "copy"}, hand, distance, stand_ins)
+	var title := XREBlueprintGraph.title(graph.find_node(id)) if chosen.size() == 1 else "%d blocks" % chosen.size()
+	_start_drag({"id": "copy", "title": title, "blocks": blocks, "edges": edges, "outer": outer, "single": chosen.size() == 1, "origin": "copy"}, hand, distance, stand_ins)
 
 
 ## Adds the copies of [param action]'s blocks and wires (D-117), the source
@@ -1644,7 +1659,10 @@ func _place_group_copy(action: Dictionary, point: Vector3, beside: bool) -> void
 			bottom = maxf(bottom, (block["position"] as Vector2).y)
 		offset = Vector2(0.0, bottom - top + 160.0)
 		depth = 0.0
-	var ids: Array[int] = blueprint.perform(blueprint.paste_blocks.bind(blocks, edges, offset, depth, "Duplicate Blocks"), &"vr_graph")
+	var outer: Array[Dictionary] = []
+	outer.assign(action.get("outer", []))
+	var title := "Duplicate Block" if action.get("single", false) else "Duplicate Blocks"
+	var ids: Array[int] = blueprint.perform(blueprint.paste_blocks.bind(blocks, edges, offset, depth, title, outer), &"vr_graph")
 	if ids.is_empty():
 		_message(blueprint.last_error)
 		return

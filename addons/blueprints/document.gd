@@ -271,8 +271,10 @@ func insert_block(block: Dictionary, position: Vector2, wire: Dictionary = {}, t
 ## position moved by [param offset] and its [code]vr_depth[/code] by
 ## [param depth]; a wire with an end outside [param blocks] is left out, and a
 ## Target keeps its path. Returns the copies' IDs in the order of
-## [param blocks], or none if the edit was refused.
-func paste_blocks(blocks: Array[Dictionary], edges: Array[Dictionary], offset: Vector2, depth: float, title: String = "Paste Blocks") -> Array[int]:
+## [param blocks], or none if the edit was refused. [param outer] are wires
+## into [param blocks] from blocks not copied (D-121): each copy's input gets
+## one from the same output.
+func paste_blocks(blocks: Array[Dictionary], edges: Array[Dictionary], offset: Vector2, depth: float, title: String = "Paste Blocks", outer: Array[Dictionary] = []) -> Array[int]:
 	var state := graph.snapshot()
 	var copies: Dictionary[int, int] = {}
 	var ids: Array[int] = []
@@ -290,6 +292,11 @@ func paste_blocks(blocks: Array[Dictionary], edges: Array[Dictionary], offset: V
 		if not copies.has(int(edge["from"])) or not copies.has(int(edge["to"])): continue
 		var added := edge.duplicate(true)
 		added["from"] = copies[int(edge["from"])]
+		added["to"] = copies[int(edge["to"])]
+		(state["edges"] as Array).append(added)
+	for edge: Dictionary in outer:
+		if copies.has(int(edge["from"])) or not copies.has(int(edge["to"])): continue
+		var added := edge.duplicate(true)
 		added["to"] = copies[int(edge["to"])]
 		(state["edges"] as Array).append(added)
 	if ids.is_empty() or not commit(title, state): return []
