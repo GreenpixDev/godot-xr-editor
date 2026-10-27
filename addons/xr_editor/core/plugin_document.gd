@@ -205,6 +205,9 @@ func duplicate_nodes(nodes: Array[Node], move: Transform3D, source: Source) -> A
 		undo_redo.add_undo_method(parent, &"remove_child", copy)
 		copies.push_front(copy)
 	_commit(undo_redo, root)
+	if prepare_copy.is_valid():
+		for i: int in copies.size():
+			prepare_copy.call(copies[i], originals[i])
 	_record(&"duplicate", source, copies)
 	return copies
 

@@ -331,6 +331,7 @@ func _run() -> void:
 	await _test_d119()
 	await _test_d120()
 	await _test_d121()
+	await _test_d122()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -2223,6 +2224,43 @@ func _test_d121() -> void:
 	_service.select_block(-1)
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	await _frames()
+
+
+## D-122: a copied object shares its Blueprint by default; with Blueprint of a
+## copy on Own, it gets a graph of its own beside the scene, with the copy as
+## its host, and its own generated script; the original keeps its own.
+func _test_d122() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.COPY_BLUEPRINT) == XREFeatureSettings.SHARED, "a copy shares its Blueprint by default")
+	var source := XREBlueprints.source_path(_host)
+	var script := _host.get_script() as Script
+	_check(not source.is_empty() and script != null, "the fixture has a built Blueprint")
+	if source.is_empty() or script == null: return
+	var nodes: Array[Node] = [_host]
+	var away := Transform3D(Basis.IDENTITY, Vector3(0, 0, 3))
+	var shared := _document.duplicate_nodes(nodes, away, XREDocument.Source.TOOL)
+	_check(shared.size() == 1 and XREBlueprints.source_path(shared[0]) == source and shared[0].get_script() == script,
+			"Shared: the copy runs the same graph and script")
+	await _frames()
+	_document.undo(XREDocument.Source.TOOL)
+	await _frames()
+	_document.features.set_value(XREFeatureSettings.COPY_BLUEPRINT, XREFeatureSettings.OWN)
+	var own := _document.duplicate_nodes(nodes, away, XREDocument.Source.TOOL)
+	var copy: Node = own[0] if own.size() == 1 else null
+	var path := XREBlueprints.source_path(copy) if copy != null else ""
+	_check(not path.is_empty() and path != source and FileAccess.file_exists(path), "Own: the copy has a graph of its own beside the scene: %s" % path)
+	var graph := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as XREBlueprintGraph if not path.is_empty() else null
+	_check(graph != null and graph.host_path == _document.get_scene_root().get_path_to(copy), "whose host is the copy")
+	var own_script := copy.get_script() as Script if copy != null else null
+	_check(own_script != null and own_script != script and own_script.resource_path == path.get_basename() + ".generated.gd",
+			"and a generated script of its own")
+	_check(XREBlueprints.source_path(_host) == source and _host.get_script() == script, "the original keeps its own")
+	await _frames()
+	_document.undo(XREDocument.Source.TOOL)
+	await _frames()
+	_check(copy == null or copy.get_parent() == null, "undo takes the copy out")
+	_document.features.set_value(XREFeatureSettings.COPY_BLUEPRINT, XREFeatureSettings.SHARED)
+	for file: String in [path, path.get_basename() + ".generated.gd", path.get_basename() + ".generated.gd.uid"]:
+		if not file.is_empty() and FileAccess.file_exists(file): DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
 
 
 ## D-086: the block palette is drawn over everything, as an input is, but

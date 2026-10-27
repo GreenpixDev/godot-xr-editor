@@ -259,6 +259,13 @@ const BOX := &"box"
 ## them from blocks not copied, from the same outputs (D-121). Off, as before:
 ## the inputs those wires fed get default tokens (D-059).
 const COPY_OUTER_WIRES := &"copy_outer_wires"
+## Whether a scene object copied in the headset (D-116) shares its Blueprint
+## with the original — the same graph and script, as Duplicate on the desktop
+## — or gets its own: a copy of the graph beside the scene, with the copy as
+## its host, and of its generated script (D-122).
+const COPY_BLUEPRINT := &"copy_blueprint"
+const SHARED := &"shared"
+const OWN := &"own"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076, D-114),
@@ -494,6 +501,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [OFF, ON],
 		"labels": ["Off", "On"],
 		"hint": "On: a pill over the left controller tells how many objects, or blocks of the open graph, are selected, with a plus while the other hand's grip held in empty space adds to the selection.",
+	},
+	COPY_BLUEPRINT: {
+		"category": Category.FEATURES,
+		"title": "Blueprint of a copy",
+		"values": [SHARED, OWN],
+		"labels": ["Shared", "Own"],
+		"hint": "Shared: a copied object runs the same graph as the original, and editing it changes both. Own: the copy gets a graph and a script of its own, copied from the original's.",
 	},
 	COPY_OUTER_WIRES: {
 		"category": Category.FEATURES,

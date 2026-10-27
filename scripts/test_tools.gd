@@ -96,6 +96,8 @@ class FakeDocument extends XREDocument:
 			original.get_parent().move_child(copy, original.get_index() + 1)
 			for node: Node in owned:
 				node.owner = root
+			if prepare_copy.is_valid():
+				prepare_copy.call(copy, original)
 			copies.append(copy)
 		if copies.is_empty():
 			return copies

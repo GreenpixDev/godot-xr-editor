@@ -44,6 +44,11 @@ enum Source {
 
 ## Optional synchronous validation before launching a game from the headset.
 var prepare_play: Callable
+## Optional: called by [method duplicate_nodes] with each copy, once it is in
+## the scene, and its original, before the operation is recorded. The
+## Blueprint layer gives a copy its own graph there (D-122); unset, copies
+## share what their originals have.
+var prepare_copy: Callable
 ## Variants of features under study (D-039), shared by every tool and panel.
 ## Read them here; switch them with [method set_feature].
 var features := XREFeatureSettings.new()
@@ -189,8 +194,8 @@ func commit_transform(node: Node3D, before: Transform3D, source: Source) -> void
 ## copies (D-116). The same nodes are copied as [method nodes_to_remove] would
 ## remove; each copy ([method copy_node]) goes under its original's parent,
 ## right after it, its global transform moved by [param move], so that a group
-## keeps its shape. Returns the copies in tree order; none, and nothing
-## recorded, if no node may be copied.
+## keeps its shape; then [member prepare_copy] sees it. Returns the copies in
+## tree order; none, and nothing recorded, if no node may be copied.
 @abstract func duplicate_nodes(nodes: Array[Node], move: Transform3D, source: Source) -> Array[Node]
 
 

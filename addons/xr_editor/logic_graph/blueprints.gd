@@ -664,6 +664,7 @@ func _enter_tree() -> void:
 	_document.operation_recorded.connect(_scene_operation)
 	_document.features.changed.connect(_feature_changed)
 	_document.prepare_play = prepare_play
+	_document.prepare_copy = prepare_copy
 	blueprint.amend = _link_new_references
 	_schedule_refresh()
 
@@ -693,6 +694,7 @@ func _exit_tree() -> void:
 	_document.operation_recorded.disconnect(_scene_operation)
 	_document.features.changed.disconnect(_feature_changed)
 	if _document.prepare_play == prepare_play: _document.prepare_play = Callable()
+	if _document.prepare_copy == prepare_copy: _document.prepare_copy = Callable()
 	for pointer: Pointer in _pointers:
 		pointer.hand.unclaim(self)
 		pointer.hand.unclaim_stick(self)
@@ -968,6 +970,60 @@ func create_unassigned() -> bool:
 	show_graph()
 	_message("New graph. Choose host before Build & Attach.")
 	return true
+
+
+## Gives [param copy], which [method XREDocument.duplicate_nodes] just put in
+## the scene as a copy of [param original], its own Blueprints, with
+## [constant XREFeatureSettings.COPY_BLUEPRINT] at [constant XREFeatureSettings.OWN]
+## (D-122): each host in it gets a copy of its graph beside the scene
+## ([method _new_path]), with the copy as its host, and of its generated
+## script, which it takes with its values kept. The files stay if the copy is
+## undone, as a graph made for an object does. At Shared, the default, a copy
+## keeps its original's graph and script, as on the desktop.
+func prepare_copy(copy: Node, original: Node) -> void:
+	if _document.features.get_value(XREFeatureSettings.COPY_BLUEPRINT) != XREFeatureSettings.OWN or _root == null: return
+	var hosts: Array[Node] = [copy]
+	hosts.append_array(copy.find_children("*", "", true, false))
+	var made := false
+	for host: Node in hosts:
+		var source := str(host.get_meta(&"_xre_blueprint", ""))
+		if source.is_empty() or not ResourceLoader.exists(source): continue
+		var graph := ResourceLoader.load(source, "", ResourceLoader.CACHE_MODE_IGNORE) as XREBlueprintGraph
+		if graph == null: continue
+		var path := _new_path(host)
+		graph.host_path = _root.get_path_to(host)
+		if ResourceSaver.save(graph, path) != OK:
+			_message("Could not save a graph for the copy: %s." % path)
+			continue
+		var own_script: Script = null
+		var generated := source.get_basename() + ".generated.gd"
+		var script := host.get_script() as Script
+		if script != null and script.resource_path == generated:
+			var output := path.get_basename() + ".generated.gd"
+			var file := FileAccess.open(output, FileAccess.WRITE)
+			if file != null:
+				file.store_string(FileAccess.get_file_as_string(generated))
+				file.close()
+				own_script = ResourceLoader.load(output, "GDScript", ResourceLoader.CACHE_MODE_REPLACE) as Script
+		if Engine.is_editor_hint():
+			EditorInterface.get_resource_filesystem().update_file(path)
+			if own_script != null: EditorInterface.get_resource_filesystem().update_file(own_script.resource_path)
+		host.set_meta(&"_xre_blueprint", path)
+		if own_script != null: _take_script(host, own_script)
+		made = true
+	if made:
+		_refresh_markers()
+		_message("The copy of %s has a Blueprint of its own." % original.name)
+
+
+## Gives [param host] [param script] in place of its own, the values of its
+## script variables kept: a copy's script is the same code (D-122).
+static func _take_script(host: Node, script: Script) -> void:
+	var values: Dictionary[StringName, Variant] = {}
+	for property: Dictionary in host.get_property_list():
+		if int(property["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE: values[StringName(property["name"])] = host.get(property["name"])
+	host.set_script(script)
+	for name: StringName in values: host.set(name, values[name])
 
 
 ## Finds source metadata or a legacy generated script's adjacent .tres.
