@@ -36,7 +36,7 @@
 ## Что уже есть
 
 - `XRESession`, `XRERig` (голова, два контроллера, луч), общий `World3D`, слой `VR_LAYER`, нативные `XREEditorFrameLoop` и `XREEditorControllers`, замер `XREFrameBenchmark`.
-- `XREDocument`: сцена, выбор, `preview_transform` / `commit_transform` (группа — `commit_transforms`, D-115), `set_property`, `add_node`, `remove_nodes` (всё выбранное одной записью undo), `save`. У каждой операции есть источник, о каждой сообщает сигнал `operation_recorded` (D-009).
+- `XREDocument`: сцена, выбор, `preview_transform` / `commit_transform` (группа — `commit_transforms`, D-115), `set_property`, `add_node`, `remove_nodes` (всё выбранное одной записью undo), `duplicate_nodes` (копии одной записью undo, D-116), `save`. У каждой операции есть источник, о каждой сообщает сигнал `operation_recorded` (D-009).
 - Play-mode (2026-10-05): Y на левом контроллере запускает редактируемую сцену, удержание Y в игре возвращает в редактор (автозагрузка `XREReturnToEditor`), Y при идущей игре её останавливает (D-011); на SteamVR редактор отдаёт сессию, а игра идёт из копии godot.exe (D-012). На Meta Link в шлеме проверен с кнопкой Menu, на Y — ещё нет.
 - Манипуляция (2026-10-05, в шлеме не проверена): пикинг по видимой геометрии `XREPicker` (D-007); `XREManipulator` — выбор лучом и касанием, захват рукой и лучом (HOMER), двуручный масштаб и поворот, снап к сетке и углу с шагами стола (D-008). Выбранное обводится белыми линиями по собственным рёбрам `XREOutline`, без обводки при наведении (D-020/D-028, новое поведение в шлеме не проверено), а не рамкой вокруг: запасная рамка осталась у значков света и нод без геометрии.
 - Добавление и удаление (2026-10-06, D-013, D-014): палитра `XREPalette` над левым контроллером (X), в ней CSG-примитивы и свет. Grip по миниатюре вытаскивает объект в масштабе миниатюры (CSG 1:30), отпущенный grip ставит его в сцену одной записью undo. A на правом удаляет выбранное. Инструменты делят руки через захват (`XREHand.claim`). В шлеме проверено всё, кроме удаления удерживаемого объекта. Сцен проекта в палитре ещё нет.
@@ -95,7 +95,7 @@
 | --- | --- | --- | --- | --- |
 | Добавить ноду (диалог создания с поиском) | `editor/docks/scene_tree_dock.cpp:642` | В (`popup_create_dialog` П, но открывается на столе) | 3D: палитра частых типов; поиск по всем типам на панели — F | MVP (T1) |
 | Инстанцировать сцену | `scene_tree_dock.cpp:676`, `_perform_instantiate_scenes` :317 | В | 3D: палитра сцен с миниатюрами | MVP (T1) |
-| Дублировать | `scene_tree_dock.cpp:943` | В | 3D: жест или контекстное меню | MVP (T1) |
+| Дублировать | `scene_tree_dock.cpp:943` | В | 3D: Duplicate в шорткате или grip с модификатором второй руки (Copy objects, D-116) | MVP (T1) |
 | Удалить | `scene_tree_dock.cpp:1158` | В | 3D: контекстное меню (`remove_node` уже есть) | MVP (T1) |
 | Сменить родителя с сохранением глобальной трансформации | `scene_tree_dock.cpp:1044`, `_do_reparent` :2487 | В | Панель: перетаскивание в дереве; 3D: «прикрепить» лучом | MVP (T1) |
 | Создать общего родителя для выделенных (группировка) | `scene_tree_dock.cpp:637` | В | 3D | Ж |
@@ -309,7 +309,7 @@
 
 | Метод | Задача | Публичные кирпичи | Подвох |
 | --- | --- | --- | --- |
-| `duplicate(nodes) -> Array[Node]` | T1 | `Node.duplicate`, затем `add_node` | Экземпляр сцены должен остаться экземпляром (`scene_file_path`), `owner` ставится только корню экземпляра |
+| `duplicate_nodes(nodes, move) -> Array[Node]` (сделан, D-116) | T1 | `Node.duplicate`, затем `add_child` и `set_owner` в одной записи | Экземпляр сцены должен остаться экземпляром (`scene_file_path`), `owner` ставится только корню экземпляра |
 | `reparent(node, parent, keep_global)` | T1 | `Node.reparent` | При отмене восстановить `owner` всего поддерева, как в `remove_node` |
 | `instantiate(path, parent, xform)` | T1 | `PackedScene.instantiate(GEN_EDIT_STATE_INSTANCE)`, `set_scene_file_path` | Повторить док сцены (`scene_tree_dock.cpp:317`): проверка циклической зависимости, `owner` только у корня экземпляра |
 | `set_properties(changes)` одной записью undo | Ж (мультивыбор), панели | `create_action` с несколькими `add_do_property` | — |

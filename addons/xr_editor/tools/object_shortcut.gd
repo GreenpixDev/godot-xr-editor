@@ -4,14 +4,19 @@ extends Node3D
 ## The shortcut of the selected object (D-088), with
 ## [constant XREFeatureSettings.OBJECT_SHORTCUT] on: the trigger held again on
 ## the selected object ([signal XREManipulator.shortcut_requested]) opens round
-## buttons on an arc ([XREArcMenu]), as a choice's values are (D-062) — Delete, Rename,
-## Blueprint — [constant DISTANCE] along the hand's ray, its center where the
+## buttons on an arc ([XREArcMenu]), as a choice's values are (D-062) — Delete,
+## Duplicate, Rename, Blueprint — [constant DISTANCE] along the hand's ray, its center where the
 ## ray is. The ray picks a button; letting the trigger go does it, or, on none,
 ## only closes the shortcut. While it is open the rest is darkened, as under an
 ## input in use (D-061), and it is drawn over everything, so that nothing of
 ## the scene between it and the head hides it. Both hands are the shortcut's.
 ## [br][br]
-## Delete removes the object through [XREDocument], as X does (D-087). Rename
+## Delete removes the object through [XREDocument], as X does (D-087).
+## Duplicate, with [constant XREFeatureSettings.OBJECT_COPY] at
+## [constant XREFeatureSettings.SHORTCUT] or [constant XREFeatureSettings.BOTH], copies it beside itself
+## ([method XREManipulator.copy_offset]) and selects the copy (D-116). Opened on
+## one of several selected objects, the shortcut is for all of them: Delete
+## and Duplicate only, under how many there are (D-116). Rename
 ## opens a keyboard with the object's name: Done renames it, a trigger off the
 ## keyboard or its × leaves the name as it was. Blueprint opens the object's
 ## graph or creates one, as the badge's button does (D-085).
@@ -22,15 +27,18 @@ extends Node3D
 ## Emitted by Blueprint, after the shortcut closed: [method XREBlueprints.open_selected] opens or creates the graph.
 signal blueprint_requested
 
-## The buttons, left to right on the arc: their names, glyphs ([XRETabIcons]),
-## and colors with the ray on them — the badge's red for delete and
-## Blueprints' blue for the graph (D-085), the keyboard's for rename.
+## The buttons: their names, glyphs ([XRETabIcons]), and colors with the ray
+## on them — the badge's red for delete and Blueprints' blue for the graph
+## (D-085), the keyboard's for rename, the light blue of the graph's copy
+## button for duplicate (D-093). Shown left to right on the arc as Delete,
+## Duplicate, Rename, Blueprint (D-116).
 const DELETE := 0
 const RENAME := 1
 const BLUEPRINT := 2
-const TITLES: Array[String] = ["Delete", "Rename", "Blueprint"]
-const GLYPHS: Array[StringName] = [&"trash", &"rename", &"blueprint"]
-const LIT_COLORS: Array[Color] = [Color(0.86, 0.2, 0.18), Color("456e91"), Color("1f8fb5")]
+const DUPLICATE := 3
+const TITLES: Array[String] = ["Delete", "Rename", "Blueprint", "Duplicate"]
+const GLYPHS: Array[StringName] = [&"trash", &"rename", &"blueprint", &"duplicate"]
+const LIT_COLORS: Array[Color] = [Color(0.86, 0.2, 0.18), Color("456e91"), Color("1f8fb5"), XREManipulator.COPY_COLOR]
 ## How far along the ray from the hand the shortcut opens, in meters: nearer
 ## than most objects, so that it is read at the same size whatever it is for.
 const DISTANCE := 0.45
@@ -48,8 +56,10 @@ var _keyboard: XREVirtualKeyboard
 var _dimmer: MeshInstance3D
 ## The hand whose trigger holds the shortcut open, or null.
 var _hand: XREHand
-## The object the shortcut is for, and the one the keyboard renames.
+## The object the shortcut is opened on, the objects it is for (the selection
+## it is in), and the one the keyboard renames.
 var _node: Node
+var _nodes: Array[Node] = []
 var _renamed: Node
 ## Both hands, and those claimed while the shortcut or its keyboard is open.
 var _hands: Array[XREHand] = []
@@ -97,10 +107,18 @@ func open(hand: XREHand, node: Node3D) -> bool:
 		return false
 	_hand = hand
 	_node = node
+	_nodes = _document.get_selection()
+	if not _nodes.has(node):
+		_nodes = [node]
+	var items: Array[int] = [DELETE]
+	if _document.features.get_value(XREFeatureSettings.OBJECT_COPY) in [XREFeatureSettings.SHORTCUT, XREFeatureSettings.BOTH]:
+		items.append(DUPLICATE)
+	if _nodes.size() == 1:
+		items.append_array([RENAME, BLUEPRINT])
 	var head := _rig.camera.global_position
 	var center := hand.global_position - hand.global_basis.z.normalized() * DISTANCE
 	global_transform = Transform3D(XREPanels.facing(center, head, _rig.global_basis.y), center)
-	_menu.open(str(node.name))
+	_menu.open(str(node.name) if _nodes.size() == 1 else "%d objects" % _nodes.size(), items)
 	_focus(true)
 	_claim_hands()
 	return true
@@ -121,7 +139,8 @@ func is_dimming() -> bool:
 	return _dimmer != null and _dimmer.visible
 
 
-## The button the ray is on ([constant DELETE], [constant RENAME], [constant BLUEPRINT]), or -1.
+## The button the ray is on ([constant DELETE], [constant DUPLICATE], [constant RENAME],
+## [constant BLUEPRINT]), or -1.
 func get_lit() -> int:
 	return _menu.get_lit()
 
@@ -129,6 +148,11 @@ func get_lit() -> int:
 ## The center of button [param index], global.
 func get_button_position(index: int) -> Vector3:
 	return _menu.get_button_position(index)
+
+
+## The buttons shown, left to right.
+func get_shown() -> Array[int]:
+	return _menu.get_shown()
 
 
 func get_keyboard() -> XREVirtualKeyboard:
@@ -159,12 +183,15 @@ func _update_menu() -> void:
 	if _hand.trigger_held:
 		return
 	var node := _node
+	var nodes := _nodes
 	_close_menu()
 	# The hands go back before what the button does: Blueprint opens the graph, which draws them its own way.
 	_finish()
 	match picked:
 		DELETE:
-			_document.remove_nodes([node], XREDocument.Source.TOOL)
+			_document.remove_nodes(nodes, XREDocument.Source.TOOL)
+		DUPLICATE:
+			_duplicate(nodes)
 		RENAME:
 			_open_keyboard(node)
 		BLUEPRINT:
@@ -208,6 +235,14 @@ func _open_keyboard(node: Node) -> void:
 	_claim_hands()
 
 
+## Copies [param nodes] beside them, to the right of the head, and selects the copies.
+func _duplicate(nodes: Array[Node]) -> void:
+	var move := XREManipulator.copy_offset(nodes, _rig.camera.global_basis, _rig.global_basis.y)
+	var copies := _document.duplicate_nodes(nodes, move, XREDocument.Source.TOOL)
+	if not copies.is_empty():
+		_document.select(copies, XREDocument.Source.TOOL)
+
+
 ## Done on the keyboard: the object takes the name, as a valid node name; an empty or the same one changes nothing.
 func _apply_name(text: String) -> void:
 	var node := _renamed
@@ -222,6 +257,7 @@ func _apply_name(text: String) -> void:
 func _close_menu() -> void:
 	_hand = null
 	_node = null
+	_nodes = []
 	_menu.close()
 
 

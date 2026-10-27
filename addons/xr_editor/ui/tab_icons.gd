@@ -75,6 +75,9 @@ const GLYPHS: Dictionary[StringName, String] = {
 	# The object's shortcut (D-088): rename, a pencil; a round button's face, to tint.
 	&"rename": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <path d="M28 100L34 76L82 28L100 46L52 94Z"/><path d="M70 40L88 58M66 104H104"/></g>""",
+	# Duplicate (D-116): a sheet over another; a round button's face, to tint.
+	&"duplicate": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linejoin="round">
+<rect x="20" y="44" width="62" height="64" rx="10"/><path d="M46 44V30Q46 20 56 20H98Q108 20 108 30V72Q108 82 98 82H82"/></g>""",
 	&"disc": """<circle cx="64" cy="64" r="62" fill="#fff"/>""",
 	# The wire's menu (D-090): a link, a plug with its ring; a bend, a wire through a knot.
 	&"link": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">

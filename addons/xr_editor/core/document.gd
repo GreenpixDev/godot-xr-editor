@@ -27,7 +27,7 @@ signal blueprint_bindings_changed
 ## Emitted once for every operation made through this document, after it took
 ## effect. [param operation] names it ([code]&"select"[/code],
 ## [code]&"transform"[/code], [code]&"set_property"[/code], [code]&"add_node"[/code],
-## [code]&"remove_nodes"[/code], [code]&"save"[/code], [code]&"open_scene"[/code],
+## [code]&"remove_nodes"[/code], [code]&"duplicate"[/code], [code]&"save"[/code], [code]&"open_scene"[/code],
 ## [code]&"play"[/code], [code]&"stop"[/code], [code]&"undo"[/code],
 ## [code]&"redo"[/code]); [param time_usec] is
 ## [method Time.get_ticks_usec] at that moment. Previews are not operations.
@@ -184,6 +184,16 @@ func commit_transform(node: Node3D, before: Transform3D, source: Source) -> void
 @abstract func remove_nodes(nodes: Array[Node], source: Source) -> void
 
 
+## Copies [param nodes] as one undo step, as Duplicate (Ctrl+D) does on the
+## desktop, and records one [code]&"duplicate"[/code] operation naming the
+## copies (D-116). The same nodes are copied as [method nodes_to_remove] would
+## remove; each copy ([method copy_node]) goes under its original's parent,
+## right after it, its global transform moved by [param move], so that a group
+## keeps its shape. Returns the copies in tree order; none, and nothing
+## recorded, if no node may be copied.
+@abstract func duplicate_nodes(nodes: Array[Node], move: Transform3D, source: Source) -> Array[Node]
+
+
 @abstract func save(source: Source) -> Error
 
 
@@ -240,7 +250,8 @@ func get_class_icon(_cls: StringName) -> Texture2D:
 @abstract func get_snap() -> XRESnap
 
 
-## Those of [param nodes] that [method remove_nodes] removes, in tree order:
+## Those of [param nodes] that [method remove_nodes] removes and
+## [method duplicate_nodes] copies, in tree order:
 ## nodes of the scene under [param root], but not the root itself, nodes
 ## inside instanced scenes (their owner is the instance), or nodes under
 ## another of [param nodes], which go with it.
@@ -260,6 +271,31 @@ static func nodes_to_remove(nodes: Array[Node], root: Node) -> Array[Node]:
 			result.append(node)
 	result.sort_custom(func(a: Node, b: Node) -> bool: return b.is_greater_than(a))
 	return result
+
+
+## A copy of [param node], a node of the scene under [param root], for
+## [method duplicate_nodes]: not in the tree yet, an instanced scene copied as
+## an instance, a [Node3D] with its global transform moved by [param move].
+## [param r_owned] gets the nodes of the copy that [param root] must own once
+## it is in the scene: the copies of those it owns of the original.
+## [method Node.duplicate] leaves them unowned, and unowned nodes aren't saved.
+static func copy_node(node: Node, root: Node, move: Transform3D, r_owned: Array[Node]) -> Node:
+	var copy := node.duplicate()
+	var node_3d := node as Node3D
+	if node_3d != null:
+		var parent_global := node_3d.global_transform * node_3d.transform.affine_inverse()
+		(copy as Node3D).transform = parent_global.affine_inverse() * move * node_3d.global_transform
+	_owned_copies(node, node, copy, root, r_owned)
+	return copy
+
+
+static func _owned_copies(original: Node, top: Node, copy: Node, root: Node, r_owned: Array[Node]) -> void:
+	if original.owner == root:
+		var counterpart := copy.get_node_or_null(top.get_path_to(original))
+		if counterpart != null:
+			r_owned.append(counterpart)
+	for child: Node in original.get_children():
+		_owned_copies(child, top, copy, root, r_owned)
 
 
 ## Whether [param path] is a scene file the editor opens for editing: a

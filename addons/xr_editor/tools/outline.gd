@@ -126,14 +126,15 @@ func _exit_tree() -> void:
 
 ## Marks [param node] by drawing its edges; call it every frame it stays marked.
 ## [param bounds], in the node's own space, is for the box that stands in where
-## it has no edges to draw.
-func show_node(node: Node3D, bounds: AABB) -> void:
+## it has no edges to draw. The edges are drawn moved by [param moved], in
+## global space: where a copy of the node would be (D-116).
+func show_node(node: Node3D, bounds: AABB, moved := Transform3D.IDENTITY) -> void:
 	_active = true
 	if node.get_instance_id() != _node_id:
 		_retarget(node)
-	_shown = _update_parts()
+	_shown = _update_parts(moved)
 	if _shown == 0:
-		_box.show_bounds(node.global_transform, bounds)
+		_box.show_bounds(moved * node.global_transform, bounds)
 	else:
 		_box.visible = false
 
@@ -269,8 +270,9 @@ func _make_part() -> Part:
 	return part
 
 
-## Brings the ghosts up to date with their originals, and returns how many show.
-func _update_parts() -> int:
+## Brings the ghosts up to date with their originals, moved by [param moved],
+## and returns how many show.
+func _update_parts(moved: Transform3D) -> int:
 	var shown := 0
 	for i: int in _count:
 		var part := _parts[i]
@@ -291,7 +293,7 @@ func _update_parts() -> int:
 		if not part.has_edges:
 			_hide(part)
 			continue
-		var xform := source.global_transform
+		var xform := moved * source.global_transform
 		if not part.shown or xform != part.xform:
 			part.xform = xform
 			RenderingServer.instance_set_transform(part.ghost, xform)

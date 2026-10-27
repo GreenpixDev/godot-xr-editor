@@ -24,6 +24,8 @@ class FakeDocument extends XREDocument:
 	var added: Array[Node] = []
 	## Nodes remove_nodes took out; the test frees them at the end.
 	var removed: Array[Node] = []
+	## How many times duplicate_nodes copied anything: one undo step each.
+	var duplicate_steps := 0
 
 	func get_scene_root() -> Node:
 		return root
@@ -82,6 +84,22 @@ class FakeDocument extends XREDocument:
 		_record(&"remove_nodes", source, gone)
 		selection_changed.emit()
 
+	func duplicate_nodes(nodes: Array[Node], move: Transform3D, source: Source) -> Array[Node]:
+		var copies: Array[Node] = []
+		for original: Node in nodes_to_remove(nodes, root):
+			var owned: Array[Node] = []
+			var copy := copy_node(original, root, move, owned)
+			original.get_parent().add_child(copy, true)
+			original.get_parent().move_child(copy, original.get_index() + 1)
+			for node: Node in owned:
+				node.owner = root
+			copies.append(copy)
+		if copies.is_empty():
+			return copies
+		duplicate_steps += 1
+		_record(&"duplicate", source, copies)
+		return copies
+
 	func save(_source: Source) -> Error:
 		return OK
 
@@ -139,6 +157,8 @@ var _commit_count := 0
 var _rig_before: Vector3
 ## Global positions of the boxes grabbed together (D-115), by path, before the grab.
 var _group_before: Dictionary[String, Vector3] = {}
+## How many copies the fake document made before a copy step (D-116), and the copies' parent's children then.
+var _duplicate_count := 0
 var _target_before: Vector3
 
 
@@ -226,6 +246,27 @@ func _initialize() -> void:
 		_group_committed,
 		_group_regrabbed,
 		_group_cancelled,
+		_copy_start,
+		_hold_on_group,
+		_group_shortcut_opened,
+		_duplicate_lit,
+		_duplicated_by_shortcut,
+		_hold_without_copy,
+		_shortcut_without_copy,
+		_hold_with_grip_copy,
+		_shortcut_with_grip_copy,
+		_hold_with_both,
+		_shortcut_with_both,
+		_copy_grip_start,
+		_copy_hold_other_grip,
+		_copy_grip_on_twin,
+		_copies_carried,
+		_copies_let_go,
+		_copies_placed,
+		_copy_click,
+		_copy_click_let_go,
+		_copy_clicked,
+		_copy_cancelled,
 		_grab_for_flight,
 		_fly,
 		_flown,
@@ -333,6 +374,9 @@ func _build() -> void:
 	_add_box(_scene, "PairB", Vector3(31.0, 0.0, -1.0), 0.2)
 	_add_box(_scene, "PairC", Vector3(32.0, 0.0, -1.0), 0.2)
 	_add_box(_add_box(_scene, "Cart", Vector3(33.0, 0.0, -1.0), 0.2), "Load", Vector3(0.0, 0.5, 0.0), 0.2)
+	# Lanes 36–37: boxes copied (D-116); the twin's part is copied with it.
+	_add_box(_add_box(_scene, "Twin", Vector3(36.0, 0.0, -1.0), 0.2), "Part", Vector3(0.0, 0.5, 0.0), 0.2)
+	_add_box(_scene, "Pal", Vector3(37.0, 0.0, -1.0), 0.2)
 
 	_picker = XREPicker.new()
 	_picker.scenario = root.find_world_3d().scenario
@@ -973,6 +1017,8 @@ func _shortcut_opened() -> void:
 	_check(_rig.right_hand.get_claimant() == _shortcut and _rig.left_hand.get_claimant() == _shortcut, "both hands are the shortcut's")
 	_check_vector(_shortcut.global_position, Vector3(1.0, 0.0, 1.0 - XREObjectShortcut.DISTANCE), "it opens along the ray")
 	_check(_shortcut.get_lit() == -1, "the ray where the trigger went down picks nothing")
+	_check(_shortcut.get_shown() == [XREObjectShortcut.DELETE, XREObjectShortcut.DUPLICATE, XREObjectShortcut.RENAME,
+			XREObjectShortcut.BLUEPRINT], "for one object, Delete, Duplicate, Rename, Blueprint: %s" % [_shortcut.get_shown()])
 	_aim_right(Vector3(1.0, 0.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.RENAME), 1.0)
 
 
@@ -1224,6 +1270,205 @@ func _group_cancelled() -> void:
 				"switching scenes puts %s back" % path)
 	_check(_document.commit_steps == _commit_count + 1, "a cancelled group grab records nothing")
 	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+# Copying (D-116): Duplicate in the shortcut of two selected boxes puts their
+# copies beside them; with Other grip, the left grip held in empty space makes
+# the right grip carry copies, which letting go puts in the scene.
+
+func _node3d(path: String) -> Node3D:
+	return _scene.get_node(path) as Node3D
+
+
+## Checks that the selection is the copies named [param names], one more
+## undo step of duplicate_nodes, moved by [param move] from [param originals].
+func _check_copies(names: Array[String], originals: Array[String], move: Vector3, what: String) -> void:
+	_check(_document.duplicate_steps == _duplicate_count + 1,
+			"%s: one undo step copies them: %d" % [what, _document.duplicate_steps - _duplicate_count])
+	_check(_selection_names() == names, "%s: the copies are selected: %s" % [what, _selection_names()])
+	for i: int in names.size():
+		var copy := _node3d(names[i])
+		var original := _node3d(originals[i])
+		_check(copy != null and copy.owner == _scene, "%s: %s is in the saved scene" % [what, names[i]])
+		if copy == null:
+			continue
+		_check(copy.get_index() == original.get_index() + 1, "%s: %s comes right after its original" % [what, names[i]])
+		_check_vector(copy.global_position - original.global_position, move, "%s: %s is moved from %s" % [what, names[i], originals[i]])
+
+
+## Selects the boxes of lanes 36–37, as the desktop's Scene dock would.
+func _select_twin_and_pal() -> void:
+	var nodes: Array[Node] = [_node3d("Twin"), _node3d("Pal")]
+	_document.select(nodes, XREDocument.Source.PANEL)
+
+
+func _copy_start() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.OBJECT_COPY) == XREFeatureSettings.SHORTCUT,
+			"Duplicate in the shortcut copies by default")
+	var twin: Array[Node] = [_node3d("Twin")]
+	var offset := XREManipulator.copy_offset(twin, Basis.IDENTITY, Vector3.UP)
+	var bounds := _node3d("Twin").global_transform * XREPicker.get_local_bounds(_node3d("Twin"))
+	_check_vector(offset.origin, Vector3(bounds.size.x + XREManipulator.COPY_GAP, 0.0, 0.0),
+			"a copy put beside goes right by the width of the node and its child, and a gap")
+	_check(offset.basis.is_equal_approx(Basis.IDENTITY), "a copy put beside isn't turned")
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.ON)
+	_select_twin_and_pal()
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _hold_on_group() -> void:
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _group_shortcut_opened() -> void:
+	_check(_shortcut.is_open(), "the trigger on one of two selected boxes opens the shortcut")
+	_check(_shortcut.get_shown() == [XREObjectShortcut.DELETE, XREObjectShortcut.DUPLICATE],
+			"for two objects, it has Delete and Duplicate: %s" % [_shortcut.get_shown()])
+	_check(_selection_names() == ["Twin", "Pal"], "opening it keeps the selection: %s" % [_selection_names()])
+	_aim_right(Vector3(36.0, 0.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.DUPLICATE), 1.0)
+
+
+func _duplicate_lit() -> void:
+	_check(_shortcut.get_lit() == XREObjectShortcut.DUPLICATE, "the ray on Duplicate lights it: %d" % _shortcut.get_lit())
+	_duplicate_count = _document.duplicate_steps
+	_aim_right(Vector3(36.0, 0.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.DUPLICATE), 0.0)
+
+
+func _duplicated_by_shortcut() -> void:
+	var originals: Array[Node] = [_node3d("Twin"), _node3d("Pal")]
+	var move := XREManipulator.copy_offset(originals, _rig.camera.global_basis, _rig.global_basis.y).origin
+	_check(move.length() > 1.0, "the copies go beside both boxes, not over one: %s" % move)
+	_check_copies(["Twin2", "Pal2"], ["Twin", "Pal"], move, "Duplicate")
+	_check(_operations.slice(_operation_count) == ["duplicate TOOL [\"Twin2\", \"Pal2\"]", "select TOOL [\"Twin2\", \"Pal2\"]"],
+			"one duplicate of both, then the copies selected: %s" % [_operations.slice(_operation_count)])
+	var part := _scene.get_node_or_null(^"Twin2/Part")
+	_check(part != null and part.owner == _scene, "the twin's part is copied into the saved scene")
+	_check_vector(_node3d("Twin").global_position, Vector3(36.0, 0.0, -1.0), "the original stays")
+	_check_shortcut_closed("after Duplicate")
+	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.OFF)
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _hold_without_copy() -> void:
+	_select_twin_and_pal()
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _shortcut_without_copy() -> void:
+	_check(_shortcut.is_open() and _shortcut.get_shown() == [XREObjectShortcut.DELETE],
+			"with Copy objects off, the shortcut of two objects has only Delete: %s" % [_shortcut.get_shown()])
+	# Let go where it opened: on no button.
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _hold_with_grip_copy() -> void:
+	_check_shortcut_closed("let go on no button")
+	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.GRIP)
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _shortcut_with_grip_copy() -> void:
+	_check(_shortcut.is_open() and _shortcut.get_shown() == [XREObjectShortcut.DELETE],
+			"with Other grip, the shortcut has no Duplicate: %s" % [_shortcut.get_shown()])
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _hold_with_both() -> void:
+	_check_shortcut_closed("let go on no button")
+	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.BOTH)
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _shortcut_with_both() -> void:
+	_check(_shortcut.is_open() and _shortcut.get_shown() == [XREObjectShortcut.DELETE, XREObjectShortcut.DUPLICATE],
+			"with Both, the shortcut has Duplicate: %s" % [_shortcut.get_shown()])
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 0.0)
+
+
+# With Both, the other grip takes copies too; the Other grip value does the same.
+func _copy_grip_start() -> void:
+	_check_shortcut_closed("let go on no button")
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
+
+
+func _copy_hold_other_grip() -> void:
+	_select_twin_and_pal()
+	_remember_copied()
+	_duplicate_count = _document.duplicate_steps
+	_commit_count = _document.commit_steps
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 1.0)
+
+
+## Remembers where the boxes of lanes 36–37 are.
+func _remember_copied() -> void:
+	for path: String in ["Twin", "Pal"]:
+		_group_before[path] = _node3d(path).global_position
+
+
+func _copy_grip_on_twin() -> void:
+	_check(_rig.right_hand.get_claimant() == _manipulator, "the other grip held, the grip on a selected box holds its copies")
+	_check(_active_outlines(XREManipulator.COPY_COLOR).size() == 2, "the copies of both boxes are drawn as edges: %d"
+			% _active_outlines(XREManipulator.COPY_COLOR).size())
+	_set_hand(_right, Vector3(36.1, 0.0, 1.0), 0.0, 1.0)
+
+
+func _copies_carried() -> void:
+	for path: String in ["Twin", "Pal"]:
+		_check_vector(_node3d(path).global_position, _group_before[path], "carrying copies, %s stays" % path)
+	_check(_operations.size() == _operation_count, "nothing is recorded while copies are carried: %s" % [_operations.slice(_operation_count)])
+	# The left grip lets go: the right hand holds on to the copies.
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_set_hand(_right, Vector3(36.1, 0.0, 1.0), 0.0, 1.0)
+
+
+func _copies_let_go() -> void:
+	_check(_active_outlines(XREManipulator.COPY_COLOR).size() == 2, "the copies stay in hand when the other grip lets go")
+	_set_hand(_right, Vector3(36.1, 0.0, 1.0), 0.0, 0.0)
+
+
+func _copies_placed() -> void:
+	var twin := _node3d("Twin3")
+	var move := twin.global_position - _group_before["Twin"] if twin != null else Vector3.ZERO
+	_check(move.x > 0.05, "letting go puts the copies where the hand took them: %s" % move)
+	_check_copies(["Twin3", "Pal3"], ["Twin", "Pal"], move, "Other grip")
+	_check(_document.commit_steps == _commit_count, "the originals aren't moved: no transform step")
+	_check(_active_outlines(XREManipulator.COPY_COLOR).is_empty(), "no copy is drawn once they are put down")
+	# Grip again on the twin, now not selected, the left grip held: a click, with Other grip.
+	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.GRIP)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _copy_click() -> void:
+	_duplicate_count = _document.duplicate_steps
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 1.0)
+
+
+func _copy_click_let_go() -> void:
+	_check(_selection_names() == ["Twin"], "the grip on a box not selected selects it before taking its copy: %s" % [_selection_names()])
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _copy_clicked() -> void:
+	var originals: Array[Node] = [_node3d("Twin")]
+	var move := XREManipulator.copy_offset(originals, _rig.camera.global_basis, _rig.global_basis.y).origin
+	_check_copies(["Twin4"], ["Twin"], move, "a grip let go at once")
+	_duplicate_count = _document.duplicate_steps
+	_set_hand(_right, Vector3(36.0, 0.0, 1.0), 0.0, 1.0)
+
+
+func _copy_cancelled() -> void:
+	_check(_active_outlines(XREManipulator.COPY_COLOR).size() == 1, "the grip takes a copy of the twin again")
+	_document.scene_changed.emit()
+	_check(_document.duplicate_steps == _duplicate_count, "switching scenes copies nothing")
+	_check(_active_outlines(XREManipulator.COPY_COLOR).is_empty(), "and draws no copy")
+	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SHORTCUT)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 

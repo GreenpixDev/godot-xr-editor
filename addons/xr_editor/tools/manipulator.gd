@@ -12,8 +12,9 @@ extends Node
 ## ([XREIcons]) are drawn on top, so they are touched and pointed at before
 ## geometry. Selection draws white edges ([XREOutline]).
 ## [br]- Trigger: select the pointed node, or clear the selection over empty space.
-## With [constant XREFeatureSettings.OBJECT_SHORTCUT] on, the trigger on the
-## node already selected asks for its shortcut ([signal shortcut_requested], D-088).
+## With [constant XREFeatureSettings.OBJECT_SHORTCUT] on, the trigger on a
+## node already selected asks for its shortcut ([signal shortcut_requested], D-088),
+## for every selected node (D-116).
 ## [br]- With [constant XREFeatureSettings.SELECT_ADD] at
 ## [constant XREFeatureSettings.GRIP], while the other hand's grip is held in
 ## empty space (D-115): the trigger adds the pointed node to the selection, or
@@ -28,6 +29,12 @@ extends Node
 ## to the body brings the node halfway too, and turning the hand turns the
 ## node about the point the ray hit. Hand motion counts in the rig's space:
 ## a node held while the user flies ([XRELocomotion]) travels along rigidly.
+## [br]- With [constant XREFeatureSettings.OBJECT_COPY] at
+## [constant XREFeatureSettings.GRIP] or [constant XREFeatureSettings.BOTH],
+## while the other hand's grip is held in empty space (D-116): the grip takes copies of the selected nodes instead,
+## drawn as edges, and the originals stay. Letting go copies them there through
+## [method XREDocument.duplicate_nodes], one undo step, and selects the copies;
+## let go where they were taken, the copies go beside the originals ([method copy_offset]).
 ## [br]- Grip of the other hand while holding: both hands hold the node,
 ## each at the point it took (gripping away from the node takes the first
 ## hand's point). Spreading the hands scales the node and turning the line
@@ -51,9 +58,9 @@ extends Node
 ## through [XREDocument]: a preview every frame, then one undo step when the
 ## last hand lets go. Lives under the [XRERig], so its outlines render in the headset.
 
-## Emitted when the trigger of [param hand] goes down on [param node], the only
+## Emitted when the trigger of [param hand] goes down on [param node], a
 ## selected node, with [constant XREFeatureSettings.OBJECT_SHORTCUT] on (D-088):
-## [XREObjectShortcut] opens for it and claims the hand.
+## [XREObjectShortcut] opens for it, and the rest of the selection (D-116), and claims the hand.
 signal shortcut_requested(hand: XREHand, node: Node3D)
 
 ## How far the ray reaches, in meters.
@@ -77,6 +84,13 @@ const MIN_SCALE_FACTOR := 0.01
 const MAX_OUTLINED := 64
 const HOVER_COLOR := Color(1.0, 1.0, 1.0)
 const SELECTION_COLOR := Color.WHITE
+## The edges of copies being carried (D-116): the light blue of the graph's copy button (D-093).
+const COPY_COLOR := Color("a9d4ff")
+## Copies let go of within this of where they were taken, in meters, go beside
+## the originals instead of over them (D-116), as a block's copy does (D-093).
+const COPY_CLICK := 0.02
+## The gap between the originals and copies put beside them, in meters.
+const COPY_GAP := 0.1
 
 
 ## What the manipulator keeps for each controller.
@@ -145,6 +159,17 @@ var _mover_befores: Array[Transform3D] = []
 var _mover_offsets: Array[Transform3D] = []
 ## From global space to the parent space of each of [member _movers], fixed for the grab.
 var _mover_to_parents: Array[Transform3D] = []
+## The grab carries copies of [member _movers], which stay (D-116).
+var _copying := false
+## Where the copies are: the global move from the originals, which the grab
+## changes instead of the nodes.
+var _copy_move: Transform3D
+## The grabbed node's global transform when the grab began.
+var _grab_start_global: Transform3D
+## Bounds of each of [member _movers] in its own space, for its copy's outline.
+var _mover_bounds: Array[AABB] = []
+## The outline of each copy being carried, and spare ones after them.
+var _copy_outlines: Array[XREOutline] = []
 ## Global transform of the grabbed node's parent space, fixed for the grab, and its inverse.
 var _parent_global: Transform3D
 var _to_parent: Transform3D
@@ -369,12 +394,13 @@ func _update_hover(state: HandState, root: Node) -> void:
 		hand.show_ray(XREHand.RAY_LENGTH, false)
 
 
-## Whether the trigger on [param node] opens its shortcut rather than selects it (D-088).
+## Whether the trigger on [param node] opens its shortcut rather than selects
+## it (D-088): the node is selected, alone or with others, for which the
+## shortcut acts together (D-116).
 func _opens_shortcut(node: Node3D) -> bool:
 	if node == null or _document.features.get_value(XREFeatureSettings.OBJECT_SHORTCUT) != XREFeatureSettings.ON:
 		return false
-	var selection := _document.get_selection()
-	return selection.size() == 1 and selection[0] == node
+	return _document.get_selection().has(node)
 
 
 ## Makes [param node] the only selected node, or clears the selection for null.
@@ -390,8 +416,20 @@ func _select(node: Node3D) -> void:
 ## selection: the other hand's grip is held in empty space, with
 ## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP] (D-115).
 func _adds_to_selection(state: HandState) -> bool:
-	if _document.features.get_value(XREFeatureSettings.SELECT_ADD) != XREFeatureSettings.GRIP:
-		return false
+	return _document.features.get_value(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.GRIP \
+			and _other_adding(state)
+
+
+## Whether the grip of [param state]'s hand takes copies: the other hand's grip
+## is held in empty space, with [constant XREFeatureSettings.OBJECT_COPY] at
+## [constant XREFeatureSettings.GRIP] or [constant XREFeatureSettings.BOTH] (D-116).
+func _copies_on_grab(state: HandState) -> bool:
+	return _document.features.get_value(XREFeatureSettings.OBJECT_COPY) in [XREFeatureSettings.GRIP, XREFeatureSettings.BOTH] \
+			and _other_adding(state)
+
+
+## Whether the hand other than [param state]'s holds its grip down in empty space (D-115).
+func _other_adding(state: HandState) -> bool:
 	for other: HandState in _hands:
 		if other != state and other.adding:
 			return true
@@ -422,6 +460,7 @@ func _begin_grab(state: HandState) -> void:
 	var node := state.hover
 	if not _movable(node):
 		return
+	_copying = _copies_on_grab(state)
 	if not _document.get_selection().has(node):
 		if _adds_to_selection(state):
 			_toggle(node)
@@ -432,6 +471,8 @@ func _begin_grab(state: HandState) -> void:
 	_to_parent = _parent_global.affine_inverse()
 	_snap = _document.get_snap()
 	_free_global = node.global_transform
+	_grab_start_global = node.global_transform
+	_copy_move = Transform3D.IDENTITY
 	_scale = 1.0
 	_collect_movers()
 	_join(state)
@@ -458,6 +499,12 @@ func _collect_movers() -> void:
 		_mover_befores.append(node.transform)
 		_mover_offsets.append(to_grabbed * node.global_transform)
 		_mover_to_parents.append((node.global_transform * node.transform.affine_inverse()).affine_inverse())
+		if _copying:
+			_mover_bounds.append(XREPicker.get_local_bounds(node))
+	while _copying and _copy_outlines.size() < _movers.size():
+		var outline := XREOutline.new(COPY_COLOR)
+		add_child(outline)
+		_copy_outlines.append(outline)
 
 
 func _clear_movers() -> void:
@@ -465,10 +512,15 @@ func _clear_movers() -> void:
 	_mover_befores.clear()
 	_mover_offsets.clear()
 	_mover_to_parents.clear()
+	_mover_bounds.clear()
+	_copying = false
+	for outline: XREOutline in _copy_outlines:
+		outline.clear()
 
 
 func _join(state: HandState) -> void:
-	if state.hover == _grabbed:
+	# The copies are not where the grabbed node is: a second hand holds them at the first one's point.
+	if state.hover == _grabbed and (_holders.is_empty() or not _copying):
 		# Measured on the node as shown, which snapping may have moved off the
 		# free transform: the same point of the node either way.
 		state.grab_point = _grabbed.global_transform.affine_inverse() * state.hover_point
@@ -536,6 +588,9 @@ func _drag() -> void:
 	if snapping:
 		local = _snap.snap_transform(local)
 	var grabbed_global := _parent_global * local
+	if _copying:
+		_copy_move = grabbed_global * _grab_start_global.affine_inverse()
+		return
 	for i: int in _movers.size():
 		if not is_instance_valid(_movers[i]) or not _movers[i].is_inside_tree():
 			continue
@@ -545,8 +600,15 @@ func _drag() -> void:
 			_document.preview_transform(_movers[i], _mover_to_parents[i] * grabbed_global * _mover_offsets[i])
 
 
-## Records the grab as one undo step of the nodes that moved, if any did.
+## Records the grab as one undo step of the nodes that moved, if any did, or
+## of the copies it carried.
 func _end_grab() -> void:
+	if _copying:
+		_place_copies()
+		_grabbed = null
+		_snap = null
+		_clear_movers()
+		return
 	var moved: Array[Node3D] = []
 	var befores: Array[Transform3D] = []
 	for i: int in _movers.size():
@@ -568,11 +630,49 @@ func _cancel_grab() -> void:
 		state.hand.unclaim(self)
 	_holders.clear()
 	for i: int in _movers.size():
-		if is_instance_valid(_movers[i]) and _movers[i].is_inside_tree():
+		if not _copying and is_instance_valid(_movers[i]) and _movers[i].is_inside_tree():
 			_document.preview_transform(_movers[i], _mover_befores[i])
 	_grabbed = null
 	_snap = null
 	_clear_movers()
+
+
+## Copies the nodes the grab carried copies of where they are now, or beside
+## the originals if they are still about where they were taken, and selects the copies.
+func _place_copies() -> void:
+	var originals: Array[Node] = []
+	for node: Node3D in _movers:
+		if is_instance_valid(node) and node.is_inside_tree():
+			originals.append(node)
+	if originals.is_empty():
+		return
+	var move := _copy_move
+	if move.origin.length() < COPY_CLICK and move.basis.is_equal_approx(Basis.IDENTITY):
+		move = copy_offset(originals, _rig.camera.global_basis, _rig.global_basis.y)
+	var copies := _document.duplicate_nodes(originals, move, XREDocument.Source.TOOL)
+	if not copies.is_empty():
+		_document.select(copies, XREDocument.Source.TOOL)
+
+
+## Where copies of [param nodes] go when they are put beside them (D-116): to
+## the right of the head, whose basis is [param head], level with the floor
+## under [param up], by the width of the nodes' bounds that way and
+## [constant COPY_GAP] more, as a global move.
+static func copy_offset(nodes: Array[Node], head: Basis, up: Vector3) -> Transform3D:
+	var level := up.normalized()
+	var right := head.x - level * head.x.dot(level)
+	right = right.normalized() if right.length() > 0.001 else head.x.normalized()
+	var bounds := AABB()
+	var found := false
+	for node: Node in nodes:
+		var node_3d := node as Node3D
+		if node_3d == null or not node_3d.is_inside_tree():
+			continue
+		var node_bounds := node_3d.global_transform * XREPicker.get_local_bounds(node_3d)
+		bounds = bounds.merge(node_bounds) if found else node_bounds
+		found = true
+	var width := absf(right.x) * bounds.size.x + absf(right.y) * bounds.size.y + absf(right.z) * bounds.size.z
+	return Transform3D(Basis.IDENTITY, right * (width + COPY_GAP))
 
 
 func _delete_selection() -> void:
@@ -590,6 +690,12 @@ func _update_outlines() -> void:
 			_outline(outline, _selected[i], _selected_bounds[i], _selected_icons[i], head)
 		else:
 			outline.clear()
+	if _copying:
+		for i: int in _movers.size():
+			if is_instance_valid(_movers[i]) and _movers[i].is_inside_tree():
+				_copy_outlines[i].show_node(_movers[i], _mover_bounds[i], _copy_move)
+			else:
+				_copy_outlines[i].clear()
 	for state: HandState in _hands:
 		state.outline.clear()
 

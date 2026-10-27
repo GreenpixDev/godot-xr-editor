@@ -180,6 +180,35 @@ func remove_nodes(nodes: Array[Node], source: Source) -> void:
 	_record(&"remove_nodes", source, removed)
 
 
+func duplicate_nodes(nodes: Array[Node], move: Transform3D, source: Source) -> Array[Node]:
+	var root := get_scene_root()
+	var originals := nodes_to_remove(nodes, root)
+	var copies: Array[Node] = []
+	if originals.is_empty():
+		return copies
+	var undo_redo := _plugin.get_undo_redo()
+	undo_redo.create_action("XR: Duplicate %s" % originals[0].name if originals.size() == 1
+			else "XR: Duplicate %d Nodes" % originals.size())
+	# Backwards in tree order: a copy put after a later sibling leaves the
+	# index of an earlier one as it was when the action was made.
+	for i: int in range(originals.size() - 1, -1, -1):
+		var original := originals[i]
+		var parent := original.get_parent()
+		var owned: Array[Node] = []
+		var copy := copy_node(original, root, move, owned)
+		undo_redo.add_do_method(parent, &"add_child", copy, true)
+		undo_redo.add_do_method(parent, &"move_child", copy, original.get_index() + 1)
+		# Owners must be re-applied on every redo: remove_child() on undo clears them.
+		for node: Node in owned:
+			undo_redo.add_do_method(node, &"set_owner", root)
+		undo_redo.add_do_reference(copy)
+		undo_redo.add_undo_method(parent, &"remove_child", copy)
+		copies.push_front(copy)
+	_commit(undo_redo, root)
+	_record(&"duplicate", source, copies)
+	return copies
+
+
 func save(source: Source) -> Error:
 	var error := EditorInterface.save_scene()
 	if error == OK:

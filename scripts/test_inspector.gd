@@ -30,6 +30,9 @@ var _sun: DirectionalLight3D
 var _energy_before := 0.0
 ## A node the headset adds and deletes, undone and redone (D-087).
 var _added: Node3D
+## A node with a child the headset copies, and its copy (D-116).
+var _original: Node3D
+var _copy: Node3D
 ## The proxy the inspector edited before another node was selected, and
 ## whether it was still there when the inspector moved off it (D-092).
 var _old_proxy: WeakRef
@@ -41,7 +44,7 @@ func _init(document: XREDocument) -> void:
 	_document = document
 	_steps = [_wait_for_scene, _open_window, _inspector_shown, _select_other_node, _other_node_shown, _sun_shown_again,
 			_drag_value, _open_other_scene, _other_scene_opened, _undo_value, _add_node, _undo_add, _remove_node,
-			_undo_remove, _edit_on_desktop, _open_for_undo, _undo_open, _redo_open, _undo_open_again, _test_files, _finish]
+			_undo_remove, _duplicate_node, _copy_added_node, _undo_duplicate, _edit_on_desktop, _open_for_undo, _undo_open, _redo_open, _undo_open_again, _test_files, _finish]
 
 
 func _enter_tree() -> void:
@@ -272,6 +275,50 @@ func _undo_remove() -> void:
 	_check(_document.undo(XREDocument.Source.TOOL) and _added.get_parent() == _document.get_scene_root(), "undo brings the deleted node back")
 	_check(_document.undo(XREDocument.Source.TOOL) and _added.get_parent() == null, "and the undo before takes the added one out")
 	_check(_document.history.get_undo_name().is_empty(), "nothing is left to undo: %s" % _document.history.get_undo_name())
+	_next()
+
+
+## D-116: a copy is one step, after its original, moved, and owned by the
+## scene with its child, so that it is saved; undo takes it out, redo puts it back owned.
+func _duplicate_node() -> void:
+	var root := _document.get_scene_root()
+	_original = Node3D.new()
+	_original.name = "XREDuplicateCheck"
+	_original.position = Vector3(0.0, 2.0, 0.0)
+	var child := Node3D.new()
+	child.name = "Inner"
+	_original.add_child(child)
+	_document.add_node(_original, root, XREDocument.Source.TOOL)
+	# Changes of one frame are one step of the headset's history: copy in the next.
+	_next()
+
+
+func _copy_added_node() -> void:
+	var root := _document.get_scene_root()
+	_operations.clear()
+	var nodes: Array[Node] = [_original]
+	var copies := _document.duplicate_nodes(nodes, Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 0.0)), XREDocument.Source.TOOL)
+	_copy = copies[0] as Node3D if copies.size() == 1 else null
+	_check(_copy != null and _copy.get_parent() == root and _copy.get_index() == _original.get_index() + 1,
+			"a copy goes right after its original: %s" % [copies])
+	if _copy == null:
+		_step = _steps.size() - 1
+		return
+	_check(_copy.position.is_equal_approx(Vector3(1.0, 2.0, 0.0)), "moved as asked: %s" % _copy.position)
+	_check(_copy.owner == root and _copy.get_node(^"Inner").owner == root, "the copy and its child are owned by the scene")
+	_check(_operations == ["duplicate TOOL [\"%s\"]" % _copy.name], "copying is one operation: %s" % [_operations])
+	_check(_document.history.get_undo_name() == "Duplicate XREDuplicateCheck", "and one step: %s" % _document.history.get_undo_name())
+	_next()
+
+
+func _undo_duplicate() -> void:
+	var root := _document.get_scene_root()
+	_check(_document.undo(XREDocument.Source.TOOL) and _copy.get_parent() == null and _original.get_parent() == root,
+			"undo takes the copy out and leaves the original")
+	_check(_document.redo(XREDocument.Source.TOOL) and _copy.get_parent() == root and _copy.owner == root
+			and _copy.get_node(^"Inner").owner == root, "redo puts it back, owned with its child")
+	_check(_document.undo(XREDocument.Source.TOOL) and _document.undo(XREDocument.Source.TOOL) and _original.get_parent() == null,
+			"and undo once more, then the add before it")
 	_next()
 
 

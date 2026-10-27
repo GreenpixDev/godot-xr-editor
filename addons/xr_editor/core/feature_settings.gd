@@ -232,6 +232,14 @@ const BLOCK_COPY := &"block_copy"
 const SELECT_ADD := &"select_add"
 const REPLACE := &"replace"
 const GRIP := &"grip"
+## How scene objects are copied in the headset (D-116). Shortcut: Duplicate in
+## the object's shortcut puts copies of the selection beside it. Other grip:
+## while the other hand's grip is held in empty space, a grip on an object
+## takes copies of the selection, drawn as edges, and letting go puts them
+## there; the originals stay. Both: either way. Off: no copy in the headset, as before.
+const OBJECT_COPY := &"object_copy"
+const SHORTCUT := &"shortcut"
+const BOTH := &"both"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076, D-114),
@@ -453,6 +461,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [REPLACE, GRIP],
 		"labels": ["Replace", "Other grip"],
 		"hint": "Replace: the trigger selects only the object under the ray. Other grip: hold the other hand's grip in empty space, and the trigger adds the object or takes it out. A grip on a selected object grabs all the selected ones.",
+	},
+	OBJECT_COPY: {
+		"category": Category.FEATURES,
+		"title": "Copy objects",
+		"values": [SHORTCUT, GRIP, BOTH, OFF],
+		"labels": ["Shortcut", "Other grip", "Both", "Off"],
+		"hint": "Shortcut: Duplicate in the object's shortcut puts copies of the selected objects beside them. Other grip: hold the other hand's grip in empty space, and a grip on an object takes copies of the selected ones to let go where they go. Both: either way. Off: no copies in the headset.",
 	},
 }
 
