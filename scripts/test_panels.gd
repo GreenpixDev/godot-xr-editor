@@ -933,19 +933,26 @@ func _test_feature_store() -> void:
 	var path := "user://test_feature_settings.cfg"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	var store := XREFeatureSettings.new(path)
-	var key := XREFeatureSettings.NODE_DISPLAY
-	_check(store.get_value(key) == XREFeatureSettings.BILLBOARD, "the first value of a setting is its default")
-	_check(not store.set_value(key, &"sphere") and not store.set_value(&"no_such_setting", XREFeatureSettings.CUBOID),
+	var key := XREFeatureSettings.NODE_FACING
+	_check(store.get_value(key) == XREFeatureSettings.ON, "the first value of a setting is its default")
+	_check(not store.set_value(key, &"sphere") and not store.set_value(&"no_such_setting", XREFeatureSettings.OFF),
 			"unknown values and settings are refused")
-	_check(not store.set_value(key, XREFeatureSettings.BILLBOARD), "setting the current value changes nothing")
+	_check(not store.set_value(key, XREFeatureSettings.ON), "setting the current value changes nothing")
 	var keys: Array[StringName] = []
 	store.changed.connect(func(changed: StringName) -> void: keys.append(changed))
-	_check(store.set_value(key, XREFeatureSettings.CUBOID) and keys == [key], "a new value is set and announced")
-	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.CUBOID, "the value persists in the file")
+	_check(store.set_value(key, XREFeatureSettings.OFF) and keys == [key], "a new value is set and announced")
+	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.OFF, "the value persists in the file")
 	var config := ConfigFile.new()
 	config.set_value("features", String(key), "sphere")
 	config.save(path)
-	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.BILLBOARD, "a saved value no longer known falls back to the default")
+	_check(XREFeatureSettings.new(path).get_value(key) == XREFeatureSettings.ON, "a saved value no longer known falls back to the default")
+	# Node display's Cuboid, saved before Node facing and Node volume took its place (D-115), is both of theirs.
+	config = ConfigFile.new()
+	config.set_value("features", "node_display", "cuboid")
+	config.save(path)
+	var migrated := XREFeatureSettings.new(path)
+	_check(migrated.get_value(XREFeatureSettings.NODE_FACING) == XREFeatureSettings.OFF and migrated.get_value(XREFeatureSettings.NODE_VOLUME) == XREFeatureSettings.SOLID,
+			"a saved Cuboid becomes Node facing Off and Node volume 3D")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	_check(XREFeatureSettings.get_keys(XREFeatureSettings.Category.CONTROLS).is_empty(), "the controls page has no variant settings")
 	_test_controls_store(path)
@@ -1029,30 +1036,30 @@ func _open_settings() -> void:
 
 
 func _hover_cuboid() -> void:
-	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
+	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF)), 0.0)
 
 
 func _press_cuboid() -> void:
-	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
+	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON)
 	_check(billboard != null and billboard.button_pressed, "the features page shows the node display at its current value")
 	_check(not _rig.left_hand.is_free_for(_manipulator), "the left hand points at the window on the right forearm")
 	_operation_count = _operations.size()
-	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 1.0)
+	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF)), 1.0)
 
 
 func _release_cuboid() -> void:
-	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)), 0.0)
+	_aim_left(_settings_window(), _center(_settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF)), 0.0)
 
 
 func _cuboid_set() -> void:
-	_check(_document.features.get_value(XREFeatureSettings.NODE_DISPLAY) == XREFeatureSettings.CUBOID,
+	_check(_document.features.get_value(XREFeatureSettings.NODE_FACING) == XREFeatureSettings.OFF,
 			"a click on Cuboid switches the node display")
 	_check(_operations.slice(_operation_count) == ["set_feature PANEL []"],
 			"the switch is one operation from a panel: %s" % [_operations.slice(_operation_count)])
-	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
-	_check(not billboard.button_pressed and _settings_tab().get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID).button_pressed,
+	var billboard := _settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON)
+	_check(not billboard.button_pressed and _settings_tab().get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF).button_pressed,
 			"only the current value's button is down")
-	_document.set_feature(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD, XREDocument.Source.TOOL)
+	_document.set_feature(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON, XREDocument.Source.TOOL)
 	# D-043: concave windows; one on a forearm stays flat, and the launcher stays concave when they are flat again.
 	_check(_settings_tab().get_button(XREFeatureSettings.WINDOW_SHAPE, XREFeatureSettings.CONCAVE) != null
 			and _settings_tab().get_button(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.SPHERE) != null,
@@ -1073,7 +1080,7 @@ func _cuboid_set() -> void:
 
 func _controls_page() -> void:
 	var tab := _settings_tab()
-	_check(tab.get_button(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD) == null,
+	_check(tab.get_button(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON) == null,
 			"the controls page doesn't show feature settings")
 	var features := _document.features
 	_check(tab.get_layout_button(XREFeatureSettings.HORIZON_LINK) != null and tab.get_layout_button(XREFeatureSettings.CUSTOM) != null,

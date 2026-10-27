@@ -25,8 +25,8 @@ func _hit(point: Vector3, direction: Vector3, distance: float = 0.5) -> float:
 
 ## The cuboid node display (D-039): a solid box in the graph's orientation, picked by its volume.
 func _test_cuboid(graph: XREBlueprintGraph) -> void:
-	_check(not _canvas.set_display(&"sphere"), "an unknown node display is refused")
-	_check(_canvas.set_display(XREFeatureSettings.CUBOID), "the canvas switches to cuboids")
+	_check(not _canvas.set_node_modes(&"sphere", true, false, XREFeatureSettings.FACE, false), "an unknown node display is refused")
+	_check(_canvas.set_node_modes(XREFeatureSettings.OFF, true, false, XREFeatureSettings.FACE, false), "the canvas switches to cuboids")
 	_canvas.rebuild(graph)
 	var card := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
 	var half := card.bounds.size * 0.5
@@ -45,16 +45,246 @@ func _test_cuboid(graph: XREBlueprintGraph) -> void:
 	var contact := Vector3(0.3, 0.1, -1)
 	var local_contact := Vector3(0.1, 0.03, half.z)
 	_canvas.preview_grab(1, contact, local_contact, Vector3(0.1, 0.8, 0))
-	_check(card.node.to_global(local_contact).is_equal_approx(contact) and card.node.basis.is_equal_approx(Basis.IDENTITY),
-			"a grabbed cuboid follows the rod without turning")
+	# The head is 11° to the left of straight ahead from the rod's end: the cuboid turns a step of 15° to it (D-115).
+	_check(card.node.to_global(local_contact).is_equal_approx(contact) and card.node.basis.is_equal_approx(Basis(Vector3.UP, deg_to_rad(-15.0))),
+			"a grabbed cuboid follows the rod, turned to the head about the vertical")
 	_canvas.preview_transform(1, Transform3D(Basis.from_euler(Vector3(0.3, 0.7, -0.2)), Vector3(0.1, -0.1, 0.2)))
 	_check(card.node.basis.is_equal_approx(Basis.IDENTITY), "a moved cuboid keeps the graph's orientation")
-	_check(_canvas.set_display(XREFeatureSettings.BILLBOARD), "the canvas switches back to billboards")
+	_check(_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false), "the canvas switches back to billboards")
 	_canvas.rebuild(graph)
 	card = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
 	_check(card.mesh.mesh is QuadMesh and card.face == 0.0, "billboards are flat again")
 	_canvas.face_user(Vector3(0, 0, -2))
 	_check(card.node.global_basis.z.dot(Vector3.FORWARD) > 0.99, "billboards turn to the head again")
+
+
+## Node facing, Node volume, Node back, Pins and Card mirror (D-115) on a card of
+## [param graph] at the origin with one output, its Then.
+func _test_node_variants(graph: XREBlueprintGraph) -> void:
+	var behind := Vector3(0, 0, -2)
+	var front := Vector3(0, 0, 2)
+	# Node volume 3D: thinner than a port, so a port on its edge stands out of its faces.
+	_canvas.set_node_modes(XREFeatureSettings.ON, true, false, XREFeatureSettings.FACE, false)
+	_canvas.rebuild(graph)
+	var card := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_check(is_equal_approx(card.bounds.size.z, XREBlueprintCanvas.CUBOID_DEPTH) and XREBlueprintCanvas.CUBOID_DEPTH < XREBlueprintCanvas.PORT_RADIUS * 2.0,
+			"a solid card is thinner than its ports")
+	_canvas.face_user(Vector3(2, 0, 0))
+	_check(card.node.global_basis.z.dot(Vector3.RIGHT) > 0.99, "a solid card that faces the head turns to it")
+	# Node back Labelled: from behind, a card that doesn't face the head turns round, mirrored.
+	_canvas.set_node_modes(XREFeatureSettings.OFF, false, true, XREFeatureSettings.FACE, false)
+	_canvas.rebuild(graph)
+	card = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_canvas.face_user(front)
+	var port := _canvas.port_position(1, 0, false)
+	_check(not card.turned_round and not card.mirrored, "seen from the front, its face shows as it is")
+	_canvas.face_user(behind)
+	var moved := _canvas.port_position(1, 0, false)
+	_check(card.turned_round and card.mirrored and card.node.global_basis.determinant() < 0.0, "seen from behind, it turns round, mirrored")
+	_check(is_equal_approx(moved.x, port.x) and moved.z < 0.0, "its output stays on the same side, now on the face turned to the head")
+	var title := card.labels[0]
+	_check(title.scale.x < 0.0 and (card.node.global_basis * Vector3(title.scale.x, 0, 0)).dot(Vector3.LEFT) > 0.0, "its labels mirror back to read from behind")
+	_check(_hit(moved, Vector3.BACK) >= 0 and _canvas.get_hit_port() == 0, "the port on the face turned to the head is picked from behind")
+	_canvas.face_user(Vector3(2, 0, 0.1))
+	_check(card.turned_round, "past 90° but within the margin, it stays turned round")
+	_canvas.face_user(front)
+	_check(not card.turned_round and not card.mirrored and title.scale.x > 0.0, "back in front, it turns back")
+	# Pins Both faces: a blank back carries the ports while the head is behind.
+	_canvas.set_node_modes(XREFeatureSettings.OFF, false, false, XREFeatureSettings.BOTH_FACES, false)
+	_canvas.rebuild(graph)
+	card = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_canvas.face_user(behind)
+	_check(card.pins_back and not card.turned_round and _canvas.port_position(1, 0, false).z < 0.0, "from behind, the ports are on the back face")
+	_canvas.face_user(front)
+	_check(not card.pins_back and _canvas.port_position(1, 0, false).z > 0.0, "from the front, on the front face again")
+	# Pins On the edge: a ball or an arrowhead on the edge, in the middle of the depth, picked from the side.
+	_canvas.set_node_modes(XREFeatureSettings.OFF, true, false, XREFeatureSettings.EDGE, false)
+	_canvas.rebuild(graph)
+	card = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	port = _canvas.port_position(1, 0, false)
+	_check(is_equal_approx(port.x, card.width * 0.5) and is_zero_approx(port.z), "a port on the edge is on the card's right edge, in its depth's middle")
+	_check(_hit(port, Vector3.LEFT) >= 0 and _canvas.get_hit_port() == 0, "it is picked from the side")
+	_check(_hit(port + Vector3(0, 0, -0.012), Vector3.BACK) >= 0 and _canvas.get_hit_port() == 0, "and from behind")
+	# Card mirror: a card that faces the head lays out as a mirror's past 95° from the graph's front.
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, true)
+	_canvas.rebuild(graph)
+	card = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_canvas.face_user(front)
+	_check(not card.mirrored and _canvas.port_direction(1, false).x > 0.99, "in front, its output leaves to the right")
+	_canvas.face_user(Vector3.FORWARD.rotated(Vector3.UP, deg_to_rad(-92.0)) * 2.0)
+	_check(not card.mirrored, "at 92° it is not mirrored yet")
+	_canvas.face_user(behind)
+	_check(card.mirrored and _canvas.port_direction(1, false).x > 0.99, "behind, mirrored: its output still leaves towards the graph's right")
+	_canvas.face_user(front)
+	_check(not card.mirrored, "in front again, it is not")
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
+	_canvas.rebuild(graph)
+
+
+## Card mirror and Graph turn (D-115) on a graph whose cards' centre is far from
+## the canvas's origin: both go by that centre; a two-word heading, mirrored,
+## still reads verb then member.
+func _test_off_centre() -> void:
+	var far := XREBlueprintGraph.new()
+	var setter := XREBlueprintGraph.make_node(2, "set_property", Vector2(4000, 0))
+	(setter["params"] as Dictionary).merge({"target": "Lamp", "property": "light_energy"}, true)
+	setter["vr_heading"] = "member"
+	far.nodes = [XREBlueprintGraph.make_operator(1, "add", Vector2.ZERO), setter]
+	far.upgrade()
+	var style := _canvas.get_style()
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, true)
+	_canvas.rebuild(far)
+	var cards := _canvas.get("_cards") as Array
+	var centre := ((cards[0] as XREBlueprintCanvas.Card).base + (cards[1] as XREBlueprintCanvas.Card).base) * 0.5
+	var card := cards[1] as XREBlueprintCanvas.Card
+	var verb := card.node.get_node("Verb") as Label3D
+	var member := card.node.get_node("Member") as Label3D
+	_canvas.face_user(centre + Vector3(0, 0, 2))
+	_check(not card.mirrored and verb.global_position.x < member.global_position.x, "in front, the heading reads Set, then Light Energy")
+	# 93° from the canvas's origin, but straight behind the cards' centre.
+	_canvas.face_user(centre + Vector3(0, 0, -0.1))
+	_check(card.mirrored, "straight behind the cards' centre, a card mirrors although the canvas's origin sees the head at 93°")
+	_check(verb.global_position.x > member.global_position.x and member.scale.x < 0.0, "mirrored, the heading still reads Set, then Light Energy, from behind")
+	_canvas.face_user(centre + Vector3(0, 0, 2))
+	_check(not card.mirrored and verb.global_position.x < member.global_position.x, "in front again, the heading is as built")
+	_canvas.set_turn_modes(XREFeatureSettings.FLIP, false)
+	_canvas.face_user(centre + Vector3(0, 0, -2))
+	_check(_canvas.basis.z.dot(Vector3.FORWARD) > 0.99 and _canvas.to_global(centre).is_equal_approx(centre), "a flipping graph turns about its cards' centre")
+	_canvas.set_turn_modes(XREFeatureSettings.FIXED, false)
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
+	_canvas.set_style(style)
+	_canvas.face_user(Vector3(0, 0, 2))
+	_check(_canvas.transform.is_equal_approx(Transform3D.IDENTITY), "Fixed puts it back")
+
+
+## Graph turn (D-115) of [param graph], whole: the canvas itself turns about its centre.
+func _test_graph_turn(graph: XREBlueprintGraph) -> void:
+	_check(_canvas.set_turn_modes(XREFeatureSettings.FLIP, false) and not _canvas.set_turn_modes(&"spin", false), "Graph turn switches to Flip, an unknown mode is refused")
+	_canvas.rebuild(graph)
+	_canvas.face_user(Vector3(0, 0, 2))
+	_check(_canvas.basis.is_equal_approx(Basis.IDENTITY), "in front, a flipping graph stays")
+	_canvas.face_user(Vector3(0, 0, -2))
+	_check(_canvas.basis.z.dot(Vector3.FORWARD) > 0.99, "behind, it turns round")
+	_canvas.face_user(Vector3(2, 0, 0.1))
+	_check(_canvas.basis.z.dot(Vector3.FORWARD) > 0.99, "past 85° it stays round")
+	_canvas.face_user(Vector3(0, 0, 2))
+	_check(_canvas.basis.is_equal_approx(Basis.IDENTITY), "in front again, it turns back")
+	_canvas.set_turn_frozen(true)
+	_canvas.face_user(Vector3(0, 0, -2))
+	_check(_canvas.basis.is_equal_approx(Basis.IDENTITY), "nothing turns while something is held")
+	_canvas.set_turn_frozen(false)
+	_canvas.set_turn_modes(XREFeatureSettings.STEPS, false)
+	_canvas.face_user(Vector3(0, 0, 2).rotated(Vector3.UP, deg_to_rad(60.0)))
+	_check(_canvas.basis.z.dot(Vector3.RIGHT) > 0.99, "with Steps, past 50° it turns to the nearest front, 90°")
+	_canvas.face_user(Vector3(0, 0, 2).rotated(Vector3.UP, deg_to_rad(50.0)))
+	_check(_canvas.basis.z.dot(Vector3.RIGHT) > 0.99, "within 50° of that front it stays")
+	_canvas.set_turn_modes(XREFeatureSettings.AIM, false)
+	var side := Vector3(0, 0, 2).rotated(Vector3.UP, deg_to_rad(120.0))
+	_canvas.face_user(side)
+	_check(_canvas.basis.is_equal_approx(Basis.IDENTITY), "On aim, it doesn't turn by itself")
+	_canvas.aim_at(1)
+	_canvas.face_user(side)
+	_check(_canvas.basis.z.dot(side.normalized()) > 0.99, "a ray coming onto it turns it to the head")
+	_canvas.set_turn_modes(XREFeatureSettings.FIXED, false)
+	_canvas.face_user(Vector3(0, 0, 2))
+	_check(_canvas.basis.is_equal_approx(Basis.IDENTITY), "Fixed puts it back")
+	_canvas.rebuild(graph)
+
+
+## Graph parts, a card's yaw, Sign ports and wire arrowheads (D-115) on two
+## operators, the second right of and above the first, wired from the first.
+func _test_parts_and_wires() -> void:
+	var pair := XREBlueprintGraph.new()
+	pair.nodes = [XREBlueprintGraph.make_operator(1, "add", Vector2.ZERO), XREBlueprintGraph.make_operator(2, "add", Vector2(300, -200))]
+	pair.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 0}]
+	pair.upgrade()
+	# A card that doesn't face the head turns in steps of 15° with the hand's twist, and keeps its yaw.
+	_canvas.set_node_modes(XREFeatureSettings.OFF, false, false, XREFeatureSettings.FACE, false)
+	_canvas.rebuild(pair)
+	var first := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_canvas.preview_grab(1, Vector3(0, 0, 0.5), Vector3.ZERO, Vector3(0, 0, 2), 0.3)
+	_check(is_equal_approx(first.yaw, deg_to_rad(15.0)) and first.node.basis.z.dot(Vector3.BACK.rotated(Vector3.UP, deg_to_rad(15.0))) > 0.999, "a twist of 0.3 rad turns the card by 15°")
+	_canvas.preview_transform(1, Transform3D.IDENTITY)
+	_check(is_zero_approx(first.yaw), "a cancelled grab puts its yaw back")
+	# Held, it turns to the head in steps of 15°, without flicking between two at a step's edge.
+	_canvas.preview_grab(1, Vector3.ZERO, Vector3.ZERO, Vector3(2, 0, 0))
+	_check(is_equal_approx(first.yaw, PI * 0.5) and first.node.basis.z.dot(Vector3.RIGHT) > 0.999, "a held card turns to the head beside it")
+	_canvas.preview_transform(1, Transform3D.IDENTITY)
+	for step: Array in [[5.0, 0.0, "5° off, it stays square"], [12.0, 15.0, "12° off, it steps to 15°"], [9.0, 15.0, "back at 9°, it keeps 15°"], [3.0, 0.0, "at 3°, it steps back"]]:
+		_canvas.preview_grab(1, Vector3.ZERO, Vector3.ZERO, Vector3(0, 0, 2).rotated(Vector3.UP, deg_to_rad(step[0] as float)))
+		_check(is_equal_approx(first.yaw, deg_to_rad(step[1] as float)), step[2] as String)
+	_canvas.preview_transform(1, Transform3D.IDENTITY)
+	# A new block comes turned to the head, in steps of 15°; with every card facing the head, as before.
+	_canvas.face_user(Vector3(2, 0, 2))
+	var block := {}
+	_canvas.turn_to_head(block, Vector3.ZERO)
+	_check(block.get("vr_rotation") is Vector3 and is_equal_approx((block["vr_rotation"] as Vector3).y, PI * 0.25), "a new block turns to the head")
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
+	block = {}
+	_canvas.turn_to_head(block, Vector3.ZERO)
+	_check(not block.has("vr_rotation"), "with Node facing On it keeps no yaw of its own")
+	_canvas.set_node_modes(XREFeatureSettings.OFF, false, false, XREFeatureSettings.FACE, false)
+	_canvas.rebuild(pair)
+	first = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	# Graph parts: cards of one yaw wired together turn as a part about its centre.
+	pair.nodes[1]["vr_rotation"] = Vector3(0, PI, 0)
+	_check(is_equal_approx(absf(XREBlueprintCanvas.yaw_of(pair.nodes[1])), PI), "a block's yaw is its vr_rotation's y")
+	_canvas.set_turn_modes(XREFeatureSettings.FLIP, true)
+	_canvas.rebuild(pair)
+	_canvas.face_user(Vector3(0.1, 0, 3))
+	_check(is_zero_approx(_canvas.get_part_turn(1)) and is_equal_approx(absf(_canvas.get_part_turn(2)), PI), "the part facing away flips, the one in front stays")
+	_check(_canvas.basis.is_equal_approx(Basis.IDENTITY), "by parts, the canvas itself doesn't turn")
+	var second := (_canvas.get("_cards") as Array)[1] as XREBlueprintCanvas.Card
+	_check(second.node.position.is_equal_approx(second.base) and second.node.basis.z.dot(Vector3.BACK) > 0.99, "a flipped part of one card turns about its own centre, its face to the head")
+	_canvas.set_turn_modes(XREFeatureSettings.FIXED, false)
+	pair.nodes[1].erase("vr_rotation")
+	# Sign ports on the rim: the first sign's result turns up and right, towards its wire's far end.
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
+	_check(_canvas.set_rim_ports(true) and not _canvas.set_rim_ports(true), "Sign ports switch to the rim once")
+	_canvas.rebuild(pair)
+	_canvas.face_user(Vector3(0, 0, 3))
+	first = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var result := _canvas.port_position(1, 0, false) - first.node.position
+	_check(result.x > 0.0 and result.y > 0.01 and absf(Vector2(result.x, result.y).length() - first.width * 0.5) < 0.001, "the result sits on the rim, towards the second sign: %s" % result)
+	_canvas.set_rim_ports(false)
+	_canvas.set_style(XREFeatureSettings.CLASSIC)
+	_canvas.rebuild(pair)
+	_canvas.face_user(Vector3(0, 0, 3))
+	# Arrowheads: data chevrons on the data wire, none for execution, one at the end, open ones.
+	var filled := _canvas.get("_arrows_filled") as MultiMeshInstance3D
+	var open := _canvas.get("_arrows_open") as MultiMeshInstance3D
+	_check(not _canvas.set_arrow_modes(&"dots", XREFeatureSettings.OFF, false), "an unknown arrow mode is refused")
+	_check(_canvas.set_arrow_modes(XREFeatureSettings.CHEVRONS, XREFeatureSettings.OFF, false) and filled.multimesh.visible_instance_count == 0,
+			"execution chevrons draw nothing on a data wire")
+	_canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.CHEVRONS, false)
+	var chevrons := filled.multimesh.visible_instance_count
+	_check(chevrons >= 2 and filled.visible, "data chevrons lie along the data wire: %d" % chevrons)
+	var tip := _canvas.get_arrow_pose(0)
+	var wire_way := (_canvas.port_position(2, 0, true) - _canvas.port_position(1, 0, false)).normalized()
+	_check(tip.basis.y.normalized().dot(wire_way) > 0.0, "a chevron points from the output towards the input")
+	_canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.AT_END, false)
+	_check(filled.multimesh.visible_instance_count == 1, "at the end, one arrowhead")
+	_canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.RUNNING, true)
+	var before := _canvas.get_arrow_pose(0).origin
+	_canvas.face_user(Vector3(0, 0, 3), 0.25)
+	_check(open.visible and not filled.visible and not _canvas.get_arrow_pose(0).origin.is_equal_approx(before), "open arrowheads run along the wire")
+	# Out of focus with Defocus on Dim, arrowheads darken as their wire does; see-through with it.
+	var modes := _canvas.get_focus_modes()
+	_canvas.set_focus_modes(XREFeatureSettings.OFF, XREFeatureSettings.DIM)
+	var wire := (_canvas.get("_wires") as Array)[0] as XREBlueprintCanvas.Wire
+	wire.focus = XREBlueprintFocus.OUT
+	var dimmed: Color = _canvas.call("_arrow_color", wire)
+	_check(is_equal_approx(dimmed.r, wire.color.r * XREBlueprintFocus.DIM) and is_equal_approx(dimmed.a, wire.color.a), "out of focus, arrowheads darken as their wire")
+	_canvas.set_wire_seen(wire, &"focus", 0.4)
+	_check(is_equal_approx((_canvas.call("_arrow_color", wire) as Color).a, wire.color.a * 0.4), "and are as see-through as it")
+	_canvas.set_wire_seen(wire, &"focus", 1.0)
+	wire.focus = XREBlueprintFocus.NORMAL
+	_canvas.set_focus_modes(modes[0], modes[1])
+	_canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.OFF, false)
+	_check(not filled.visible and not open.visible, "off, none are drawn")
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
 
 
 ## Archetypes (D-099): an event's header in its group's color with its icon,
@@ -492,7 +722,7 @@ func _test_port_wires() -> void:
 	]
 	# Written in format 2: Print is a preset of the global print since D-051.
 	graph.upgrade()
-	_canvas.set_display(XREFeatureSettings.BILLBOARD)
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
 	_canvas.center_graph(graph)
 	_canvas.rebuild(graph)
 	_canvas.face_user(_canvas.to_global(Vector3(0, 0, 2)))
@@ -589,6 +819,10 @@ func _run() -> void:
 	_canvas.preview_grab(1, contact, local_contact, head)
 	_check(card.node.to_global(local_contact).is_equal_approx(contact), "minimum horizontal reach cannot detach an off-center grab from the rod")
 	_test_cuboid(graph)
+	_test_node_variants(graph)
+	_test_graph_turn(graph)
+	_test_off_centre()
+	_test_parts_and_wires()
 	_test_archetypes(graph)
 	_test_signs()
 	_test_headings()
