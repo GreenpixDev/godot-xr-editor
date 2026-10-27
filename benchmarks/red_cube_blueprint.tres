@@ -14,7 +14,8 @@ nodes = Array[Dictionary]([{
 "target": "."
 },
 "position": Vector2(-1218.1891, -111.4335),
-"vr_depth": 1.2172234
+"vr_depth": 1.2172234,
+"vr_rotation": Vector3(0, 0.7853982, 0)
 }, {
 "id": 2,
 "kind": "set_property",
@@ -70,7 +71,8 @@ nodes = Array[Dictionary]([{
 "seconds": 1.0
 },
 "position": Vector2(-884.3643, 18.612045),
-"vr_depth": 0.711759
+"vr_depth": 0.711759,
+"vr_rotation": Vector3(0, 0.5235988, 0)
 }, {
 "function": {
 "advanced_shown": false,
@@ -115,7 +117,8 @@ nodes = Array[Dictionary]([{
 "seconds": 1.0
 },
 "position": Vector2(108.57269, -318.31958),
-"vr_depth": 0.41591722
+"vr_depth": 0.41591722,
+"vr_rotation": Vector3(0, -0.2617994, 0)
 }, {
 "id": 5,
 "kind": "set_property",
@@ -126,7 +129,8 @@ nodes = Array[Dictionary]([{
 },
 "position": Vector2(-1013.1538, -455.9516),
 "property_type": 1,
-"vr_depth": 0.5957657
+"vr_depth": 0.5957657,
+"vr_rotation": Vector3(0, 0.5235988, 0)
 }])
 edges = Array[Dictionary]([{
 "from": 2,
