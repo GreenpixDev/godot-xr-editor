@@ -13,6 +13,10 @@ extends VBoxContainer
 ## of the frame, when it is shown again: a window pinned to a hand hides while
 ## the controller isn't tracked.
 
+## Emitted when [method get_window_size] gives another size: the tab's window,
+## unless it is pinned to a forearm, is laid out anew at it.
+signal window_size_changed
+
 ## Translation domain of the editor's interface: tabs say what the desktop's
 ## docks say, in the editor's language.
 const EDITOR_DOMAIN := &"godot.editor"

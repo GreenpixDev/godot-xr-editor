@@ -49,6 +49,9 @@ var session: XRESession
 var _running := false
 ## Where [method record_sessions] saves, or empty when it isn't running.
 var _sessions_csv := ""
+## Whether the session hid the editor's 2D UI in the headset (D-119) before
+## [method run], which shows and hides it itself.
+var _session_hid_ui := false
 
 
 func _ready() -> void:
@@ -148,6 +151,8 @@ func run(quit_when_done: bool = false) -> void:
 	if not is_equal_approx(xr.display_refresh_rate, 90.0):
 		_log("note: the display runs at %.1f Hz, not 90 Hz; set 90 Hz in Meta Horizon Link." % xr.display_refresh_rate)
 	_log("frame time benchmark: %d s warm-up, then %s, %d s each." % [WARMUP_SEC, ", ".join(SEGMENTS), RECORD_SEC])
+	_session_hid_ui = session.is_hiding_desktop_ui()
+	session.set_hide_desktop_ui(false)
 	await _wait(WARMUP_SEC)
 
 	# One buffer for the whole run, saved once at the end: a file write between
@@ -168,6 +173,7 @@ func run(quit_when_done: bool = false) -> void:
 			return
 
 	_set_ui_hidden(false)
+	session.set_hide_desktop_ui(_session_hid_ui)
 	_running = false
 	var frames := XREFrameTimer.stop()
 	var csv_path := RESULTS_DIR.path_join("frametime_%s.csv" % stamp)
@@ -217,6 +223,10 @@ func _save_metadata(path: String, xr: OpenXRInterface, overrides: Dictionary = {
 		"cpu_threads": OS.get_processor_count(),
 		"window_size": [DisplayServer.window_get_size().x, DisplayServer.window_get_size().y],
 		"editor_3d_viewport_visible": editor_viewport_container != null and editor_viewport_container.is_visible_in_tree(),
+		# The headset's view copied to a window on the desktop (D-118): one more window presented per frame.
+		"headset_view_on_desktop": session != null and session.is_mirroring(),
+		# The 2D UI hidden while the headset shows the editor (D-119); off during the ABBA run, which switches it itself.
+		"desktop_ui_hidden_in_headset": session != null and session.is_hiding_desktop_ui(),
 		"scene": scene_root.scene_file_path if scene_root != null else "",
 		"scene_nodes": _count_nodes(scene_root) if scene_root != null else 0,
 		# Output panel: without collapsing, the engine's per-frame OpenXR error fills it

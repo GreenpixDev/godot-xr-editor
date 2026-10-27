@@ -337,7 +337,7 @@ func _run() -> void:
 	_check(_white_at(rear, first_card.node.to_global(Vector3(-0.015, 0.04, 0.001))), "front title stays visible after the user walks behind")
 	_check(_white_at(rear, first_card.node.to_global(first_card.plus_point)), "same plus stays visible after automatic facing")
 	# The cuboid node display (D-039): seen from the side its depth shows, darker than the front.
-	canvas.set_display(XREFeatureSettings.CUBOID)
+	canvas.set_node_modes(XREFeatureSettings.OFF, true, false, XREFeatureSettings.FACE, false)
 	canvas.rebuild(graph)
 	_camera.position = Vector3(0.6, 0.1, 0.5)
 	_camera.rotation = Vector3.ZERO
@@ -352,7 +352,7 @@ func _run() -> void:
 	_check(side_color.get_luminance() > 0.01 and side_color.get_luminance() < front_color.get_luminance() * 0.8,
 			"the cuboid's side is drawn, darker than its front: %s, %s" % [side_color, front_color])
 	_check(_white_at(solid, box.node.to_global(Vector3(-0.015, 0.04, box.face + 0.001))), "the cuboid's title on its front face is visible from the side")
-	canvas.set_display(XREFeatureSettings.BILLBOARD)
+	canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
 	canvas.rebuild(graph)
 	_camera.position = Vector3(0, 0, 2)
 	_camera.rotation = Vector3.ZERO

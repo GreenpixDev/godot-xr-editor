@@ -18,7 +18,9 @@ extends Node
 ## mouse button only once it was up since the switch, unless the hand was
 ## already holding with it. The buttons of both controllers are keys
 ## ([constant BUTTON_KEYS]); the left stick is WASD, the right one the arrows,
-## and the mouse wheel tilts the active hand's stick forward and back.
+## and the mouse wheel tilts the active hand's stick forward and back. WASD
+## flies where the view looks, at the cross, whichever hand is active
+## ([member XRERig.fly_along_gaze]).
 ## [br][br]
 ## Keys count by their place on the keyboard, not by their letter, so the
 ## layout of the keyboard (Russian, say) doesn't matter. The mouse is captured
@@ -134,6 +136,7 @@ func _init(world: World3D, windowed: bool = true) -> void:
 	name = "XRESimulator"
 	rig = XRERig.new()
 	rig.camera.fov = FOV
+	rig.fly_along_gaze = true
 	_hud = _Hud.new(self)
 	if windowed:
 		window = Window.new()

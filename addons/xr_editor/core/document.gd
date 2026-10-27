@@ -107,6 +107,37 @@ func set_feature(key: StringName, value: StringName, source: Source) -> bool:
 	return true
 
 
+## Puts feature settings [param keys] back to their defaults and records one
+## [code]&"reset_features"[/code] operation, undone in one step (D-116).
+## Returns how many changed; none, nothing is recorded.
+func reset_features(keys: Array[StringName], source: Source) -> int:
+	var count := 0
+	for key: StringName in keys:
+		var before := features.get_value(key)
+		var default := XREFeatureSettings.get_default(key)
+		if not _switch_feature(key, default):
+			continue
+		history.record(XREHistory.Kind.SETTINGS, "Reset %s" % XREFeatureSettings.DEFINITIONS[key]["title"],
+				_switch_feature.bind(key, before), _switch_feature.bind(key, default))
+		count += 1
+	if count > 0:
+		_record(&"reset_features", source, [])
+	return count
+
+
+## Gives the controls layout back to the runtime (D-050), the custom bindings
+## kept, and records one [code]&"set_layout"[/code] operation. False if no
+## layout was picked.
+func reset_controls_layout(source: Source) -> bool:
+	var before := features.get_controls()
+	var after := {"layout": &"", "custom": before["custom"]}
+	if not features.is_layout_picked() or not _switch_controls(after):
+		return false
+	_record(&"set_layout", source, [])
+	history.record(XREHistory.Kind.SETTINGS, "Controls layout", _switch_controls.bind(before), _switch_controls.bind(after))
+	return true
+
+
 ## Picks controls layout [param layout] ([constant XREFeatureSettings.LAYOUTS])
 ## and records one [code]&"set_layout"[/code] operation. False if it is unknown
 ## or already in use.

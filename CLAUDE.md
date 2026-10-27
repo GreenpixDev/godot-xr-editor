@@ -43,7 +43,7 @@ VR-редактор сцен для Godot 4.7 в виде EditorPlugin, дипл
 ## Команды
 
 ```bash
-py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--no-restart] [сцена]  # редактор; sim — VR-вид в окне без шлема
+py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--mirror] [--hide-ui] [--no-restart] [сцена]  # редактор; sim — VR-вид в окне без шлема; --mirror — вид шлема в окне на столе; --hide-ui — 2D-интерфейс скрыт, пока пользователь в VR (шлем или sim)
 scripts/check.sh                       # проверка без шлема, в конце `check: OK`
 scripts/build_gdextension.sh [android] # нативная часть
 py scripts/quest.py [--scene res://...] [--no-deploy]  # автономный шлем по USB

@@ -21,6 +21,10 @@ var left_hand: XREHand
 var right_hand: XREHand
 var left_controller: XREControllerModel
 var right_controller: XREControllerModel
+## Flying ([XRELocomotion]) goes where the head looks instead of where the
+## left controller points. Without a headset ([XRESimulator]) the mouse is the
+## look, and the left hand, unless it is the active one, rests pointing down.
+var fly_along_gaze := false
 ## A panel waits for a button to bind ([method set_capturing]): actions see none.
 var _capturing := false
 ## The capture ended; actions see no button until every one is up.

@@ -6,8 +6,10 @@ extends RefCounted
 ## one setting here, not a separate branch or a constant in code: the
 ## researcher switches it in the headset ([XRESettingsTab]) between sessions.
 ##
-## Every setting belongs to a [enum Category], which is a page of the settings
-## tab. Its first value is the default. Values are switched through
+## Every setting belongs to a [enum Category], which is a section of the
+## settings tab, and in the Editor section to a subsection of [constant GROUPS]
+## (D-116). A setting that only acts with certain values of others names them
+## in [code]requires[/code] ([method is_active]). Its first value is the default. Values are switched through
 ## [method XREDocument.set_feature], so that the switch is an operation in the
 ## study's log; tools read them with [method get_value] and redraw on
 ## [signal changed]. With a [member path] the values persist across editor
@@ -20,20 +22,93 @@ extends RefCounted
 ## controls layout or rebinding an action emits it with [constant CONTROLS].
 signal changed(key: StringName)
 
-## Pages of the settings tab.
+## Sections of the settings tab, in its order (D-116).
 enum Category {
-	## How features look and behave.
-	FEATURES,
+	## What isn't one tool's: the settings tab itself.
+	GLOBAL,
+	## How the editor's features look and behave, in the subsections of [constant GROUPS].
+	EDITOR,
 	## Which controller buttons do what: the layout and its bindings (D-050).
 	CONTROLS,
 }
 
-## How logic graph cards are drawn ([XREBlueprintCanvas]).
-const NODE_DISPLAY := &"node_display"
-## Flat cards that turn towards the head around the vertical (D-033).
-const BILLBOARD := &"billboard"
-## Solid boxes in the graph's orientation, seen from the side when walked around.
-const CUBOID := &"cuboid"
+## Subsections of the Editor section, in order, by the names settings give in
+## [code]group[/code]: what they change.
+const GROUPS: Dictionary[StringName, String] = {
+	&"cards": "Cards",
+	&"view": "View",
+	&"values": "Values",
+	&"objects": "Objects",
+	&"wires": "Wires",
+	&"blocks": "Blocks",
+}
+
+## Where the settings tab shows a section's subsections (D-116).
+const SETTINGS_SUBSECTIONS := &"settings_subsections"
+## A row over the settings, dragged sideways when it doesn't fit, as the controls layouts are.
+const ROW := &"row"
+## Under the section's name on the left, opened and closed by it.
+const TREE := &"tree"
+
+## Which logic graph nodes turn towards the head ([XREBlueprintCanvas], D-115;
+## with [constant NODE_VOLUME] it took the place of Node display, D-039):
+## [constant ON] all of them, as Billboard did; only the shorthands — signs,
+## beads, tags, operators and the variables' boxes —; [constant OFF] none, as
+## Cuboid did: they stand in the orientation of the graph, or of their part.
+const NODE_FACING := &"node_facing"
+const SHORTHANDS := &"shorthands"
+## Whether nodes are flat ([constant FLAT]) or solid, 1.2 cm deep (D-115).
+const NODE_VOLUME := &"node_volume"
+const SOLID := &"solid"
+## What a node that doesn't turn to the head shows from behind (D-115): its
+## blank back, or its face laid out as a mirror's — inputs on the right, the
+## text readable, icons and execution arrows along the flow.
+const NODE_BACK := &"node_back"
+const BLANK := &"blank"
+const LABELLED := &"labelled"
+## Where a node's ports are (D-115): on its face, as before; on whichever of
+## its faces is turned to the head; or on its edge, balls and arrowheads that
+## stand out of a node thinner than they are, seen from every side.
+const PIN_PLACE := &"pin_place"
+const FACE := &"face"
+const BOTH_FACES := &"both_faces"
+const EDGE := &"edge"
+## Whether cards turned to the head lay themselves out as a mirror's past 90°
+## from the front of their graph or part (D-115): inputs on the right, so that
+## seen from behind their wires leave towards their neighbours.
+const CARD_MIRROR := &"card_mirror"
+## Where the ports of the shorthands' signs are (D-115): inputs on the left,
+## the result on the right, as before; or each on the rim towards the far end of its wire.
+const SIGN_PORTS := &"sign_ports"
+const SIDES := &"sides"
+const RIM := &"rim"
+## Whether the graph turns to the head about the vertical (D-115): never; by
+## 180° past 95° from its front; to the nearest of its four fronts past 50°;
+## or once to the head when a ray first comes onto it. Never while a card, a
+## box, a bend or a wire is held.
+const GRAPH_TURN := &"graph_turn"
+const FIXED := &"fixed"
+const FLIP := &"flip"
+const STEPS := &"steps"
+const AIM := &"aim"
+## What turns and mirrors as one (D-115): the whole graph about its centre, or
+## each of its parts about its own — cards of one orientation
+## ([code]vr_rotation[/code]) wired together.
+const GRAPH_PARTS := &"graph_parts"
+const PARTS := &"parts"
+## Arrowheads on logic graph wires along their flow, from output to input and
+## from an object to its Target (D-115), for execution wires and data wires
+## apart: chevrons every 9 cm, the same running, or one at the end.
+const EXEC_ARROWS := &"exec_arrows"
+const DATA_ARROWS := &"data_arrows"
+const CHEVRONS := &"chevrons"
+const RUNNING := &"running"
+const AT_END := &"at_end"
+## How wires' arrowheads are drawn (D-115): filled cones, or open ones, two
+## strokes as ">", turned about the wire to the head.
+const ARROW_STYLE := &"arrow_style"
+const FILLED := &"filled"
+const OPEN := &"open"
 
 ## How the ports of logic graph cards are drawn ([XREBlueprintCanvas], D-043).
 const PORT_DISPLAY := &"port_display"
@@ -273,263 +348,398 @@ const COPY_BLUEPRINT := &"copy_blueprint"
 const SHARED := &"shared"
 const OWN := &"own"
 
-## Every setting by key: its page, title, values (the first is the default;
-## the defaults are the author's picks after the headset checks, D-076, D-114, D-131),
-## the values' titles and a line of explanation.
+## Every setting by key: its section, its subsection in the Editor section
+## (a key of [constant GROUPS]), the values of other settings it acts with
+## (optional), title, values (the first is the default; the defaults are the
+## author's picks after the headset checks, D-076, D-114, D-131), the values' titles
+## and a line of explanation.
 const DEFINITIONS: Dictionary[StringName, Dictionary] = {
-	NODE_DISPLAY: {
-		"category": Category.FEATURES,
-		"title": "Node display",
-		"values": [BILLBOARD, CUBOID],
-		"labels": ["Billboard", "Cuboid"],
-		"hint": "Billboard: flat cards facing you. Cuboid: solid boxes fixed in the graph.",
+	NODE_FACING: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"title": "Node facing",
+		"values": [ON, SHORTHANDS, OFF],
+		"labels": ["On", "Shorthands", "Off"],
+		"hint": "On: every node turns to you. Shorthands: only signs, beads, tags, operators and boxes do; cards stand in the graph. Off: nothing turns.",
+	},
+	NODE_VOLUME: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"title": "Node volume",
+		"values": [FLAT, SOLID],
+		"labels": ["2D", "3D"],
+		"hint": "2D: flat nodes. 3D: solid nodes 1.2 cm deep, thinner than their ports.",
+	},
+	NODE_BACK: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"requires": {NODE_FACING: [SHORTHANDS, OFF]},
+		"title": "Node back",
+		"values": [BLANK, LABELLED],
+		"labels": ["Blank", "Labelled"],
+		"hint": "For nodes that don't turn to you. Blank: their back is plain. Labelled: from behind a card shows its face as a mirror's, inputs on the right, the text readable.",
+	},
+	PIN_PLACE: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"title": "Pins",
+		"values": [FACE, BOTH_FACES, EDGE],
+		"labels": ["On the face", "Both faces", "On the edge"],
+		"hint": "On the face: as before. Both faces: on whichever face is turned to you. On the edge: balls and arrowheads on the node's edge, seen from every side.",
+	},
+	CARD_MIRROR: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"requires": {NODE_FACING: [ON], GRAPH_TURN: [FIXED]},
+		"title": "Card mirror",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "With Node facing On and Graph turn Fixed. On: past 90° from the graph's front, cards lay out as a mirror's, inputs on the right, so their wires leave towards their neighbours.",
+	},
+	SIGN_PORTS: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"title": "Sign ports",
+		"values": [SIDES, RIM],
+		"labels": ["Sides", "Rim"],
+		"hint": "Sides: a sign's inputs on its left, its result on its right. Rim: each port slides along the rim towards the other end of its wire.",
+	},
+	GRAPH_TURN: {
+		"category": Category.EDITOR,
+		"group": &"view",
+		"title": "Graph turn",
+		"values": [FIXED, FLIP, STEPS, AIM],
+		"labels": ["Fixed", "Flip 180°", "Steps 90°", "On aim"],
+		"hint": "Fixed: the graph stays. Flip: it turns round past 95° from its front. Steps: to the nearest of four fronts past 50°. On aim: to you once, when your ray first comes onto it. Never while something in it is held.",
+	},
+	GRAPH_PARTS: {
+		"category": Category.EDITOR,
+		"group": &"view",
+		"title": "Graph parts",
+		"values": [WHOLE, PARTS],
+		"labels": ["Whole", "Parts"],
+		"hint": "Whole: the graph turns and mirrors as one, by its front. Parts: cards of one orientation wired together do so by their own; turn a card with the grip while nodes don't face you.",
 	},
 	PORT_DISPLAY: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"cards",
 		"title": "Port display",
 		"values": [SPHERE, FLAT],
 		"labels": ["Sphere", "Flat"],
 		"hint": "Flat: discs on the card. Sphere: round ports standing out of it.",
 	},
 	NODE_STYLE: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"cards",
 		"title": "Node style",
 		"values": [ARCHETYPES, CLASSIC],
 		"labels": ["Archetypes", "Classic"],
 		"hint": "Classic: cards as before. Archetypes: a header colored by group with an icon, pure functions framed in their result's color; the trash and X delete the card under the ray.",
 	},
 	NODE_SHRINK: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"requires": {NODE_STYLE: [ARCHETYPES]},
 		"title": "Node shrink",
 		"values": [SYSTEM, OPERATORS, MATH, ICONS],
 		"labels": ["+ System", "Operators", "+ Math", "All with icons"],
 		"hint": "With Archetypes. Operators: operators are signs. + Math: math functions as sin, abs, clamp too. + System: Delay a bead, Get Time and Random rings. All with icons: every block with its own icon and at most three ports a side; its name shows under the ray.",
 	},
 	NODE_HEADING: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"requires": {NODE_STYLE: [ARCHETYPES]},
 		"title": "Node heading",
 		"values": [MEMBER, OPERATION],
 		"labels": ["Member", "Operation"],
 		"hint": "With Archetypes. Operation: the header says what the block does, the member is on the adapter. Member: the header says the signal, property or variable, the wire to it bare. ⇄ by the trash switches one card.",
 	},
 	COMPOSITE_VALUES: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"values",
 		"title": "Composite values",
 		"values": [SPLIT, WHOLE],
 		"labels": ["Split", "Whole"],
 		"hint": "Whole: a vector or colour variable's box gives the whole value, a Break takes it apart. Split: its box has an output for each component, x y z or r g b a, wired straight into a port.",
 	},
 	PORT_SHAPES: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"cards",
 		"title": "Port shapes",
 		"values": [OFF, ON],
 		"labels": ["Off", "On"],
 		"hint": "On: a port's shape says its type as its colour does: an arrow for execution, a diamond for bool, a square for int, a circle for float, a pill for text, a triangle for vectors.",
 	},
 	WINDOW_SHAPE: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"view",
 		"title": "Window shape",
 		"values": [FLAT, CONCAVE],
 		"labels": ["Flat", "Concave"],
 		"hint": "Flat: plane windows. Concave: windows bent around you, as the launcher is.",
 	},
 	VALUE_INPUT: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"values",
 		"title": "Values",
 		"values": [PLUGS, WINDOW, PUCKS],
 		"labels": ["Plugs", "Window", "Pucks"],
 		"hint": "Window: in the block's parameters. Pucks: tokens in slots on the card. Plugs: tokens plugged into the ports.",
 	},
 	TARGET_INPUT: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"objects",
 		"title": "Targets",
 		"values": [ADAPTER, WINDOW, ON_NODE, SCENE],
 		"labels": ["Adapter", "Window", "Node", "Scene"],
 		"hint": "Window: in the parameters. Others wire the Target to the object; the member shows on the card (Node), on a petal at the object (Scene) or on a plug in the port the wire leaves (Adapter).",
 	},
 	ANIMATION_WAIT: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"values",
 		"title": "Animation wait",
 		"values": [FINISHED_PORT, FLAG],
 		"labels": ["Finished port", "Flag"],
 		"hint": "Flag: a wait setting. Finished port: wire Finished to wait for the animation, Then not to.",
 	},
 	VARIABLE_INPUT: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"values",
 		"title": "Variables",
 		"values": [BOXES, WINDOW],
 		"labels": ["Boxes", "Window"],
 		"hint": "Window: chosen in the parameters. Boxes: wire Get and Set Variable to a box on the shelf.",
 	},
 	TOKEN_TRAY: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"values",
+		"requires": {VALUE_INPUT: [PLUGS, PUCKS]},
 		"title": "Token tray",
 		"values": [OFF, ON],
 		"labels": ["Off", "On"],
 		"hint": "On: a Tokens window of ready values opens with the graph. Works with Values on Pucks or Plugs.",
 	},
 	SCENE_CREATE: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"objects",
 		"title": "Create from scene",
 		"values": [OFF, ON],
 		"labels": ["Off", "On"],
 		"hint": "On: the selected object shows its members; a wire from one let go in the graph adds its block.",
 	},
 	CARD_PLUS: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"blocks",
 		"title": "Plus on cards",
 		"values": [HIDDEN, SHOWN],
 		"labels": ["Hidden", "Shown"],
 		"hint": "Shown: the plus on a card adds the next block. Hidden: add blocks by letting a wire go in empty space.",
 	},
 	COLOR_INPUT: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"values",
 		"title": "Color input",
 		"values": [GLOBE, PICKER],
 		"labels": ["3D", "2D"],
 		"hint": "2D: a color picker with the hex code. 3D: a globe of colors to turn and click, R, G, B typed. Both have a pipette.",
 	},
 	AXIS_SCALE: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"values",
 		"title": "Axis scale",
 		"values": [STICK, AUTO],
 		"labels": ["Stick", "Auto"],
 		"hint": "For a number's line and a vector's arrows. Auto: past an end the value speeds up, held by 0 it goes toward 0. Stick: the stick up makes the scale finer, down coarser; nothing speeds up.",
 	},
 	FOCUS: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"view",
 		"title": "Focus",
 		"values": [FRONT, OFF, ON],
 		"labels": ["Front", "Off", "On"],
 		"hint": "On: the card or variable under the ray lights up with its ports, details and wires; a port or a detail under the ray grows as well. Front: it is drawn over everything with its ports, details, adapters and wires, staying where it is; the rays over it.",
 	},
 	DEFOCUS: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"view",
 		"title": "Defocus",
 		"values": [DIM, OFF, TRANSPARENT],
 		"labels": ["Dim", "Off", "Transparent"],
 		"hint": "While the ray is on a card or a variable, the rest of the graph stays as it is (Off), goes darker (Dim) or see-through (Transparent).",
 	},
 	LINK_PREVIEW: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"wires",
 		"title": "Link preview",
 		"values": [VARIABLES, OFF, OBJECTS, ALL],
 		"labels": ["Variables", "Off", "Objects", "All"],
 		"hint": "What a link in a port shows: \"link\" only (Off), the variable's name, the object's projection, or both.",
 	},
 	LINK_WIRES: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"wires",
 		"title": "Link wires",
 		"values": [ON_FOCUS, OFF, ON],
 		"labels": ["On focus", "Off", "On"],
 		"hint": "The wire a link hides: never drawn (Off), drawn while the ray is on its card, its variable or the link (On focus), always drawn (On).",
 	},
 	LINK_CREATE: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"wires",
 		"title": "Link from wire",
 		"values": [WIRE_MENU, WIRE_BUTTON, PULL, PORT_BUTTON, ALWAYS],
 		"labels": ["Wire menu", "Wire button", "Pull", "Port button", "Always"],
 		"hint": "How a wire to a variable or an object becomes a link: a link button where the ray is on the wire, the grip pulling the wire into its port, a link button over its port, by itself as soon as the wire is made (Always: no buttons, and a link never becomes a wire), or a menu the trigger held on the wire opens (Wire menu: Link or Point; on a point, Delete point; let go on one to do it). A link from the Tokens window laid on the port works with each.",
 	},
 	AUTO_LINK: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"wires",
+		"requires": {LINK_CREATE: [WIRE_MENU, WIRE_BUTTON, PULL, PORT_BUTTON]},
 		"title": "Auto link",
 		"values": [ON, OFF],
 		"labels": ["On", "Off"],
 		"hint": "On: a new wire to a variable or an object that has more than one wire or link already becomes a link by itself if it runs farther than half a meter.",
 	},
 	WIRE_BENDS: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"wires",
 		"title": "Wire bends",
 		"values": [ON, OFF],
 		"labels": ["On", "Off"],
 		"hint": "On: trigger or grip on a wire drags a bend out of it, on a knot moves the bend; Delete on a knot removes it.",
 	},
 	UNDO_SELECTION: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"objects",
 		"title": "Undo selection",
 		"values": [ON, OFF],
 		"labels": ["On", "Off"],
 		"hint": "On: undo puts back what was selected too, a step of its own each time the selection changes. Off: selecting isn't undone, as on the desktop.",
 	},
 	OBJECT_SHORTCUT: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"objects",
 		"title": "Object shortcut",
 		"values": [ON, OFF],
 		"labels": ["On", "Off"],
 		"hint": "On: hold the trigger again on the selected object for Delete, Rename and Blueprint; let go on one to do it, elsewhere to cancel. The Blueprint badge over the object gives way to it; the graph keeps its badge.",
 	},
 	BLOCK_PALETTE: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"blocks",
 		"title": "Block palette",
 		"values": [RING, LIST, TILES],
 		"labels": ["Ring", "List", "Tiles"],
 		"hint": "List: chips, search and rows. Tiles: twelve big tiles of the likely next blocks over the list. Ring: the task groups around the point the palette opens from; the ray on a group shows its blocks, the middle opens the list.",
 	},
 	PALETTE_GROUPS: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"blocks",
 		"title": "Palette groups",
 		"values": [SOURCES, TASKS],
 		"labels": ["Sources", "Tasks"],
 		"hint": "Sources: chips of the object, Library, Global, Native. Tasks: Events, Variables, Math, Flow, Move, Look, Sound, Object. The ring always has the tasks.",
 	},
 	NEXT_SUGGESTIONS: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"blocks",
 		"title": "Next suggestions",
 		"values": [OFF, ON],
 		"labels": ["Off", "On"],
 		"hint": "On: a wire let go in empty space or a card's plus first shows the five likely next blocks on petals there; More… opens the palette.",
 	},
 	BLOCK_COPY: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"blocks",
 		"title": "Copy blocks",
 		"values": [ON, OFF],
 		"labels": ["On", "Off"],
 		"hint": "On: a copy button beside a card's trash. Trigger on it and point where the copy goes, or let go at once to put it beside the card.",
 	},
+	SETTINGS_SUBSECTIONS: {
+		"category": Category.GLOBAL,
+		"title": "Subsections",
+		"values": [ROW, TREE],
+		"labels": ["On top", "On the left"],
+		"hint": "Where Settings shows a section's subsections. On top: a row over the settings; drag it sideways when it doesn't fit. On the left: under the section's name, which opens and closes them.",
+	},
+	EXEC_ARROWS: {
+		"category": Category.EDITOR,
+		"group": &"wires",
+		"title": "Execution arrows",
+		"values": [OFF, CHEVRONS, RUNNING, AT_END],
+		"labels": ["Off", "Chevrons", "Running", "At the end"],
+		"hint": "Arrowheads on execution wires along the flow. Chevrons: every 9 cm. Running: the same, moving. At the end: one before the input.",
+	},
+	DATA_ARROWS: {
+		"category": Category.EDITOR,
+		"group": &"wires",
+		"title": "Data arrows",
+		"values": [OFF, CHEVRONS, RUNNING, AT_END],
+		"labels": ["Off", "Chevrons", "Running", "At the end"],
+		"hint": "Arrowheads on data wires, from output to input and from an object to its Target. Chevrons: every 9 cm. Running: the same, moving. At the end: one before the input.",
+	},
+	ARROW_STYLE: {
+		"category": Category.EDITOR,
+		"group": &"wires",
+		"title": "Arrow style",
+		"values": [FILLED, OPEN],
+		"labels": ["Filled", "Open"],
+		"hint": "Filled: cones, seen from every side. Open: two strokes as >, turned about the wire to you.",
+	},
 	SELECT_ADD: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"objects",
 		"title": "Add to selection",
 		"values": [GRIP, REPLACE],
 		"labels": ["Other grip", "Replace"],
 		"hint": "Replace: the trigger selects only the object under the ray. Other grip: hold the other hand's grip in empty space, and the trigger adds the object or takes it out. A grip on a selected object grabs all the selected ones.",
 	},
 	OBJECT_COPY: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"objects",
 		"title": "Copy objects",
 		"values": [BOTH, SHORTCUT, GRIP, CLIPBOARD, OFF],
 		"labels": ["Both", "Shortcut", "Other grip", "Clipboard", "Off"],
 		"hint": "Shortcut: Duplicate in the object's shortcut puts copies of the selected objects beside them. Other grip: hold the other hand's grip in empty space, and a grip on an object takes copies of the selected ones to let go where they go. Both: either way. Clipboard: Copy in the shortcut, or a card's copy button, puts them on a clipboard over the left hand; its Paste, held, takes them where the ray lets go, in any scene or graph. Off: no copies in the headset.",
 	},
 	SELECTION_COUNTER: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"objects",
 		"title": "Selection counter",
 		"values": [ON, OFF],
 		"labels": ["On", "Off"],
 		"hint": "On: a pill over the left controller tells how many objects, or blocks of the open graph, are selected, with a plus while the other hand's grip held in empty space adds to the selection.",
 	},
 	COPY_BLUEPRINT: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"objects",
 		"title": "Blueprint of a copy",
 		"values": [SHARED, OWN],
 		"labels": ["Shared", "Own"],
 		"hint": "Shared: a copied object runs the same graph as the original, and editing it changes both. Own: the copy gets a graph and a script of its own, copied from the original's.",
 	},
 	COPY_OUTER_WIRES: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"blocks",
 		"title": "Copy outer wires",
 		"values": [OFF, ON],
 		"labels": ["Off", "On"],
 		"hint": "On: a copy of blocks keeps the data wires coming into them from blocks not copied. Off: those inputs get default tokens. Execution wires stay with the originals either way.",
 	},
 	SELECT_AREA: {
-		"category": Category.FEATURES,
+		"category": Category.EDITOR,
+		"group": &"objects",
 		"title": "Select area",
 		"values": [BRUSH, OFF, BOX],
 		"labels": ["Brush", "Off", "Box"],
 		"hint": "Brush: hold the trigger and sweep the ray; everything it crosses is selected, as one selection when the trigger lets go. Box: hold the trigger and draw a rectangle; what is in it and not hidden is selected when the trigger lets go; in the graph, draw it from the graph's empty space. With the other hand's grip held in empty space, either adds to the selection.",
 	},
 }
+
+## Node display (D-039), saved before Node facing and Node volume took its
+## place (D-115): Cuboid is Node facing Off with Node volume 3D.
+const _OLD_NODE_DISPLAY := "node_display"
 
 ## Key [signal changed] carries when the controls layout or a binding changed.
 const CONTROLS := &"controls"
@@ -621,6 +831,9 @@ func _init(file: String = "") -> void:
 		var saved: Variant = config.get_value(_SECTION, String(key), "")
 		if saved is String and StringName(saved) in get_values(key):
 			_values[key] = StringName(saved)
+	if config.get_value(_SECTION, _OLD_NODE_DISPLAY, "") == "cuboid":
+		if not NODE_FACING in _values: _values[NODE_FACING] = OFF
+		if not NODE_VOLUME in _values: _values[NODE_VOLUME] = SOLID
 	for action: StringName in ACTIONS:
 		var button: Variant = config.get_value(_CONTROLS_SECTION, String(action), "")
 		if button is String and StringName(button) in BUTTONS:
@@ -632,13 +845,50 @@ func _init(file: String = "") -> void:
 		_layout = StringName(layout)
 
 
-## Keys of the settings on page [param category], in definition order.
-static func get_keys(category: Category) -> Array[StringName]:
+## Keys of the settings in section [param category], in definition order; only
+## those of subsection [param group] if one is given.
+static func get_keys(category: Category, group: StringName = &"") -> Array[StringName]:
 	var keys: Array[StringName] = []
 	for key: StringName in DEFINITIONS:
-		if DEFINITIONS[key]["category"] == category:
+		if DEFINITIONS[key]["category"] == category and (group == &"" or get_group(key) == group):
 			keys.append(key)
 	return keys
+
+
+## The subsection of setting [param key], a key of [constant GROUPS], or empty.
+static func get_group(key: StringName) -> StringName:
+	if not key in DEFINITIONS:
+		return &""
+	var group: StringName = DEFINITIONS[key].get("group", &"")
+	return group
+
+
+## Whether setting [param key] acts with the current values: those its
+## [code]requires[/code] names have one of the values listed, and act themselves.
+## Node shrink only shapes archetypes, for one.
+func is_active(key: StringName) -> bool:
+	if not key in DEFINITIONS:
+		return false
+	var requires: Dictionary = DEFINITIONS[key].get("requires", {})
+	for other: StringName in requires:
+		var allowed: Array = requires[other]
+		if not get_value(other) in allowed or not is_active(other):
+			return false
+	return true
+
+
+## Whether setting [param key] has a value other than its default.
+func is_changed(key: StringName) -> bool:
+	return key in _values and _values[key] != get_default(key)
+
+
+## How many of settings [param keys] aren't at their defaults.
+func count_changed(keys: Array[StringName]) -> int:
+	var count := 0
+	for key: StringName in keys:
+		if is_changed(key):
+			count += 1
+	return count
 
 
 ## The values setting [param key] may take; its default first.
@@ -686,6 +936,11 @@ static func layout_for_runtime(runtime_name: String, standalone: bool) -> String
 ## The layout in use: the user's pick, or the runtime's.
 func get_layout() -> StringName:
 	return _layout if _layout != &"" else runtime_layout
+
+
+## Whether the user picked a layout; otherwise the runtime's is in use.
+func is_layout_picked() -> bool:
+	return _layout != &""
 
 
 ## Whether buttons are keys of the keyboard: the NonVR layout is in use, or

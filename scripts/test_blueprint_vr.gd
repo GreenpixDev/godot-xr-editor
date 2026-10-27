@@ -17,7 +17,7 @@ var _viewport: SubViewport
 var _hover_pulses := 0
 var _keyboard_clicks := 0
 ## The editor's node display before the test, put back at the end.
-var _saved_display := XREFeatureSettings.BILLBOARD
+var _saved_display := XREFeatureSettings.ON
 ## The same for the port display and the window shape (D-043).
 var _saved_ports := XREFeatureSettings.FLAT
 var _saved_shape := XREFeatureSettings.FLAT
@@ -30,6 +30,8 @@ const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, X
 		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS,
 		XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.AUTO_LINK, XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY,
 		XREFeatureSettings.NODE_STYLE, XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.NODE_HEADING, XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.COMPOSITE_VALUES,
+		XREFeatureSettings.NODE_VOLUME, XREFeatureSettings.NODE_BACK, XREFeatureSettings.PIN_PLACE, XREFeatureSettings.CARD_MIRROR, XREFeatureSettings.SIGN_PORTS,
+		XREFeatureSettings.GRAPH_TURN, XREFeatureSettings.GRAPH_PARTS, XREFeatureSettings.EXEC_ARROWS, XREFeatureSettings.DATA_ARROWS, XREFeatureSettings.ARROW_STYLE,
 		XREFeatureSettings.SELECT_ADD, XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.SELECT_AREA]
 ## The values the checks start from: the defaults before D-076, D-089, D-097, D-114 and D-131 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
@@ -49,6 +51,12 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.NODE_STYLE: XREFeatureSettings.CLASSIC, XREFeatureSettings.NODE_SHRINK: XREFeatureSettings.OPERATORS,
 	XREFeatureSettings.NODE_HEADING: XREFeatureSettings.OPERATION, XREFeatureSettings.PORT_SHAPES: XREFeatureSettings.OFF,
 	XREFeatureSettings.COMPOSITE_VALUES: XREFeatureSettings.WHOLE,
+	# The graph from any angle (D-115): its first values, whatever the author picked.
+	XREFeatureSettings.NODE_VOLUME: XREFeatureSettings.FLAT, XREFeatureSettings.NODE_BACK: XREFeatureSettings.BLANK,
+	XREFeatureSettings.PIN_PLACE: XREFeatureSettings.FACE, XREFeatureSettings.CARD_MIRROR: XREFeatureSettings.OFF,
+	XREFeatureSettings.SIGN_PORTS: XREFeatureSettings.SIDES, XREFeatureSettings.GRAPH_TURN: XREFeatureSettings.FIXED,
+	XREFeatureSettings.GRAPH_PARTS: XREFeatureSettings.WHOLE, XREFeatureSettings.EXEC_ARROWS: XREFeatureSettings.OFF,
+	XREFeatureSettings.DATA_ARROWS: XREFeatureSettings.OFF, XREFeatureSettings.ARROW_STYLE: XREFeatureSettings.FILLED,
 	# Selecting and copying several (D-120 to D-125) start from one at a time, as before D-131.
 	XREFeatureSettings.SELECT_ADD: XREFeatureSettings.REPLACE, XREFeatureSettings.OBJECT_COPY: XREFeatureSettings.SHORTCUT,
 	XREFeatureSettings.SELECTION_COUNTER: XREFeatureSettings.OFF, XREFeatureSettings.SELECT_AREA: XREFeatureSettings.OFF,
@@ -125,8 +133,8 @@ func _run() -> void:
 	_saved_path = _document.features.path
 	_document.features.path = ""
 	# The editor's variant is put back at the end; the checks expect the default billboards.
-	_saved_display = _document.features.get_value(XREFeatureSettings.NODE_DISPLAY)
-	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
+	_saved_display = _document.features.get_value(XREFeatureSettings.NODE_FACING)
+	_document.features.set_value(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON)
 	_saved_ports = _document.features.get_value(XREFeatureSettings.PORT_DISPLAY)
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, XREFeatureSettings.FLAT)
 	_saved_shape = _document.features.get_value(XREFeatureSettings.WINDOW_SHAPE)
@@ -442,7 +450,7 @@ func _run() -> void:
 	_rig.queue_free()
 	_viewport.queue_free()
 	await _frames()
-	_document.features.set_value(XREFeatureSettings.NODE_DISPLAY, _saved_display)
+	_document.features.set_value(XREFeatureSettings.NODE_FACING, _saved_display)
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, _saved_ports)
 	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, _saved_shape)
 	for key: StringName in PARAMETER_SETTINGS: _document.features.set_value(key, _saved_parameters[key])
@@ -534,21 +542,117 @@ func _test_history(print_id: int) -> void:
 	history.clear()
 
 
-## Switching the node display (D-039) redraws the open graph at once, and back.
+## Switching Node volume and Node facing (D-115, after D-039's Node display)
+## redraws the open graph at once, and back.
 func _test_node_display() -> void:
-	var key := XREFeatureSettings.NODE_DISPLAY
 	var count := (_service.canvas.get("_cards") as Array).size()
-	_check(_document.set_feature(key, XREFeatureSettings.CUBOID, XREDocument.Source.PANEL), "the node display switches to cuboids")
+	_check(_document.set_feature(XREFeatureSettings.NODE_VOLUME, XREFeatureSettings.SOLID, XREDocument.Source.PANEL), "Node volume switches to 3D")
 	_check(_operations.back() == &"set_feature", "the switch enters common telemetry")
+	_check(_document.set_feature(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF, XREDocument.Source.PANEL), "Node facing switches off")
 	await _frames()
 	var cards := _service.canvas.get("_cards") as Array
-	_check(_service.canvas.get_display() == XREFeatureSettings.CUBOID and cards.size() == count, "the open graph is redrawn with the same cards")
-	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is BoxMesh, "open cards become cuboids")
-	_check((cards[0] as XREBlueprintCanvas.Card).node.basis.is_equal_approx(Basis.IDENTITY), "cuboids keep the graph's orientation in the headset")
-	_check(_document.set_feature(key, XREFeatureSettings.BILLBOARD, XREDocument.Source.PANEL), "the node display switches back")
+	_check(_service.canvas.get_node_modes().slice(0, 2) == [XREFeatureSettings.OFF, true] and cards.size() == count, "the open graph is redrawn with the same cards")
+	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is BoxMesh, "open cards become solid")
+	_check((cards[0] as XREBlueprintCanvas.Card).node.basis.is_equal_approx(Basis.IDENTITY), "cards that don't face the head keep the graph's orientation in the headset")
+	_check(_document.set_feature(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON, XREDocument.Source.PANEL)
+			and _document.set_feature(XREFeatureSettings.NODE_VOLUME, XREFeatureSettings.FLAT, XREDocument.Source.PANEL), "Node facing and Node volume switch back")
 	await _frames()
 	cards = _service.canvas.get("_cards") as Array
-	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is QuadMesh, "open cards are billboards again")
+	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is QuadMesh, "open cards are flat and turn to the head again")
+	await _test_view_variants()
+
+
+## Graph turn and wire arrows in the headset (D-115): seen from behind a
+## flipping graph turns round, but not while a wire is drawn; On aim, a ray
+## coming onto it turns it to the head; arrows switch without a rebuild.
+func _test_view_variants() -> void:
+	var canvas := _service.canvas
+	var workspace := canvas.get_parent() as Node3D
+	var saved := workspace.global_transform
+	var id := ((canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card).id
+	# Seen from behind: the graph's front turned away from the head.
+	workspace.global_basis = Basis(Vector3.UP, PI) * saved.basis
+	_service.set("_pending_id", id)
+	_check(_service.call("_holds_graph"), "a wire being drawn holds the graph still")
+	_service.set("_pending_id", -1)
+	_check(_document.set_feature(XREFeatureSettings.GRAPH_TURN, XREFeatureSettings.FLIP, XREDocument.Source.PANEL), "Graph turn switches to Flip")
+	await _frames(40)
+	_check(is_equal_approx(absf(canvas.get_part_turn(id)), PI), "seen from behind, it turns round: %f" % canvas.get_part_turn(id))
+	_check(_document.set_feature(XREFeatureSettings.GRAPH_TURN, XREFeatureSettings.AIM, XREDocument.Source.PANEL), "Graph turn switches to On aim")
+	workspace.global_basis = Basis(Vector3.UP, PI * 0.6) * saved.basis
+	# The switch rebuilt the cards.
+	var card := (canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_aim(card.node.global_position + Vector3(4, 4, 0))
+	await _frames(40)
+	_check(is_zero_approx(canvas.get_part_turn(id)), "On aim, it stays while no ray is on it")
+	_aim(card.node.global_position)
+	# The turn eases in; editor frames are short.
+	var head := Vector3.ZERO
+	for frame: int in 400:
+		await get_tree().process_frame
+		head = Basis(Vector3.UP, canvas.get_part_turn(card.id)) * canvas.to_local(_rig.camera.global_position)
+		if absf(angle_difference(canvas.get_part_turn(card.id), atan2(head.x, head.z))) < 0.005: break
+	_check(absf(angle_difference(canvas.get_part_turn(card.id), atan2(head.x, head.z))) < 0.01 and absf(canvas.get_part_turn(card.id)) > 1.0,
+			"a ray coming onto it turns it to the head: %f, the head at %f" % [canvas.get_part_turn(card.id), atan2(head.x, head.z)])
+	_aim(card.node.global_position + Vector3(4, 4, 0))
+	_check(_document.set_feature(XREFeatureSettings.GRAPH_TURN, XREFeatureSettings.FIXED, XREDocument.Source.PANEL), "Graph turn back to Fixed")
+	workspace.global_transform = saved
+	await _frames(40)
+	_check(canvas.basis.is_equal_approx(Basis.IDENTITY), "Fixed puts the graph back")
+	card = (canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_check(_document.set_feature(XREFeatureSettings.DATA_ARROWS, XREFeatureSettings.CHEVRONS, XREDocument.Source.PANEL)
+			and _document.set_feature(XREFeatureSettings.EXEC_ARROWS, XREFeatureSettings.RUNNING, XREDocument.Source.PANEL), "arrows switch on")
+	await _frames()
+	# This graph has no wires: the picking test lays arrows on them; here the modes reach the canvas.
+	_check(canvas.get("_exec_arrows") == XREFeatureSettings.RUNNING and canvas.get("_data_arrows") == XREFeatureSettings.CHEVRONS
+			and (canvas.get("_cards") as Array)[0] == card, "the canvas takes the arrows' modes, with no rebuild")
+	_check(_document.set_feature(XREFeatureSettings.DATA_ARROWS, XREFeatureSettings.OFF, XREDocument.Source.PANEL)
+			and _document.set_feature(XREFeatureSettings.EXEC_ARROWS, XREFeatureSettings.OFF, XREDocument.Source.PANEL), "arrows switch off")
+	await _frames()
+	_check(not (canvas.get("_arrows_filled") as MultiMeshInstance3D).visible, "and none are drawn")
+	# A card that doesn't face the head turns on the stick while gripped: right clockwise, seen from above.
+	_check(_document.set_feature(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF, XREDocument.Source.PANEL), "Node facing switches off")
+	await _frames()
+	card = (canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var version := _service.blueprint.history.get_version()
+	var rig_basis := _rig.global_basis
+	_aim(card.node.global_position)
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	# Taken, it turns to the head: the stick and the wrist turn it from there.
+	var to_head := canvas.to_local(_rig.camera.global_position) - card.node.position
+	var faced := card.yaw
+	_check(absf(angle_difference(faced, atan2(to_head.x, to_head.z))) <= deg_to_rad(10.0), "a taken card turns to the head: %f, the head at %f" % [faced, atan2(to_head.x, to_head.z)])
+	_right.set_input(&"primary", Vector2(1, 0))
+	# Frames come as fast as they can here: wait for a step of the stick's turn.
+	for frame: int in 600:
+		await get_tree().process_frame
+		if angle_difference(faced, card.yaw) < -0.1: break
+	_right.set_input(&"primary", Vector2.ZERO)
+	_check(angle_difference(faced, card.yaw) < -0.1 and _rig.global_basis.is_equal_approx(rig_basis), "the stick turns the held card clockwise, not the rig: %f from %f" % [card.yaw, faced])
+	_right.set_input(&"grip", 0.0)
+	await _frames()
+	var turned: Variant = _service.blueprint.graph.find_node(card.id).get("vr_rotation")
+	_check(turned is Vector3 and absf(angle_difference(faced, (turned as Vector3).y)) > 0.1 and _service.blueprint.history.get_version() == version + 1, "letting go saves the turn as one edit")
+	_service.blueprint.undo()
+	await _frames()
+	_check(not _service.blueprint.graph.find_node(card.id).has("vr_rotation"), "undo takes the turn back")
+	# The wrist rolled clockwise as the user sees it (the window's Ctrl+wheel down) turns it clockwise too.
+	card = (canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var at := card.node.global_position
+	_aim(at)
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	faced = card.yaw
+	_right.set_pose(&"aim", Transform3D(Basis(Vector3.BACK, deg_to_rad(-15.0)), at + Vector3(0, 0, 0.4)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await _frames()
+	_check(is_equal_approx(angle_difference(faced, card.yaw), deg_to_rad(-15.0)), "a roll of 15° turns the held card a step: %f from %f" % [rad_to_deg(card.yaw), rad_to_deg(faced)])
+	_right.set_input(&"grip", 0.0)
+	await _frames()
+	_service.blueprint.undo()
+	await _frames()
+	_check(_document.set_feature(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON, XREDocument.Source.PANEL), "Node facing back on")
+	await _frames()
 
 
 ## Archetypes (D-099): a header in the group's color with its icon — signals,
@@ -3898,11 +4002,11 @@ func _test_d090() -> void:
 	_check(box != null and box.global_basis.z.normalized().dot(toward) > 0.999 and absf(box.global_basis.x.normalized().dot(Vector3.UP)) < 0.001, "a variable's box turns to the head, its rows level")
 	var box_origin := (box.global_position if box != null else Vector3.ZERO) + toward * 0.4
 	_check(canvas.intersect_ray(box_origin, -toward, 1.0) >= 0.0 and canvas.get_hit_box() and boxes.get_hit_name() == "menu_gain", "the ray from the head takes the turned box")
-	features.set_value(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID)
+	features.set_value(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF)
 	await _frames(3)
 	box = boxes.get_node_or_null("Box_menu_gain") as Node3D
 	_check(box != null and box.basis.orthonormalized().is_equal_approx(Basis.IDENTITY), "with cuboid cards it keeps the graph's orientation")
-	features.set_value(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.BILLBOARD)
+	features.set_value(XREFeatureSettings.NODE_FACING, XREFeatureSettings.ON)
 	await _frames(3)
 
 	# Wire menu: the trigger on a wire from a box opens Link and Point; let go on Link, a link.

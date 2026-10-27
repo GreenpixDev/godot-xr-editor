@@ -7,6 +7,13 @@ Picks the OpenXR runtime itself, in this order:
 3. no VR (--xr-mode off), or with --fallback sim the VR view in a window.
 --runtime sim skips the headset: the VR view opens in a window of its own,
 with the keyboard and mouse for controllers (docs/decisions.md, D-057).
+--mirror also shows what the headset shows in a window on the desktop
+(D-118); without a headset, in the VR view in a window or without VR, it does
+nothing. --hide-ui hides the editor's 2D UI and minimizes its window while
+the headset shows the editor or, with sim, while the VR view's window is open;
+restoring the window from the taskbar shows it until the next trigger or grip,
+and with sim closing the VR view's window closes the editor (D-119). Without
+VR it does nothing.
 A runtime sees a headset when xrGetSystem finds a head-mounted display. The
 check creates and destroys an OpenXR instance, without a session, in a child
 process that exits before Godot starts. SteamVR is never checked unless it is
@@ -20,8 +27,9 @@ plugin's native library: a second editor on this project starts without it,
 and without it VR doesn't work (docs/decisions.md, D-005). Unsaved changes in
 the editor closed are lost; --no-restart fails instead.
 
-Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--check] [--no-restart] [scene] [-- arguments for the plugin]
+Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--mirror] [--hide-ui] [--check] [--no-restart] [scene] [-- arguments for the plugin]
   py scripts/xr_editor.py res://benchmarks/manipulation_check.tscn
+  py scripts/xr_editor.py --fallback sim --mirror    (the headset with its view on the desktop, else the window)
   py scripts/xr_editor.py --runtime meta res://benchmarks/empty.tscn -- --xre-benchmark
   py scripts/xr_editor.py --runtime sim res://benchmarks/play_check.tscn
   py scripts/xr_editor.py --fallback sim    (Rider's XR Editor: the headset if one is found, else the window)
@@ -336,6 +344,10 @@ def main() -> int:
     parser.add_argument("--runtime", choices=["auto", "steamvr", "meta", "off", "sim"], default="auto")
     parser.add_argument("--fallback", choices=["off", "sim"], default="off",
                         help="with --runtime auto and no headset: no VR (off) or the VR view in a window (sim)")
+    parser.add_argument("--mirror", action="store_true",
+                        help="with a headset, also show its view in a window on the desktop")
+    parser.add_argument("--hide-ui", action="store_true",
+                        help="hide the editor's 2D UI while in VR: the headset, or the VR view in a window")
     parser.add_argument("--check", action="store_true", help="only report the runtime that would be used")
     parser.add_argument("--no-restart", action="store_true",
                         help="fail if an editor is already open on this project instead of closing it")
@@ -361,11 +373,23 @@ def main() -> int:
 
     runtime, manifest = pick_runtime(options.runtime, options.fallback)
     mode = f"in VR on {runtime}" if manifest else "with the VR view in a window, no headset" if runtime == "sim" else "without VR"
+    if options.mirror and manifest:
+        mode += ", the headset's view on the desktop"
+    elif options.mirror:
+        print("xr_editor: no headset, so no headset view on the desktop (--mirror)")
+    if options.hide_ui and (manifest or runtime == "sim"):
+        mode += ", the 2D UI hidden while in VR"
+    elif options.hide_ui:
+        print("xr_editor: no VR, so the 2D UI stays (--hide-ui)")
     if options.check:
         print(f"xr_editor: would start the editor {mode}")
         return 0
     if runtime == "sim" and "--xre-simulator" not in plugin_args:
         plugin_args.insert(0, "--xre-simulator")
+    if options.mirror and manifest and "--xre-mirror" not in plugin_args:
+        plugin_args.insert(0, "--xre-mirror")
+    if options.hide_ui and (manifest or runtime == "sim") and "--xre-hide-ui" not in plugin_args:
+        plugin_args.insert(0, "--xre-hide-ui")
     env = dict(os.environ)
     if manifest is not None:
         env["XR_RUNTIME_JSON"] = str(manifest)

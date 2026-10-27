@@ -254,13 +254,13 @@ func _test_settings() -> void:
 			func(operation: StringName, source: XREDocument.Source, _nodes: Array[Node], _time_usec: int) -> void:
 				_operations.append("%s %s" % [operation, XREDocument.Source.keys()[source]]))
 	var features := _document.features
-	_check(_document.set_feature(XREFeatureSettings.NODE_DISPLAY, XREFeatureSettings.CUBOID, XREDocument.Source.PANEL)
-			and _document.history.get_undo_name() == "Set Node display", "a switch of a feature is a step: %s" % _document.history.get_undo_name())
+	_check(_document.set_feature(XREFeatureSettings.NODE_FACING, XREFeatureSettings.OFF, XREDocument.Source.PANEL)
+			and _document.history.get_undo_name() == "Set Node facing", "a switch of a feature is a step: %s" % _document.history.get_undo_name())
 	_operations.clear()
-	_check(_document.undo(XREDocument.Source.TOOL) and features.get_value(XREFeatureSettings.NODE_DISPLAY) == XREFeatureSettings.BILLBOARD,
+	_check(_document.undo(XREDocument.Source.TOOL) and features.get_value(XREFeatureSettings.NODE_FACING) == XREFeatureSettings.ON,
 			"undo switches it back")
 	_check(_operations == ["undo TOOL"], "as one undo operation: %s" % [_operations])
-	_check(_document.redo(XREDocument.Source.PANEL) and features.get_value(XREFeatureSettings.NODE_DISPLAY) == XREFeatureSettings.CUBOID
+	_check(_document.redo(XREDocument.Source.PANEL) and features.get_value(XREFeatureSettings.NODE_FACING) == XREFeatureSettings.OFF
 			and _operations == ["undo TOOL", "redo PANEL"], "redo switches it again: %s" % [_operations])
 
 

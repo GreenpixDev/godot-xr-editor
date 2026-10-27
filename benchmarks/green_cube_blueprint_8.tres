@@ -14,7 +14,8 @@ nodes = Array[Dictionary]([{
 "target": "."
 },
 "position": Vector2(528.1182, 86.04629),
-"vr_depth": -0.13561425
+"vr_depth": -0.13561425,
+"vr_rotation": Vector3(0, -0.2617994, 0)
 }, {
 "id": 2,
 "kind": "set_property",
@@ -26,7 +27,8 @@ nodes = Array[Dictionary]([{
 "position": Vector2(1380.5093, 173.57571),
 "property_type": 9,
 "vr_depth": 0.89637554,
-"vr_links": ["target"]
+"vr_links": ["target"],
+"vr_rotation": Vector3(0, -1.0471976, 0)
 }, {
 "function": {
 "advanced_shown": false,
@@ -78,7 +80,8 @@ nodes = Array[Dictionary]([{
 "z": 0.0
 },
 "position": Vector2(953.6212, 790.07916),
-"vr_depth": 0.6537173
+"vr_depth": 0.6537173,
+"vr_rotation": Vector3(0, -0.7853982, 0)
 }, {
 "id": 4,
 "kind": "operator",
@@ -88,7 +91,8 @@ nodes = Array[Dictionary]([{
 "op": "add"
 },
 "position": Vector2(1217.5193, 427.5817),
-"vr_depth": 0.7002497
+"vr_depth": 0.7002497,
+"vr_rotation": Vector3(0, -1.0471976, 0)
 }, {
 "id": 5,
 "kind": "get_variable",
@@ -106,7 +110,8 @@ nodes = Array[Dictionary]([{
 "variable": "start"
 },
 "position": Vector2(944.1834, 227.2877),
-"vr_depth": 0.14336511
+"vr_depth": 0.14336511,
+"vr_rotation": Vector3(0, -0.5235988, 0)
 }, {
 "id": 7,
 "kind": "get_property",
@@ -116,7 +121,8 @@ nodes = Array[Dictionary]([{
 },
 "position": Vector2(517.2993, 262.15656),
 "property_type": 9,
-"vr_depth": -0.097857386
+"vr_depth": -0.097857386,
+"vr_rotation": Vector3(0, -0.2617994, 0)
 }, {
 "id": 9,
 "kind": "set_variable",
@@ -126,7 +132,8 @@ nodes = Array[Dictionary]([{
 },
 "position": Vector2(1214.9703, 193.7405),
 "vr_depth": 0.4701963,
-"vr_links": ["variable"]
+"vr_links": ["variable"],
+"vr_rotation": Vector3(0, -0.7853982, 0)
 }, {
 "id": 10,
 "kind": "operator",
@@ -136,7 +143,8 @@ nodes = Array[Dictionary]([{
 "op": "add"
 },
 "position": Vector2(414.5478, 362.40256),
-"vr_depth": 0.064062506
+"vr_depth": 0.064062506,
+"vr_rotation": Vector3(0, -0.2617994, 0)
 }, {
 "id": 11,
 "kind": "get_variable",
@@ -180,7 +188,8 @@ nodes = Array[Dictionary]([{
 "angle_rad": 0.0
 },
 "position": Vector2(376.23718, 722.3215),
-"vr_depth": 0.3956197
+"vr_depth": 0.3956197,
+"vr_rotation": Vector3(0, -0.2617994, 0)
 }, {
 "id": 13,
 "kind": "operator",
@@ -190,7 +199,8 @@ nodes = Array[Dictionary]([{
 "op": "multiply"
 },
 "position": Vector2(689.56805, 743.9024),
-"vr_depth": 0.47995254
+"vr_depth": 0.47995254,
+"vr_rotation": Vector3(0, -0.5235988, 0)
 }, {
 "id": 14,
 "kind": "operator",
@@ -200,7 +210,8 @@ nodes = Array[Dictionary]([{
 "op": "multiply"
 },
 "position": Vector2(101.954155, 747.1338),
-"vr_depth": 0.34374538
+"vr_depth": 0.34374538,
+"vr_rotation": Vector3(0, -0.2617994, 0)
 }, {
 "id": 15,
 "kind": "get_variable",
@@ -254,7 +265,8 @@ nodes = Array[Dictionary]([{
 "seconds": 0.01
 },
 "position": Vector2(1402.3705, 153.10245),
-"vr_depth": 1.3379623
+"vr_depth": 1.3379623,
+"vr_rotation": Vector3(0, -1.3089969, 0)
 }])
 edges = Array[Dictionary]([{
 "from": 3,

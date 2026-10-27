@@ -12,6 +12,13 @@ const _SIMULATOR_FLAG := "--xre-simulator"
 ## settled to [constant _SIMULATOR_SHOT] and closes the editor.
 const _SIMULATOR_SHOT_FLAG := "--xre-simulator-shot"
 const _SIMULATOR_SHOT := "res://build/shots/simulator.png"
+const _MIRROR_MENU := "XR Editor: Headset View on Desktop"
+## User argument that opens the headset's view on the desktop at startup (D-118).
+const _MIRROR_FLAG := "--xre-mirror"
+const _HIDE_UI_MENU := "XR Editor: Hide Desktop UI in VR"
+## User argument that hides the editor's 2D UI while the headset shows the
+## editor, or the VR view without a headset has the keyboard (D-119).
+const _HIDE_UI_FLAG := "--xre-hide-ui"
 ## User argument (after [code]--[/code]) that runs [constant _TEST_INSPECTOR]
 ## in this editor: the inspector in the headset needs a running editor to be
 ## tested (scripts/check.sh). Not shipped with the plugin; without it the flag does nothing.
@@ -58,6 +65,10 @@ func _enter_tree() -> void:
 		# Tools draw in the headset, so they live under the rig; no rig, no VR view.
 		if _session.get_rig() != null:
 			_add_tools(_session.get_rig())
+			if not XREStandalone.is_standalone():
+				add_tool_menu_item(_MIRROR_MENU, _toggle_mirror)
+				if _MIRROR_FLAG in OS.get_cmdline_user_args():
+					_session.start_mirror()
 	else:
 		# No headset: the VR view can still open in a window (D-057).
 		add_tool_menu_item(_SIMULATOR_MENU, _toggle_simulator)
@@ -66,7 +77,11 @@ func _enter_tree() -> void:
 			_start_simulator()
 		if _SIMULATOR_SHOT_FLAG in user_args and _session.is_simulating():
 			_shoot_simulator.call_deferred()
-	_session.simulator_closed.connect(_stop_simulator)
+	if _can_hide_ui():
+		add_tool_menu_item(_HIDE_UI_MENU, _toggle_hide_ui)
+		if _HIDE_UI_FLAG in OS.get_cmdline_user_args():
+			_session.set_hide_desktop_ui(true)
+	_session.simulator_closed.connect(_on_simulator_closed)
 	if xr == null and XREStandalone.is_standalone():
 		# The editor's 2D panel on a standalone headset: VR is another editor process (D-018).
 		_launcher = XREStandaloneLauncher.new(self)
@@ -156,7 +171,11 @@ func _exit_tree() -> void:
 	remove_tool_menu_item(_HANDOFF_RELEASE_MENU)
 	if _session.get_xr_interface() == null:
 		remove_tool_menu_item(_SIMULATOR_MENU)
-	_session.simulator_closed.disconnect(_stop_simulator)
+	elif _session.get_rig() != null and not XREStandalone.is_standalone():
+		remove_tool_menu_item(_MIRROR_MENU)
+	if _can_hide_ui():
+		remove_tool_menu_item(_HIDE_UI_MENU)
+	_session.simulator_closed.disconnect(_on_simulator_closed)
 	# All of them have already left the tree with this node: the palette threw
 	# away what it held, the panels committed what their inspectors edited, the
 	# manipulator put back what it held, the session restored the editor's
@@ -203,6 +222,28 @@ func _toggle_simulator() -> void:
 		_start_simulator()
 
 
+## Opens the headset's view on the desktop, or closes it (D-118).
+func _toggle_mirror() -> void:
+	if _session.is_mirroring():
+		_session.stop_mirror()
+	else:
+		_session.start_mirror()
+
+
+## Whether the editor's 2D UI can hide in VR (D-119): on a PC, with a VR view
+## in the headset or, without OpenXR, in the simulator's window. On a
+## standalone headset it always hides.
+func _can_hide_ui() -> bool:
+	return not XREStandalone.is_standalone() and (_session.get_xr_interface() == null or _session.get_xr_viewport() != null)
+
+
+## Hides the editor's 2D UI in VR, or stops hiding it (D-119).
+func _toggle_hide_ui() -> void:
+	_session.set_hide_desktop_ui(not _session.is_hiding_desktop_ui())
+	print("XR Editor: desktop UI %s." % ("hides and its window minimizes while in VR (restoring the window shows it until the next trigger or grip)"
+			if _session.is_hiding_desktop_ui() else "stays visible"))
+
+
 func _start_simulator() -> void:
 	if not _session.start_simulator():
 		return
@@ -217,6 +258,24 @@ func _stop_simulator() -> void:
 	_session.stop_simulator()
 	_forget_tools()
 	document.features.runtime_layout = XREFeatureSettings.layout_for_runtime("", XREStandalone.is_standalone())
+
+
+## The user closed the VR view's window. With the 2D UI hidden in VR (D-119)
+## that window is all the editor shows, so the editor closes as by its own
+## window's close button: it asks to save unsaved changes, with the UI back.
+func _on_simulator_closed() -> void:
+	var quit := _session.is_hiding_desktop_ui()
+	_stop_simulator()
+	if not quit:
+		return
+	# Once the simulator is freed: quitting in the frame it is queued for deletion
+	# frees it while the tree is tearing its parent down.
+	await get_tree().process_frame
+	if is_inside_tree():
+		# To the editor node, the parent of the base control, which handles it:
+		# Node.propagate_notification locks each node's children while it
+		# notifies, and the editor frees nodes as it quits.
+		EditorInterface.get_base_control().get_parent().notification(NOTIFICATION_WM_CLOSE_REQUEST)
 
 
 func _shoot_simulator() -> void:

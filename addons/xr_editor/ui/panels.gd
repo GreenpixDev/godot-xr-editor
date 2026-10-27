@@ -592,6 +592,8 @@ func _window_for(type: Script) -> XREPanelWindow:
 	# Not deferred: the hand that clicked is known only while the click is handled.
 	window.pin_requested.connect(_on_pin_requested.bind(window))
 	window.unpin_requested.connect(_pin_by_user.bind(window, XREPanelWindow.Pin.WINDOW), CONNECT_DEFERRED)
+	# Deferred: the tab asks while a click on it is handled.
+	tab.window_size_changed.connect(_on_window_size_changed.bind(window), CONNECT_DEFERRED)
 	# The graph's windows stand by its cards, in the world: flying or turning by
 	# the sticks leaves them there (D-066), as the cards; the tabs' go with the user.
 	if tab is XREBlueprintFormTab: window.top_level = true
@@ -641,6 +643,13 @@ func _release(window: XREPanelWindow) -> void:
 			pointer.drives = false
 		if pointer.window == window:
 			pointer.window = null
+
+
+## Lays [param window] out anew at the size its tab asks for now; a window on
+## a forearm stays compact.
+func _on_window_size_changed(window: XREPanelWindow) -> void:
+	if is_instance_valid(window) and window in _windows and window.pin == XREPanelWindow.Pin.WINDOW:
+		_set_pin(window, XREPanelWindow.Pin.WINDOW)
 
 
 ## Lays [param window] out for [param where], an [enum XREPanelWindow.Pin]:
@@ -914,9 +923,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	if hand.grip_pressed and window != null and not surface.is_pressed() and distance >= 0.0:
 		_take(pointer, window, origin + direction * distance)
 	elif pointer.right:
-		var tilt := _tilt(hand.get_vector2(&"primary").y)
-		if tilt != 0.0:
-			surface.pointer_scroll(tilt * SCROLL_SPEED * delta)
+		scroll_by_stick(surface, hand, delta)
 
 
 ## Takes the pointer off its panel and lets go of the hand.
@@ -1001,6 +1008,18 @@ func _carry(pointer: Pointer, delta: float) -> void:
 
 
 ## How far [param value], a stick axis, is tilted past the dead zone, -1 to 1.
+## Scrolls [param surface] where its pointer is by [param hand]'s thumbstick:
+## up and down the wheel, left and right a row that scrolls sideways (D-117).
+static func scroll_by_stick(surface: XREPanelSurface, hand: XREHand, delta: float) -> void:
+	var stick := hand.get_vector2(&"primary")
+	var tilt := _tilt(stick.y)
+	if tilt != 0.0:
+		surface.pointer_scroll(tilt * SCROLL_SPEED * delta)
+	var sideways := _tilt(stick.x)
+	if sideways != 0.0:
+		surface.pointer_scroll_sideways(sideways * SCROLL_SPEED * delta)
+
+
 static func _tilt(value: float) -> float:
 	if absf(value) <= DEAD_ZONE:
 		return 0.0
