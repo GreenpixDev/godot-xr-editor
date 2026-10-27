@@ -489,6 +489,9 @@ var _selected := -1
 var _selected_blocks: Array[int] = []
 ## The selection box drawn on the graph's plane (D-120).
 var _box_lines: XREBoundsBox
+## Blocks Copy put aside (D-123), to paste into this graph or another:
+## [code]{"blocks", "edges", "variables", "cards"}[/code], or empty.
+var _block_clipboard: Dictionary = {}
 var _pending_id := -1
 var _pending_port := -1
 var _pending_input := false
@@ -1626,6 +1629,12 @@ func _end_drag(place: bool) -> void:
 func _start_copy(id: int, hand: XREHand, point: Vector3) -> void:
 	var block := blueprint.graph.find_node(id)
 	if block.is_empty(): return
+	# With the clipboard, the button copies there, to paste anywhere (D-123).
+	if _document.features.get_value(XREFeatureSettings.OBJECT_COPY) == XREFeatureSettings.CLIPBOARD:
+		var chosen: Array[int] = [id]
+		if _selected_blocks.size() > 1 and _selected_blocks.has(id): chosen = _selected_blocks.duplicate()
+		_copy_to_clipboard(chosen)
+		return
 	if _selected_blocks.size() > 1 and _selected_blocks.has(id):
 		_start_group_copy(id, hand, point, _selected_blocks)
 		return
@@ -1929,6 +1938,94 @@ func _cancel_block_brush(pointer: Pointer) -> void:
 	pointer.brushing = false
 	pointer.brushed.clear()
 	canvas.select_blocks(_selected_blocks)
+
+
+## Puts copies of the blocks of [param chosen] on the clipboard (D-123), with
+## the inline blocks that feed them (D-061), the wires between them and the
+## variables they read or write, to paste into this graph or another.
+func _copy_to_clipboard(chosen: Array[int]) -> void:
+	var graph := blueprint.graph
+	var ids: Dictionary[int, bool] = {}
+	for id: int in chosen:
+		if not graph.find_node(id).is_empty(): ids[id] = true
+	var grown := true
+	while grown:
+		grown = false
+		for edge: Dictionary in graph.edges:
+			var from := int(edge["from"])
+			if ids.has(int(edge["to"])) and not ids.has(from) and canvas.is_inline(graph.find_node(from)):
+				ids[from] = true
+				grown = true
+	var blocks: Array[Dictionary] = []
+	var names: Dictionary[String, bool] = {}
+	for block: Dictionary in graph.nodes:
+		if not ids.has(int(block["id"])): continue
+		blocks.append(block.duplicate(true))
+		var variable := str((block["params"] as Dictionary).get("variable", ""))
+		if not variable.is_empty(): names[variable] = true
+	var edges: Array[Dictionary] = []
+	for edge: Dictionary in graph.edges:
+		if ids.has(int(edge["from"])) and ids.has(int(edge["to"])): edges.append(edge.duplicate(true))
+	var variables: Array[Dictionary] = []
+	for variable: Dictionary in graph.variables:
+		if names.has(str(variable["name"])): variables.append(variable.duplicate(true))
+	if blocks.is_empty(): return
+	_block_clipboard = {"blocks": blocks, "edges": edges, "variables": variables, "cards": chosen.size()}
+	_document.record_graph_operation(&"copy_blocks", XREDocument.Source.TOOL)
+	_message("Copied %d %s to the clipboard." % [chosen.size(), "block" if chosen.size() == 1 else "blocks"])
+
+
+## How many blocks the clipboard holds, for its pill ([XREClipboard], D-123).
+func get_clipboard_count() -> int:
+	return int(_block_clipboard.get("cards", 0))
+
+
+## Empties the blocks' clipboard (D-123).
+func clear_clipboard() -> void:
+	_block_clipboard = {}
+
+
+## Where the ray from [param origin] along [param direction] meets the graph's
+## plane, global, or null if it doesn't: where a paste goes (D-123).
+func plane_point(origin: Vector3, direction: Vector3) -> Variant:
+	var point: Variant = _on_canvas_plane(origin, direction)
+	if point == null: return null
+	var local: Vector2 = point
+	return canvas.to_global(Vector3(local.x, local.y, 0.0))
+
+
+## Pastes the clipboard's blocks where the ray from [param origin] along
+## [param direction] meets the graph's plane (D-123): its first block there,
+## the others around it as they were, the variables the graph lacks added,
+## one undo step, Paste Blocks in the log. The pasted cards are selected.
+## False if the ray misses the plane or the clipboard is empty.
+func paste_clipboard(origin: Vector3, direction: Vector3) -> bool:
+	if _block_clipboard.is_empty(): return false
+	var point: Variant = _on_canvas_plane(origin, direction)
+	if point == null: return false
+	var blocks: Array[Dictionary] = []
+	blocks.assign(_block_clipboard["blocks"])
+	var edges: Array[Dictionary] = []
+	edges.assign(_block_clipboard["edges"])
+	var variables: Array[Dictionary] = []
+	variables.assign(_block_clipboard["variables"])
+	var first: Dictionary = blocks[0]
+	for block: Dictionary in blocks:
+		if not canvas.is_inline(block):
+			first = block
+			break
+	var local: Vector2 = point
+	var offset := canvas.block_position(Vector3(local.x, local.y, 0.0)) - (first["position"] as Vector2)
+	var no_outer: Array[Dictionary] = []
+	var ids: Array[int] = blueprint.perform(blueprint.paste_blocks.bind(blocks, edges, offset, -float(first.get("vr_depth", 0.0)), "Paste Blocks", no_outer, variables), &"vr_graph")
+	if ids.is_empty():
+		_message(blueprint.last_error)
+		return false
+	var selected: Array[int] = []
+	for index: int in blocks.size():
+		if not canvas.is_inline(blocks[index]): selected.append(ids[index])
+	select_blocks(selected)
+	return true
 
 
 ## The selected blocks, the last selected last (D-117).

@@ -58,6 +58,9 @@ class FakeDocument extends XREDocument:
 	func duplicate_nodes(_nodes: Array[Node], _move: Transform3D, _source: Source) -> Array[Node]:
 		return []
 
+	func _add_pasted(_pasted: Array[Node], _root: Node, _source: Source) -> void:
+		pass
+
 	func save(_source: Source) -> Error:
 		return OK
 

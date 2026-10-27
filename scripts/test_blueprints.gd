@@ -101,6 +101,7 @@ func _run() -> void:
 	_test_makers_and_time()
 	_test_vectors()
 	_test_insert_block()
+	_test_paste_blocks()
 	_test_actions()
 	_test_palette_variants()
 	_test_operators()
@@ -1086,6 +1087,39 @@ func _test_insert_block() -> void:
 	doc.undo()
 	_check(doc.graph.nodes.size() == 2 and doc.graph.edges.size() == 1, "the block and its wire are one undo step")
 	_check(doc.insert_block(XREBlueprintGraph.make_node(0, "print", Vector2.ZERO), Vector2.ZERO, {"from": 1, "from_port": 0}) == -1 and not doc.last_error.is_empty(), "an occupied execution output refuses another wire")
+
+
+## D-117, D-121, D-123: pasted blocks get new IDs, their wires among them and
+## the outer ones into them follow, and the variables they use that the graph
+## lacks come in the same undo step.
+func _test_paste_blocks() -> void:
+	var source := XREBlueprintDocument.new()
+	source.set_variable("clip_count", 3)
+	var setter := source.insert_block(XREBlueprintGraph.make_node(0, "set_variable", Vector2.ZERO), Vector2(300, 100), {"from": 1, "from_port": 0})
+	var number := XREBlueprintGraph.make_node(0, "value", Vector2.ZERO)
+	(number["params"] as Dictionary)["value"] = 1.0
+	var value := source.insert_block(number, Vector2(100, 300))
+	var blocks: Array[Dictionary] = [source.graph.find_node(setter)]
+	var edges: Array[Dictionary] = []
+	var variables: Array[Dictionary] = []
+	variables.assign(source.graph.variables)
+	var target := XREBlueprintDocument.new()
+	var version := target.history.get_version()
+	var ids := target.paste_blocks(blocks, edges, Vector2(10, 20), 0.5, "Paste Blocks", [], variables)
+	var pasted := target.graph.find_node(ids[0]) if ids.size() == 1 else {}
+	_check(not pasted.is_empty() and pasted["position"] == Vector2(310, 120) and is_equal_approx(float(pasted["vr_depth"]), 0.5),
+			"a pasted block gets a new ID, moved by the offset and the depth")
+	_check(not target.graph.find_variable("clip_count").is_empty() and target.history.get_version() == version + 1,
+			"the variable it writes comes along, in the same undo step")
+	_check(target.paste_blocks(blocks, edges, Vector2.ZERO, 0.0, "Paste Blocks", [], variables).size() == 1 and target.graph.variables.size() == 1,
+			"a variable the graph has already isn't added twice")
+	# Set Property's Value takes any value, as Value gives.
+	var property := source.insert_block(XREBlueprintGraph.make_node(0, "set_property", Vector2.ZERO), Vector2(500, 100))
+	var outer: Array[Dictionary] = [{"from": value, "from_port": 0, "to": property, "to_port": 1}]
+	var setters: Array[Dictionary] = [source.graph.find_node(property)]
+	var copies := source.paste_blocks(setters, edges, Vector2(0, 200), 0.0, "Duplicate Blocks", outer)
+	_check(copies.size() == 1 and source.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == value and edge["to"] == copies[0]),
+			"an outer wire into a pasted block comes from the same output")
 
 
 func _operator(graph: XREBlueprintGraph, op: String, params: Dictionary = {}) -> int:

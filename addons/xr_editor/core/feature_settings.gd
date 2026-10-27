@@ -236,10 +236,15 @@ const GRIP := &"grip"
 ## the object's shortcut puts copies of the selection beside it. Other grip:
 ## while the other hand's grip is held in empty space, a grip on an object
 ## takes copies of the selection, drawn as edges, and letting go puts them
-## there; the originals stay. Both: either way. Off: no copy in the headset, as before.
+## there; the originals stay. Both: either way. Clipboard: Copy in the
+## shortcut, and the card's copy button in the graph, put copies on a
+## clipboard shown on the left hand, which pastes them where the ray lets go,
+## in this scene or another, in this graph or another (D-123). Off: no copy
+## in the headset, as before.
 const OBJECT_COPY := &"object_copy"
 const SHORTCUT := &"shortcut"
 const BOTH := &"both"
+const CLIPBOARD := &"clipboard"
 ## Whether a pill over the left controller tells how many scene objects, or
 ## blocks of the open graph, are selected, with a plus while the other hand's
 ## grip held in empty space adds to the selection (D-118). Off by default: it
@@ -491,9 +496,9 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	OBJECT_COPY: {
 		"category": Category.FEATURES,
 		"title": "Copy objects",
-		"values": [SHORTCUT, GRIP, BOTH, OFF],
-		"labels": ["Shortcut", "Other grip", "Both", "Off"],
-		"hint": "Shortcut: Duplicate in the object's shortcut puts copies of the selected objects beside them. Other grip: hold the other hand's grip in empty space, and a grip on an object takes copies of the selected ones to let go where they go. Both: either way. Off: no copies in the headset.",
+		"values": [SHORTCUT, GRIP, BOTH, CLIPBOARD, OFF],
+		"labels": ["Shortcut", "Other grip", "Both", "Clipboard", "Off"],
+		"hint": "Shortcut: Duplicate in the object's shortcut puts copies of the selected objects beside them. Other grip: hold the other hand's grip in empty space, and a grip on an object takes copies of the selected ones to let go where they go. Both: either way. Clipboard: Copy in the shortcut, or a card's copy button, puts them on a clipboard over the left hand; its Paste, held, takes them where the ray lets go, in any scene or graph. Off: no copies in the headset.",
 	},
 	SELECTION_COUNTER: {
 		"category": Category.FEATURES,

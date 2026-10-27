@@ -28,6 +28,8 @@ class FakeDocument extends XREDocument:
 	var duplicate_steps := 0
 	## select() tells of the change only when the test emits it, as the editor does in a later frame.
 	var late_selection := false
+	## How many times something was pasted: one undo step each.
+	var paste_steps := 0
 
 	func get_scene_root() -> Node:
 		return root
@@ -105,6 +107,15 @@ class FakeDocument extends XREDocument:
 		_record(&"duplicate", source, copies)
 		return copies
 
+	func _add_pasted(pasted: Array[Node], scene: Node, source: Source) -> void:
+		for node: Node in pasted:
+			var owned := pasted_owned(node)
+			scene.add_child(node, true)
+			for each: Node in owned:
+				each.owner = scene
+		paste_steps += 1
+		_record(&"paste", source, pasted)
+
 	func save(_source: Source) -> Error:
 		return OK
 
@@ -149,6 +160,9 @@ var _palette: XREPalette
 var _manipulator: XREManipulator
 var _shortcut: XREObjectShortcut
 var _counter: XRESelectionCounter
+var _clipboard: XREClipboard
+## How many children the scene had before Copy (D-123): copying adds none.
+var _scene_children := 0
 var _blueprint_requests := 0
 ## The box the manipulator tests grab, in the scene's first lane.
 var _target: MeshInstance3D
@@ -275,6 +289,7 @@ func _initialize() -> void:
 		_copy_cancelled,
 		_counter_start,
 		_counter_counts,
+		_counter_one_frame,
 		_counter_adding,
 		_counter_modifier_unused,
 		_counter_hidden,
@@ -304,6 +319,20 @@ func _initialize() -> void:
 		_box_added,
 		_box_click,
 		_box_clicked,
+		_clip_start,
+		_clip_shortcut,
+		_clip_copy_lit,
+		_clip_copied,
+		_clip_paste_aim,
+		_clip_paste_lit,
+		_clip_carrying,
+		_clip_carried,
+		_clip_pasted,
+		_clip_clear_lit,
+		_clip_cleared,
+		_counter_clear_lit,
+		_counter_clear_press,
+		_counter_cleared,
 		_grab_for_flight,
 		_fly,
 		_flown,
@@ -582,18 +611,23 @@ func _start_manipulator() -> void:
 	_rig.add_child(_locomotion)
 	_icons = XREIcons.new(_document, _rig)
 	_rig.add_child(_icons)
+	# The pills on the left hand come first, as in the plugin: their buttons take the right ray (D-123).
+	_counter = XRESelectionCounter.new(_document, _rig)
+	_rig.add_child(_counter)
+	_clipboard = XREClipboard.new(_document, _rig)
+	_rig.add_child(_clipboard)
 	_palette = XREPalette.new(_document, _rig)
 	_rig.add_child(_palette)
 	_manipulator = XREManipulator.new(_document, _rig, _icons)
 	_rig.add_child(_manipulator)
+	_counter.set_sources(_manipulator, null)
+	_clipboard.set_sources(null, _icons)
 	_palette.set_manipulator(_manipulator)
 	# After the manipulator, as in the plugin (D-088).
 	_shortcut = XREObjectShortcut.new(_document, _rig)
 	_shortcut.blueprint_requested.connect(func() -> void: _blueprint_requests += 1)
 	_manipulator.shortcut_requested.connect(_shortcut.open)
 	_rig.add_child(_shortcut)
-	_counter = XRESelectionCounter.new(_document, _rig, _manipulator)
-	_rig.add_child(_counter)
 	root.add_child(_rig)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
@@ -1539,6 +1573,11 @@ func _counter_counts() -> void:
 	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
 
 
+## The counter comes before the manipulator in the tree (D-123): it sees the grip held a frame later.
+func _counter_one_frame() -> void:
+	pass
+
+
 func _counter_adding() -> void:
 	var label := _counter.get_label()
 	_check(label.text == "+ 2 objects" and label.modulate == XRESelectionCounter.ADDING_COLOR,
@@ -1715,6 +1754,111 @@ func _box_click() -> void:
 func _box_clicked() -> void:
 	_check(_selection_names() == ["High3"], "a click selects what is under the ray, as before: %s" % [_selection_names()])
 	_document.features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.OFF)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+# The clipboard (D-123): Copy in the shortcut puts two high boxes on it; the
+# right ray on the pill's Paste, held, takes them along and lets go of them in
+# empty space; × empties it. The counter's × lets go of the selection.
+
+## Aims the right ray at [param button] on the left hand, from in front of it.
+func _aim_at_button(button: Label3D, trigger: float) -> void:
+	var target := button.global_position
+	_aim_right(target + Vector3(0.0, 0.0, 0.5), target, trigger)
+
+
+func _clip_start() -> void:
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.ON)
+	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.CLIPBOARD)
+	var nodes: Array[Node] = [_scene.get_node(^"High1"), _scene.get_node(^"High2")]
+	_document.select(nodes, XREDocument.Source.PANEL)
+	_check(not _clipboard.get_label().visible, "with nothing copied there is no clipboard pill")
+	_scene_children = _scene.get_child_count()
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_set_hand(_right, Vector3(-0.6, 3.0, 1.0), 1.0, 0.0)
+
+
+func _clip_shortcut() -> void:
+	_check(_shortcut.is_open() and _shortcut.get_shown() == [XREObjectShortcut.DELETE, XREObjectShortcut.COPY],
+			"with Clipboard, the shortcut of two objects has Copy: %s" % [_shortcut.get_shown()])
+	_aim_right(Vector3(-0.6, 3.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.COPY), 1.0)
+
+
+func _clip_copy_lit() -> void:
+	_check(_shortcut.get_lit() == XREObjectShortcut.COPY, "the ray on Copy lights it")
+	_operation_count = _operations.size()
+	_aim_right(Vector3(-0.6, 3.0, 1.0), _shortcut.get_button_position(XREObjectShortcut.COPY), 0.0)
+
+
+func _clip_copied() -> void:
+	_check(_document.get_clipboard_count() == 2 and _operations.slice(_operation_count) == ["copy TOOL [\"High1\", \"High2\"]"],
+			"Copy puts both on the clipboard, an operation of its own: %s" % [_operations.slice(_operation_count)])
+	_check(_scene.get_child_count() == _scene_children, "copying changes nothing in the scene")
+	_aim_at_button(_clipboard.get_button(XREClipboard.PASTE), 0.0)
+
+
+func _clip_paste_aim() -> void:
+	var label := _clipboard.get_label()
+	_check(label.visible and label.text == "2 objects", "the pill on the left hand tells what the clipboard holds: %s" % label.text)
+	_aim_at_button(_clipboard.get_button(XREClipboard.PASTE), 0.0)
+
+
+func _clip_paste_lit() -> void:
+	_check(_clipboard.get_button(XREClipboard.PASTE).modulate == XREClipboard.LIT_COLOR and _rig.right_hand.get_claimant() == _clipboard,
+			"the right ray on Paste lights it, and the hand is the clipboard's")
+	_aim_at_button(_clipboard.get_button(XREClipboard.PASTE), 1.0)
+
+
+func _clip_carrying() -> void:
+	_check(_clipboard.is_carrying(), "the trigger held on Paste takes the clipboard along the ray")
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(10.0, 5.0, 1.0), 1.0, 0.0)
+
+
+func _clip_carried() -> void:
+	_check(_operations.size() == _operation_count, "nothing is pasted while it is carried")
+	_set_hand(_right, Vector3(10.0, 5.0, 1.0), 0.0, 0.0)
+
+
+func _clip_pasted() -> void:
+	var pasted := _document.get_selection()
+	_check(_document.paste_steps == 1 and pasted.size() == 2 and _operations.slice(_operation_count).size() == 2,
+			"letting go pastes both, one undo step, and selects them: %s" % [_operations.slice(_operation_count)])
+	if pasted.size() == 2:
+		var first := pasted[0] as Node3D
+		var second := pasted[1] as Node3D
+		_check(first.get_parent() == _scene and first.owner == _scene and first != _scene.get_node(^"High1"), "under the scene's root, in the saved scene")
+		_check_vector(first.global_position, Vector3(10.0, 5.0, 1.0 - XREClipboard.DROP_DISTANCE), "the first where the ray let go of it, in empty space")
+		_check_vector(second.global_position - first.global_position, Vector3(0.6, 0.0, 0.0), "the second where it was beside the first")
+	_check(_document.get_clipboard_count() == 2, "the clipboard stays, to paste again")
+	_aim_at_button(_clipboard.get_button(XREClipboard.CLEAR), 0.0)
+
+
+func _clip_clear_lit() -> void:
+	_aim_at_button(_clipboard.get_button(XREClipboard.CLEAR), 1.0)
+
+
+func _clip_cleared() -> void:
+	_check(_document.get_clipboard_count() == 0, "× empties the clipboard")
+	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.ON)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+func _counter_clear_lit() -> void:
+	_check(not _clipboard.get_label().visible, "and its pill hides")
+	_check(_counter.get_clear_button().visible, "the counter has its × while something is selected")
+	_aim_at_button(_counter.get_clear_button(), 0.0)
+
+
+func _counter_clear_press() -> void:
+	_aim_at_button(_counter.get_clear_button(), 1.0)
+
+
+func _counter_cleared() -> void:
+	_check(_document.get_selection().is_empty(), "the counter's × lets go of the selection")
+	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.OFF)
+	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SHORTCUT)
+	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 

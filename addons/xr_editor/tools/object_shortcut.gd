@@ -16,7 +16,9 @@ extends Node3D
 ## [constant XREFeatureSettings.SHORTCUT] or [constant XREFeatureSettings.BOTH], copies it beside itself
 ## ([method XREManipulator.copy_offset]) and selects the copy (D-116). Opened on
 ## one of several selected objects, the shortcut is for all of them: Delete
-## and Duplicate only, under how many there are (D-116). Rename
+## and Duplicate only, under how many there are (D-116). With Copy objects at
+## [constant XREFeatureSettings.CLIPBOARD], Copy takes Duplicate's place and
+## puts the objects on the clipboard ([XREClipboard], D-123). Rename
 ## opens a keyboard with the object's name: Done renames it, a trigger off the
 ## keyboard or its × leaves the name as it was. Blueprint opens the object's
 ## graph or creates one, as the badge's button does (D-085).
@@ -30,15 +32,16 @@ signal blueprint_requested
 ## The buttons: their names, glyphs ([XRETabIcons]), and colors with the ray
 ## on them — the badge's red for delete and Blueprints' blue for the graph
 ## (D-085), the keyboard's for rename, the light blue of the graph's copy
-## button for duplicate (D-093). Shown left to right on the arc as Delete,
-## Duplicate, Rename, Blueprint (D-116).
+## button for duplicate and copy (D-093). Shown left to right on the arc as
+## Delete, Duplicate or Copy, Rename, Blueprint (D-116, D-123).
 const DELETE := 0
 const RENAME := 1
 const BLUEPRINT := 2
 const DUPLICATE := 3
-const TITLES: Array[String] = ["Delete", "Rename", "Blueprint", "Duplicate"]
-const GLYPHS: Array[StringName] = [&"trash", &"rename", &"blueprint", &"duplicate"]
-const LIT_COLORS: Array[Color] = [Color(0.86, 0.2, 0.18), Color("456e91"), Color("1f8fb5"), XREManipulator.COPY_COLOR]
+const COPY := 4
+const TITLES: Array[String] = ["Delete", "Rename", "Blueprint", "Duplicate", "Copy"]
+const GLYPHS: Array[StringName] = [&"trash", &"rename", &"blueprint", &"duplicate", &"clipboard"]
+const LIT_COLORS: Array[Color] = [Color(0.86, 0.2, 0.18), Color("456e91"), Color("1f8fb5"), XREManipulator.COPY_COLOR, XREManipulator.COPY_COLOR]
 ## How far along the ray from the hand the shortcut opens, in meters: nearer
 ## than most objects, so that it is read at the same size whatever it is for.
 const DISTANCE := 0.45
@@ -111,8 +114,11 @@ func open(hand: XREHand, node: Node3D) -> bool:
 	if not _nodes.has(node):
 		_nodes = [node]
 	var items: Array[int] = [DELETE]
-	if _document.features.get_value(XREFeatureSettings.OBJECT_COPY) in [XREFeatureSettings.SHORTCUT, XREFeatureSettings.BOTH]:
+	var copy := _document.features.get_value(XREFeatureSettings.OBJECT_COPY)
+	if copy == XREFeatureSettings.SHORTCUT or copy == XREFeatureSettings.BOTH:
 		items.append(DUPLICATE)
+	elif copy == XREFeatureSettings.CLIPBOARD:
+		items.append(COPY)
 	if _nodes.size() == 1:
 		items.append_array([RENAME, BLUEPRINT])
 	var head := _rig.camera.global_position
@@ -192,6 +198,8 @@ func _update_menu() -> void:
 			_document.remove_nodes(nodes, XREDocument.Source.TOOL)
 		DUPLICATE:
 			_duplicate(nodes)
+		COPY:
+			_document.copy_nodes(nodes, XREDocument.Source.TOOL)
 		RENAME:
 			_open_keyboard(node)
 		BLUEPRINT:

@@ -24,10 +24,13 @@ signal scene_changed
 signal files_changed
 ## Assignments/scene history changed; graph widgets refresh outside the frame loop.
 signal blueprint_bindings_changed
+## Emitted when [method copy_nodes] or [method clear_clipboard] changed what the clipboard holds (D-123).
+signal clipboard_changed
 ## Emitted once for every operation made through this document, after it took
 ## effect. [param operation] names it ([code]&"select"[/code],
 ## [code]&"transform"[/code], [code]&"set_property"[/code], [code]&"add_node"[/code],
-## [code]&"remove_nodes"[/code], [code]&"duplicate"[/code], [code]&"save"[/code], [code]&"open_scene"[/code],
+## [code]&"remove_nodes"[/code], [code]&"duplicate"[/code], [code]&"copy"[/code],
+## [code]&"paste"[/code], [code]&"save"[/code], [code]&"open_scene"[/code],
 ## [code]&"play"[/code], [code]&"stop"[/code], [code]&"undo"[/code],
 ## [code]&"redo"[/code]); [param time_usec] is
 ## [method Time.get_ticks_usec] at that moment. Previews are not operations.
@@ -54,6 +57,13 @@ var prepare_copy: Callable
 var features := XREFeatureSettings.new()
 ## What was done in the headset, to undo and redo there (D-087).
 var history := XREHistory.new()
+
+## What [method copy_nodes] put aside (D-123): each copied node packed, so
+## that changing or deleting the original, or switching scenes, leaves it as
+## it was; the global transform its original had; and its bounds in its own space.
+var _clipboard: Array[PackedScene] = []
+var _clipboard_globals: Array[Transform3D] = []
+var _clipboard_bounds: Array[AABB] = []
 
 
 ## Puts back the latest step of [member history] and records one
@@ -301,6 +311,100 @@ static func _owned_copies(original: Node, top: Node, copy: Node, root: Node, r_o
 			r_owned.append(counterpart)
 	for child: Node in original.get_children():
 		_owned_copies(child, top, copy, root, r_owned)
+
+
+## Puts copies of [param nodes] on the clipboard in place of what it held
+## (D-123), the same nodes [method nodes_to_remove] would remove, and records
+## one [code]&"copy"[/code] operation: the scene doesn't change, there is
+## nothing to undo. Returns how many were copied; none leaves the clipboard as it was.
+func copy_nodes(nodes: Array[Node], source: Source) -> int:
+	var root := get_scene_root()
+	var originals := nodes_to_remove(nodes, root)
+	if originals.is_empty():
+		return 0
+	_clipboard.clear()
+	_clipboard_globals.clear()
+	_clipboard_bounds.clear()
+	for original: Node in originals:
+		var owned: Array[Node] = []
+		var copy := copy_node(original, root, Transform3D.IDENTITY, owned)
+		# A packed scene keeps what its root owns: the copy owns what the scene owned of the original.
+		for node: Node in owned:
+			if node != copy:
+				node.owner = copy
+		var packed := PackedScene.new()
+		packed.pack(copy)
+		copy.free()
+		_clipboard.append(packed)
+		var original_3d := original as Node3D
+		_clipboard_globals.append(original_3d.global_transform if original_3d != null else Transform3D.IDENTITY)
+		_clipboard_bounds.append(XREPicker.get_local_bounds(original_3d) if original_3d != null else AABB())
+	_record(&"copy", source, originals)
+	clipboard_changed.emit()
+	return originals.size()
+
+
+## How many nodes the clipboard holds (D-123).
+func get_clipboard_count() -> int:
+	return _clipboard.size()
+
+
+## The global transforms the clipboard's nodes had when they were copied, and
+## their bounds in their own space: where a paste moved by a transform puts them.
+func get_clipboard_globals() -> Array[Transform3D]:
+	return _clipboard_globals
+
+
+func get_clipboard_bounds() -> Array[AABB]:
+	return _clipboard_bounds
+
+
+## Empties the clipboard; nothing is recorded, the scene doesn't change.
+func clear_clipboard() -> void:
+	if _clipboard.is_empty():
+		return
+	_clipboard.clear()
+	_clipboard_globals.clear()
+	_clipboard_bounds.clear()
+	clipboard_changed.emit()
+
+
+## Puts the clipboard's nodes in the edited scene, under its root, as one
+## undo step and one [code]&"paste"[/code] operation (D-123): each where its
+## original was when copied, moved by [param move], a global transform, so
+## that a group keeps its shape. The clipboard stays, to paste again. Returns
+## the pasted nodes, none if the clipboard is empty or no scene is open.
+func paste_nodes(move: Transform3D, source: Source) -> Array[Node]:
+	var pasted: Array[Node] = []
+	var root := get_scene_root()
+	if root == null or _clipboard.is_empty():
+		return pasted
+	var root_3d := root as Node3D
+	var to_root := root_3d.global_transform.affine_inverse() if root_3d != null and root_3d.is_inside_tree() else Transform3D.IDENTITY
+	for index: int in _clipboard.size():
+		var node := _clipboard[index].instantiate()
+		var node_3d := node as Node3D
+		if node_3d != null:
+			node_3d.transform = to_root * move * _clipboard_globals[index]
+		pasted.append(node)
+	_add_pasted(pasted, root, source)
+	return pasted
+
+
+## The nodes of [param pasted], fresh from the clipboard, that [param root]
+## must own once they are in its scene: the node and those it owns.
+static func pasted_owned(pasted: Node) -> Array[Node]:
+	var result: Array[Node] = [pasted]
+	for node: Node in pasted.find_children("*", "", true, false):
+		if node.owner == pasted:
+			result.append(node)
+	return result
+
+
+## Adds [param pasted] under [param root] and gives [param root] what
+## [method pasted_owned] names, as one undo step, and records one
+## [code]&"paste"[/code] operation naming them.
+@abstract func _add_pasted(pasted: Array[Node], root: Node, source: Source) -> void
 
 
 ## Whether [param path] is a scene file the editor opens for editing: a

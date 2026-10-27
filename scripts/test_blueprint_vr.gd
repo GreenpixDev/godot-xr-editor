@@ -332,6 +332,7 @@ func _run() -> void:
 	await _test_d120()
 	await _test_d121()
 	await _test_d122()
+	await _test_d123()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -2261,6 +2262,48 @@ func _test_d122() -> void:
 	_document.features.set_value(XREFeatureSettings.COPY_BLUEPRINT, XREFeatureSettings.SHARED)
 	for file: String in [path, path.get_basename() + ".generated.gd", path.get_basename() + ".generated.gd.uid"]:
 		if not file.is_empty() and FileAccess.file_exists(file): DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
+
+
+## D-123: with Copy objects on Clipboard, a card's copy button puts the block
+## on the graph's clipboard, the graph unchanged; Paste puts it where the ray
+## meets the graph's plane, one undo step, selected.
+func _test_d123() -> void:
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var features := _document.features
+	var history := _service.blueprint.history.get_version()
+	_service.add_block("print")
+	await _frames()
+	var source := int((graph.nodes.back() as Dictionary)["id"])
+	features.set_value(XREFeatureSettings.BLOCK_COPY, XREFeatureSettings.ON)
+	features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.CLIPBOARD)
+	await _frames()
+	var card := _card(source)
+	if card == null or card.copy == null:
+		_check(false, "the card has the copy button")
+		return
+	var blocks := graph.nodes.size()
+	_service.call("_start_copy", source, _rig.right_hand, card.node.global_transform * card.copy_point)
+	await _frames()
+	_check(graph.nodes.size() == blocks and _service.get_clipboard_count() == 1 and &"copy_blocks" in _operations,
+			"the copy button puts the block on the clipboard, the graph as it was")
+	var normal := canvas.global_basis.z.normalized()
+	var at := canvas.to_global(canvas.get_block_position(source) + Vector3(0.0, -0.4, 0.0))
+	var version := _service.blueprint.history.get_version()
+	_check(_service.paste_clipboard(at + normal * 0.4, -normal), "Paste where the ray meets the graph's plane")
+	await _frames()
+	var pasted := _service.get_selected_blocks()
+	_check(graph.nodes.size() == blocks + 1 and pasted.size() == 1 and pasted[0] != source and _service.blueprint.history.get_version() == version + 1
+			and &"paste_blocks" in _operations, "puts a copy there, one undo step, selected: %s" % [pasted])
+	if pasted.size() == 1:
+		_check(canvas.get_block_position(pasted[0]).distance_to(canvas.to_local(at)) < 0.01, "where the ray met the plane")
+	_service.clear_clipboard()
+	_check(_service.get_clipboard_count() == 0, "× empties it")
+	features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SHORTCUT)
+	features.set_value(XREFeatureSettings.BLOCK_COPY, BASELINE[XREFeatureSettings.BLOCK_COPY])
+	_service.select_block(-1)
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
 
 
 ## D-086: the block palette is drawn over everything, as an input is, but

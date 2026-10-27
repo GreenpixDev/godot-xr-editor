@@ -273,9 +273,12 @@ func insert_block(block: Dictionary, position: Vector2, wire: Dictionary = {}, t
 ## Target keeps its path. Returns the copies' IDs in the order of
 ## [param blocks], or none if the edit was refused. [param outer] are wires
 ## into [param blocks] from blocks not copied (D-121): each copy's input gets
-## one from the same output.
-func paste_blocks(blocks: Array[Dictionary], edges: Array[Dictionary], offset: Vector2, depth: float, title: String = "Paste Blocks", outer: Array[Dictionary] = []) -> Array[int]:
+## one from the same output. Of [param variables], those the graph has no
+## variable of the name of are added in the same step (D-123).
+func paste_blocks(blocks: Array[Dictionary], edges: Array[Dictionary], offset: Vector2, depth: float, title: String = "Paste Blocks", outer: Array[Dictionary] = [], variables: Array[Dictionary] = []) -> Array[int]:
 	var state := graph.snapshot()
+	for variable: Dictionary in variables:
+		if graph.find_variable(str(variable["name"])).is_empty(): (state["variables"] as Array).append(variable.duplicate(true))
 	var copies: Dictionary[int, int] = {}
 	var ids: Array[int] = []
 	var id := next_id()

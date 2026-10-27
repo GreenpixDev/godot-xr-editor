@@ -15,6 +15,7 @@ class EmptyDocument extends XREDocument:
 	func add_node(_node: Node, _parent: Node, _source: Source) -> void: pass
 	func remove_nodes(_nodes: Array[Node], _source: Source) -> void: pass
 	func duplicate_nodes(_nodes: Array[Node], _move: Transform3D, _source: Source) -> Array[Node]: return []
+	func _add_pasted(_pasted: Array[Node], _root: Node, _source: Source) -> void: pass
 	func save(_source: Source) -> Error: return OK
 	func open_scene(_path: String, _source: Source) -> Error: return OK
 	func list_folder(_path: String) -> PackedStringArray: return PackedStringArray()

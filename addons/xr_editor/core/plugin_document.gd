@@ -212,6 +212,21 @@ func duplicate_nodes(nodes: Array[Node], move: Transform3D, source: Source) -> A
 	return copies
 
 
+func _add_pasted(pasted: Array[Node], root: Node, source: Source) -> void:
+	var undo_redo := _plugin.get_undo_redo()
+	undo_redo.create_action("XR: Paste %s" % pasted[0].name if pasted.size() == 1 else "XR: Paste %d Nodes" % pasted.size())
+	for node: Node in pasted:
+		var owned := pasted_owned(node)
+		undo_redo.add_do_method(root, &"add_child", node, true)
+		# Owners must be re-applied on every redo: remove_child() on undo clears them.
+		for each: Node in owned:
+			undo_redo.add_do_method(each, &"set_owner", root)
+		undo_redo.add_do_reference(node)
+		undo_redo.add_undo_method(root, &"remove_child", node)
+	_commit(undo_redo, root)
+	_record(&"paste", source, pasted)
+
+
 func save(source: Source) -> Error:
 	var error := EditorInterface.save_scene()
 	if error == OK:

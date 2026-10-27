@@ -28,6 +28,7 @@ var _blueprints: XREBlueprints
 var _manipulator: XREManipulator
 var _shortcut: XREObjectShortcut
 var _counter: XRESelectionCounter
+var _clipboard: XREClipboard
 var _play_mode: XREPlayMode
 var _undo: XREUndo
 var _launcher: XREStandaloneLauncher
@@ -100,6 +101,15 @@ func _add_tools(rig: XRERig) -> void:
 	_icons = XREIcons.new(document, rig)
 	_icons.name = "XREIcons"
 	rig.add_child(_icons)
+	# First of the tools that take the right hand: the pills on the left hand
+	# have buttons its ray picks (D-118, D-123). What they show comes from
+	# the manipulator and the graph, made later.
+	_counter = XRESelectionCounter.new(document, rig)
+	_counter.name = "XRESelectionCounter"
+	rig.add_child(_counter)
+	_clipboard = XREClipboard.new(document, rig)
+	_clipboard.name = "XREClipboard"
+	rig.add_child(_clipboard)
 	# Before the manipulator: tools run in tree order, and the palette
 	# claims the right hand when it touches the tray.
 	_palette = XREPalette.new(document, rig)
@@ -127,10 +137,8 @@ func _add_tools(rig: XRERig) -> void:
 	_shortcut.blueprint_requested.connect(_blueprints.open_selected)
 	_manipulator.shortcut_requested.connect(_shortcut.open)
 	rig.add_child(_shortcut)
-	# After the manipulator and the graph: it reads what they selected in the frame (D-118).
-	_counter = XRESelectionCounter.new(document, rig, _manipulator, _blueprints)
-	_counter.name = "XRESelectionCounter"
-	rig.add_child(_counter)
+	_counter.set_sources(_manipulator, _blueprints)
+	_clipboard.set_sources(_blueprints, _icons)
 	_play_mode = XREPlayMode.new(document, _session, rig)
 	_play_mode.name = "XREPlayMode"
 	rig.add_child(_play_mode)
@@ -177,6 +185,7 @@ func _forget_tools() -> void:
 	_manipulator = null
 	_shortcut = null
 	_counter = null
+	_clipboard = null
 	_play_mode = null
 	_undo = null
 	# What the history would put back in the panels and the graph went with them.

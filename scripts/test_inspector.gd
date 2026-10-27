@@ -44,7 +44,8 @@ func _init(document: XREDocument) -> void:
 	_document = document
 	_steps = [_wait_for_scene, _open_window, _inspector_shown, _select_other_node, _other_node_shown, _sun_shown_again,
 			_drag_value, _open_other_scene, _other_scene_opened, _undo_value, _add_node, _undo_add, _remove_node,
-			_undo_remove, _duplicate_node, _copy_added_node, _undo_duplicate, _edit_on_desktop, _open_for_undo, _undo_open, _redo_open, _undo_open_again, _test_files, _finish]
+			_undo_remove, _duplicate_node, _copy_added_node, _undo_duplicate,
+			_add_for_paste, _copy_and_paste, _undo_paste, _edit_on_desktop, _open_for_undo, _undo_open, _redo_open, _undo_open_again, _test_files, _finish]
 
 
 func _enter_tree() -> void:
@@ -319,6 +320,48 @@ func _undo_duplicate() -> void:
 			and _copy.get_node(^"Inner").owner == root, "redo puts it back, owned with its child")
 	_check(_document.undo(XREDocument.Source.TOOL) and _document.undo(XREDocument.Source.TOOL) and _original.get_parent() == null,
 			"and undo once more, then the add before it")
+	_next()
+
+
+## D-123: Copy puts a node with a child on the clipboard, and Paste puts a
+## copy of it under the scene's root, moved, owned with its child: one step
+## that undo takes out and redo puts back owned.
+func _add_for_paste() -> void:
+	_original = Node3D.new()
+	_original.name = "XREPasteCheck"
+	_original.position = Vector3(0.0, 3.0, 0.0)
+	var child := Node3D.new()
+	child.name = "Inner"
+	_original.add_child(child)
+	_document.add_node(_original, _document.get_scene_root(), XREDocument.Source.TOOL)
+	_next()
+
+
+func _copy_and_paste() -> void:
+	var root := _document.get_scene_root()
+	_operations.clear()
+	var nodes: Array[Node] = [_original]
+	_check(_document.copy_nodes(nodes, XREDocument.Source.TOOL) == 1 and _operations == ["copy TOOL [\"XREPasteCheck\"]"],
+			"Copy is an operation: %s" % [_operations])
+	_check(_document.history.get_undo_name() == "Add XREPasteCheck", "and no step: %s" % _document.history.get_undo_name())
+	var pasted := _document.paste_nodes(Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 0.0)), XREDocument.Source.TOOL)
+	_copy = pasted[0] as Node3D if pasted.size() == 1 else null
+	if _copy == null:
+		_check(false, "Paste puts the copy in the scene")
+		_step = _steps.size() - 1
+		return
+	_check(_copy.get_parent() == root and _copy.position.is_equal_approx(Vector3(1.0, 3.0, 0.0)), "Paste puts it under the root, moved: %s" % _copy.position)
+	_check(_copy.owner == root and _copy.get_node(^"Inner").owner == root, "owned with its child")
+	_check(_document.history.get_undo_name() == "Paste XREPasteCheck", "one step: %s" % _document.history.get_undo_name())
+	_next()
+
+
+func _undo_paste() -> void:
+	var root := _document.get_scene_root()
+	_check(_document.undo(XREDocument.Source.TOOL) and _copy.get_parent() == null, "undo takes the pasted node out")
+	_check(_document.redo(XREDocument.Source.TOOL) and _copy.get_parent() == root and _copy.get_node(^"Inner").owner == root, "redo puts it back owned")
+	_check(_document.undo(XREDocument.Source.TOOL) and _document.undo(XREDocument.Source.TOOL) and _original.get_parent() == null, "and undo the add before it")
+	_document.clear_clipboard()
 	_next()
 
 
