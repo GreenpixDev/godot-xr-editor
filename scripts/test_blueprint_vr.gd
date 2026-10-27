@@ -29,8 +29,9 @@ const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, X
 		XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.TOKEN_TRAY, XREFeatureSettings.SCENE_CREATE, XREFeatureSettings.CARD_PLUS, XREFeatureSettings.COLOR_INPUT, XREFeatureSettings.AXIS_SCALE,
 		XREFeatureSettings.FOCUS, XREFeatureSettings.DEFOCUS, XREFeatureSettings.LINK_PREVIEW, XREFeatureSettings.LINK_WIRES, XREFeatureSettings.LINK_CREATE, XREFeatureSettings.WIRE_BENDS,
 		XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.AUTO_LINK, XREFeatureSettings.BLOCK_PALETTE, XREFeatureSettings.PALETTE_GROUPS, XREFeatureSettings.NEXT_SUGGESTIONS, XREFeatureSettings.BLOCK_COPY,
-		XREFeatureSettings.NODE_STYLE, XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.NODE_HEADING, XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.COMPOSITE_VALUES]
-## The values the checks start from: the defaults before D-076, D-089, D-097 and D-114 made the
+		XREFeatureSettings.NODE_STYLE, XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.NODE_HEADING, XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.COMPOSITE_VALUES,
+		XREFeatureSettings.SELECT_ADD, XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.SELECT_AREA]
+## The values the checks start from: the defaults before D-076, D-089, D-097, D-114 and D-126 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.VALUE_INPUT: XREFeatureSettings.WINDOW, XREFeatureSettings.TARGET_INPUT: XREFeatureSettings.WINDOW,
@@ -48,6 +49,9 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.NODE_STYLE: XREFeatureSettings.CLASSIC, XREFeatureSettings.NODE_SHRINK: XREFeatureSettings.OPERATORS,
 	XREFeatureSettings.NODE_HEADING: XREFeatureSettings.OPERATION, XREFeatureSettings.PORT_SHAPES: XREFeatureSettings.OFF,
 	XREFeatureSettings.COMPOSITE_VALUES: XREFeatureSettings.WHOLE,
+	# Selecting and copying several (D-115 to D-120) start from one at a time, as before D-126.
+	XREFeatureSettings.SELECT_ADD: XREFeatureSettings.REPLACE, XREFeatureSettings.OBJECT_COPY: XREFeatureSettings.SHORTCUT,
+	XREFeatureSettings.SELECTION_COUNTER: XREFeatureSettings.OFF, XREFeatureSettings.SELECT_AREA: XREFeatureSettings.OFF,
 }
 
 
@@ -1943,7 +1947,7 @@ func _test_d117() -> void:
 	var graph := _service.blueprint.graph
 	var history := _service.blueprint.history.get_version()
 	var hand := _rig.right_hand
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.REPLACE, "blocks are selected one at a time by default")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.GRIP, "blocks are added with the other grip by default (D-126)")
 	var ids: Array[int] = []
 	for index: int in 3:
 		_service.add_block("print")

@@ -612,6 +612,11 @@ func _start_manipulator() -> void:
 	_document.root = _scene
 	# The manipulator's checks press the trigger on what is selected: no shortcut until its own checks (D-088).
 	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
+	# Selecting and copying several (D-115 to D-120) start from one at a time, as before D-126: each check switches to its variant.
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
+	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SHORTCUT)
+	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.OFF)
+	_document.features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.OFF)
 	_document.operation_recorded.connect(
 			func(operation: StringName, source: XREDocument.Source, nodes: Array[Node], _time_usec: int) -> void:
 				_operations.append("%s %s %s" % [operation, XREDocument.Source.keys()[source], nodes.map(
@@ -1225,8 +1230,8 @@ func _remember_group() -> void:
 
 
 func _multi_start() -> void:
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.REPLACE,
-			"the trigger replaces the selection by default")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.GRIP,
+			"the other hand's grip adds to the selection by default (D-126)")
 	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
 	_set_hand(_right, Vector3(30.0, 0.0, 1.0), 1.0, 0.0)
 
@@ -1403,8 +1408,8 @@ func _select_twin_and_pal() -> void:
 
 
 func _copy_start() -> void:
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.OBJECT_COPY) == XREFeatureSettings.SHORTCUT,
-			"Duplicate in the shortcut copies by default")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.OBJECT_COPY) == XREFeatureSettings.BOTH,
+			"both ways of copying are on by default (D-126)")
 	var twin: Array[Node] = [_node3d("Twin")]
 	var offset := XREManipulator.copy_offset(twin, Basis.IDENTITY, Vector3.UP)
 	var bounds := _node3d("Twin").global_transform * XREPicker.get_local_bounds(_node3d("Twin"))
@@ -1575,7 +1580,7 @@ func _copy_cancelled() -> void:
 # many objects are selected, a plus while the left grip held in empty space adds.
 
 func _counter_start() -> void:
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECTION_COUNTER) == XREFeatureSettings.OFF, "the counter is off by default")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECTION_COUNTER) == XREFeatureSettings.ON, "the counter is on by default (D-126)")
 	_check(not _counter.get_label().visible, "off, there is no pill")
 	_check(_counter.get_label().get_parent() == _rig.left_hand, "the pill goes with the left hand")
 	_select_twin_and_pal()
@@ -1617,7 +1622,7 @@ func _counter_hidden() -> void:
 # selects the three boxes as one selection; with the left grip held, a stroke adds.
 
 func _brush_start() -> void:
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_AREA) == XREFeatureSettings.OFF, "the brush is off by default")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_AREA) == XREFeatureSettings.BRUSH, "the brush is on by default (D-126)")
 	_document.features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.BRUSH)
 	_document.select([], XREDocument.Source.PANEL)
 	_operation_count = _operations.size()

@@ -223,16 +223,17 @@ const NEXT_SUGGESTIONS := &"next_suggestions"
 ## takes a copy of the block along the ray, to let go where it goes, or, let
 ## go at once, puts it beside the card.
 const BLOCK_COPY := &"block_copy"
-## How the trigger adds scene objects to the selection (D-115). Replace, as
-## before: it selects only the object under the ray. Other grip: while the
+## How the trigger adds scene objects to the selection (D-115). Other grip
+## (the default since D-126): while the
 ## other hand's grip is held in empty space, the trigger adds the object under
 ## the ray, or takes it out if it is selected already, and a grip adds it
-## before grabbing. A grip on a selected object grabs every selected one with
+## before grabbing. Replace, as before D-126: it selects only the object
+## under the ray. A grip on a selected object grabs every selected one with
 ## either value.
 const SELECT_ADD := &"select_add"
 const REPLACE := &"replace"
 const GRIP := &"grip"
-## How scene objects are copied in the headset (D-116). Shortcut: Duplicate in
+## How scene objects are copied in the headset (D-116; Both by default since D-126). Shortcut: Duplicate in
 ## the object's shortcut puts copies of the selection beside it. Other grip:
 ## while the other hand's grip is held in empty space, a grip on an object
 ## takes copies of the selection, drawn as edges, and letting go puts them
@@ -247,13 +248,13 @@ const BOTH := &"both"
 const CLIPBOARD := &"clipboard"
 ## Whether a pill over the left controller tells how many scene objects, or
 ## blocks of the open graph, are selected, with a plus while the other hand's
-## grip held in empty space adds to the selection (D-118). Off by default: it
-## adds to what is drawn, and the selection's outlines and frames already show it.
+## grip held in empty space adds to the selection (D-118; on by default since D-126).
 const SELECTION_COUNTER := &"selection_counter"
-## How the trigger selects several scene objects in one stroke (D-119). Off,
-## as before: a trigger selects what is under the ray when it goes down.
-## Brush: while the trigger is held, everything the ray crosses is selected
-## too, and the stroke is one selection when the trigger lets go. Box: the
+## How the trigger selects several scene objects in one stroke (D-119).
+## Brush (the default since D-126): while the trigger is held, everything the
+## ray crosses is selected too, and the stroke is one selection when the
+## trigger lets go. Off, as before: a trigger selects what is under the ray
+## when it goes down. Box: the
 ## trigger held draws a rectangle before the head, as the mouse does on the
 ## desktop, and letting go selects what is in it and not hidden (D-120); in
 ## the graph, a rectangle on the graph's plane from its empty space.
@@ -273,7 +274,7 @@ const SHARED := &"shared"
 const OWN := &"own"
 
 ## Every setting by key: its page, title, values (the first is the default;
-## the defaults are the author's picks after the headset checks, D-076, D-114),
+## the defaults are the author's picks after the headset checks, D-076, D-114, D-126),
 ## the values' titles and a line of explanation.
 const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	NODE_DISPLAY: {
@@ -489,22 +490,22 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	SELECT_ADD: {
 		"category": Category.FEATURES,
 		"title": "Add to selection",
-		"values": [REPLACE, GRIP],
-		"labels": ["Replace", "Other grip"],
+		"values": [GRIP, REPLACE],
+		"labels": ["Other grip", "Replace"],
 		"hint": "Replace: the trigger selects only the object under the ray. Other grip: hold the other hand's grip in empty space, and the trigger adds the object or takes it out. A grip on a selected object grabs all the selected ones.",
 	},
 	OBJECT_COPY: {
 		"category": Category.FEATURES,
 		"title": "Copy objects",
-		"values": [SHORTCUT, GRIP, BOTH, CLIPBOARD, OFF],
-		"labels": ["Shortcut", "Other grip", "Both", "Clipboard", "Off"],
+		"values": [BOTH, SHORTCUT, GRIP, CLIPBOARD, OFF],
+		"labels": ["Both", "Shortcut", "Other grip", "Clipboard", "Off"],
 		"hint": "Shortcut: Duplicate in the object's shortcut puts copies of the selected objects beside them. Other grip: hold the other hand's grip in empty space, and a grip on an object takes copies of the selected ones to let go where they go. Both: either way. Clipboard: Copy in the shortcut, or a card's copy button, puts them on a clipboard over the left hand; its Paste, held, takes them where the ray lets go, in any scene or graph. Off: no copies in the headset.",
 	},
 	SELECTION_COUNTER: {
 		"category": Category.FEATURES,
 		"title": "Selection counter",
-		"values": [OFF, ON],
-		"labels": ["Off", "On"],
+		"values": [ON, OFF],
+		"labels": ["On", "Off"],
 		"hint": "On: a pill over the left controller tells how many objects, or blocks of the open graph, are selected, with a plus while the other hand's grip held in empty space adds to the selection.",
 	},
 	COPY_BLUEPRINT: {
@@ -524,8 +525,8 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	SELECT_AREA: {
 		"category": Category.FEATURES,
 		"title": "Select area",
-		"values": [OFF, BRUSH, BOX],
-		"labels": ["Off", "Brush", "Box"],
+		"values": [BRUSH, OFF, BOX],
+		"labels": ["Brush", "Off", "Box"],
 		"hint": "Brush: hold the trigger and sweep the ray; everything it crosses is selected, as one selection when the trigger lets go. Box: hold the trigger and draw a rectangle; what is in it and not hidden is selected when the trigger lets go; in the graph, draw it from the graph's empty space. With the other hand's grip held in empty space, either adds to the selection.",
 	},
 }
