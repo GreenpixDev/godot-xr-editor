@@ -26,6 +26,8 @@ class FakeDocument extends XREDocument:
 	var removed: Array[Node] = []
 	## How many times duplicate_nodes copied anything: one undo step each.
 	var duplicate_steps := 0
+	## select() tells of the change only when the test emits it, as the editor does in a later frame.
+	var late_selection := false
 
 	func get_scene_root() -> Node:
 		return root
@@ -36,7 +38,8 @@ class FakeDocument extends XREDocument:
 	func select(nodes: Array[Node], source: Source) -> void:
 		selection = nodes.duplicate()
 		_record(&"select", source, nodes)
-		selection_changed.emit()
+		if not late_selection:
+			selection_changed.emit()
 
 	func preview_transform(node: Node3D, xform: Transform3D) -> void:
 		node.transform = xform
@@ -273,6 +276,22 @@ func _initialize() -> void:
 		_counter_adding,
 		_counter_modifier_unused,
 		_counter_hidden,
+		_brush_start,
+		_brush_first,
+		_brush_second,
+		_brush_gap,
+		_brush_third,
+		_brush_done,
+		_brush_add_start,
+		_brush_add_on,
+		_brush_add_more,
+		_brush_added,
+		_brush_click_empty,
+		_brush_cleared,
+		_brush_late_press,
+		_brush_late_release,
+		_brush_late_shown,
+		_brush_late_told,
 		_grab_for_flight,
 		_fly,
 		_flown,
@@ -383,6 +402,9 @@ func _build() -> void:
 	# Lanes 36–37: boxes copied (D-116); the twin's part is copied with it.
 	_add_box(_add_box(_scene, "Twin", Vector3(36.0, 0.0, -1.0), 0.2), "Part", Vector3(0.0, 0.5, 0.0), 0.2)
 	_add_box(_scene, "Pal", Vector3(37.0, 0.0, -1.0), 0.2)
+	# Lanes 40–43: boxes a brush stroke crosses (D-119).
+	for index: int in 4:
+		_add_box(_scene, "Brush%d" % (index + 1), Vector3(40.0 + index, 0.0, -1.0), 0.2)
 
 	_picker = XREPicker.new()
 	_picker.scenario = root.find_world_3d().scenario
@@ -1515,6 +1537,104 @@ func _counter_modifier_unused() -> void:
 func _counter_hidden() -> void:
 	_check(not _counter.get_label().visible, "with nothing selected the pill hides")
 	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.OFF)
+
+
+# A brush stroke (D-119): the trigger held, the ray swept across lanes 40–42
+# selects the three boxes as one selection; with the left grip held, a stroke adds.
+
+func _brush_start() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_AREA) == XREFeatureSettings.OFF, "the brush is off by default")
+	_document.features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.BRUSH)
+	_document.select([], XREDocument.Source.PANEL)
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(40.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _brush_first() -> void:
+	_check(_document.get_selection().is_empty() and _operations.size() == _operation_count,
+			"while the trigger is held, nothing is selected yet: %s" % [_operations.slice(_operation_count)])
+	_check(_active_outlines(XREManipulator.SELECTION_COLOR).size() == 1, "the box the stroke began on is outlined")
+	_set_hand(_right, Vector3(41.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _brush_second() -> void:
+	_set_hand(_right, Vector3(41.5, 0.0, 1.0), 1.0, 0.0)
+
+
+func _brush_gap() -> void:
+	_check(_active_outlines(XREManipulator.SELECTION_COLOR).size() == 2, "the ray between boxes adds nothing")
+	_set_hand(_right, Vector3(42.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _brush_third() -> void:
+	_check(_active_outlines(XREManipulator.SELECTION_COLOR).size() == 3, "every box the ray crossed is outlined")
+	_set_hand(_right, Vector3(42.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _brush_done() -> void:
+	_check(_selection_names() == ["Brush1", "Brush2", "Brush3"], "letting go selects the stroke: %s" % [_selection_names()])
+	_check(_operations.slice(_operation_count) == ["select TOOL [\"Brush1\", \"Brush2\", \"Brush3\"]"],
+			"as one selection: %s" % [_operations.slice(_operation_count)])
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.GRIP)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
+	_set_hand(_right, Vector3(40.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _brush_add_start() -> void:
+	_set_hand(_right, Vector3(40.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _brush_add_on() -> void:
+	_check(_selection_names() == ["Brush2", "Brush3"], "the left grip held, the trigger takes the selected box out at once: %s" % [_selection_names()])
+	_set_hand(_right, Vector3(43.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _brush_add_more() -> void:
+	_set_hand(_right, Vector3(43.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _brush_added() -> void:
+	_check(_selection_names() == ["Brush2", "Brush3", "Brush4"],
+			"the stroke adds what it crossed, and leaves the box it began on out: %s" % [_selection_names()])
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_set_hand(_right, Vector3(45.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _brush_click_empty() -> void:
+	_set_hand(_right, Vector3(45.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _brush_cleared() -> void:
+	_check(_document.get_selection().is_empty(), "a click in empty space is a stroke of nothing: it clears the selection")
+	# The editor tells of a new selection in a later frame: the stroke stays shown until then.
+	var nodes: Array[Node] = [_scene.get_node(^"Brush1"), _scene.get_node(^"Brush2")]
+	_document.select(nodes, XREDocument.Source.PANEL)
+	_document.late_selection = true
+	_set_hand(_right, Vector3(43.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _brush_late_press() -> void:
+	_set_hand(_right, Vector3(43.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _brush_late_release() -> void:
+	_set_hand(_right, Vector3(43.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _brush_late_shown() -> void:
+	_check(_selection_names() == ["Brush4"], "the click selects the box: %s" % [_selection_names()])
+	_check(_active_outlines(XREManipulator.SELECTION_COLOR).size() == 1,
+			"before the editor tells of it, the click's box alone is outlined, not the selection before it: %d"
+			% _active_outlines(XREManipulator.SELECTION_COLOR).size())
+	_document.late_selection = false
+	_document.selection_changed.emit()
+
+
+func _brush_late_told() -> void:
+	_check(_active_outlines(XREManipulator.SELECTION_COLOR).size() == 1, "told, the selection's outline takes over")
+	_document.features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.OFF)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 
 # Locomotion: flying with a node grabbed by the ray, which HOMER would

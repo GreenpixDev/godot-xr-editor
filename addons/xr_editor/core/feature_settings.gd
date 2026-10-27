@@ -245,6 +245,12 @@ const BOTH := &"both"
 ## grip held in empty space adds to the selection (D-118). Off by default: it
 ## adds to what is drawn, and the selection's outlines and frames already show it.
 const SELECTION_COUNTER := &"selection_counter"
+## How the trigger selects several scene objects in one stroke (D-119). Off,
+## as before: a trigger selects what is under the ray when it goes down.
+## Brush: while the trigger is held, everything the ray crosses is selected
+## too, and the stroke is one selection when the trigger lets go.
+const SELECT_AREA := &"select_area"
+const BRUSH := &"brush"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076, D-114),
@@ -480,6 +486,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [OFF, ON],
 		"labels": ["Off", "On"],
 		"hint": "On: a pill over the left controller tells how many objects, or blocks of the open graph, are selected, with a plus while the other hand's grip held in empty space adds to the selection.",
+	},
+	SELECT_AREA: {
+		"category": Category.FEATURES,
+		"title": "Select area",
+		"values": [OFF, BRUSH],
+		"labels": ["Off", "Brush"],
+		"hint": "Brush: hold the trigger and sweep the ray; everything it crosses is selected, as one selection when the trigger lets go. With the other hand's grip held in empty space, the stroke adds to the selection.",
 	},
 }
 

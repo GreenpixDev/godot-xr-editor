@@ -20,6 +20,12 @@ extends Node
 ## empty space (D-115): the trigger adds the pointed node to the selection, or
 ## takes it out if it is selected, and keeps the selection over empty space;
 ## the grip adds the pointed node before grabbing.
+## [br]- With [constant XREFeatureSettings.SELECT_AREA] at
+## [constant XREFeatureSettings.BRUSH] (D-119): while the trigger is held,
+## every node the ray crosses joins the stroke, outlined; letting go selects
+## the stroke, or adds it to the selection if the trigger went down while the
+## other hand added (D-115), as one selection. A click is a stroke of one
+## node, or of none, which clears the selection.
 ## [br]- Grip: grab the pointed node, which also selects it. Grabbing a
 ## selected node grabs every selected one (D-115): the others keep their place
 ## relative to it, as if they were one rigid node. A touched node
@@ -82,6 +88,8 @@ const PANEL_REACH := 1.0
 const MIN_SCALE_FACTOR := 0.01
 ## Selected nodes beyond this many are not outlined, to bound the work per frame.
 const MAX_OUTLINED := 64
+## How many frames a stroke let go of stays shown at most, waiting for the editor's selection (D-119).
+const BRUSH_SETTLE_FRAMES := 10
 const HOVER_COLOR := Color(1.0, 1.0, 1.0)
 const SELECTION_COLOR := Color.WHITE
 ## The edges of copies being carried (D-116): the light blue of the graph's copy button (D-093).
@@ -170,6 +178,25 @@ var _grab_start_global: Transform3D
 var _mover_bounds: Array[AABB] = []
 ## The outline of each copy being carried, and spare ones after them.
 var _copy_outlines: Array[XREOutline] = []
+
+## The hand sweeping a brush stroke (D-119), or null.
+var _brush_hand: HandState
+## The stroke replaces the selection when it ends, rather than adding to it.
+var _brush_replace := false
+## The node the trigger went down on when the stroke adds: the trigger added
+## it or took it out already, and the stroke leaves it as it is.
+var _brush_start: Node3D
+## The nodes the stroke crossed, in that order, with their bounds in their own
+## space and whether each is shown by an icon, as [member _selected] has.
+var _brushed: Array[Node3D] = []
+var _brushed_bounds: Array[AABB] = []
+var _brushed_icons: Array[bool] = []
+## The outline of each of [member _brushed], and spare ones after them.
+var _brush_outlines: Array[XREOutline] = []
+## Frames left to show a stroke let go of until the document tells of the
+## selection it made: the editor does in a later frame, and without this the
+## selection before the stroke would flash back in between. 0 when none waits.
+var _brush_settling := 0
 ## Global transform of the grabbed node's parent space, fixed for the grab, and its inverse.
 var _parent_global: Transform3D
 var _to_parent: Transform3D
@@ -212,6 +239,7 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	_cancel_grab()
+	_clear_brush()
 	_document.selection_changed.disconnect(_on_selection_changed)
 	_document.scene_changed.disconnect(_on_scene_changed)
 
@@ -233,8 +261,14 @@ func _process(_delta: float) -> void:
 			# The tool that claimed the hand draws its ray.
 			state.hover = null
 			state.adding = false
+			if state == _brush_hand:
+				_clear_brush()
 			continue
 		_update_hover(state, root)
+		if state == _brush_hand:
+			_brush(state)
+			if state == _brush_hand:
+				continue
 		if state.hand.grip_pressed:
 			if _holders.is_empty():
 				_begin_grab(state)
@@ -244,8 +278,11 @@ func _process(_delta: float) -> void:
 		elif state.hand.trigger_pressed and _holders.is_empty():
 			if _adds_to_selection(state):
 				_toggle(state.hover)
+				_begin_brush(state, false)
 			elif _opens_shortcut(state.hover):
 				shortcut_requested.emit(state.hand, state.hover)
+			elif _brushes():
+				_begin_brush(state, true)
 			else:
 				_select(state.hover)
 
@@ -443,6 +480,78 @@ func _other_adding(state: HandState) -> bool:
 		if other != state and other.adding:
 			return true
 	return false
+
+
+## Whether the trigger sweeps a brush stroke (D-119).
+func _brushes() -> bool:
+	return _document.features.get_value(XREFeatureSettings.SELECT_AREA) == XREFeatureSettings.BRUSH
+
+
+## Starts a brush stroke of [param state]'s hand, if [method _brushes]: one
+## that replaces the selection, from the node under the ray, or one that adds
+## to it, the node under the ray left as the trigger made it.
+func _begin_brush(state: HandState, replace: bool) -> void:
+	if not _brushes():
+		return
+	_clear_brush()
+	_brush_hand = state
+	_brush_replace = replace
+	_brush_start = null if replace else state.hover
+	if replace and state.hover != null:
+		_add_brushed(state.hover)
+
+
+## Adds the node under the ray of the stroke's hand to the stroke; ends the
+## stroke when the trigger lets go, or the grip goes down to grab.
+func _brush(state: HandState) -> void:
+	if not state.hand.trigger_held or state.hand.grip_pressed:
+		_end_brush()
+		return
+	var node := state.hover
+	if node == null or node == _brush_start or _brushed.has(node) or (not _brush_replace and _selected.has(node)):
+		return
+	if _brushed.size() < MAX_OUTLINED:
+		_add_brushed(node)
+
+
+func _add_brushed(node: Node3D) -> void:
+	_brushed.append(node)
+	_brushed_bounds.append(XREPicker.get_local_bounds(node))
+	_brushed_icons.append(_icons.has_icon(node))
+	if _brush_outlines.size() < _brushed.size():
+		var outline := XREOutline.new(SELECTION_COLOR)
+		add_child(outline)
+		_brush_outlines.append(outline)
+
+
+## Selects the stroke, or adds it to the selection, as one selection.
+func _end_brush() -> void:
+	var nodes: Array[Node] = []
+	if not _brush_replace:
+		nodes = _document.get_selection()
+	for node: Node3D in _brushed:
+		if is_instance_valid(node) and node.is_inside_tree() and not nodes.has(node):
+			nodes.append(node)
+	var changes := _brush_replace or not _brushed.is_empty()
+	if not changes or _document.get_selection() == nodes:
+		_clear_brush()
+		return
+	# Shown until the selection changed comes, which clears it.
+	_brush_hand = null
+	_brush_settling = BRUSH_SETTLE_FRAMES
+	_document.select(nodes, XREDocument.Source.TOOL)
+
+
+## Ends the stroke without selecting anything.
+func _clear_brush() -> void:
+	_brush_hand = null
+	_brush_settling = 0
+	_brush_start = null
+	_brushed.clear()
+	_brushed_bounds.clear()
+	_brushed_icons.clear()
+	for outline: XREOutline in _brush_outlines:
+		outline.clear()
 
 
 ## Adds [param node] to the selection, or takes it out if it is selected; null changes nothing.
@@ -693,9 +802,15 @@ func _delete_selection() -> void:
 
 func _update_outlines() -> void:
 	var head := _rig.camera.global_position
+	# A stroke that replaces the selection shows only what it crossed.
+	if _brush_settling > 0:
+		_brush_settling -= 1
+		if _brush_settling == 0:
+			_clear_brush()
+	var replacing := (_brush_hand != null or _brush_settling > 0) and _brush_replace
 	for i: int in _selected.size():
 		var outline := _selection_outlines[i]
-		if is_instance_valid(_selected[i]) and _selected[i].is_inside_tree():
+		if not replacing and is_instance_valid(_selected[i]) and _selected[i].is_inside_tree():
 			_outline(outline, _selected[i], _selected_bounds[i], _selected_icons[i], head)
 		else:
 			outline.clear()
@@ -705,6 +820,11 @@ func _update_outlines() -> void:
 				_copy_outlines[i].show_node(_movers[i], _mover_bounds[i], _copy_move)
 			else:
 				_copy_outlines[i].clear()
+	for i: int in _brushed.size():
+		if is_instance_valid(_brushed[i]) and _brushed[i].is_inside_tree():
+			_outline(_brush_outlines[i], _brushed[i], _brushed_bounds[i], _brushed_icons[i], head)
+		else:
+			_brush_outlines[i].clear()
 	for state: HandState in _hands:
 		state.outline.clear()
 
@@ -717,6 +837,8 @@ func _outline(outline: XREOutline, node: Node3D, bounds: AABB, icon: bool, head:
 
 
 func _on_selection_changed() -> void:
+	if _brush_settling > 0:
+		_clear_brush()
 	_selected.clear()
 	_selected_bounds.clear()
 	_selected_icons.clear()
@@ -738,6 +860,7 @@ func _on_selection_changed() -> void:
 
 func _on_scene_changed() -> void:
 	_cancel_grab()
+	_clear_brush()
 	_root = _document.get_scene_root()
 	for state: HandState in _hands:
 		state.hover = null

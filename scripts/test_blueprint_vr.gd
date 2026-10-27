@@ -328,6 +328,7 @@ func _run() -> void:
 	await _test_block_menu()
 	await _test_d093()
 	await _test_d117()
+	await _test_d119()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -2048,6 +2049,74 @@ func _test_d117() -> void:
 	await _click(_card_point(ids[1]))
 	_check(_service.get_selected_blocks() == [ids[1]], "with Replace, the trigger selects one card: %s" % [_service.get_selected_blocks()])
 	_left.set_input(&"grip", 0.0)
+	_service.select_block(-1)
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## D-119: with Select area on Brush, the trigger held and swept over the cards
+## selects every card the ray crossed when it lets go; the cards of the stroke
+## keep their look out of focus, as selected ones (D-117); with the left grip
+## held in empty space, a stroke adds.
+func _test_d119() -> void:
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var features := _document.features
+	var history := _service.blueprint.history.get_version()
+	var ids: Array[int] = []
+	for index: int in 3:
+		_service.add_block("print")
+		await _frames()
+		ids.append(int((graph.nodes.back() as Dictionary)["id"]))
+	var start := canvas.get_block_position(ids[0]) + Vector3(0, 0.6, 0.1)
+	for index: int in 3:
+		canvas.preview_move(ids[index], start + Vector3(0.45 * index, 0, 0))
+	canvas.commit_moves(_service.blueprint, ids)
+	features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.BRUSH)
+	features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.ON)
+	features.set_value(XREFeatureSettings.DEFOCUS, XREFeatureSettings.DIM)
+	_service.select_block(-1)
+	_aim(_card_point(ids[0]))
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_check(_service.get_selected_blocks().is_empty(), "while the trigger is held, nothing is selected yet")
+	_aim(_card_point(ids[1]))
+	await _frames()
+	_check(canvas.focus_state(ids[1]) == XREBlueprintFocus.FOCUSED and canvas.focus_state(ids[0]) == XREBlueprintFocus.NORMAL
+			and canvas.focus_state(ids[2]) == XREBlueprintFocus.OUT,
+			"a card the stroke crossed keeps its look out of focus; one it hasn't is darker")
+	_aim(_card_point(ids[2]))
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(_service.get_selected_blocks() == ids, "letting go selects every card the ray crossed: %s" % [_service.get_selected_blocks()])
+	_check(not _service.is_parameters_shown(), "several, without the parameters window")
+	await _click(_card_point(ids[1]))
+	_check(_service.get_selected_blocks() == [ids[1]], "a click is a stroke of one card: %s" % [_service.get_selected_blocks()])
+	# The left grip held in empty space: the stroke adds, from the card the trigger added.
+	features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.GRIP)
+	_service.select_block(ids[0])
+	_left.set_pose(&"aim", Transform3D(Basis.IDENTITY, Vector3(-5, 0, 0)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	_left.set_input(&"grip", 1.0)
+	_aim(_card_point(ids[1]))
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_check(_service.get_selected_blocks() == [ids[0], ids[1]], "the trigger adds the card at once: %s" % [_service.get_selected_blocks()])
+	_aim(_card_point(ids[2]))
+	await _frames()
+	_aim(_card_point(ids[1]))
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(_service.get_selected_blocks() == ids, "the stroke adds what it crossed and leaves the first card in: %s" % [_service.get_selected_blocks()])
+	_left.set_input(&"grip", 0.0)
+	features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
+	features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.OFF)
+	features.set_value(XREFeatureSettings.FOCUS, BASELINE[XREFeatureSettings.FOCUS])
+	features.set_value(XREFeatureSettings.DEFOCUS, BASELINE[XREFeatureSettings.DEFOCUS])
 	_service.select_block(-1)
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	await _frames()

@@ -151,6 +151,13 @@ class Pointer:
 	## The other selected blocks the held card carries (D-117), and where each was when the hold began.
 	var group: Array[int] = []
 	var group_starts: Array[Vector3] = []
+	## A brush stroke over the cards (D-119): whether one is swept, whether it
+	## replaces the selection, the block it began on when it adds (the trigger
+	## added it or took it out already), and the blocks it crossed.
+	var brushing := false
+	var brush_replace := false
+	var brush_start := -1
+	var brushed: Array[int] = []
 	var surface: XREPanelSurface
 	var drives := false
 	var held: Node3D
@@ -1694,6 +1701,76 @@ func toggle_block(id: int) -> void:
 	changed.emit()
 
 
+## Selects the blocks of [param ids], the last of them last (D-117): one
+## with its parameters window, as [method select_block] does; several with it closed.
+func select_blocks(ids: Array[int]) -> void:
+	if ids.size() <= 1:
+		select_block(ids[0] if ids.size() == 1 else -1)
+		return
+	_selected_blocks = ids.duplicate()
+	_selected = ids.back()
+	canvas.select_blocks(ids)
+	parameters.select_block(-1)
+	_dismiss_window(XREBlueprintParametersTab, false)
+	changed.emit()
+
+
+## Whether the trigger sweeps a brush stroke over the cards (D-119), as it does over the scene.
+func _brushes() -> bool:
+	return _document.features.get_value(XREFeatureSettings.SELECT_AREA) == XREFeatureSettings.BRUSH
+
+
+## Starts a brush stroke of [param pointer] on card [param id], if
+## [method _brushes]: one that replaces the selection, from that card, or one
+## that adds to it, the card left as the trigger made it.
+func _begin_block_brush(pointer: Pointer, id: int, replace: bool) -> void:
+	if not _brushes(): return
+	pointer.brushing = true
+	pointer.brush_replace = replace
+	pointer.brush_start = -1 if replace else id
+	pointer.brushed.clear()
+	if replace: pointer.brushed.append(id)
+	_show_brush(pointer)
+
+
+## Adds card [param id], under the ray of the stroke's hand, to the stroke.
+func _brush_block(pointer: Pointer, id: int) -> void:
+	if id < 0 or id == pointer.brush_start or pointer.brushed.has(id): return
+	if not pointer.brush_replace and _selected_blocks.has(id): return
+	pointer.brushed.append(id)
+	_show_brush(pointer)
+
+
+## Frames the stroke's cards as selected ones, without selecting them yet:
+## out of focus they keep their look, as selected cards do (D-117). A stroke
+## that replaces the selection shows only what it crossed.
+func _show_brush(pointer: Pointer) -> void:
+	var ids: Array[int] = []
+	if not pointer.brush_replace: ids.append_array(_selected_blocks)
+	ids.append_array(pointer.brushed)
+	canvas.select_blocks(ids)
+
+
+## Selects the stroke of [param pointer], or adds it to the selection, as one selection.
+func _end_block_brush(pointer: Pointer) -> void:
+	var ids: Array[int] = []
+	if not pointer.brush_replace: ids.append_array(_selected_blocks)
+	for id: int in pointer.brushed:
+		if not ids.has(id) and not blueprint.graph.find_node(id).is_empty(): ids.append(id)
+	var changes := pointer.brush_replace or not pointer.brushed.is_empty()
+	pointer.brushing = false
+	pointer.brushed.clear()
+	if changes: select_blocks(ids)
+	else: canvas.select_blocks(_selected_blocks)
+
+
+## Ends the stroke of [param pointer] without selecting anything.
+func _cancel_block_brush(pointer: Pointer) -> void:
+	pointer.brushing = false
+	pointer.brushed.clear()
+	canvas.select_blocks(_selected_blocks)
+
+
 ## The selected blocks, the last selected last (D-117).
 func get_selected_blocks() -> Array[int]:
 	return _selected_blocks.duplicate()
@@ -2179,6 +2256,9 @@ func set_logic_mode(enabled: bool) -> void:
 func _update_pointer(pointer: Pointer, delta: float) -> void:
 	var hand := pointer.hand
 	if not hand.grip_held or not hand.is_free_for(self): pointer.adding = false
+	if pointer.brushing:
+		if not hand.get_has_tracking_data() or not hand.is_free_for(self): _cancel_block_brush(pointer)
+		elif not hand.trigger_held or hand.grip_pressed: _end_block_brush(pointer)
 	if pointer.swallow and not (hand.trigger_held and hand.get_has_tracking_data()):
 		pointer.swallow = false
 		if hand.get_claimant() == self: hand.unclaim(self)
@@ -3558,6 +3638,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	var right := hand == _rig.right_hand
 	# The card is in focus wherever on it the ray is; a port or a detail grows over that (D-072).
 	pointer.focus = id
+	if pointer.brushing: _brush_block(pointer, id)
 	canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), right, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1, false, canvas.get_hit_copy())
 	canvas.hover_socket(id, socket, right)
 	var link := canvas.get_hit_link() if kind == XREBlueprintCanvas.LINK else {}
@@ -3616,7 +3697,10 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		elif canvas.get_hit_port() >= 0:
 			var finished := (1 if canvas.get_hit_finished() else 0) if canvas.get_hit_port() == 0 and not canvas.get_hit_input() and canvas.has_finished(id) else -1
 			click_port(id, canvas.get_hit_port(), canvas.get_hit_input(), hand, canvas.get_hit_edge(), finished)
-		elif _adds_blocks(pointer): toggle_block(id)
+		elif _adds_blocks(pointer):
+			toggle_block(id)
+			_begin_block_brush(pointer, id, false)
+		elif _brushes(): _begin_block_brush(pointer, id, true)
 		else: select_block(id)
 	if _deletes_now():
 		_consume_delete()
