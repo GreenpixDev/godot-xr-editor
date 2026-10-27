@@ -6,7 +6,8 @@ extends Node
 ##
 ## Controls:
 ## [br]- Left thumbstick: fly. Forward and back go where the left controller
-## points, up and down included; left and right go sideways, level. Speed
+## points (where the head looks, with [member XRERig.fly_along_gaze]), up and
+## down included; left and right go sideways, level. Speed
 ## grows with the tilt, up to the flying speed.
 ## [br]- Left thumbstick click: next flying speed of [constant SPEEDS], round
 ## and round. The speed shows in front of the user for a moment.
@@ -125,7 +126,7 @@ func _process(delta: float) -> void:
 		turn.x = _axis_tilt(stick.x)
 
 	if not move.is_zero_approx():
-		var aim := _rig.left_hand.global_basis
+		var aim := _rig.camera.global_basis if _rig.fly_along_gaze else _rig.left_hand.global_basis
 		var forward := -aim.z.normalized()
 		var side := Vector3(aim.x.x, 0.0, aim.x.z)
 		side = side.normalized() if not side.is_zero_approx() else Vector3.ZERO

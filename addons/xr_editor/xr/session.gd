@@ -14,6 +14,9 @@ extends Node
 ## [br][br]
 ## Without OpenXR the VR view can run without a headset ([method start_simulator],
 ## D-057): an [XRESimulator] window with the keyboard and mouse for controllers.
+## With a headset on a PC, what it shows can be copied into a window on the
+## desktop ([method start_mirror], D-118), and the editor's 2D UI can hide
+## while the headset shows the editor ([method set_hide_desktop_ui], D-119).
 
 ## Emitted when the user closes the window of [method start_simulator].
 signal simulator_closed
@@ -54,6 +57,10 @@ const _PIPELINE_MONITORS: Array[Performance.Monitor] = [
 
 var _xr: OpenXRInterface
 var _simulator: XRESimulator
+var _mirror: XREMirror
+var _desktop_ui: XREDesktopUI
+## The editor's main window, whose keys and mouse buttons show the UI again.
+var _editor_window: Window
 var _viewport: SubViewport
 var _rig: XRERig
 var _status_timer: Timer
@@ -83,6 +90,12 @@ var _fps_previous_usec := 0
 
 
 func _enter_tree() -> void:
+	_desktop_ui = XREDesktopUI.new(EditorInterface.get_base_control())
+	# Nobody sees the window on a standalone headset; on a PC it is minimized too.
+	_desktop_ui.enabled = XREStandalone.is_standalone()
+	_desktop_ui.minimize = not XREStandalone.is_standalone()
+	_editor_window = EditorInterface.get_base_control().get_window()
+	_editor_window.window_input.connect(_desktop_ui.handle_input)
 	var xr := XRServer.find_interface("OpenXR") as OpenXRInterface
 	if xr == null or not xr.is_initialized():
 		_log("OpenXR is not running, VR view is off. Start the editor with --xr-mode on to enable it.")
@@ -130,11 +143,15 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	_editor_window.window_input.disconnect(_desktop_ui.handle_input)
+	_desktop_ui.restore()
+	_desktop_ui = null
+	_editor_window = null
 	if _xr == null:
 		return
 	# The session keeps running without the plugin, so low-processor mode stays off.
 	_exit_vr_frame_loop(false)
-	_hide_desktop_ui(false)
+	stop_mirror()
 	if _released and not EditorInterface.is_playing_scene():
 		reacquire_session()
 	_xr.session_begun.disconnect(_on_session_begun)
@@ -160,6 +177,8 @@ func _process(delta: float) -> void:
 	var focused := has_headset_focus()
 	fps_history.record_interval((now - _fps_previous_usec) / 1000000.0 if _fps_previous_usec > 0 else 0.0, now / 1000000.0, focused)
 	_fps_previous_usec = now if focused else 0
+	if _xr != null or _simulator != null:
+		_update_desktop_ui()
 	if _xr == null:
 		return
 	if _released:
@@ -207,6 +226,49 @@ func stop_simulator() -> void:
 	_simulator.queue_free()
 	_simulator = null
 	_rig = null
+	# Nothing updates it without a VR view.
+	_desktop_ui.restore()
+
+
+## Opens a window on the desktop that shows what the headset shows (D-118).
+## Only with a headset on a PC: false without OpenXR, on a standalone headset,
+## or if the window is open already.
+func start_mirror() -> bool:
+	if _xr == null or _mirror != null or XREStandalone.is_standalone():
+		return false
+	_mirror = XREMirror.new(_viewport, _xr.get_render_target_size())
+	_mirror.close_requested.connect(stop_mirror)
+	add_child(_mirror)
+	_log("headset view on the desktop: window %s." % _mirror.size)
+	return true
+
+
+## Closes the window of [method start_mirror].
+func stop_mirror() -> void:
+	if _mirror == null:
+		return
+	_mirror.queue_free()
+	_mirror = null
+	_log("headset view on the desktop closed.")
+
+
+## Whether the window of [method start_mirror] is open.
+func is_mirroring() -> bool:
+	return _mirror != null
+
+
+## Hides the editor's 2D UI on the desktop and minimizes its window while the
+## headset shows the editor, or without a headset while the VR view's window
+## is open (D-119); restoring the window shows it until the next trigger or
+## grip. On a standalone headset it always hides while the session runs.
+func set_hide_desktop_ui(enabled: bool) -> void:
+	if _desktop_ui != null and not XREStandalone.is_standalone():
+		_desktop_ui.enabled = enabled
+
+
+## Whether [method set_hide_desktop_ui] is on.
+func is_hiding_desktop_ui() -> bool:
+	return _desktop_ui != null and _desktop_ui.enabled
 
 
 ## Whether the VR view runs without a headset ([method start_simulator]).
@@ -354,7 +416,6 @@ func _on_session_begun() -> void:
 	_request_refresh_rate()
 	_enter_vr_frame_loop()
 	_check_output_collapse()
-	_hide_desktop_ui(true)
 	_enable_foveation()
 
 
@@ -375,19 +436,24 @@ func _check_output_collapse() -> void:
 			+ "otherwise the editor drops below 90 Hz after about two minutes in VR (docs/decisions.md, D-004).")
 
 
-## On a standalone headset nobody sees the editor's 2D window, yet every frame
-## it would draw its UI and render the scene once more in the 3D editor
-## viewports. There the editor spends about 13 ms more GPU time per frame than
-## the game on the same scene (benchmarks/results/quest_fps_*, D-018), and this
-## is the part nobody needs. Hidden while the session runs; the
-## 3D editor viewports update only while visible, so they stop as well, and the
-## headset's view, outside the UI, stays. Not on a PC, where the window is the
-## way back to the desktop.
-func _hide_desktop_ui(hidden: bool) -> void:
-	if not XREStandalone.is_standalone():
-		return
-	EditorInterface.get_base_control().visible = not hidden
-	_log("editor's 2D window %s." % ("hidden while the session runs" if hidden else "shown"))
+## Hides or shows the editor's 2D UI ([XREDesktopUI]). On a standalone headset
+## nobody sees the window, yet every frame it would draw its UI and render the
+## scene once more in the 3D editor viewports: there the editor spends about
+## 13 ms more GPU time per frame than the game on the same scene
+## (benchmarks/results/quest_fps_*, D-018). There it hides while the session
+## runs; on a PC, with [method set_hide_desktop_ui], while the headset shows
+## the editor or, without one, while the simulator's window is open, and the
+## editor's window is minimized. The 3D editor viewports update only while
+## visible, so they stop as well; the headset's view, outside the UI, stays.
+## With every window minimized Godot still renders for the headset: OpenXR
+## registers it as an additional output.
+func _update_desktop_ui() -> void:
+	var in_headset := _vr_loop_active if XREStandalone.is_standalone() \
+			else _simulator != null or has_headset_focus()
+	var pressed := _rig.left_hand.trigger_pressed or _rig.left_hand.grip_pressed \
+			or _rig.right_hand.trigger_pressed or _rig.right_hand.grip_pressed
+	if _desktop_ui.update(in_headset, pressed):
+		_log("editor's 2D window %s." % ("hidden while in VR" if _desktop_ui.is_hidden() else "shown"))
 
 
 ## On a standalone headset, where the GPU is the limit, shades the edges of
@@ -426,7 +492,6 @@ func _on_session_ended(reason: String) -> void:
 	# Emitted while OpenXR handles the state change, before the next xrWaitFrame
 	# would run, so restoring low-processor mode here can't break a frame.
 	_exit_vr_frame_loop(true)
-	_hide_desktop_ui(false)
 
 
 func _on_refresh_rate_changed(refresh_rate: float) -> void:

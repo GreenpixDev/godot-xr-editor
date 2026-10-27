@@ -1,7 +1,8 @@
 extends SceneTree
 ## Headless tests of XRESimulator, the VR view without a headset (D-057):
 ## keyboard and mouse events in, the rig's head and hands out, and the NonVR
-## controls layout. Used by scripts/check.sh, not shipped with the plugin.
+## controls layout; and XREDesktopUI, the editor's 2D UI hidden while in the
+## headset (D-119). Used by scripts/check.sh, not shipped with the plugin.
 ## Prints "test_simulator: FAILED ..." for every failed check and a summary line at the end.
 
 var _checks := 0
@@ -14,6 +15,7 @@ var _rig: XRERig
 var _features: XREFeatureSettings
 var _right_before := Transform3D.IDENTITY
 var _reach_before := Vector3.ZERO
+var _rig_before := Vector3.ZERO
 
 
 func _initialize() -> void:
@@ -39,6 +41,9 @@ func _initialize() -> void:
 		_reached,
 		_roll,
 		_rolled,
+		_fly,
+		_flew,
+		_desktop_ui,
 		_finish,
 	]
 
@@ -248,6 +253,53 @@ func _rolled() -> void:
 	_check((-basis.z).is_equal_approx(_head_forward()), "a rolled wrist points the same way")
 	_check(absf(basis.x.angle_to(_rig.camera.transform.basis.x) - deg_to_rad(XRESimulator.ROLL_STEP)) < 0.01,
 			"Ctrl+wheel rolls the wrist a step")
+
+
+# The right hand is active, the left one rests pointing down: flying still goes
+# where the view looks, up and down included.
+func _fly() -> void:
+	_rig.add_child(XRELocomotion.new(_rig))
+	_rig_before = _rig.global_position
+	_move_mouse(Vector2(0.0, -150.0))
+	_key(KEY_W, true)
+
+
+func _flew() -> void:
+	var moved := _rig.global_position - _rig_before
+	var gaze := -_rig.camera.global_basis.z
+	_check(gaze.y > 0.1, "the view looks up: %s" % gaze)
+	_check(moved.length() > 0.0 and moved.normalized().angle_to(gaze) < deg_to_rad(1.0),
+			"W flies where the view looks, not where the resting left hand points: %s" % moved)
+	_key(KEY_W, false)
+
+
+func _desktop_ui() -> void:
+	var control := Control.new()
+	var ui := XREDesktopUI.new(control)
+	_check(not ui.update(true, false) and control.visible, "off, the UI stays in the headset")
+	ui.enabled = true
+	_check(ui.update(true, false) and not control.visible and ui.is_hidden(), "on, it hides while in the headset")
+	_check(ui.update(false, false) and control.visible, "and shows when the headset doesn't show the editor")
+	ui.update(true, false)
+	var motion := InputEventMouseMotion.new()
+	ui.handle_input(motion)
+	_check(not control.visible, "moving the mouse over the window doesn't show it")
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_SPACE
+	key.pressed = true
+	ui.handle_input(key)
+	_check(control.visible and not ui.is_hidden(), "a key in the window shows it")
+	_check(not ui.update(true, false) and control.visible, "it stays while in the headset")
+	_check(ui.update(true, true) and not control.visible, "until a trigger or grip")
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	ui.handle_input(click)
+	_check(control.visible, "a click shows it too")
+	ui.update(true, true)
+	ui.restore()
+	_check(control.visible and not ui.is_hidden(), "restored, it shows")
+	control.free()
 
 
 func _finish() -> void:

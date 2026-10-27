@@ -10,7 +10,9 @@ addons/xr_editor/          плагин (всё, что поставляется
   xr/                      XR-сессия в процессе редактора (XRESession), риг (XRERig), контроллер: луч и кнопки (XREHand),
                            модель контроллера по профилю OpenXR с движущимися кнопками (XREControllerModel);
                            автономный шлем (D-018): общее для редактора и игры (XREStandalone), открыть VR из 2D-панели (XREStandaloneLauncher);
-                           VR-вид без шлема в окне, клавиатура и мышь вместо контроллеров (XRESimulator, D-057)
+                           VR-вид без шлема в окне, клавиатура и мышь вместо контроллеров (XRESimulator, D-057);
+                           вид из шлема на рабочем столе — окно, куда движок копирует левый глаз (XREMirror, D-118);
+                           2D-интерфейс редактора скрыт, пока пользователь в VR (XREDesktopUI, D-119)
   xr/controller_models/    glTF контроллеров из WebXR Input Profiles, папка на контроллер (D-010)
   tools/                   инструменты VR-слоя: манипуляция и удаление (XREManipulator), снап (XRESnap), обводка рёбер выбора и наведения (XREOutline, рёбра меша — XREEdgeMesh) с запасной рамкой (XREBoundsBox),
                            значки нод без геометрии — пока света (XREIcons), полёт и поворот стиками (XRELocomotion),
@@ -49,7 +51,7 @@ scripts/test_tools.gd      headless-тесты пикера, снапа, зна�
 scripts/test_controller_model.gd  headless-тест выбора модели контроллера (для check.sh)
 scripts/test_play_mode.gd  headless-тест play-mode: кнопка, возврат, аргументы игры (для check.sh)
 scripts/test_panels.gd     headless-тест панелей: панель на руке, окна, вкладки, прокси инспектора (для check.sh)
-scripts/test_simulator.gd  headless-тест VR-вида без шлема: клавиши и мышь → голова, руки, кнопки; раскладка NonVR (для check.sh)
+scripts/test_simulator.gd  headless-тест VR-вида без шлема: клавиши и мышь → голова, руки, кнопки, полёт по взгляду; раскладка NonVR; скрытие 2D-интерфейса (для check.sh)
 scripts/test_history.gd    headless-тест истории шлема: шаги, отмена настроек и выделения, кнопки A и B (для check.sh)
 scripts/test_inspector.gd  тест инспектора в шлеме внутри headless-редактора; плагин запускает его по `-- --xre-test-inspector` (для check.sh)
 scripts/test_blueprints.gd        тесты графа, сохранения, undo/redo, компиляции и выполнения Blueprints (для check.sh)
@@ -60,6 +62,7 @@ scripts/xr_extensions.py   расширения OpenXR-рантайма без �
 scripts/xr_editor.py       запуск редактора: сам выбирает рантайм со шлемом (SteamVR, Meta) или запуск без VR
 scripts/quest.py           автономный шлем по USB (adb): копирует проект, открывает редактор в VR, показывает и пишет лог
 .run/XR Editor.run.xml     конфигурация запуска Rider: scripts/xr_editor.py --fallback sim (без шлема — VR-вид в окне)
+.run/XR Editor Mirror.run.xml  то же с --mirror: со шлемом его вид ещё и в окне на столе (D-118)
 scripts/build_gdextension.sh  сборка нативной части: Windows (MSVC) или android (NDK); CMake и Ninja из Visual Studio
 docs/                      план и дневник решений (на русском)
 spikes/                    отдельные проекты спайков, не часть плагина (.gdignore): horizon_probe/ — редактор на Horizon OS (D-017), с сырыми логами
