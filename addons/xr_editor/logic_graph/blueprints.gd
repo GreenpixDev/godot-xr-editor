@@ -2808,6 +2808,8 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 				return
 	# The trigger in empty space draws a selection box on the graph's plane (D-120).
 	if hand.trigger_pressed and _workspace.visible and _begin_block_box(pointer, origin, direction): return
+	# Without a box, it lets go of the selected blocks, unless the other hand adds (D-125).
+	if hand.trigger_pressed and _workspace.visible and not _selected_blocks.is_empty() and not _adds_blocks(pointer): select_block(-1)
 	# The grip in empty space: the other hand's trigger adds blocks (D-117).
 	if hand.grip_pressed and hand.is_free_for(self): pointer.adding = true
 	# A click away that closed an input goes on to the graph, but selects no

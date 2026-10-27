@@ -76,6 +76,13 @@ extends Node
 ## [XREObjectShortcut] opens for it, and the rest of the selection (D-116), and claims the hand.
 signal shortcut_requested(hand: XREHand, node: Node3D)
 
+## Whether the logic graph is open ([method XREBlueprints.is_open]): then only
+## blocks are selected together, and of the scene the trigger only picks an
+## object alone, without the modifier, which opens its graph (D-063). The grip
+## takes no object, the delete action deletes none, and neither the brush nor
+## the box selects any (D-125).
+var graph_open: Callable
+
 ## How far the ray reaches, in meters.
 const PICK_DISTANCE := 50.0
 ## How close the controller tip must come to a node's bounds to touch it, in meters.
@@ -275,6 +282,14 @@ func _exit_tree() -> void:
 
 func _process(_delta: float) -> void:
 	var root: Node = _root if is_instance_valid(_root) else null
+	var graph := graph_open.is_valid() and bool(graph_open.call())
+	# The graph opened under a hold, a stroke or a box: they end without changing anything.
+	if graph and not _holders.is_empty():
+		_cancel_grab()
+	if graph and _brush_hand != null:
+		_clear_brush()
+	if graph and _box_hand != null:
+		_clear_box()
 
 	for state: HandState in _hands:
 		if state.holding and state.hand.grip_released:
@@ -304,7 +319,13 @@ func _process(_delta: float) -> void:
 			_drag_box(state)
 			if state == _box_hand:
 				continue
-		if state.hand.grip_pressed:
+		if graph and state.hand.grip_pressed:
+			# The grip held in empty space is still the modifier, for the graph's blocks (D-117).
+			state.adding = state.hover == null
+		elif graph and state.hand.trigger_pressed:
+			if state.hover != null and not _other_adding(state):
+				_select(state.hover)
+		elif state.hand.grip_pressed:
 			if _holders.is_empty():
 				_begin_grab(state)
 				state.adding = state.hover == null
@@ -323,7 +344,7 @@ func _process(_delta: float) -> void:
 				_select(state.hover)
 
 	var delete_hand := _rig.get_action_hand(_document.features, XREFeatureSettings.DELETE)
-	if _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and delete_hand.is_free_for(self):
+	if not graph and _rig.is_action_pressed(_document.features, XREFeatureSettings.DELETE) and delete_hand.is_free_for(self):
 		_delete_selection()
 
 	if not _holders.is_empty():

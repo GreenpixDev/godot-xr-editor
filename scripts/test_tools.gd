@@ -161,6 +161,8 @@ var _manipulator: XREManipulator
 var _shortcut: XREObjectShortcut
 var _counter: XRESelectionCounter
 var _clipboard: XREClipboard
+## Whether the manipulator is told the logic graph is open (D-125).
+var _graph_open := false
 ## How many children the scene had before Copy (D-123): copying adds none.
 var _scene_children := 0
 var _blueprint_requests := 0
@@ -333,6 +335,16 @@ func _initialize() -> void:
 		_counter_clear_lit,
 		_counter_clear_press,
 		_counter_cleared,
+		_graph_start,
+		_graph_no_grab,
+		_graph_add_press,
+		_graph_no_add,
+		_graph_pick_press,
+		_graph_picked,
+		_graph_empty_press,
+		_graph_empty_kept,
+		_graph_delete_press,
+		_graph_not_deleted,
 		_grab_for_flight,
 		_fly,
 		_flown,
@@ -621,6 +633,7 @@ func _start_manipulator() -> void:
 	_manipulator = XREManipulator.new(_document, _rig, _icons)
 	_rig.add_child(_manipulator)
 	_counter.set_sources(_manipulator, null)
+	_manipulator.graph_open = func() -> bool: return _graph_open
 	_clipboard.set_sources(null, _icons)
 	_palette.set_manipulator(_manipulator)
 	# After the manipulator, as in the plugin (D-088).
@@ -1863,6 +1876,69 @@ func _counter_cleared() -> void:
 	_document.features.set_value(XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.OFF)
 	_document.features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SHORTCUT)
 	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+# The graph open (D-125): the grip takes no object, the trigger with the
+# other hand adding adds none, alone it picks one, which opens its graph;
+# the trigger in empty space and the delete action leave the scene be.
+
+func _graph_start() -> void:
+	_graph_open = true
+	_document.select([], XREDocument.Source.PANEL)
+	_group_before["High1"] = (_scene.get_node(^"High1") as Node3D).global_position
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(-0.6, 3.0, 1.0), 0.0, 1.0)
+
+
+func _graph_no_grab() -> void:
+	_check(_rig.right_hand.get_claimant() == null and _document.get_selection().is_empty() and _operations.size() == _operation_count,
+			"with the graph open, the grip on an object takes nothing: %s" % [_operations.slice(_operation_count)])
+	_set_hand(_right, Vector3(-0.5, 3.0, 1.0), 0.0, 1.0)
+
+
+func _graph_add_press() -> void:
+	_check_vector((_scene.get_node(^"High1") as Node3D).global_position, _group_before["High1"], "nor moves it")
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.GRIP)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
+	_set_hand(_right, Vector3(-0.6, 3.0, 1.0), 0.0, 0.0)
+
+
+func _graph_no_add() -> void:
+	_set_hand(_right, Vector3(-0.6, 3.0, 1.0), 1.0, 0.0)
+
+
+func _graph_pick_press() -> void:
+	_check(_document.get_selection().is_empty(), "with the other hand adding, the trigger adds no object to the graph's selection")
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_set_hand(_right, Vector3(-0.6, 3.0, 1.0), 0.0, 0.0)
+
+
+func _graph_picked() -> void:
+	_set_hand(_right, Vector3(-0.6, 3.0, 1.0), 1.0, 0.0)
+
+
+func _graph_empty_press() -> void:
+	_check(_selection_names() == ["High1"], "alone, the trigger picks the object, which opens its graph: %s" % [_selection_names()])
+	_set_hand(_right, Vector3(5.0, 5.0, 1.0), 0.0, 0.0)
+
+
+func _graph_empty_kept() -> void:
+	_set_hand(_right, Vector3(5.0, 5.0, 1.0), 1.0, 0.0)
+
+
+func _graph_delete_press() -> void:
+	_check(_selection_names() == ["High1"], "the trigger in empty space leaves the scene's selection to the graph")
+	_left.set_input(&"ax_button", true)
+	_set_hand(_right, Vector3(5.0, 5.0, 1.0), 0.0, 0.0)
+
+
+func _graph_not_deleted() -> void:
+	_check(_scene.get_node_or_null(^"High1") != null, "and the delete action deletes no object")
+	_left.set_input(&"ax_button", false)
+	_graph_open = false
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
+	_document.select([], XREDocument.Source.PANEL)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 

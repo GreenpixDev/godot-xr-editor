@@ -157,7 +157,9 @@ func _run() -> void:
 	_service.source_folder = "res://build/blueprint_vr_tests"
 	_rig.add_child(_service)
 	_panels.set_blueprints(_service)
-	_rig.add_child(XREManipulator.new(_document, _rig, icons))
+	var manipulator := XREManipulator.new(_document, _rig, icons)
+	manipulator.graph_open = _service.is_open
+	_rig.add_child(manipulator)
 	_document.operation_recorded.connect(_record)
 	_host = Node3D.new()
 	_host.name = "BlueprintVRFixture"
@@ -333,6 +335,7 @@ func _run() -> void:
 	await _test_d121()
 	await _test_d122()
 	await _test_d123()
+	await _test_d125()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -2306,6 +2309,47 @@ func _test_d123() -> void:
 	_check(_service.get_clipboard_count() == 0, "× empties it")
 	features.set_value(XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SHORTCUT)
 	features.set_value(XREFeatureSettings.BLOCK_COPY, BASELINE[XREFeatureSettings.BLOCK_COPY])
+	_service.select_block(-1)
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	await _frames()
+
+
+## D-125: a click in the graph's empty space lets go of the selected blocks;
+## with the other hand adding, it keeps them.
+func _test_d125() -> void:
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var history := _service.blueprint.history.get_version()
+	_service.add_block("print")
+	await _frames()
+	var id := int((graph.nodes.back() as Dictionary)["id"])
+	canvas.preview_move(id, canvas.get_block_position(id) + Vector3(0, 0.6, 0.1))
+	canvas.commit_move(_service.blueprint, id)
+	await _frames()
+	var normal := canvas.global_basis.z.normalized()
+	var place := canvas.get_block_position(id)
+	var empty := canvas.to_global(Vector3(place.x, place.y + 0.35, 0.0))
+	_service.select_block(id)
+	_aim_from(empty, normal)
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(_service.get_selected_blocks().is_empty(), "a click in the graph's empty space lets go of the selected block")
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.GRIP)
+	_service.select_block(id)
+	_left.set_pose(&"aim", Transform3D(Basis.IDENTITY, Vector3(-5, 0, 0)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	_left.set_input(&"grip", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(_service.get_selected_blocks() == [id], "with the other hand adding, it keeps it: %s" % [_service.get_selected_blocks()])
+	_left.set_input(&"grip", 0.0)
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
 	_service.select_block(-1)
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	await _frames()

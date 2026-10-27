@@ -134,6 +134,7 @@ func _add_tools(rig: XRERig) -> void:
 	_shortcut = XREObjectShortcut.new(document, rig, EditorInterface.get_editor_theme())
 	_shortcut.name = "XREObjectShortcut"
 	_shortcut.blocked = _blueprints.is_open
+	_manipulator.graph_open = _blueprints.is_open
 	_shortcut.blueprint_requested.connect(_blueprints.open_selected)
 	_manipulator.shortcut_requested.connect(_shortcut.open)
 	rig.add_child(_shortcut)
