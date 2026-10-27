@@ -37,8 +37,10 @@ class FakeDocument extends XREDocument:
 	func preview_transform(node: Node3D, xform: Transform3D) -> void:
 		node.transform = xform
 
-	func commit_transform(node: Node3D, _before: Transform3D, source: Source) -> void:
-		_record(&"transform", source, [node])
+	func commit_transforms(nodes: Array[Node3D], _befores: Array[Transform3D], source: Source) -> void:
+		var recorded: Array[Node] = []
+		recorded.assign(nodes)
+		_record(&"transform", source, recorded)
 
 	func set_property(object: Object, property: StringName, value: Variant, source: Source) -> void:
 		object.set(property, value)

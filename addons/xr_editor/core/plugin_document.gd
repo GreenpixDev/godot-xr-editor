@@ -101,13 +101,19 @@ func preview_transform(node: Node3D, xform: Transform3D) -> void:
 	node.transform = xform
 
 
-func commit_transform(node: Node3D, before: Transform3D, source: Source) -> void:
+func commit_transforms(nodes: Array[Node3D], befores: Array[Transform3D], source: Source) -> void:
+	if nodes.is_empty():
+		return
 	var undo_redo := _plugin.get_undo_redo()
-	undo_redo.create_action("XR: Transform %s" % node.name)
-	undo_redo.add_do_property(node, &"transform", node.transform)
-	undo_redo.add_undo_property(node, &"transform", before)
-	_commit(undo_redo, node)
-	_record(&"transform", source, [node])
+	undo_redo.create_action("XR: Transform %s" % nodes[0].name if nodes.size() == 1
+			else "XR: Transform %d Nodes" % nodes.size())
+	for i: int in nodes.size():
+		undo_redo.add_do_property(nodes[i], &"transform", nodes[i].transform)
+		undo_redo.add_undo_property(nodes[i], &"transform", befores[i])
+	_commit(undo_redo, nodes[0])
+	var recorded: Array[Node] = []
+	recorded.assign(nodes)
+	_record(&"transform", source, recorded)
 
 
 func set_property(object: Object, property: StringName, value: Variant, source: Source) -> void:

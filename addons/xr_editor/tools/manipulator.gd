@@ -14,7 +14,14 @@ extends Node
 ## [br]- Trigger: select the pointed node, or clear the selection over empty space.
 ## With [constant XREFeatureSettings.OBJECT_SHORTCUT] on, the trigger on the
 ## node already selected asks for its shortcut ([signal shortcut_requested], D-088).
-## [br]- Grip: grab the pointed node, which also selects it. A touched node
+## [br]- With [constant XREFeatureSettings.SELECT_ADD] at
+## [constant XREFeatureSettings.GRIP], while the other hand's grip is held in
+## empty space (D-115): the trigger adds the pointed node to the selection, or
+## takes it out if it is selected, and keeps the selection over empty space;
+## the grip adds the pointed node before grabbing.
+## [br]- Grip: grab the pointed node, which also selects it. Grabbing a
+## selected node grabs every selected one (D-115): the others keep their place
+## relative to it, as if they were one rigid node. A touched node
 ## follows the hand rigidly. A node grabbed with the ray follows the hand
 ## with the hand's motion scaled by how much farther from the body the node
 ## is than the hand (HOMER, Bowman and Hodges 1997): bringing the hand halfway
@@ -98,6 +105,10 @@ class HandState:
 	var gain := 1.0
 	## The hand's transform in the rig's space when the current hold began.
 	var hold_start: Transform3D
+	## The grip went down in empty space and is still held: with
+	## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP],
+	## the other hand adds to the selection (D-115).
+	var adding := false
 
 	func _init(controller: XREHand) -> void:
 		hand = controller
@@ -123,8 +134,17 @@ var _selection_outlines: Array[XREOutline] = []
 ## Hands holding [member _grabbed]; empty when nothing is grabbed.
 var _holders: Array[HandState] = []
 var _grabbed: Node3D
-## Local transform before the grab: the undo step's start, and what a cancel restores.
-var _before: Transform3D
+## The nodes the grab moves (D-115): [member _grabbed] and the other selected
+## nodes, but none under another of them, which carries it. Filled when the grab begins.
+var _movers: Array[Node3D] = []
+## Local transform of each of [member _movers] before the grab: the undo
+## step's start, and what a cancel restores.
+var _mover_befores: Array[Transform3D] = []
+## Global transform of each of [member _movers] in the grabbed node's space
+## when the grab began: the grabbed node carries them as one rigid group.
+var _mover_offsets: Array[Transform3D] = []
+## From global space to the parent space of each of [member _movers], fixed for the grab.
+var _mover_to_parents: Array[Transform3D] = []
 ## Global transform of the grabbed node's parent space, fixed for the grab, and its inverse.
 var _parent_global: Transform3D
 var _to_parent: Transform3D
@@ -177,6 +197,8 @@ func _process(_delta: float) -> void:
 	for state: HandState in _hands:
 		if state.holding and state.hand.grip_released:
 			_let_go(state)
+		if not state.hand.grip_held:
+			state.adding = false
 
 	for state: HandState in _hands:
 		if state.holding:
@@ -185,15 +207,19 @@ func _process(_delta: float) -> void:
 		if not state.hand.is_free_for(self):
 			# The tool that claimed the hand draws its ray.
 			state.hover = null
+			state.adding = false
 			continue
 		_update_hover(state, root)
 		if state.hand.grip_pressed:
 			if _holders.is_empty():
 				_begin_grab(state)
+				state.adding = state.hover == null
 			elif _holders.size() == 1:
 				_join(state)
 		elif state.hand.trigger_pressed and _holders.is_empty():
-			if _opens_shortcut(state.hover):
+			if _adds_to_selection(state):
+				_toggle(state.hover)
+			elif _opens_shortcut(state.hover):
 				shortcut_requested.emit(state.hand, state.hover)
 			else:
 				_select(state.hover)
@@ -360,21 +386,85 @@ func _select(node: Node3D) -> void:
 		_document.select(nodes, XREDocument.Source.TOOL)
 
 
+## Whether the trigger or the grip of [param state]'s hand adds to the
+## selection: the other hand's grip is held in empty space, with
+## [constant XREFeatureSettings.SELECT_ADD] at [constant XREFeatureSettings.GRIP] (D-115).
+func _adds_to_selection(state: HandState) -> bool:
+	if _document.features.get_value(XREFeatureSettings.SELECT_ADD) != XREFeatureSettings.GRIP:
+		return false
+	for other: HandState in _hands:
+		if other != state and other.adding:
+			return true
+	return false
+
+
+## Adds [param node] to the selection, or takes it out if it is selected; null changes nothing.
+func _toggle(node: Node3D) -> void:
+	if node == null:
+		return
+	var nodes := _document.get_selection()
+	if nodes.has(node):
+		nodes.erase(node)
+	else:
+		nodes.append(node)
+	_document.select(nodes, XREDocument.Source.TOOL)
+
+
+## Whether a grab can move [param node]: in the tree, and neither its own nor
+## its global transform flattened.
+static func _movable(node: Node3D) -> bool:
+	return node != null and node.is_inside_tree() \
+			and not is_zero_approx(node.transform.basis.determinant()) \
+			and not is_zero_approx(node.global_transform.basis.determinant())
+
+
 func _begin_grab(state: HandState) -> void:
 	var node := state.hover
-	if node == null or not node.is_inside_tree() \
-			or is_zero_approx(node.transform.basis.determinant()) \
-			or is_zero_approx(node.global_transform.basis.determinant()):
+	if not _movable(node):
 		return
-	_select(node)
+	if not _document.get_selection().has(node):
+		if _adds_to_selection(state):
+			_toggle(node)
+		else:
+			_select(node)
 	_grabbed = node
-	_before = node.transform
 	_parent_global = node.global_transform * node.transform.affine_inverse()
 	_to_parent = _parent_global.affine_inverse()
 	_snap = _document.get_snap()
 	_free_global = node.global_transform
 	_scale = 1.0
+	_collect_movers()
 	_join(state)
+
+
+## Fills [member _movers]: the grabbed node first, then the selected nodes in
+## the selection's order, leaving out those under another of them.
+func _collect_movers() -> void:
+	var nodes: Array[Node3D] = [_grabbed]
+	for node: Node in _document.get_selection():
+		var node_3d := node as Node3D
+		if node_3d != _grabbed and _movable(node_3d):
+			nodes.append(node_3d)
+	var to_grabbed := _grabbed.global_transform.affine_inverse()
+	for node: Node3D in nodes:
+		var carried := false
+		for other: Node3D in nodes:
+			if other.is_ancestor_of(node):
+				carried = true
+				break
+		if carried:
+			continue
+		_movers.append(node)
+		_mover_befores.append(node.transform)
+		_mover_offsets.append(to_grabbed * node.global_transform)
+		_mover_to_parents.append((node.global_transform * node.transform.affine_inverse()).affine_inverse())
+
+
+func _clear_movers() -> void:
+	_movers.clear()
+	_mover_befores.clear()
+	_mover_offsets.clear()
+	_mover_to_parents.clear()
 
 
 func _join(state: HandState) -> void:
@@ -445,28 +535,44 @@ func _drag() -> void:
 	var local := _to_parent * _free_global
 	if snapping:
 		local = _snap.snap_transform(local)
-	_document.preview_transform(_grabbed, local)
+	var grabbed_global := _parent_global * local
+	for i: int in _movers.size():
+		if not is_instance_valid(_movers[i]) or not _movers[i].is_inside_tree():
+			continue
+		if _movers[i] == _grabbed:
+			_document.preview_transform(_grabbed, local)
+		else:
+			_document.preview_transform(_movers[i], _mover_to_parents[i] * grabbed_global * _mover_offsets[i])
 
 
-## Records the grab as one undo step, unless the node didn't move.
+## Records the grab as one undo step of the nodes that moved, if any did.
 func _end_grab() -> void:
-	var valid := is_instance_valid(_grabbed) and _grabbed.is_inside_tree()
-	if valid and not _grabbed.transform.is_equal_approx(_before):
-		_document.commit_transform(_grabbed, _before, XREDocument.Source.TOOL)
+	var moved: Array[Node3D] = []
+	var befores: Array[Transform3D] = []
+	for i: int in _movers.size():
+		if is_instance_valid(_movers[i]) and _movers[i].is_inside_tree() \
+				and not _movers[i].transform.is_equal_approx(_mover_befores[i]):
+			moved.append(_movers[i])
+			befores.append(_mover_befores[i])
+	if not moved.is_empty():
+		_document.commit_transforms(moved, befores, XREDocument.Source.TOOL)
 	_grabbed = null
 	_snap = null
+	_clear_movers()
 
 
-## Puts the grabbed node back where the grab found it, without an undo step.
+## Puts the grabbed nodes back where the grab found them, without an undo step.
 func _cancel_grab() -> void:
 	for state: HandState in _holders:
 		state.holding = false
 		state.hand.unclaim(self)
 	_holders.clear()
-	if is_instance_valid(_grabbed) and _grabbed.is_inside_tree():
-		_document.preview_transform(_grabbed, _before)
+	for i: int in _movers.size():
+		if is_instance_valid(_movers[i]) and _movers[i].is_inside_tree():
+			_document.preview_transform(_movers[i], _mover_befores[i])
 	_grabbed = null
 	_snap = null
+	_clear_movers()
 
 
 func _delete_selection() -> void:

@@ -8,7 +8,7 @@ class EmptyDocument extends XREDocument:
 	func get_selection() -> Array[Node]: return []
 	func select(_nodes: Array[Node], _source: Source) -> void: pass
 	func preview_transform(_node: Node3D, _xform: Transform3D) -> void: pass
-	func commit_transform(_node: Node3D, _before: Transform3D, _source: Source) -> void: pass
+	func commit_transforms(_nodes: Array[Node3D], _befores: Array[Transform3D], _source: Source) -> void: pass
 	func set_property(_object: Object, _property: StringName, _value: Variant, _source: Source) -> void: pass
 	func preview_property(_object: Object, _property: StringName, _value: Variant) -> void: pass
 	func commit_property(_object: Object, _property: StringName, _before: Variant, _source: Source) -> void: pass

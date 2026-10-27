@@ -16,8 +16,10 @@ class FakeDocument extends XREDocument:
 	var selection: Array[Node] = []
 	var snap := XRESnap.new(false, 0.0, 0.0, 0.0)
 	var previews := 0
-	## The "before" transform of every commit_transform.
+	## The "before" transform of every node commit_transforms committed.
 	var commits: Array[Transform3D] = []
+	## How many times commit_transforms was called: one undo step each.
+	var commit_steps := 0
 	## Nodes add_node put in.
 	var added: Array[Node] = []
 	## Nodes remove_nodes took out; the test frees them at the end.
@@ -38,9 +40,12 @@ class FakeDocument extends XREDocument:
 		node.transform = xform
 		previews += 1
 
-	func commit_transform(node: Node3D, before: Transform3D, source: Source) -> void:
-		commits.append(before)
-		_record(&"transform", source, [node])
+	func commit_transforms(nodes: Array[Node3D], befores: Array[Transform3D], source: Source) -> void:
+		commits.append_array(befores)
+		commit_steps += 1
+		var recorded: Array[Node] = []
+		recorded.assign(nodes)
+		_record(&"transform", source, recorded)
 
 	func set_property(object: Object, property: StringName, value: Variant, source: Source) -> void:
 		object.set(property, value)
@@ -132,6 +137,8 @@ var _taken: Node3D
 var _operation_count := 0
 var _commit_count := 0
 var _rig_before: Vector3
+## Global positions of the boxes grabbed together (D-115), by path, before the grab.
+var _group_before: Dictionary[String, Vector3] = {}
 var _target_before: Vector3
 
 
@@ -196,6 +203,29 @@ func _initialize() -> void:
 		_blueprint_lit,
 		_blueprint_requested,
 		_shortcut_blocked,
+		_multi_start,
+		_hold_grip_with_replace,
+		_trigger_with_replace,
+		_replaced_with_grip_held,
+		_select_first,
+		_hold_other_grip,
+		_trigger_to_add,
+		_added_by_other_grip,
+		_trigger_to_take_out,
+		_taken_out,
+		_trigger_to_add_back,
+		_added_back,
+		_trigger_in_empty,
+		_kept_in_empty,
+		_trigger_on_child,
+		_child_added,
+		_trigger_on_parent,
+		_parent_added,
+		_group_grabbed,
+		_group_moved,
+		_group_committed,
+		_group_regrabbed,
+		_group_cancelled,
 		_grab_for_flight,
 		_fly,
 		_flown,
@@ -298,6 +328,11 @@ func _build() -> void:
 	room.custom_aabb = AABB(Vector3(-3.0, -3.0, -3.0), Vector3(6.0, 6.0, 6.0))
 	_add_node(_scene, room, "Room", Vector3(20.0, 0.0, 0.0))
 	_add_box(_scene, "InRoom", Vector3(20.0, 0.0, -1.0), 0.2)
+	# Lanes 30–33: boxes selected and grabbed together (D-115); the cart carries its load.
+	_add_box(_scene, "PairA", Vector3(30.0, 0.0, -1.0), 0.2)
+	_add_box(_scene, "PairB", Vector3(31.0, 0.0, -1.0), 0.2)
+	_add_box(_scene, "PairC", Vector3(32.0, 0.0, -1.0), 0.2)
+	_add_box(_add_box(_scene, "Cart", Vector3(33.0, 0.0, -1.0), 0.2), "Load", Vector3(0.0, 0.5, 0.0), 0.2)
 
 	_picker = XREPicker.new()
 	_picker.scenario = root.find_world_3d().scenario
@@ -1027,6 +1062,168 @@ func _shortcut_blocked() -> void:
 	_check(not _shortcut.is_open() and _operations.size() == _operation_count, "while the graph is open the trigger on the selected node opens nothing")
 	_shortcut.blocked = Callable()
 	_document.features.set_value(XREFeatureSettings.OBJECT_SHORTCUT, XREFeatureSettings.OFF)
+	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
+
+
+# Adding to the selection (D-115): with Other grip, the left grip held in
+# empty space makes the right trigger add a box or take it out, and the right
+# grip add one before grabbing. A grip on a selected box grabs the selection.
+
+func _selection_names() -> Array:
+	return _document.get_selection().map(func(node: Node) -> String: return String(node.name))
+
+
+## Remembers where the boxes of lanes 30–33 are.
+func _remember_group() -> void:
+	for path: String in ["PairA", "PairB", "PairC", "Cart", "Cart/Load"]:
+		_group_before[path] = (_scene.get_node(path) as Node3D).global_position
+
+
+func _multi_start() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.SELECT_ADD) == XREFeatureSettings.REPLACE,
+			"the trigger replaces the selection by default")
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_set_hand(_right, Vector3(30.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _hold_grip_with_replace() -> void:
+	_check(_selection_names() == ["PairA"], "the trigger selects the first box: %s" % [_selection_names()])
+	_operation_count = _operations.size()
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
+	_set_hand(_right, Vector3(31.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _trigger_with_replace() -> void:
+	_check(_operations.size() == _operation_count, "a grip in empty space does nothing: %s" % [_operations.slice(_operation_count)])
+	_set_hand(_right, Vector3(31.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _replaced_with_grip_held() -> void:
+	_check(_selection_names() == ["PairB"], "with Replace, the trigger replaces though the other grip is held: %s" % [_selection_names()])
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.GRIP)
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_set_hand(_right, Vector3(30.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _select_first() -> void:
+	_set_hand(_right, Vector3(30.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _hold_other_grip() -> void:
+	_check(_selection_names() == ["PairA"], "with Other grip, the trigger alone still replaces: %s" % [_selection_names()])
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 1.0)
+	_set_hand(_right, Vector3(31.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _trigger_to_add() -> void:
+	_set_hand(_right, Vector3(31.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _added_by_other_grip() -> void:
+	_check(_selection_names() == ["PairA", "PairB"], "the other grip held, the trigger adds the box: %s" % [_selection_names()])
+	_check(_operations.back() == "select TOOL [\"PairA\", \"PairB\"]", "adding is one select of both: %s" % _operations.back())
+	_check(_active_outlines(XREManipulator.SELECTION_COLOR).size() == 2, "both boxes are outlined")
+	_set_hand(_right, Vector3(30.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _trigger_to_take_out() -> void:
+	_set_hand(_right, Vector3(30.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _taken_out() -> void:
+	_check(_selection_names() == ["PairB"], "the trigger on a selected box takes it out: %s" % [_selection_names()])
+	_set_hand(_right, Vector3(30.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _trigger_to_add_back() -> void:
+	_set_hand(_right, Vector3(30.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _added_back() -> void:
+	_check(_selection_names() == ["PairB", "PairA"], "the trigger adds it back: %s" % [_selection_names()])
+	_operation_count = _operations.size()
+	_set_hand(_right, Vector3(35.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _trigger_in_empty() -> void:
+	_set_hand(_right, Vector3(35.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _kept_in_empty() -> void:
+	_check(_selection_names() == ["PairB", "PairA"] and _operations.size() == _operation_count,
+			"the other grip held, the trigger in empty space keeps the selection: %s" % [_selection_names()])
+	_set_hand(_right, Vector3(33.0, 0.5, 1.0), 0.0, 0.0)
+
+
+func _trigger_on_child() -> void:
+	_set_hand(_right, Vector3(33.0, 0.5, 1.0), 1.0, 0.0)
+
+
+func _child_added() -> void:
+	_check(_selection_names() == ["PairB", "PairA", "Load"], "the trigger adds the cart's load: %s" % [_selection_names()])
+	_set_hand(_right, Vector3(33.0, 0.0, 1.0), 0.0, 0.0)
+
+
+func _trigger_on_parent() -> void:
+	_set_hand(_right, Vector3(33.0, 0.0, 1.0), 1.0, 0.0)
+
+
+func _parent_added() -> void:
+	_check(_selection_names() == ["PairB", "PairA", "Load", "Cart"], "and the cart: %s" % [_selection_names()])
+	_remember_group()
+	_commit_count = _document.commit_steps
+	_set_hand(_right, Vector3(32.0, 0.0, 1.0), 0.0, 1.0)
+
+
+func _group_grabbed() -> void:
+	_check(_selection_names() == ["PairB", "PairA", "Load", "Cart", "PairC"],
+			"the other grip held, the grip adds the box it grabs: %s" % [_selection_names()])
+	_check(_rig.right_hand.get_claimant() == _manipulator, "the grabbing hand is the manipulator's")
+	# The left grip lets go: the right hand holds on.
+	_set_hand(_left, Vector3(-5.0, 0.0, 0.0), 0.0, 0.0)
+	_set_hand(_right, Vector3(32.1, 0.0, 1.0), 0.0, 1.0)
+
+
+func _group_moved() -> void:
+	var moved := (_scene.get_node(^"PairC") as Node3D).global_position - _group_before["PairC"]
+	_check(moved.x > 0.05, "the grabbed box follows the hand: %s" % moved)
+	for path: String in ["PairA", "PairB", "Cart", "Cart/Load"]:
+		_check_vector((_scene.get_node(path) as Node3D).global_position - _group_before[path], moved,
+				"%s moves with the grabbed box" % path)
+	_check(_document.commit_steps == _commit_count, "nothing is committed while holding the group")
+	_set_hand(_right, Vector3(32.1, 0.0, 1.0), 0.0, 0.0)
+
+
+func _group_committed() -> void:
+	_check(_document.commit_steps == _commit_count + 1,
+			"letting go records one undo step for the group: %d" % (_document.commit_steps - _commit_count))
+	_check(_operations.back() == "transform TOOL [\"PairC\", \"PairB\", \"PairA\", \"Cart\"]",
+			"the grabbed box first, not the load, which the cart carries: %s" % _operations.back())
+	var befores: Array[Transform3D] = _document.commits.slice(-4)
+	_check(befores.size() == 4 and befores[0].origin.is_equal_approx(Vector3(32.0, 0.0, -1.0))
+			and befores[3].origin.is_equal_approx(Vector3(33.0, 0.0, -1.0)),
+			"each node's undo starts where the grab found it: %s" % [befores])
+	_check((_scene.get_node(^"Cart/Load") as Node3D).position.is_equal_approx(Vector3(0.0, 0.5, 0.0)),
+			"the load keeps its place on the cart")
+	_remember_group()
+	_set_hand(_right, Vector3(_group_before["PairA"].x, 0.0, 1.0), 0.0, 1.0)
+
+
+func _group_regrabbed() -> void:
+	_check(_selection_names() == ["PairB", "PairA", "Load", "Cart", "PairC"],
+			"a grip on a selected box keeps the selection: %s" % [_selection_names()])
+	_set_hand(_right, Vector3(_group_before["PairA"].x + 0.1, 0.0, 1.0), 0.0, 1.0)
+
+
+func _group_cancelled() -> void:
+	_check(not (_scene.get_node(^"PairC") as Node3D).global_position.is_equal_approx(_group_before["PairC"]),
+			"grabbing another selected box moves the group too")
+	_document.scene_changed.emit()
+	for path: String in ["PairA", "PairB", "PairC", "Cart", "Cart/Load"]:
+		_check_vector((_scene.get_node(path) as Node3D).global_position, _group_before[path],
+				"switching scenes puts %s back" % path)
+	_check(_document.commit_steps == _commit_count + 1, "a cancelled group grab records nothing")
+	_document.features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.REPLACE)
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 

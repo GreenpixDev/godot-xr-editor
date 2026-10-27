@@ -143,12 +143,21 @@ func record_graph_operation(operation: StringName, source: Source) -> void:
 
 
 ## Moves a node live while the user drags it. Not recorded in undo history
-## and not an operation; finish every drag with [method commit_transform].
+## and not an operation; finish every drag with [method commit_transform], or
+## [method commit_transforms] for a group.
 @abstract func preview_transform(node: Node3D, xform: Transform3D) -> void
 
 
 ## Records one undo step from [param before] to the node's current local transform.
-@abstract func commit_transform(node: Node3D, before: Transform3D, source: Source) -> void
+func commit_transform(node: Node3D, before: Transform3D, source: Source) -> void:
+	commit_transforms([node], [before], source)
+
+
+## Records one undo step that moves each of [param nodes] from its
+## [param befores] entry to its current local transform, and one
+## [code]&"transform"[/code] operation naming them all (D-115): a group
+## dragged together is undone together.
+@abstract func commit_transforms(nodes: Array[Node3D], befores: Array[Transform3D], source: Source) -> void
 
 
 @abstract func set_property(object: Object, property: StringName, value: Variant, source: Source) -> void

@@ -223,6 +223,15 @@ const NEXT_SUGGESTIONS := &"next_suggestions"
 ## takes a copy of the block along the ray, to let go where it goes, or, let
 ## go at once, puts it beside the card.
 const BLOCK_COPY := &"block_copy"
+## How the trigger adds scene objects to the selection (D-115). Replace, as
+## before: it selects only the object under the ray. Other grip: while the
+## other hand's grip is held in empty space, the trigger adds the object under
+## the ray, or takes it out if it is selected already, and a grip adds it
+## before grabbing. A grip on a selected object grabs every selected one with
+## either value.
+const SELECT_ADD := &"select_add"
+const REPLACE := &"replace"
+const GRIP := &"grip"
 
 ## Every setting by key: its page, title, values (the first is the default;
 ## the defaults are the author's picks after the headset checks, D-076, D-114),
@@ -437,6 +446,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [ON, OFF],
 		"labels": ["On", "Off"],
 		"hint": "On: a copy button beside a card's trash. Trigger on it and point where the copy goes, or let go at once to put it beside the card.",
+	},
+	SELECT_ADD: {
+		"category": Category.FEATURES,
+		"title": "Add to selection",
+		"values": [REPLACE, GRIP],
+		"labels": ["Replace", "Other grip"],
+		"hint": "Replace: the trigger selects only the object under the ray. Other grip: hold the other hand's grip in empty space, and the trigger adds the object or takes it out. A grip on a selected object grabs all the selected ones.",
 	},
 }
 
