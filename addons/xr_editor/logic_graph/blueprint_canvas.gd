@@ -228,6 +228,8 @@ const PURE_FALLBACK_SIZE := 38
 ## How far past a threshold the head must go before a node or a part changes
 ## its mind (D-115): mirrored, turned round, its pins on its back, its turn.
 const MARGIN := deg_to_rad(5.0)
+## A card's wires that run across the view less than this, as a sum of lengths 1, leave its mirror to its part (D-132).
+const MIN_FLOW := 0.25
 ## How fast a graph or a part turns to its new front: the gap left after a second, as a share.
 const TURN_RATE := 12.0
 ## A turn of a held card about the vertical goes in steps of 15° (D-115).
@@ -356,6 +358,9 @@ class Card:
 	var held_face := INF
 	## A sign's ports on its rim (Sign ports Rim): where each was built, by its index in [member ports].
 	var rim_built: Array[Vector3] = []
+	## The level way its wires run through it, in the canvas's space (D-132): a
+	## sum of one length from each input's far end and one to each output's.
+	var flow := Vector3.ZERO
 
 ## A part of the graph (D-115): its cards of one orientation wired together,
 ## or every card while the graph turns as a whole. It turns about its centre.
@@ -448,6 +453,9 @@ var _delete_right := -1
 var _delete_left := -1
 var _copy_right := -1
 var _copy_left := -1
+## The card whose heading switch (D-101) is under each hand's ray, or -1.
+var _swap_right := -1
+var _swap_left := -1
 ## Whether cards have the copy button ([constant XREFeatureSettings.BLOCK_COPY], D-093).
 var _copy_shown := false
 var _copy_mesh: ArrayMesh
@@ -1013,6 +1021,8 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	_delete_left = -1
 	_copy_right = -1
 	_copy_left = -1
+	_swap_right = -1
+	_swap_left = -1
 	_port_right = Vector2i(-1, -1)
 	_port_left = Vector2i(-1, -1)
 	_socket_right = Vector2i(-1, -1)
@@ -1663,7 +1673,8 @@ func _add_wire(wire: Wire, color: Color, entry: Dictionary) -> void:
 	wire.color = color
 	wire.mesh = create_scene_wire(color)
 	wire.normal = wire.mesh.material_override
-	wire.lit = wire_material(color, LIT_WIRE_GROW)
+	# An execution wire is white: thicker alone, it hardly shows under the ray, so it takes the focus's gold (D-132).
+	wire.lit = wire_material(XREBlueprintFocus.FRAME if color.s < 0.1 else color, LIT_WIRE_GROW)
 	wire.pieces.append(wire.mesh)
 	wire.bends = _bends_of(entry, wire.stored)
 	_fit_pieces(wire)
@@ -2040,6 +2051,7 @@ func face_user(head: Vector3, delta: float = 0.0) -> void:
 ## mirrored or not, turned round, its pins on its back, its sign's ports on the rim.
 func _face_cards() -> void:
 	for part: Part in _parts: _mirror_part(part)
+	if _card_mirror and _turn_mode == XREFeatureSettings.FIXED: _sum_flows()
 	var local_head := to_local(_head_position)
 	for card: Card in _cards:
 		if _faces_user: _decide_sides(card, local_head)
@@ -2219,8 +2231,43 @@ func _mirror_part(part: Part) -> void:
 	elif bearing < PI * 0.5 - MARGIN: part.mirrored = false
 
 
+## Sums each card's [member Card.flow] (D-132): from the far end of each of its
+## inputs' wires, from it to the far end of each of its outputs' — a wire's
+## nearest bend where it bends, a variable's box for a wire from one.
+func _sum_flows() -> void:
+	for card: Card in _cards: card.flow = Vector3.ZERO
+	for wire: Wire in _wires:
+		if wire.to == null: continue
+		var bends := wire.knots.size()
+		var start: Vector3 = wire.bends[bends - 1] if bends > 0 else wire.from.node.position if wire.from != null else _boxes.box_point(wire.variable)
+		wire.to.flow += _level(wire.to.node.position - start)
+		if wire.from != null: wire.from.flow += _level((wire.bends[0] if bends > 0 else wire.to.node.position) - wire.from.node.position)
+
+
+## [param offset] along the floor, of length 1; zero if it is upright.
+static func _level(offset: Vector3) -> Vector3:
+	offset.y = 0.0
+	return offset.normalized() if not offset.is_zero_approx() else Vector3.ZERO
+
+
+## Whether [param card], turned to [param local_head], lays out as a mirror's
+## (Card mirror, D-132): its wires run to the head's left, past 95° from its
+## right, until back under 85°; a card whose wires don't run across the view
+## goes with its part ([method _mirror_part], D-115).
+func _flow_mirrored(card: Card, local_head: Vector3) -> bool:
+	if card.part >= _parts.size() or not _card_mirror or _turn_mode != XREFeatureSettings.FIXED: return false
+	var right := Vector3.UP.cross(_level(local_head - card.node.position))
+	var flow := Vector3(card.flow.x, 0.0, card.flow.z)
+	if right.is_zero_approx() or flow.length() < MIN_FLOW: return _parts[card.part].mirrored
+	var angle := right.angle_to(flow)
+	if angle > PI * 0.5 + MARGIN: return true
+	if angle < PI * 0.5 - MARGIN: return false
+	return card.mirrored
+
+
 ## What [param card] shows the head at [param local_head] (the canvas's space,
-## D-115): a card that faces the head is mirrored with its part, a sign on the
+## D-115): a card that faces the head is mirrored as its wires run
+## ([method _flow_mirrored], D-132), a sign on the
 ## rim never; one that doesn't face it is turned round to show its face as a
 ## mirror's (Node back Labelled), or has its pins on its back (Pins Both faces),
 ## while the head is past 95° behind it, until it is back under 85°.
@@ -2228,7 +2275,7 @@ func _decide_sides(card: Card, local_head: Vector3) -> void:
 	var mirrored := false
 	var pins_back := false
 	if _faces(card):
-		mirrored = card.part < _parts.size() and _parts[card.part].mirrored and not (_rim_ports and card.shape != XREBlueprintShapes.Shape.NONE)
+		mirrored = _flow_mirrored(card, local_head) and not (_rim_ports and card.shape != XREBlueprintShapes.Shape.NONE)
 		card.turned_round = false
 	else:
 		var front := Basis(Vector3.UP, card.yaw + _part_turn(card)) * Vector3.BACK
@@ -2520,6 +2567,11 @@ func _paint_focus() -> void:
 			if card.focus != XREBlueprintFocus.OUT: continue
 			for index: int in card.ports.size():
 				if _compatible(card, index): card.keep_ports |= 1 << index
+			# A token in a port the wire may end on stays as it is with it: a plug's cap is in the port (D-135).
+			for index: int in card.sockets.size():
+				var socket := card.sockets[index]
+				if socket.kind == TOKEN and socket.port >= 0 and socket.port < card.inputs.size() and (card.keep_ports & (1 << socket.port)) != 0:
+					card.keep_sockets |= 1 << index
 	for card: Card in _cards: _look_card(card)
 	for wire: Wire in _wires: _look_wire(wire)
 	for link: Wire in _variable_links: _look_link(link)
@@ -2653,11 +2705,12 @@ func is_port_hovered(id: int, port: int, input: bool) -> bool:
 ## [param edge] is the wire to light: the one on that port ([method get_hit_edge])
 ## or the one the ray is on ([method get_hit_wire]), or -1.
 ## A variable's box under that ray is let go too, unless [param keep_box];
-## the copy button grows with [param copy].
-func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1, keep_box: bool = false, copy: bool = false) -> void:
+## the copy button grows with [param copy], the heading's switch with [param swap].
+func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1, keep_box: bool = false, copy: bool = false, swap: bool = false) -> void:
 	if not keep_box: _boxes.hover(-1, -1, right)
 	hover_plus(id if plus else -1, right)
 	_hover_copy(id if copy else -1, right)
+	_hover_swap(id if swap else -1, right)
 	_hover_port(id, port, input, right)
 	_hover_edge(edge, right)
 	var hovered := id if trash else -1
@@ -2732,6 +2785,14 @@ func _hover_copy(id: int, right: bool) -> void:
 	else: _copy_left = id
 	for card: Card in _cards:
 		if card.copy != null: card.copy.scale = Vector3.ONE * (HOVER_SCALE if card.id == _copy_right or card.id == _copy_left else 1.0)
+
+
+func _hover_swap(id: int, right: bool) -> void:
+	if id == (_swap_right if right else _swap_left): return
+	if right: _swap_right = id
+	else: _swap_left = id
+	for card: Card in _cards:
+		if card.swap != null: card.swap.scale = Vector3.ONE * (HOVER_SCALE if card.id == _swap_right or card.id == _swap_left else 1.0)
 
 
 ## Two squares, one over the other's corner: the copy button (D-093).
@@ -3485,8 +3546,10 @@ func get_arrow_pose(index: int) -> Transform3D:
 
 
 ## Puts each port of a sign on its rim towards the far ends of its wires, as the
-## head sees them (Sign ports Rim, D-115): an input without a wire across from
-## the result, no two nearer than 50°; a token goes round with its port.
+## head sees them (Sign ports Rim, D-115): towards a wire's nearest bend if it
+## bends, an input without a wire across from the result, no two nearer than
+## 50°, none more than 90° from where it was built (D-132), a wire that runs
+## off behind folding back towards that side (D-135); a token goes round with its port.
 func _lay_rims() -> void:
 	for card: Card in _cards:
 		if card.shape == XREBlueprintShapes.Shape.NONE or card.rim_built.size() != card.ports.size(): continue
@@ -3500,15 +3563,17 @@ func _lay_rims() -> void:
 			var pull := Vector2.ZERO
 			for wire: Wire in _wires:
 				var far := Vector3.INF
+				var bends := wire.knots.size()
 				if input and wire.to == card and wire.to_port == index:
-					far = wire.from.node.position if wire.from != null else _boxes.box_point(wire.variable)
+					far = wire.bends[bends - 1] if bends > 0 else wire.from.node.position if wire.from != null else _boxes.box_point(wire.variable)
 				elif not input and wire.from == card and wire.from_port == index - card.inputs.size() and wire.to != null:
-					far = wire.to.node.position
+					far = wire.bends[0] if bends > 0 else wire.to.node.position
 				if far == Vector3.INF: continue
 				var local := inverse * far
 				var flat := Vector2(local.x, local.y)
 				if not flat.is_zero_approx(): pull += flat.normalized()
 			_rim_angles[index] = pull.angle() if not pull.is_zero_approx() else INF
+			if _rim_angles[index] != INF: _fold_rim(card, index)
 			if not input and not has_output and _rim_angles[index] != INF:
 				output = _rim_angles[index]
 				has_output = true
@@ -3517,6 +3582,7 @@ func _lay_rims() -> void:
 			var built := card.rim_built[index]
 			# A port without a wire stays where it was built, an input across from the result.
 			_rim_angles[index] = output + PI if index < card.inputs.size() and has_output else atan2(built.y, built.x)
+		for index: int in count: _fold_rim(card, index)
 		for _sweep: int in 24:
 			for first: int in count:
 				for second: int in range(first + 1, count):
@@ -3526,6 +3592,8 @@ func _lay_rims() -> void:
 					var push := need * 0.5 * (1.0 if gap >= 0.0 else -1.0)
 					_rim_angles[first] -= push
 					_rim_angles[second] += push
+					_hold_rim(card, first)
+					_hold_rim(card, second)
 		for index: int in count:
 			var spot := _rim_point(card, _rim_angles[index])
 			var port := card.ports[index]
@@ -3537,10 +3605,32 @@ func _lay_rims() -> void:
 			var built := card.rim_built[socket.port]
 			var turn := angle_difference(atan2(built.y, built.x), _rim_angles[socket.port])
 			var offset := Vector2(socket.home.x - built.x, socket.home.y - built.y).rotated(turn)
+			# A plug's cap is its visual's origin: it stays in the port, its body level to its left to read (D-132).
+			if _value_mode == XREFeatureSettings.PLUGS: offset = Vector2(socket.center.x - socket.visual.position.x, socket.center.y - socket.visual.position.y)
 			var port_at := card.ports[socket.port].position
 			var center := Vector3(port_at.x + offset.x, port_at.y + offset.y, socket.home.z)
 			socket.visual.position += center - socket.center
 			socket.center = center
+
+
+## Keeps port [param index] of [param card] on the rim within 90° of where it
+## was built (D-132): an input stays on its side, the result on its own.
+func _hold_rim(card: Card, index: int) -> void:
+	var built := card.rim_built[index]
+	var home := atan2(built.y, built.x)
+	_rim_angles[index] = home + clampf(angle_difference(home, _rim_angles[index]), -PI * 0.5, PI * 0.5)
+
+
+## Turns port [param index] of [param card] towards its wires within 90° of
+## where it was built (D-135): a wire that runs off behind, past 90°, turns it
+## back towards its side, as far as it is past, rather than to the edge, so a
+## result whose wire runs back left stays on the right.
+func _fold_rim(card: Card, index: int) -> void:
+	var built := card.rim_built[index]
+	var home := atan2(built.y, built.x)
+	var gap := angle_difference(home, _rim_angles[index])
+	if absf(gap) > PI * 0.5: gap = signf(gap) * PI - gap
+	_rim_angles[index] = home + gap
 
 
 ## The point of [param card]'s outline at [param angle] from its centre: on a

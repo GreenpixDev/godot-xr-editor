@@ -32,8 +32,9 @@ const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, X
 		XREFeatureSettings.NODE_STYLE, XREFeatureSettings.NODE_SHRINK, XREFeatureSettings.NODE_HEADING, XREFeatureSettings.PORT_SHAPES, XREFeatureSettings.COMPOSITE_VALUES,
 		XREFeatureSettings.NODE_VOLUME, XREFeatureSettings.NODE_BACK, XREFeatureSettings.PIN_PLACE, XREFeatureSettings.CARD_MIRROR, XREFeatureSettings.SIGN_PORTS,
 		XREFeatureSettings.GRAPH_TURN, XREFeatureSettings.GRAPH_PARTS, XREFeatureSettings.EXEC_ARROWS, XREFeatureSettings.DATA_ARROWS, XREFeatureSettings.ARROW_STYLE,
-		XREFeatureSettings.SELECT_ADD, XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.SELECT_AREA]
-## The values the checks start from: the defaults before D-076, D-089, D-097, D-114 and D-131 made the
+		XREFeatureSettings.SELECT_ADD, XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.SELECT_AREA,
+		XREFeatureSettings.WIRE_DRAW]
+## The values the checks start from: the defaults before D-076, D-089, D-097, D-114, D-131 and D-133 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.VALUE_INPUT: XREFeatureSettings.WINDOW, XREFeatureSettings.TARGET_INPUT: XREFeatureSettings.WINDOW,
@@ -60,6 +61,8 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	# Selecting and copying several (D-120 to D-125) start from one at a time, as before D-131.
 	XREFeatureSettings.SELECT_ADD: XREFeatureSettings.REPLACE, XREFeatureSettings.OBJECT_COPY: XREFeatureSettings.SHORTCUT,
 	XREFeatureSettings.SELECTION_COUNTER: XREFeatureSettings.OFF, XREFeatureSettings.SELECT_AREA: XREFeatureSettings.OFF,
+	# A wire is drawn by clicks, as the checks before D-135 expect.
+	XREFeatureSettings.WIRE_DRAW: XREFeatureSettings.CLICK,
 }
 
 
@@ -348,6 +351,7 @@ func _run() -> void:
 	await _test_d122()
 	await _test_d123()
 	await _test_d125()
+	await _test_d135()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -1825,6 +1829,10 @@ func _test_d093() -> void:
 			and XREFeatureSettings.get_default(XREFeatureSettings.NODE_HEADING) == XREFeatureSettings.MEMBER and XREFeatureSettings.get_default(XREFeatureSettings.COMPOSITE_VALUES) == XREFeatureSettings.SPLIT
 			and XREFeatureSettings.get_default(XREFeatureSettings.LINK_CREATE) == XREFeatureSettings.WIRE_MENU and XREFeatureSettings.get_default(XREFeatureSettings.AUTO_LINK) == XREFeatureSettings.ON,
 			"the defaults are the author's picks (D-114): archetypes, + System, Member, Split, the wire menu, auto link")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.PIN_PLACE) == XREFeatureSettings.BOTH_FACES and XREFeatureSettings.get_default(XREFeatureSettings.CARD_MIRROR) == XREFeatureSettings.ON
+			and XREFeatureSettings.get_default(XREFeatureSettings.SIGN_PORTS) == XREFeatureSettings.RIM and XREFeatureSettings.get_default(XREFeatureSettings.EXEC_ARROWS) == XREFeatureSettings.RUNNING
+			and XREFeatureSettings.get_default(XREFeatureSettings.DATA_ARROWS) == XREFeatureSettings.AT_END and XREFeatureSettings.get_default(XREFeatureSettings.ARROW_STYLE) == XREFeatureSettings.OPEN,
+			"the defaults are the author's picks (D-133): both faces, card mirror, the rim, running and end arrows, open ones")
 	var history := _service.blueprint.history.get_version()
 	var graph := _service.blueprint.graph
 	var menu := _service.block_menu
@@ -2215,6 +2223,17 @@ func _test_d119() -> void:
 	_check(not _service.is_parameters_shown(), "several, without the parameters window")
 	await _click(_card_point(ids[1]))
 	_check(_service.get_selected_blocks() == [ids[1]], "a click is a stroke of one card: %s" % [_service.get_selected_blocks()])
+	# D-132: a click again on the one card selected lets it go; on another, selects that one.
+	await _click(_card_point(ids[1]))
+	_check(_service.get_selected_blocks().is_empty(), "a click on the one card selected lets it go: %s" % [_service.get_selected_blocks()])
+	await _click(_card_point(ids[1]))
+	_check(_service.get_selected_blocks() == [ids[1]], "a click selects it again")
+	features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.OFF)
+	await _click(_card_point(ids[1]))
+	_check(_service.get_selected_blocks().is_empty(), "without a brush too: %s" % [_service.get_selected_blocks()])
+	await _click(_card_point(ids[1]))
+	_check(_service.get_selected_blocks() == [ids[1]], "and again it selects it")
+	features.set_value(XREFeatureSettings.SELECT_AREA, XREFeatureSettings.BRUSH)
 	# The left grip held in empty space: the stroke adds, from the card the trigger added.
 	features.set_value(XREFeatureSettings.SELECT_ADD, XREFeatureSettings.GRIP)
 	_service.select_block(ids[0])
@@ -2501,6 +2520,93 @@ func _test_palette_over_focus(card: int) -> void:
 	# XREHand draws its ray over everything 200 later.
 	_check((window.get("_quad") as MeshInstance3D).sorting_offset < 200.0, "and before the hands' rays")
 	_document.features.set_value(XREFeatureSettings.FOCUS, XREFeatureSettings.OFF)
+	await _frames()
+
+
+## D-135: with Wire draw on Hold the trigger held on a port draws the wire;
+## let go on another port it connects, on its own port a wire taken off it
+## goes back, in empty space the block menu opens for it. Click keeps clicks.
+func _test_d135() -> void:
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var features := _document.features
+	var history := _service.blueprint.history.get_version()
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.WIRE_DRAW) == XREFeatureSettings.HOLD, "a wire is drawn by holding the trigger by default")
+	var ids: Array[int] = []
+	for index: int in 2:
+		_service.add_block("print")
+		await _frames()
+		ids.append(int((graph.nodes.back() as Dictionary)["id"]))
+	var start := canvas.get_block_position(ids[0]) + Vector3(0, 0.6, 0.1)
+	for index: int in 2:
+		canvas.preview_move(ids[index], start + Vector3(0.45 * index, 0, 0))
+	canvas.commit_moves(_service.blueprint, ids)
+	await _frames()
+	features.set_value(XREFeatureSettings.WIRE_DRAW, XREFeatureSettings.HOLD)
+	var normal := canvas.global_basis.z.normalized()
+	var out := canvas.to_global(canvas.port_position(ids[0], 0, false))
+	var into := canvas.to_global(canvas.port_position(ids[1], 0, true))
+	var empty := canvas.to_global(canvas.get_block_position(ids[0]) + Vector3(0, 0.35, 0))
+	var edges := graph.edges.size()
+	_aim_from(out, normal)
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_check(int(_service.get("_pending_id")) == ids[0], "the trigger held on an output draws a wire")
+	_aim_from(into, normal)
+	await _frames()
+	_check(int(_service.get("_pending_id")) == ids[0] and graph.edges.size() == edges, "held, it follows the ray over an input")
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	var last: Dictionary = graph.edges.back() if not graph.edges.is_empty() else {}
+	_check(graph.edges.size() == edges + 1 and last.get("from") == ids[0] and last.get("to") == ids[1] and int(_service.get("_pending_id")) == -1,
+			"let go on the input, it connects there")
+	graph.edges[graph.edges.size() - 1]["vr_bends"] = PackedVector3Array([Vector3(10, 20, 0.3)])
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_check(graph.edges.size() == edges and int(_service.get("_pending_id")) == ids[1], "held on a wired input, its wire comes off it")
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	last = graph.edges.back() if not graph.edges.is_empty() else {}
+	_check(graph.edges.size() == edges + 1 and last.get("to") == ids[1] and last.get("vr_bends") == PackedVector3Array([Vector3(10, 20, 0.3)]) and int(_service.get("_pending_id")) == -1,
+			"let go on the same port, it goes back with its bend")
+	var free := canvas.to_global(canvas.port_position(ids[1], 0, false))
+	edges = graph.edges.size()
+	_aim_from(free, normal)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_aim_from(empty, normal)
+	await _frames()
+	_check(_panels.find_window(XREBlueprintPaletteTab) == null, "held in empty space, no menu yet")
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(_panels.find_window(XREBlueprintPaletteTab) != null and int(_service.get("_pending_id")) == ids[1], "let go in empty space, the block menu opens for the wire, which waits on it")
+	_service.call("_cancel_dropped_wire")
+	await _frames()
+	_check(int(_service.get("_pending_id")) == -1, "the menu let go takes the wire with it")
+	_aim_from(free, normal)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_aim_from(out, normal)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(int(_service.get("_pending_id")) == -1 and graph.edges.size() == edges, "let go on an output for an output, the wire goes, nothing connects")
+	features.set_value(XREFeatureSettings.WIRE_DRAW, XREFeatureSettings.CLICK)
+	_aim_from(out, normal)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(int(_service.get("_pending_id")) == ids[0], "with Click, a click on a port draws a wire that stays")
+	_service.cancel_connection()
+	features.set_value(XREFeatureSettings.WIRE_DRAW, BASELINE[XREFeatureSettings.WIRE_DRAW])
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	_aim(Vector3(-50, 0, 0))
 	await _frames()
 
 

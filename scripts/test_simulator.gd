@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_steps = [
 		_start,
 		_hands_at_rest,
+		_antialiasing,
 		_look_right,
 		_beam_off,
 		_beam_on,
@@ -96,6 +97,24 @@ func _start() -> void:
 	_simulator = XRESimulator.new(World3D.new(), false)
 	_rig = _simulator.rig
 	root.add_child(_simulator)
+
+
+## Antialiasing (D-134): each value's multisampling; Auto as before, 4× in the
+## simulator and on a standalone headset, none on a PC headset.
+func _antialiasing() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.ANTIALIASING) == XREFeatureSettings.AUTO, "Antialiasing is Auto by default")
+	_check(_simulator.get_msaa() == Viewport.MSAA_4X, "the simulator starts at 4x")
+	_check(XRESession.msaa_for(XREFeatureSettings.AUTO, false, true) == Viewport.MSAA_4X
+			and XRESession.msaa_for(XREFeatureSettings.AUTO, true, false) == Viewport.MSAA_4X
+			and XRESession.msaa_for(XREFeatureSettings.AUTO, false, false) == Viewport.MSAA_DISABLED,
+			"Auto: 4x in the simulator and on a standalone headset, off on a PC headset")
+	var expected: Dictionary[StringName, Viewport.MSAA] = {XREFeatureSettings.OFF: Viewport.MSAA_DISABLED,
+			XREFeatureSettings.MSAA_2X: Viewport.MSAA_2X, XREFeatureSettings.MSAA_4X: Viewport.MSAA_4X, XREFeatureSettings.MSAA_8X: Viewport.MSAA_8X}
+	for value: StringName in expected:
+		_check(XRESession.msaa_for(value, false, false) == expected[value] and XRESession.msaa_for(value, true, true) == expected[value], "%s is the same everywhere" % value)
+		_simulator.set_msaa(XRESession.msaa_for(value, false, true))
+		_check(_simulator.get_msaa() == expected[value], "the simulator takes %s" % value)
+	_simulator.set_msaa(XRESession.msaa_for(XREFeatureSettings.AUTO, false, true))
 
 
 func _hands_at_rest() -> void:
