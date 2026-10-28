@@ -137,7 +137,7 @@ func run(plugin: EditorPlugin, document: XREBlueprintDocument, view: XREBlueprin
 	get_tree().quit(1 if _failures > 0 else 0)
 
 
-## A variadic operator's pins in GraphEdit (D-132): "+ pin" under its inputs
+## A variadic operator's pins in GraphEdit (D-136): "+ pin" under its inputs
 ## adds one, × by an input removes it; the graph is left as it was.
 func _test_operator_pins(document: XREBlueprintDocument, view: XREBlueprintEditor) -> void:
 	var before := document.graph.snapshot()

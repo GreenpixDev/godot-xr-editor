@@ -38,7 +38,7 @@ const COMMON_PROPERTIES: Array[String] = ["visible", "position", "rotation", "sc
 ## An empty socket's key is listed too: its token was taken out (D-054).
 static func port_keys(graph: XREBlueprintGraph, block: Dictionary) -> Array[String]:
 	var keys: Array[String] = []
-	# Break's Target takes only a wire (D-136), as the mockup has it.
+	# Break's Target takes only a wire (D-140), as the mockup has it.
 	if block.get("kind") == "break": return keys
 	var params: Dictionary = block["params"]
 	var types: Dictionary[String, int] = {}
@@ -46,7 +46,7 @@ static func port_keys(graph: XREBlueprintGraph, block: Dictionary) -> Array[Stri
 		if spec.size() > 2: types[str(spec[2])] = int(spec[1])
 	for key: String in graph.socket_keys(block):
 		if params.has(key) and not XREBlueprintGraph.is_literal(params[key]): continue
-		# Make's field of a type no token holds, as Basis, takes only a wire (D-136).
+		# Make's field of a type no token holds, as Basis, takes only a wire (D-140).
 		if block.get("kind") == "make" and XREBlueprintGraph.variant_type(types.get(key, XREBlueprintGraph.VALUE)) in XREBlueprintFunctions.WIRED_TYPES: continue
 		keys.append(key)
 	return keys
@@ -169,10 +169,10 @@ static func expected_type(graph: XREBlueprintGraph, block: Dictionary, key: Stri
 	match block["kind"]:
 		"branch": return TYPE_BOOL
 		"operator":
-			# Logic takes booleans, order, min and max numbers, the others any value (D-065, D-132).
+			# Logic takes booleans, order, min and max numbers, the others any value (D-065, D-136).
 			return XREBlueprintOperators.operand_type(XREBlueprintGraph.operator_of(block))
 		"switch":
-			# A case and the selection are numbers, texts, or an enumeration's names (D-134).
+			# A case and the selection are numbers, texts, or an enumeration's names (D-138).
 			if key == "selection" or key.begins_with("case_"): return TYPE_INT if (block["params"] as Dictionary).get("on") == "int" else TYPE_STRING
 		"set_property": return int(block.get("property_type", TYPE_NIL))
 		"set_variable":
@@ -388,7 +388,7 @@ static func step(value: Variant, fast: bool) -> float:
 ## The values a token of [param key] on [param block] is chosen among on the
 ## arc ([method XREBlueprintTokenEditor.open_choice], D-062): an event's
 ## policies, an enumeration Switch's constants for its cases and selection
-## (D-134); empty for a token of any value.
+## (D-138); empty for a token of any value.
 static func choices(block: Dictionary, key: String) -> Array[String]:
 	var result: Array[String] = []
 	if key == "policy": result.assign(POLICIES)

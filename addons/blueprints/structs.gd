@@ -2,7 +2,7 @@
 class_name XREBlueprintStructs
 extends RefCounted
 ## The fields Break takes a value apart into and Make puts one together from
-## (D-135). GDScript has no structs: a value's fields are a built-in type's
+## (D-139). GDScript has no structs: a value's fields are a built-in type's
 ## members — from this table, the engine being pinned —, a script class's
 ## variables or an engine class's properties.
 ##
@@ -94,7 +94,7 @@ static func can_make(type: int, cls: String = "") -> bool:
 	return true
 
 
-## The names hidden at first (D-135): what starts with "_", computed members,
+## The names hidden at first (D-139): what starts with "_", computed members,
 ## an engine base class's properties, and fields of types no port carries.
 static func default_hidden(struct: Dictionary) -> Array[String]:
 	var hidden: Array[String] = []
@@ -120,7 +120,7 @@ static func name_of(struct: Dictionary) -> String:
 	return str(struct["class"]) if int(struct["type"]) == TYPE_OBJECT else type_string(int(struct["type"]))
 
 
-## [param block]'s struct as its class has it now (D-135): fields gone from it
+## [param block]'s struct as its class has it now (D-139): fields gone from it
 ## are dropped, or kept [code]missing[/code] while [param wired] names them;
 ## a type changed is taken; new fields are added at the end. The block's own
 ## order stays, so its wires keep their fields. Null when its class is gone.

@@ -28,10 +28,10 @@ var values: Dictionary[int, Variant] = {}
 var tweens: Array[Tween] = []
 var players: Array[AnimationPlayer] = []
 ## The Sequences whose later outputs wait for the chain running now to end
-## (D-134), innermost last: each frame is [code][sequence ID, next output, targets][/code].
+## (D-138), innermost last: each frame is [code][sequence ID, next output, targets][/code].
 var stack: Array[Array] = []
 ## The step the run is at, and the value each Break and Make gave in it, by
-## block ID: [code][step, value][/code] (D-135).
+## block ID: [code][step, value][/code] (D-139).
 var step := 0
 var snapshots: Dictionary[int, Array] = {}
 

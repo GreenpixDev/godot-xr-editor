@@ -287,6 +287,94 @@ func _test_parts_and_wires() -> void:
 	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
 
 
+## D-132 on two operators wired from the first to the second: a card turned to
+## the head mirrors as its wire runs across the view, with the head square to
+## the graph's side, where the graph's front decides nothing; a sign's result
+## on the rim stays within 90° of its right and goes towards its wire's bend;
+## a plug stays in its port; a white wire under the ray turns gold.
+func _test_flow_and_rim() -> void:
+	var pair := XREBlueprintGraph.new()
+	pair.nodes = [XREBlueprintGraph.make_operator(1, "add", Vector2.ZERO), XREBlueprintGraph.make_operator(2, "add", Vector2.ZERO)]
+	pair.nodes[1]["vr_depth"] = -0.6
+	pair.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 0}]
+	pair.upgrade()
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, true)
+	_canvas.rebuild(pair)
+	var cards := _canvas.get("_cards") as Array
+	var first := cards[0] as XREBlueprintCanvas.Card
+	var second := cards[1] as XREBlueprintCanvas.Card
+	_canvas.face_user(Vector3(2, 0, -0.3))
+	_check(not first.mirrored and not second.mirrored, "its wire running to the head's right, a card is not mirrored")
+	_canvas.face_user(Vector3(-2, 0, -0.3))
+	_check(first.mirrored and second.mirrored, "its wire running to the head's left, it is, though the head is square to the graph's side")
+	_check(_canvas.port_direction(1, false).dot(second.node.position - first.node.position) > 0.0, "mirrored, its output leaves towards the next card")
+	_canvas.face_user(Vector3(2, 0, -0.3))
+	_check(not first.mirrored and not second.mirrored, "back on the other side, it is not")
+	# Sign ports on the rim: the second sign to the left of the first.
+	pair.nodes[1]["position"] = Vector2(-300, 0)
+	pair.nodes[1].erase("vr_depth")
+	var modes := _canvas.get_parameter_modes()
+	_canvas.set_parameter_modes(XREFeatureSettings.PLUGS, modes[1], modes[2], modes[3])
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
+	_canvas.set_rim_ports(true)
+	_canvas.rebuild(pair)
+	_canvas.face_user(Vector3(0, 0, 3))
+	first = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var result := _canvas.port_position(1, 0, false) - first.node.position
+	_check(result.x > 0.003 and absf(result.y) < 0.001, "a result whose wire runs straight left folds back to its right, not to the edge (D-135): %s" % result)
+	var plugs := 0
+	for socket: XREBlueprintCanvas.Socket in first.sockets:
+		if socket.kind != XREBlueprintCanvas.TOKEN or socket.port < 0: continue
+		var port := first.ports[socket.port].position
+		_check(Vector2(socket.visual.position.x, socket.visual.position.y).is_equal_approx(Vector2(port.x, port.y)), "a plug's cap stays in its port on the rim")
+		_check(socket.center.x < socket.visual.position.x and is_equal_approx(socket.center.y, socket.visual.position.y), "its body level to the port's left")
+		plugs += 1
+	_check(plugs == 2, "the sign has a plug in each input: %d" % plugs)
+	# A wire being drawn may end in a plugged input out of focus: the plug stays as it is with its port (D-135).
+	var focus_modes := _canvas.get_focus_modes()
+	_canvas.set_focus_modes(XREFeatureSettings.ON, XREFeatureSettings.DIM)
+	_canvas.set_focus(Vector3i(2, -1, -1))
+	_canvas.highlight_ports(XREBlueprintGraph.NUMBER, true)
+	var kept := 0
+	for index: int in first.sockets.size():
+		var socket := first.sockets[index]
+		if socket.kind == XREBlueprintCanvas.TOKEN and socket.port >= 0 and (first.keep_ports & (1 << socket.port)) != 0 and (first.keep_sockets & (1 << index)) != 0: kept += 1
+	_check(first.focus == XREBlueprintFocus.OUT and kept == 2, "out of focus, both plugs in ports a number may end on are kept: %d" % kept)
+	_canvas.highlight_ports(-1, false)
+	_canvas.set_focus(Vector3i(-1, -1, -1))
+	_check(first.keep_sockets == 0, "and let go with the wire")
+	_canvas.set_focus_modes(focus_modes[0], focus_modes[1])
+	# A bend behind the sign, left and below: its result folds back to its right, below (D-135).
+	pair.edges[0]["vr_bends"] = PackedVector3Array([Vector3(-200, 100, 0)])
+	_canvas.set_bends_shown(true)
+	_canvas.rebuild(pair)
+	_canvas.face_user(Vector3(0, 0, 3))
+	first = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	result = _canvas.port_position(1, 0, false) - first.node.position
+	_check(result.x > 0.003 and result.y < -0.001, "a result whose wire runs back down to the left stays right, a little below: %s" % result)
+	# A bend up and to the right of the first sign: its result goes towards the bend.
+	pair.edges[0]["vr_bends"] = PackedVector3Array([Vector3(200, -200, 0)])
+	_canvas.set_bends_shown(true)
+	_canvas.rebuild(pair)
+	_canvas.face_user(Vector3(0, 0, 3.1))
+	first = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	result = _canvas.port_position(1, 0, false) - first.node.position
+	_check(result.x > 0.003 and result.y > 0.003, "a result goes towards its wire's bend, up and right: %s" % result)
+	_canvas.set_bends_shown(false)
+	_canvas.set_rim_ports(false)
+	_canvas.set_style(XREFeatureSettings.CLASSIC)
+	_canvas.set_parameter_modes(modes[0], modes[1], modes[2], modes[3])
+	# An execution wire under the ray is gold; a data wire keeps its colour, thicker.
+	for color: Color in [XREBlueprintCanvas.COLORS[0], XREBlueprintCanvas.COLORS[1]]:
+		var wire := XREBlueprintCanvas.Wire.new()
+		_canvas.call("_add_wire", wire, color, {})
+		var tint: Color = (wire.lit as ShaderMaterial).get_shader_parameter(&"tint")
+		_check(tint.is_equal_approx(XREBlueprintFocus.FRAME if color == XREBlueprintCanvas.COLORS[0] else color), "a wire of %s is %s under the ray" % [color, tint])
+		_canvas.call("_free_wire", wire)
+	_canvas.rebuild(pair)
+
+
 ## Archetypes (D-099): an event's header in its group's color with its icon,
 ## the trash in the plus's corner, picked only while the card is in focus; a
 ## pure function framed in its result's color; a call without an icon shows ƒ.
@@ -338,7 +426,7 @@ func _test_archetypes(graph: XREBlueprintGraph) -> void:
 	_check(card.node.get_node_or_null("Head") == null and card.trash.visible and card.trash_point.x < 0.0, "classic cards have their trash in the left corner again")
 
 
-## Signs of variadic operators (D-132): Add of three is a circle with its
+## Signs of variadic operators (D-136): Add of three is a circle with its
 ## inputs on the arc, of five a column, AND of four a taller pill, each input
 ## on the outline a step apart; Append is a card.
 func _test_growing_signs() -> void:
@@ -533,6 +621,10 @@ func _test_headings() -> void:
 	_check(set_card.swap.visible and _hit(set_card.node.position + set_card.swap_point, Vector3.FORWARD) >= 0 and _canvas.get_hit_swap() and not _canvas.get_hit_delete(), "in focus ⇄ shows by the trash and is picked")
 	var between := set_card.node.position + (set_card.swap_point + set_card.trash_point) * 0.5
 	_check(_hit(between, Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 2 and not _canvas.get_hit_swap() and not _canvas.get_hit_delete(), "the air between ⇄ and the trash keeps the card (D-114)")
+	_canvas.hover_actions(2, false, false, true, -1, false, -1, false, false, true)
+	_check(is_equal_approx(set_card.swap.scale.x, XREBlueprintCanvas.HOVER_SCALE), "⇄ grows under the ray, as the trash does (D-132)")
+	_canvas.hover_actions(-1, false, false, true)
+	_check(is_equal_approx(set_card.swap.scale.x, 1.0), "and shrinks back off it")
 	_canvas.set_focus(Vector3i(-1, -1, -1))
 	_check(_canvas.set_style(XREFeatureSettings.CLASSIC), "classic again")
 	_canvas.rebuild(cards_graph)
@@ -871,6 +963,7 @@ func _run() -> void:
 	_test_graph_turn(graph)
 	_test_off_centre()
 	_test_parts_and_wires()
+	_test_flow_and_rim()
 	_test_archetypes(graph)
 	_test_signs()
 	_test_growing_signs()

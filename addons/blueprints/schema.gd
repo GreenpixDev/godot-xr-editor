@@ -32,7 +32,7 @@ static func default_value(type: int) -> Variant:
 
 
 ## The enumeration, "Class.Enum", of property [param info] of class
-## [param cls], empty when it has none (D-134). A script's property says it;
+## [param cls], empty when it has none (D-138). A script's property says it;
 ## an engine's says only its hint, its getter's result names it.
 static func property_enum(cls: String, info: Dictionary) -> String:
 	if int(info.get("type", TYPE_NIL)) != TYPE_INT: return ""

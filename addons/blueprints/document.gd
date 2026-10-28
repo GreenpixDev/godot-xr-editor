@@ -381,7 +381,7 @@ func set_extra_arguments(id: int, count: int) -> bool:
 	return commit("Set Arguments", state)
 
 
-## Changes the pins of block [param id] as one edit [param title] (D-132):
+## Changes the pins of block [param id] as one edit [param title] (D-136):
 ## [param change] edits the block's copy in place, then every wire of the
 ## block follows its pin by key — an input by the parameter it falls back to,
 ## any other pin by its label — so that its port number may move. A key in
@@ -433,7 +433,7 @@ static func _follow_pin(port: int, before: Array[String], after: Array[String], 
 
 ## Adds a pin after the last of block [param id]'s pins that change
 ## ([method XREBlueprintGraph.variable_pins]): an operator's input, a
-## Sequence's output, a Switch's case before Default (D-134). One edit.
+## Sequence's output, a Switch's case before Default (D-138). One edit.
 func add_pin(id: int) -> bool:
 	var block := graph.find_node(id)
 	var pins := XREBlueprintGraph.variable_pins(block)
@@ -456,7 +456,7 @@ func add_pin(id: int) -> bool:
 
 
 ## Removes pin [param port] — of its side, as [method XREBlueprintGraph.variable_pins]
-## says — of block [param id] with its wire (D-134); the pins after it move
+## says — of block [param id] with its wire (D-138); the pins after it move
 ## up with their values and wires. At least two stay.
 func remove_pin(id: int, port: int) -> bool:
 	var block := graph.find_node(id)
@@ -484,7 +484,7 @@ func remove_pin(id: int, port: int) -> bool:
 	return false
 
 
-## Hides or shows field [param name] of Break or Make [param id] (D-135): a
+## Hides or shows field [param name] of Break or Make [param id] (D-139): a
 ## pin with a wire stays. One edit; its other wires follow their fields.
 func set_field_hidden(id: int, name: String, hidden: bool) -> bool:
 	var block := graph.find_node(id)
@@ -504,7 +504,7 @@ func set_field_hidden(id: int, name: String, hidden: bool) -> bool:
 
 
 ## Brings every Break's and Make's fields to their classes as they are now
-## (D-135), on opening a graph and before building it: no undo step, as the
+## (D-139), on opening a graph and before building it: no undo step, as the
 ## scene bindings ([method refresh_bindings]). A field gone keeps its pin,
 ## red, while a wire reads it.
 func refresh_structs() -> void:
@@ -528,7 +528,7 @@ func refresh_structs() -> void:
 
 
 ## Adds an operand after the last one of variadic operator block [param id]
-## (D-132). Its literal changes nothing — 0 to add, 1 to multiply, true for
+## (D-136). Its literal changes nothing — 0 to add, 1 to multiply, true for
 ## AND, false for OR, an empty text to append, the last literal for min and
 ## max — in the type of operand A's.
 func add_operand(id: int) -> bool:
@@ -552,7 +552,7 @@ func add_operand(id: int) -> bool:
 
 
 ## Removes operand [param key] of variadic operator block [param id] with its
-## wire (D-132): the operands after it move up, with their literals and wires.
+## wire (D-136): the operands after it move up, with their literals and wires.
 ## At least two stay.
 func remove_operand(id: int, key: String) -> bool:
 	var block := graph.find_node(id)
@@ -636,9 +636,9 @@ func commit(title: String, state: Dictionary) -> bool:
 	candidate.restore(state)
 	# A wire into an operator's operand: the other's literal takes its type (D-065).
 	var adopted := candidate.adopt_operands(graph.edges)
-	# A wire into Break's Target or from Make's Result types the block (D-135).
+	# A wire into Break's Target or from Make's Result types the block (D-139).
 	if candidate.adopt_structs(graph.edges): adopted = true
-	# A wire from an enumeration's constant into a Switch's Selection makes it a Switch on it (D-134).
+	# A wire from an enumeration's constant into a Switch's Selection makes it a Switch on it (D-138).
 	if candidate.adopt_enums(graph.edges): adopted = true
 	if adopted: state = candidate.snapshot()
 	var errors := candidate.validate()

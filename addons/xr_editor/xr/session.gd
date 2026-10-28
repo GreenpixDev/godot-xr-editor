@@ -30,8 +30,9 @@ const STANDALONE_REFRESH_RATE := 72.0
 ## dynamic: the runtime lowers it while the GPU keeps up. A light costs the
 ## mobile renderer 3.5–4 ms of GPU time per frame there (D-018).
 const STANDALONE_FOVEATION_LEVEL := 3
-## Multisampling of the VR view on a standalone headset. The tiled mobile GPU
-## resolves it on chip; without it every edge of cards, wires and ports crawls.
+## Multisampling of the VR view on a standalone headset and in the simulator
+## while Antialiasing is Auto (D-134). The tiled mobile GPU resolves it on
+## chip; without it every edge of cards, wires and ports crawls.
 const STANDALONE_MSAA := Viewport.MSAA_4X
 ## Seconds between status lines in the log.
 const STATUS_INTERVAL := 5.0
@@ -87,6 +88,8 @@ var _pipeline_totals := PackedInt64Array([0, 0, 0, 0, 0])
 ## Fixed 60-second history of focused editor main-loop intervals.
 var fps_history := XREFPSHistory.new()
 var _fps_previous_usec := 0
+## The value of [constant XREFeatureSettings.ANTIALIASING] last set, which a simulator started later takes too.
+var _antialiasing := XREFeatureSettings.AUTO
 
 
 func _enter_tree() -> void:
@@ -209,6 +212,7 @@ func start_simulator() -> bool:
 		_log("no 3D editor viewport, no VR view without a headset.")
 		return false
 	_simulator = XRESimulator.new(editor_viewport.find_world_3d())
+	_simulator.set_msaa(msaa_for(_antialiasing, false, true))
 	_simulator.closed.connect(simulator_closed.emit)
 	_rig = _simulator.rig
 	add_child(_simulator)
@@ -217,6 +221,31 @@ func start_simulator() -> bool:
 		# Where the desktop 3D view looks from.
 		_simulator.look_from(camera.global_transform)
 	return true
+
+
+## Smooths the VR view's edges as [param value] of
+## [constant XREFeatureSettings.ANTIALIASING] says (D-134): the headset's view,
+## which the mirror copies, and the simulator's window.
+func set_antialiasing(value: StringName) -> void:
+	_antialiasing = value
+	if _viewport != null:
+		var msaa := msaa_for(value, XREStandalone.is_standalone(), false)
+		if msaa != _viewport.msaa_3d: _log("VR view MSAA %s." % ("off" if msaa == Viewport.MSAA_DISABLED else "%dx" % (1 << msaa)))
+		_viewport.msaa_3d = msaa
+	if _simulator != null: _simulator.set_msaa(msaa_for(value, false, true))
+
+
+## The multisampling of a VR view for [param value] of
+## [constant XREFeatureSettings.ANTIALIASING] (D-134): Auto is
+## [constant STANDALONE_MSAA] on a [param standalone] headset and in the
+## [param simulated] view, none on a PC headset, as before.
+static func msaa_for(value: StringName, standalone: bool, simulated: bool) -> Viewport.MSAA:
+	match value:
+		XREFeatureSettings.OFF: return Viewport.MSAA_DISABLED
+		XREFeatureSettings.MSAA_2X: return Viewport.MSAA_2X
+		XREFeatureSettings.MSAA_4X: return Viewport.MSAA_4X
+		XREFeatureSettings.MSAA_8X: return Viewport.MSAA_8X
+	return STANDALONE_MSAA if standalone or simulated else Viewport.MSAA_DISABLED
 
 
 ## Closes the VR view without a headset, and the tools under its rig with it.

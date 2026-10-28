@@ -52,7 +52,7 @@ static func compile(source: XREBlueprintGraph) -> Dictionary:
 					if count <= 2:
 						code += "\treturn _bp_operate(%s, %s, %s, run, %d)\n" % [var_to_str(op), _input(graph, block, "a"), second, id]
 					else:
-						# Folded from the left (D-132); an operand that failed has reported its error.
+						# Folded from the left (D-136); an operand that failed has reported its error.
 						code += "\tvar value: Variant = _bp_operate(%s, %s, %s, run, %d)\n" % [var_to_str(op), _input(graph, block, "a"), second, id]
 						for index: int in range(2, count):
 							var operand := _input(graph, block, XREBlueprintOperators.OPERAND_KEYS[index])
@@ -60,7 +60,7 @@ static func compile(source: XREBlueprintGraph) -> Dictionary:
 						code += "\treturn value\n"
 				"get_property": code += "\treturn _bp_read(%s, %s, %d, run, %d)\n" % [_target(graph, block), var_to_str(params["property"]), block.get("property_type", TYPE_NIL), id]
 				"break", "make":
-					# One value a step (D-135): each output read in a step takes its field from the same one.
+					# One value a step (D-139): each output read in a step takes its field from the same one.
 					code += "\tif run != null and run.has_snapshot(%d):\n\t\treturn run.snapshots[%d][1]\n" % [id, id]
 					code += _struct_value(graph, block)
 					code += "\tif run != null:\n\t\trun.keep(%d, value)\n\treturn value\n" % id
@@ -74,7 +74,7 @@ static func compile(source: XREBlueprintGraph) -> Dictionary:
 				code += "\tvar condition: Variant = %s\n\tif not _bp_alive(run) or not _bp_check_value(condition, TYPE_BOOL, run, %d):\n\t\treturn -1\n\tif condition:\n%s\telse:\n%s" % [_input(graph, block, "condition"), id, _next(graph, id, 0, "\t\t"), _next(graph, id, 1, "\t\t")]
 				continue
 			"sequence":
-				# Then 0 now; the others wait in the run's stack for the chain before them to end (D-134).
+				# Then 0 now; the others wait in the run's stack for the chain before them to end (D-138).
 				# Untyped, so that the generated code reads [7, 9, 12].
 				var targets: Array = []
 				for port: int in XREBlueprintGraph.pin_count(block): targets.append(_follow_exec(graph, id, port))
@@ -105,7 +105,7 @@ static func compile(source: XREBlueprintGraph) -> Dictionary:
 		code += _next(graph, id, 0, "\t")
 	code += "\n\n# Iterative execution permits back edges without recursive call-stack growth.\nfunc _bp_execute(block_id: int, run: XREBlueprintRun) -> void:\n\tvar steps := 0\n"
 	if graph.nodes.any(func(block: Dictionary) -> bool: return block["kind"] == "sequence"):
-		# A chain that ends goes on with the next output of the Sequence it came from (D-134).
+		# A chain that ends goes on with the next output of the Sequence it came from (D-138).
 		code += "\twhile _bp_alive(run):\n\t\tif block_id < 0:\n\t\t\tblock_id = _bp_sequence_next(run)\n\t\t\tif block_id < 0:\n\t\t\t\treturn\n\t\tmatch block_id:\n"
 	else:
 		code += "\twhile block_id >= 0 and _bp_alive(run):\n\t\tmatch block_id:\n"
@@ -113,7 +113,7 @@ static func compile(source: XREBlueprintGraph) -> Dictionary:
 		if XREBlueprintGraph.is_pure(block): continue
 		code += "\t\t\t%d: block_id = await _bp_n%d(run)\n" % [block["id"], block["id"]]
 	code += "\t\t\t_: return\n"
-	# A new step reads Break and Make anew (D-135).
+	# A new step reads Break and Make anew (D-139).
 	if graph.nodes.any(func(block: Dictionary) -> bool: return block["kind"] in ["break", "make"]): code += "\t\trun.step += 1\n"
 	code += "\t\tsteps += 1\n\t\tif steps >= 64 and block_id >= 0 and _bp_alive(run):\n\t\t\tsteps = 0\n\t\t\tawait get_tree().process_frame\n"
 	return {"code": code, "errors": errors}
@@ -254,7 +254,7 @@ static func _validate_program(graph: XREBlueprintGraph) -> PackedStringArray:
 			var key: String = spec[2] if spec.size() > 2 else ""
 			if key.is_empty() or key == "target" or (block["params"] as Dictionary).has(key) or _connected(graph, block["id"], index): continue
 			if block["kind"] == "call" and not _literal_argument(block, key): continue
-			# An untyped Break says how to give it a type instead ([method _validate_struct], D-135).
+			# An untyped Break says how to give it a type instead ([method _validate_struct], D-139).
 			if block["kind"] == "break" and (block.get("struct", {}) as Dictionary).is_empty(): continue
 			errors.append("Block #%d: %s is empty: put a token in or wire it." % [block["id"], spec[0]])
 	if not errors.is_empty(): return errors
@@ -287,7 +287,7 @@ static func _validate_program(graph: XREBlueprintGraph) -> PackedStringArray:
 			errors.append_array(_validate_operator(graph, block))
 		if block["kind"] in ["break", "make"]: errors.append_array(_validate_struct(graph, block))
 		if block["kind"] == "switch":
-			# Each case once (D-134): a second one could never run.
+			# Each case once (D-138): a second one could never run.
 			var seen: Array = []
 			for port: int in XREBlueprintGraph.pin_count(block):
 				var value: Variant = params[XREBlueprintGraph.case_key(port)]
@@ -310,7 +310,7 @@ static func _validate_program(graph: XREBlueprintGraph) -> PackedStringArray:
 	return errors
 
 
-## The statements of a Break's or a Make's value (D-135), into [code]value[/code]:
+## The statements of a Break's or a Make's value (D-139), into [code]value[/code]:
 ## the value checked to be of its type and class, or one built — a built-in
 ## value by its members, an object by [code]new()[/code] and its fields; a
 ## hidden field keeps its default.
@@ -329,7 +329,7 @@ static func _struct_value(graph: XREBlueprintGraph, block: Dictionary) -> String
 	return code
 
 
-## What keeps a Break or a Make from building (D-135): no type yet, its class
+## What keeps a Break or a Make from building (D-139): no type yet, its class
 ## gone, a shown field gone from it, a class Make can't build.
 static func _validate_struct(graph: XREBlueprintGraph, block: Dictionary) -> PackedStringArray:
 	var errors := PackedStringArray()
@@ -356,7 +356,7 @@ static func _validate_operator(graph: XREBlueprintGraph, block: Dictionary) -> P
 	var op := XREBlueprintGraph.operator_of(block)
 	var a := graph.operand_type(block, "a")
 	var b := TYPE_NIL if XREBlueprintOperators.is_unary(op) else graph.operand_type(block, "b")
-	# Folded from the left (D-132): the first pair that can't go together is the error.
+	# Folded from the left (D-136): the first pair that can't go together is the error.
 	var result := XREBlueprintOperators.result_type(op, a, b)
 	for index: int in range(2, XREBlueprintGraph.operand_count(block)):
 		if result == XREBlueprintOperators.INVALID: break

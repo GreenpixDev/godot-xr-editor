@@ -153,6 +153,9 @@ class Pointer:
 	## The other selected blocks the held card carries (D-122), and where each was when the hold began.
 	var group: Array[int] = []
 	var group_starts: Array[Vector3] = []
+	## The trigger that began this hand's wire is still held (Wire draw Hold,
+	## D-135): let go, it ends the wire where the ray is, as a click there would.
+	var wire_drag := false
 	## A brush stroke over the cards (D-124): whether one is swept, whether it
 	## replaces the selection, the block it began on when it adds (the trigger
 	## added it or took it out already), and the blocks it crossed.
@@ -425,6 +428,9 @@ var _pending_finished := -1
 ## The wire drawn from an input ends on a variable's box as a link (D-074):
 ## it was a link, or a link from the tray was laid on that input.
 var _pending_link := false
+## The edge taken off its port as the wire being drawn began (D-058), with its
+## bends: let go on that port with Wire draw Hold, it goes back (D-135).
+var _pending_detached: Dictionary = {}
 ## The linkable wire the last [method _link_wire_hit] met, as a ref, and where (global).
 var _wire_ref: Dictionary = {}
 var _wire_point := Vector3.ZERO
@@ -746,7 +752,17 @@ func _process(delta: float) -> void:
 	for pointer: Pointer in _pointers:
 		pointer.focus = -1
 		pointer.focus_box = ""
+		var hand := pointer.hand
+		var had_wire := has_wire(hand)
+		# Wire draw Hold (D-135): the trigger let go is the click that ends the wire, for this hand's tools alone.
+		var ends := pointer.wire_drag and had_wire and hand.trigger_released
+		if not had_wire or hand.trigger_released: pointer.wire_drag = false
+		if ends: hand.trigger_pressed = true
 		_update_pointer(pointer, delta)
+		if ends:
+			hand.trigger_pressed = false
+			_settle_released_wire(hand)
+		elif hand.trigger_pressed and not had_wire and has_wire(hand) and _draws_by_hold(): pointer.wire_drag = true
 		_keyboard.poll_trigger(pointer.hand, pointer.surface == _keyboard and _keyboard.is_shown())
 		# A ray off the wires this frame lets go of the knot it lit (D-081).
 		if pointer.wire_frame != Engine.get_process_frames(): canvas.hover_bend(-1, -1, Vector3.ZERO, pointer.hand == _rig.right_hand)
@@ -1862,12 +1878,15 @@ func _show_brush(pointer: Pointer) -> void:
 	canvas.select_blocks(ids)
 
 
-## Selects the stroke of [param pointer], or adds it to the selection, as one selection.
+## Selects the stroke of [param pointer], or adds it to the selection, as one
+## selection. A stroke that replaces it and crosses only the one card selected
+## — a click on it — lets it go, as the trigger on it does without a brush.
 func _end_block_brush(pointer: Pointer) -> void:
 	var ids: Array[int] = []
 	if not pointer.brush_replace: ids.append_array(_selected_blocks)
+	var again := pointer.brush_replace and pointer.brushed.size() == 1 and _selected_blocks == pointer.brushed
 	for id: int in pointer.brushed:
-		if not ids.has(id) and not blueprint.graph.find_node(id).is_empty(): ids.append(id)
+		if not again and not ids.has(id) and not blueprint.graph.find_node(id).is_empty(): ids.append(id)
 	var changes := pointer.brush_replace or not pointer.brushed.is_empty()
 	pointer.brushing = false
 	pointer.brushed.clear()
@@ -2313,20 +2332,20 @@ func switch_heading(id: int) -> void:
 
 
 ## Adds a pin after the last that changes of block [param id] — an
-## operator's input, a Sequence's output, a Switch's case (D-133, D-134): the
+## operator's input, a Sequence's output, a Switch's case (D-137, D-138): the
 ## plus under its corner on that side. One edit of the graph, which A undoes.
 func add_pin(id: int) -> void:
 	if not blueprint.perform(blueprint.add_pin.bind(id), &"vr_graph"): _message(blueprint.last_error)
 
 
 ## Removes pin [param port] of its side of block [param id] with its wire
-## (D-133, D-134): the × by it. One edit of the graph, which A undoes.
+## (D-137, D-138): the × by it. One edit of the graph, which A undoes.
 func remove_pin(id: int, port: int) -> void:
 	if not blueprint.perform(blueprint.remove_pin.bind(id, port), &"vr_graph"): _message(blueprint.last_error)
 
 
 ## Hides the field of Break or Make [param id] at pin [param port] of its
-## fields' side (D-135): its eye. One edit of the graph, which A undoes.
+## fields' side (D-139): its eye. One edit of the graph, which A undoes.
 func hide_field(id: int, port: int) -> void:
 	var block := blueprint.graph.find_node(id)
 	var fields := XREBlueprintStructs.shown(block)
@@ -2335,7 +2354,7 @@ func hide_field(id: int, port: int) -> void:
 
 
 ## The hidden fields of Break or Make [param id] on a fan of petals at
-## [param point] (D-135): picking one shows it again.
+## [param point] (D-139): picking one shows it again.
 func _open_hidden_fields(id: int, point: Vector3) -> void:
 	var block := blueprint.graph.find_node(id)
 	var items: Array[Dictionary] = []
@@ -2424,8 +2443,13 @@ func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int
 			return _set_token(id, "wait", finished == 1, "Wire Finished")
 		if not wired: _pending_finished = finished
 	if _pending_id == id and _pending_port == port and _pending_input == input:
-		# The same port again takes the wire back (D-043), as the trigger on nothing does.
+		# The same port again takes the wire back (D-043), as the trigger on nothing does;
+		# let go there with Wire draw Hold, a wire taken off it goes back (D-135).
+		var detached := _pending_detached
 		cancel_connection()
+		if not detached.is_empty() and _draws_by_hold() and _put_back(detached):
+			_message("Wire put back.")
+			return true
 		_message("Wire cancelled.")
 		return true
 	if _pending_id < 0:
@@ -2454,16 +2478,18 @@ func click_port(id: int, port: int, input: bool, hand: XREHand = null, edge: int
 			_pending_hand = hand
 			# A link to a variable taken off its port goes to the next box as a link (D-074).
 			_pending_link = input and canvas.is_inline(source) and XREBlueprintLinks.is_link(source, XREBlueprintLinks.VARIABLE)
+			_pending_detached = wire.duplicate(true)
 			canvas.highlight_ports(canvas.port_type(_pending_id, _pending_port, _pending_input), not _pending_input)
-			_message("Wire detached. Trigger on a port reconnects it; on empty space removes it.")
+			_message("Wire detached. Let go on a port to reconnect it, on its own port to put it back." if _draws_by_hold() else "Wire detached. Trigger on a port reconnects it; on empty space removes it.")
 			return true
 		_pending_id = id
 		_pending_port = port
 		_pending_input = input
 		_pending_hand = hand
 		_pending_link = false
+		_pending_detached = {}
 		canvas.highlight_ports(canvas.port_type(id, port, input), not input)
-		_message("Press trigger on a compatible port. The same port or empty space cancels the wire.")
+		_message("Let go on a compatible port; in empty space for the block menu." if _draws_by_hold() else "Press trigger on a compatible port. The same port or empty space cancels the wire.")
 		return true
 	if input == _pending_input:
 		_message("Connect an output to an input.")
@@ -2513,6 +2539,7 @@ func cancel_connection() -> void:
 	_pending_hand = null
 	_pending_finished = -1
 	_pending_link = false
+	_pending_detached = {}
 	_link_kind = -1
 	_link_block = -1
 	_link_box = ""
@@ -4004,7 +4031,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	# The card is in focus wherever on it the ray is; a port or a detail grows over that (D-072).
 	pointer.focus = id
 	if pointer.brushing: _brush_block(pointer, id)
-	canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), right, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1, false, canvas.get_hit_copy(),
+	canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), right, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1, false, canvas.get_hit_copy(), canvas.get_hit_swap(),
 			canvas.get_hit_pin_plus(), canvas.get_hit_pin_mark(), canvas.get_hit_pin_row())
 	canvas.hover_socket(id, socket, right)
 	var link := canvas.get_hit_link() if kind == XREBlueprintCanvas.LINK else {}
@@ -4071,6 +4098,8 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 			toggle_block(id)
 			_begin_block_brush(pointer, id, false)
 		elif _brushes(): _begin_block_brush(pointer, id, true)
+		# The trigger on the one card selected lets it go.
+		elif _selected_blocks == [id]: select_block(-1)
 		else: select_block(id)
 	if _deletes_now():
 		_consume_delete()
@@ -4217,6 +4246,29 @@ func _add_bend(edge: int, piece: int, point: Vector3) -> void:
 ## Whether Link from wire is on Wire menu: the trigger on a wire opens its menu.
 func _wire_menu_on() -> bool:
 	return _document.features.get_value(XREFeatureSettings.LINK_CREATE) == XREFeatureSettings.WIRE_MENU
+
+
+## Whether a wire is drawn with the trigger held and ends where it is let go (Wire draw Hold, D-135).
+func _draws_by_hold() -> bool:
+	return _document.features.get_value(XREFeatureSettings.WIRE_DRAW) == XREFeatureSettings.HOLD
+
+
+## After the trigger let go ended [param hand]'s wire (Wire draw Hold, D-135):
+## a wire that is still drawn, with no menu or choice it waits on, goes —
+## let go on a card, on an output for an output, it isn't left hanging.
+func _settle_released_wire(hand: XREHand) -> void:
+	if not has_wire(hand) or _dropped_menu_open() or _choice.is_open(): return
+	if _petals.is_open() and (_petal_block >= 0 or _petal_dynamic): return
+	cancel_connection()
+
+
+## Puts [param edge], taken off its port as a wire began, back with its bends
+## (Wire draw Hold, D-135); false if a block of it is gone.
+func _put_back(edge: Dictionary) -> bool:
+	if blueprint.graph.find_node(int(edge["from"])).is_empty() or blueprint.graph.find_node(int(edge["to"])).is_empty(): return false
+	var state := blueprint.graph.snapshot()
+	(state["edges"] as Array).append(edge)
+	return blueprint.perform(blueprint.commit.bind("Connect Ports", state), &"vr_graph")
 
 
 ## Opens the wire's menu for [param pointer]'s hand, whose trigger went down
@@ -4458,7 +4510,7 @@ func _ray_across(pointer: Pointer, hand: XREHand) -> float:
 
 ## The kind of block [param id]'s token of [param key] holding [param value]:
 ## a choice when it has values to choose among — a policy, an enumeration
-## Switch's names (D-134) —, else by its value. -1 is a variable's box.
+## Switch's names (D-138) —, else by its value. -1 is a variable's box.
 func _token_kind(id: int, key: String, value: Variant) -> StringName:
 	if not _token_choices(id, key).is_empty(): return XREBlueprintTokens.CHOICE
 	return XREBlueprintTokens.kind_of(value, key)
@@ -5979,7 +6031,7 @@ func _choose_petal(fan: XREBlueprintPetals, item: Dictionary, hand: XREHand) -> 
 	if fan == _choice and _choice_menu:
 		_choose_offered(item)
 		return
-	# A hidden field of a Break or a Make shown again (D-135).
+	# A hidden field of a Break or a Make shown again (D-139).
 	if fan == _choice and item.has("show_field"):
 		_choice.close()
 		var field: Array = item["show_field"]

@@ -50,6 +50,15 @@ const ROW := &"row"
 ## Under the section's name on the left, opened and closed by it.
 const TREE := &"tree"
 
+## How the VR view smooths its edges (D-134): multisampling of the headset's
+## view and of the simulator's window. Auto, as before: 4× on a standalone
+## headset, whose tiled GPU resolves it on chip, and in the simulator; none on
+## a PC headset. Off, 2×, 4× or 8× everywhere: more samples cost GPU time.
+const ANTIALIASING := &"antialiasing"
+const MSAA_2X := &"msaa_2x"
+const MSAA_4X := &"msaa_4x"
+const MSAA_8X := &"msaa_8x"
+
 ## Which logic graph nodes turn towards the head ([XREBlueprintCanvas], D-115;
 ## with [constant NODE_VOLUME] it took the place of Node display, D-039):
 ## [constant ON] all of them, as Billboard did; only the shorthands — signs,
@@ -66,19 +75,22 @@ const SOLID := &"solid"
 const NODE_BACK := &"node_back"
 const BLANK := &"blank"
 const LABELLED := &"labelled"
-## Where a node's ports are (D-115): on its face, as before; on whichever of
-## its faces is turned to the head; or on its edge, balls and arrowheads that
+## Where a node's ports are (D-115): on whichever of its faces is turned to
+## the head (the default since D-133); on its face, as before; or on its edge, balls and arrowheads that
 ## stand out of a node thinner than they are, seen from every side.
 const PIN_PLACE := &"pin_place"
 const FACE := &"face"
 const BOTH_FACES := &"both_faces"
 const EDGE := &"edge"
-## Whether cards turned to the head lay themselves out as a mirror's past 90°
-## from the front of their graph or part (D-115): inputs on the right, so that
-## seen from behind their wires leave towards their neighbours.
+## Whether cards turned to the head lay themselves out as a mirror's (D-115,
+## on by default since D-133): inputs on the right, so that their wires leave
+## towards their neighbours — a card whose wires run to the head's left
+## (D-132), one without wires across the view past 90° from the front of its
+## graph or part.
 const CARD_MIRROR := &"card_mirror"
-## Where the ports of the shorthands' signs are (D-115): inputs on the left,
-## the result on the right, as before; or each on the rim towards the far end of its wire.
+## Where the ports of the shorthands' signs are (D-115): each on the rim
+## towards the far end of its wire, at most 90° from its side (D-132; the
+## default since D-133); or inputs on the left, the result on the right, as before.
 const SIGN_PORTS := &"sign_ports"
 const SIDES := &"sides"
 const RIM := &"rim"
@@ -98,14 +110,15 @@ const GRAPH_PARTS := &"graph_parts"
 const PARTS := &"parts"
 ## Arrowheads on logic graph wires along their flow, from output to input and
 ## from an object to its Target (D-115), for execution wires and data wires
-## apart: chevrons every 9 cm, the same running, or one at the end.
+## apart: chevrons every 9 cm, the same running, or one at the end. Running on
+## execution wires and one at the end on data wires by default since D-133.
 const EXEC_ARROWS := &"exec_arrows"
 const DATA_ARROWS := &"data_arrows"
 const CHEVRONS := &"chevrons"
 const RUNNING := &"running"
 const AT_END := &"at_end"
-## How wires' arrowheads are drawn (D-115): filled cones, or open ones, two
-## strokes as ">", turned about the wire to the head.
+## How wires' arrowheads are drawn (D-115): open ones, two strokes as ">",
+## turned about the wire to the head (the default since D-133), or filled cones.
 const ARROW_STYLE := &"arrow_style"
 const FILLED := &"filled"
 const OPEN := &"open"
@@ -258,6 +271,13 @@ const PULL := &"pull"
 const PORT_BUTTON := &"port_button"
 const ALWAYS := &"always"
 const WIRE_MENU := &"wire_menu"
+## How a wire is drawn from a port, a socket or a variable's box (D-135): the
+## trigger held from it and let go where it ends — a port, a box, an object,
+## or empty space for the block menu —, or a click on it and another where it
+## ends, as before (D-043).
+const WIRE_DRAW := &"wire_draw"
+const HOLD := &"hold"
+const CLICK := &"click"
 ## Whether a new wire to a variable or an object that has more than one wire
 ## or link already, and that runs far, becomes a link by itself (D-090).
 const AUTO_LINK := &"auto_link"
@@ -351,7 +371,7 @@ const OWN := &"own"
 ## Every setting by key: its section, its subsection in the Editor section
 ## (a key of [constant GROUPS]), the values of other settings it acts with
 ## (optional), title, values (the first is the default; the defaults are the
-## author's picks after the headset checks, D-076, D-114, D-131), the values' titles
+## author's picks after the headset checks, D-076, D-114, D-131, D-133), the values' titles
 ## and a line of explanation.
 const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	NODE_FACING: {
@@ -383,26 +403,26 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"category": Category.EDITOR,
 		"group": &"cards",
 		"title": "Pins",
-		"values": [FACE, BOTH_FACES, EDGE],
-		"labels": ["On the face", "Both faces", "On the edge"],
-		"hint": "On the face: as before. Both faces: on whichever face is turned to you. On the edge: balls and arrowheads on the node's edge, seen from every side.",
+		"values": [BOTH_FACES, FACE, EDGE],
+		"labels": ["Both faces", "On the face", "On the edge"],
+		"hint": "On the face: as before D-133. Both faces: on whichever face is turned to you. On the edge: balls and arrowheads on the node's edge, seen from every side.",
 	},
 	CARD_MIRROR: {
 		"category": Category.EDITOR,
 		"group": &"cards",
 		"requires": {NODE_FACING: [ON], GRAPH_TURN: [FIXED]},
 		"title": "Card mirror",
-		"values": [OFF, ON],
-		"labels": ["Off", "On"],
-		"hint": "With Node facing On and Graph turn Fixed. On: past 90° from the graph's front, cards lay out as a mirror's, inputs on the right, so their wires leave towards their neighbours.",
+		"values": [ON, OFF],
+		"labels": ["On", "Off"],
+		"hint": "With Node facing On and Graph turn Fixed. On: a card whose wires run to your left lays out as a mirror's, inputs on the right, so its wires leave towards its neighbours; a card without wires across your view, past 90° from the graph's front.",
 	},
 	SIGN_PORTS: {
 		"category": Category.EDITOR,
 		"group": &"cards",
 		"title": "Sign ports",
-		"values": [SIDES, RIM],
-		"labels": ["Sides", "Rim"],
-		"hint": "Sides: a sign's inputs on its left, its result on its right. Rim: each port slides along the rim towards the other end of its wire.",
+		"values": [RIM, SIDES],
+		"labels": ["Rim", "Sides"],
+		"hint": "Rim: each port slides along the rim towards the other end of its wire, or its nearest bend, at most 90° from its side. Sides: a sign's inputs on its left, its result on its right.",
 	},
 	GRAPH_TURN: {
 		"category": Category.EDITOR,
@@ -583,6 +603,14 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"labels": ["On focus", "Off", "On"],
 		"hint": "The wire a link hides: never drawn (Off), drawn while the ray is on its card, its variable or the link (On focus), always drawn (On).",
 	},
+	WIRE_DRAW: {
+		"category": Category.EDITOR,
+		"group": &"wires",
+		"title": "Wire draw",
+		"values": [HOLD, CLICK],
+		"labels": ["Hold", "Click"],
+		"hint": "Hold: hold the trigger on a port and let go where the wire ends: on a port it connects, in empty space the block menu opens, on its own port it goes back. Click: click the port, then click where the wire ends.",
+	},
 	LINK_CREATE: {
 		"category": Category.EDITOR,
 		"group": &"wires",
@@ -663,28 +691,35 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"labels": ["On top", "On the left"],
 		"hint": "Where Settings shows a section's subsections. On top: a row over the settings; drag it sideways when it doesn't fit. On the left: under the section's name, which opens and closes them.",
 	},
+	ANTIALIASING: {
+		"category": Category.GLOBAL,
+		"title": "Antialiasing",
+		"values": [AUTO, OFF, MSAA_2X, MSAA_4X, MSAA_8X],
+		"labels": ["Auto", "Off", "2×", "4×", "8×"],
+		"hint": "Smooths the edges of cards, wires and objects in the VR view (MSAA). Auto: 4× on a standalone headset and in the window, off on a PC headset. More samples cost GPU time.",
+	},
 	EXEC_ARROWS: {
 		"category": Category.EDITOR,
 		"group": &"wires",
 		"title": "Execution arrows",
-		"values": [OFF, CHEVRONS, RUNNING, AT_END],
-		"labels": ["Off", "Chevrons", "Running", "At the end"],
+		"values": [RUNNING, OFF, CHEVRONS, AT_END],
+		"labels": ["Running", "Off", "Chevrons", "At the end"],
 		"hint": "Arrowheads on execution wires along the flow. Chevrons: every 9 cm. Running: the same, moving. At the end: one before the input.",
 	},
 	DATA_ARROWS: {
 		"category": Category.EDITOR,
 		"group": &"wires",
 		"title": "Data arrows",
-		"values": [OFF, CHEVRONS, RUNNING, AT_END],
-		"labels": ["Off", "Chevrons", "Running", "At the end"],
+		"values": [AT_END, OFF, CHEVRONS, RUNNING],
+		"labels": ["At the end", "Off", "Chevrons", "Running"],
 		"hint": "Arrowheads on data wires, from output to input and from an object to its Target. Chevrons: every 9 cm. Running: the same, moving. At the end: one before the input.",
 	},
 	ARROW_STYLE: {
 		"category": Category.EDITOR,
 		"group": &"wires",
 		"title": "Arrow style",
-		"values": [FILLED, OPEN],
-		"labels": ["Filled", "Open"],
+		"values": [OPEN, FILLED],
+		"labels": ["Open", "Filled"],
 		"hint": "Filled: cones, seen from every side. Open: two strokes as >, turned about the wire to you.",
 	},
 	SELECT_ADD: {

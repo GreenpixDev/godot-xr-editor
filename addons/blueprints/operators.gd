@@ -9,7 +9,7 @@ extends RefCounted
 ## after [method problem] has checked the values that came.
 ##
 ## An associative operator takes from two to [constant MAX_OPERANDS] operands
-## (D-132): A, B, C… — its parameters [constant OPERAND_KEYS], their count in
+## (D-136): A, B, C… — its parameters [constant OPERAND_KEYS], their count in
 ## [code]operands[/code] —, folded from the left: (a + b) + c.
 
 ## Groups: arithmetic, equality, order, logic and text.
@@ -22,7 +22,7 @@ const TEXT := &"text"
 const INVALID := -1
 ## What each operator is: its symbol on a card, its title, its group, its
 ## search words; [code]unary[/code] for one operand, [code]variadic[/code] for
-## two or more (D-132), [code]numbers[/code] for numbers only.
+## two or more (D-136), [code]numbers[/code] for numbers only.
 const OPERATORS := {
 	"add": {"symbol": "+", "title": "Add", "group": MATH, "variadic": true, "keywords": "plus sum + join"},
 	"subtract": {"symbol": "−", "title": "Subtract", "group": MATH, "keywords": "minus difference -"},
@@ -46,7 +46,7 @@ const OPERATORS := {
 const SECTIONS := {MATH: "Math", EQUALITY: "Comparison", ORDER: "Comparison", LOGIC: "Logic", TEXT: "Math"}
 ## The parameters of the operands, in order: A, B, C…
 const OPERAND_KEYS: Array[String] = ["a", "b", "c", "d", "e", "f", "g", "h"]
-## How many operands a variadic operator takes at least and at most (D-132).
+## How many operands a variadic operator takes at least and at most (D-136).
 const MIN_OPERANDS := 2
 const MAX_OPERANDS := 8
 const NUMBERS: Array[int] = [TYPE_INT, TYPE_FLOAT]
@@ -66,7 +66,7 @@ static func is_unary(op: String) -> bool:
 	return OPERATORS.has(op) and bool((OPERATORS[op] as Dictionary).get("unary", false))
 
 
-## Whether operator [param op] takes from two to [constant MAX_OPERANDS] operands (D-132).
+## Whether operator [param op] takes from two to [constant MAX_OPERANDS] operands (D-136).
 static func is_variadic(op: String) -> bool:
 	return OPERATORS.has(op) and bool((OPERATORS[op] as Dictionary).get("variadic", false))
 
@@ -82,7 +82,7 @@ static func operand_type(op: String) -> int:
 ## The literal operand [param index] of [param op] starts with: false for
 ## logic and numbers else, as [method default_params] has them, an empty text
 ## to append. An operand added after the first two takes one that changes
-## nothing (D-132): 0 to add, 1 to multiply, true for AND, false for OR.
+## nothing (D-136): 0 to add, 1 to multiply, true for AND, false for OR.
 static func operand_default(op: String, index: int) -> Variant:
 	match group_of(op):
 		LOGIC: return op == "and" and index >= MIN_OPERANDS

@@ -43,7 +43,7 @@ const VECTOR2 := 6
 const VECTOR3 := 7
 const OBJECT := 8
 const COLOR := 9
-## The built-in compound values Break takes apart and Make puts together (D-135).
+## The built-in compound values Break takes apart and Make puts together (D-139).
 const VECTOR4 := 10
 const VECTOR2I := 11
 const VECTOR3I := 12
@@ -71,14 +71,14 @@ const BLOCKS := {
 	"set_property": {"title": "Set Property", "in": [["In", EXEC, ""], ["Value", VALUE, "value"], ["Target", OBJECT, "target"]], "out": [["Then", EXEC, ""]], "params": {"target": ".", "property": "visible", "value": true}},
 	"equals": {"title": "Equal", "in": [["A", VALUE, "a"], ["B", VALUE, "b"]], "out": [["Result", BOOLEAN, ""]], "params": {"a": 1.0, "b": 1.0}},
 	# Its ports follow its operator ([method ports]); a unary one has no B, a
-	# variadic one keeps its count in "operands" and C… as its parameters (D-132).
+	# variadic one keeps its count in "operands" and C… as its parameters (D-136).
 	"operator": {"title": "Operator", "in": [["A", VALUE, "a"], ["B", VALUE, "b"]], "out": [["Result", VALUE, ""]], "params": {"op": "add", "a": 0.0, "b": 0.0}},
 	"get_variable": {"title": "Get Variable", "in": [], "out": [["Value", VALUE, ""]], "params": {"variable": ""}},
-	# Its outputs Then 0… follow "outputs" (D-134); each runs after the chain of the one before ends.
+	# Its outputs Then 0… follow "outputs" (D-138); each runs after the chain of the one before ends.
 	"sequence": {"title": "Sequence", "in": [["In", EXEC, ""]], "out": [], "params": {"outputs": 2}},
-	# A case per output, its value in case_0…, then Default (D-134); "on" is int, string or enum.
+	# A case per output, its value in case_0…, then Default (D-138); "on" is int, string or enum.
 	"switch": {"title": "Switch", "in": [["In", EXEC, ""], ["Selection", INTEGER, "selection"]], "out": [], "params": {"on": "int", "selection": 0, "cases": 2, "case_0": 0, "case_1": 1}},
-	# A value taken apart into its fields and one put together from them (D-135):
+	# A value taken apart into its fields and one put together from them (D-139):
 	# their ports follow the block's "struct" and "hidden" ([XREBlueprintStructs]).
 	"break": {"title": "Break", "in": [["Target", VALUE, ""]], "out": [], "params": {}},
 	"make": {"title": "Make", "in": [], "out": [["Result", VALUE, ""]], "params": {}},
@@ -328,7 +328,7 @@ func ports(block: Dictionary, input: bool) -> Array:
 	if kind == "sequence" and not input:
 		for index: int in pin_count(block): result.append(["Then %d" % index, EXEC])
 	if kind == "switch":
-		# Selection is of the cases' type; an output per case, keyed by its value's parameter, then Default (D-134).
+		# Selection is of the cases' type; an output per case, keyed by its value's parameter, then Default (D-138).
 		if input: result[1][1] = TEXT if params.get("on") == "string" else INTEGER
 		else:
 			for index: int in pin_count(block): result.append([case_label(block, index), EXEC, case_key(index)])
@@ -350,7 +350,7 @@ func ports(block: Dictionary, input: bool) -> Array:
 
 
 ## An operator's ports (D-065): A and B, or A alone, or from A to H for a
-## variadic one (D-132), of the type its operator takes — booleans for logic,
+## variadic one (D-136), of the type its operator takes — booleans for logic,
 ## numbers to order and for min and max, any value else — and its Result, of
 ## the type its operands give ([method operand_type]).
 func _operator_ports(block: Dictionary, input: bool) -> Array:
@@ -369,7 +369,7 @@ func _operator_ports(block: Dictionary, input: bool) -> Array:
 
 
 ## How many operands an operator or Equal block has: one for a unary
-## operator, its [code]operands[/code] for a variadic one (D-132), else two.
+## operator, its [code]operands[/code] for a variadic one (D-136), else two.
 static func operand_count(block: Dictionary) -> int:
 	if block.get("kind") == "equals": return 2
 	var op := operator_of(block)
@@ -379,25 +379,25 @@ static func operand_count(block: Dictionary) -> int:
 	return clampi(count, XREBlueprintOperators.MIN_OPERANDS, XREBlueprintOperators.MAX_OPERANDS)
 
 
-## Fewest and most pins a block whose pins change has (D-132, D-134).
+## Fewest and most pins a block whose pins change has (D-136, D-138).
 const MIN_PINS := 2
 const MAX_PINS := 8
 
 
-## How many outputs a Sequence has, or cases a Switch (D-134), from two to eight.
+## How many outputs a Sequence has, or cases a Switch (D-138), from two to eight.
 static func pin_count(block: Dictionary) -> int:
 	var params: Dictionary = block.get("params", {})
 	var count: Variant = params.get("outputs" if block.get("kind") == "sequence" else "cases", MIN_PINS)
 	return clampi(count, MIN_PINS, MAX_PINS) if count is int else MIN_PINS
 
 
-## The parameter of a Switch's case [param index]: its value (D-134).
+## The parameter of a Switch's case [param index]: its value (D-138).
 static func case_key(index: int) -> String:
 	return "case_%d" % index
 
 
 ## What the output of a Switch's case [param index] says: its value, a text in
-## quotes; an enumeration's case keeps its constant's name (D-134).
+## quotes; an enumeration's case keeps its constant's name (D-138).
 static func case_label(block: Dictionary, index: int) -> String:
 	var params: Dictionary = block.get("params", {})
 	var value: Variant = params.get(case_key(index))
@@ -421,7 +421,7 @@ static func enum_constants(path: String) -> Dictionary:
 	return result
 
 
-## The pins of [param block] that are added and removed (D-132, D-134):
+## The pins of [param block] that are added and removed (D-136, D-138):
 ## [code]{"input": side, "count": n, "can_add": bool}[/code] — a variadic
 ## operator's inputs, a Sequence's outputs, a Switch's cases before Default —,
 ## empty for a block whose pins are fixed. They are the first of their side.
@@ -445,7 +445,7 @@ static func variable_pins(block: Dictionary) -> Dictionary:
 	return {}
 
 
-## The value a new case of Switch [param block] takes (D-134): the largest
+## The value a new case of Switch [param block] takes (D-138): the largest
 ## number + 1, a text no case has, the name of the first constant no case
 ## has; null when an enumeration has none left.
 static func next_case(block: Dictionary) -> Variant:
@@ -468,7 +468,7 @@ static func next_case(block: Dictionary) -> Variant:
 
 
 ## Creates a Switch on [param on] — "int", "string" or "enum" of
-## [param enum_path] — with two cases (D-134).
+## [param enum_path] — with two cases (D-138).
 static func make_switch(id: int, on: String, position: Vector2, enum_path: String = "") -> Dictionary:
 	var block := make_node(id, "switch", position)
 	var params: Dictionary = block["params"]
@@ -488,7 +488,7 @@ static func make_switch(id: int, on: String, position: Vector2, enum_path: Strin
 
 
 ## The enumeration, "Class.Enum", whose constant output [param port] of
-## [param block] gives, empty when none (D-134): a property's, a call's
+## [param block] gives, empty when none (D-138): a property's, a call's
 ## result, a signal's argument, a Break's field.
 func output_enum(block: Dictionary, port: int) -> String:
 	var path := ""
@@ -501,7 +501,7 @@ func output_enum(block: Dictionary, port: int) -> String:
 
 
 ## A new wire into a Switch's Selection from an enumeration's constant makes
-## it a Switch on that enumeration (D-134), as a wire into Break types it:
+## it a Switch on that enumeration (D-138), as a wire into Break types it:
 ## its cases take the constants in order, as many as it had while there are;
 ## the wires of cases gone go, Default keeps its own. [param before] are the
 ## edges before the edit; true if a block changed.
@@ -535,7 +535,7 @@ func adopt_enums(before: Array) -> bool:
 
 
 ## Break's Target and the fields it shows, Make's fields and its Result
-## (D-135), each field keyed by its name: Make's input of a literal type falls
+## (D-139), each field keyed by its name: Make's input of a literal type falls
 ## back to its parameter, Break's Target to "value" for a vector or a color.
 ## Without a struct Break takes any value and gives nothing, Make gives any.
 static func _struct_ports(block: Dictionary, input: bool) -> Array:
@@ -553,7 +553,7 @@ static func _struct_ports(block: Dictionary, input: bool) -> Array:
 
 ## The class of the object output [param port] of [param block] gives, empty
 ## when unknown: a signal argument's, a call's result's, a Break's field's,
-## a Make's (D-135).
+## a Make's (D-139).
 func output_class(block: Dictionary, port: int) -> String:
 	match str(block.get("kind", "")):
 		"signal":
@@ -571,7 +571,7 @@ func output_class(block: Dictionary, port: int) -> String:
 
 
 ## The class an object input [param port] of [param block] wants, empty when
-## any: a call argument's (D-135).
+## any: a call argument's (D-139).
 func input_class(block: Dictionary, port: int) -> String:
 	if block.get("kind") != "call": return ""
 	var inputs := ports(block, true)
@@ -581,7 +581,7 @@ func input_class(block: Dictionary, port: int) -> String:
 	return ""
 
 
-## A new wire types a Break or a Make (D-135), as a wire into Set's Target
+## A new wire types a Break or a Make (D-139), as a wire into Set's Target
 ## picks its kind (D-102): into Break's Target, by what comes — its type, its
 ## class —; from Make's Result, by the input it goes into, when Make can build
 ## that. A block of the same type stays. Its wires keep their fields by name;
@@ -615,7 +615,7 @@ static func _same_struct(block: Dictionary, struct: Dictionary) -> bool:
 	return not own.is_empty() and own["type"] == struct["type"] and str(own.get("class", "")) == str(struct.get("class", ""))
 
 
-## Gives Break or Make [param id] [param struct] (D-135): its fields hidden at
+## Gives Break or Make [param id] [param struct] (D-139): its fields hidden at
 ## first, a Make's literals for its fields — kept where a field of the name had
 ## one —, and its wires moved to their fields by name, those without one gone.
 func retype(id: int, struct: Dictionary) -> void:
@@ -704,7 +704,7 @@ static func symbol(block: Dictionary) -> String:
 
 
 ## Whether parameter [param key] of [param block] is unused: B of a unary
-## operator, an operand past a variadic one's count (D-132).
+## operator, an operand past a variadic one's count (D-136).
 static func is_unused(block: Dictionary, key: String) -> bool:
 	if block.get("kind") == "switch" and key.begins_with("case_") and key.trim_prefix("case_").is_valid_int():
 		return int(key.trim_prefix("case_")) >= pin_count(block)
@@ -763,7 +763,7 @@ func operand_types(block: Dictionary, key: String, types: Array) -> Array[int]:
 		if op == "equal":
 			result.append(type)
 			continue
-		# The operands as they would be with this wire, folded in order (D-132).
+		# The operands as they would be with this wire, folded in order (D-136).
 		var operands: Array[int] = []
 		for index: int in operand_count(block):
 			var other: String = XREBlueprintOperators.OPERAND_KEYS[index]
@@ -1037,7 +1037,7 @@ func validate() -> PackedStringArray:
 	return errors
 
 
-## The operands of an operator block past A and B (D-132): a count only a
+## The operands of an operator block past A and B (D-136): a count only a
 ## variadic operator has, from two to eight, and a literal for each operand
 ## that keeps one, none past the count.
 static func _validate_operands(block: Dictionary) -> PackedStringArray:
@@ -1058,7 +1058,7 @@ static func _validate_operands(block: Dictionary) -> PackedStringArray:
 	return errors
 
 
-## A Break's or a Make's struct (D-135): a type, a class, fields with names and
+## A Break's or a Make's struct (D-139): a type, a class, fields with names and
 ## types, the names it hides; its literals.
 static func _validate_struct(block: Dictionary) -> PackedStringArray:
 	var errors := PackedStringArray()
@@ -1082,7 +1082,7 @@ static func _validate_struct(block: Dictionary) -> PackedStringArray:
 
 
 ## A Sequence's count of outputs and a Switch's of cases, from two to eight,
-## and a Switch's kind and its cases' values of its type, none past the count (D-134).
+## and a Switch's kind and its cases' values of its type, none past the count (D-138).
 static func _validate_pins(block: Dictionary) -> PackedStringArray:
 	var errors := PackedStringArray()
 	var params: Dictionary = block["params"]

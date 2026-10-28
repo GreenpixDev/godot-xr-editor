@@ -281,7 +281,7 @@ func _test_wire_bends() -> void:
 func _test_all_blocks_compile() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.variables.append({"name": "flag", "value": false})
-	# Break and Make take their type from a wire (D-135): their own test builds them.
+	# Break and Make take their type from a wire (D-139): their own test builds them.
 	var kinds: Array = XREBlueprintGraph.BLOCKS.keys().filter(func(kind: String) -> bool: return not kind in ["call", "break", "make"])
 	kinds.append_array(XREBlueprintGraph.PRESETS.keys())
 	for kind: String in kinds:
@@ -1007,7 +1007,7 @@ func _test_makers_and_time() -> void:
 	instance.free()
 	var actions := XREBlueprintActions.new()
 	var ids := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.LIBRARY, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
-	_check(ids.has("static:XREBlueprintLibrary.get_time") and not ids.has("static:XREBlueprintLibrary.make_vector3"), "the menu's Library offers Get Time; Make Vector3 is Make's now (D-135)")
+	_check(ids.has("static:XREBlueprintLibrary.get_time") and not ids.has("static:XREBlueprintLibrary.make_vector3"), "the menu's Library offers Get Time; Make Vector3 is Make's now (D-139)")
 
 
 func _library_call(graph: XREBlueprintGraph, name: String, params: Dictionary = {}) -> int:
@@ -1076,7 +1076,7 @@ func _test_vectors() -> void:
 	instance.free()
 	var actions := XREBlueprintActions.new()
 	var ids := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.LIBRARY, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
-	_check(["vector3_cross", "vector2_distance"].all(func(name: String) -> bool: return ids.has("static:XREBlueprintLibrary." + name)) and not ids.has("static:XREBlueprintLibrary.break_vector3"), "the menu's Library offers vector math; Break Vector3 is Break's now (D-135)")
+	_check(["vector3_cross", "vector2_distance"].all(func(name: String) -> bool: return ids.has("static:XREBlueprintLibrary." + name)) and not ids.has("static:XREBlueprintLibrary.break_vector3"), "the menu's Library offers vector math; Break Vector3 is Break's now (D-139)")
 	var pin := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.NATIVE, "graph": graph, "pin": {"type": XREBlueprintGraph.VECTOR3, "output": true}}))
 	_check(pin.any(func(action: Dictionary) -> bool: return action["id"] == "struct:break:Vector3") and pin.any(func(action: Dictionary) -> bool: return action["id"] == "struct:break"), "a Vector3 wire let go offers Break Vector3 and Break")
 
@@ -1126,7 +1126,7 @@ func _test_paste_blocks() -> void:
 			"an outer wire into a pasted block comes from the same output")
 
 
-## Variadic operators (D-132): types folded from the left, pins added and
+## Variadic operators (D-136): types folded from the left, pins added and
 ## removed with their wires following them by key, validation, the menu, the
 ## generated code and its values.
 func _test_variadic_operators() -> void:
@@ -1232,7 +1232,7 @@ func _test_variadic_operators() -> void:
 	_check(errors.contains("Add doesn't take int and String"), "the build names the pair that can't go together: %s" % errors)
 
 
-## Sequence and Switch (D-134): their pins added and removed with wires
+## Sequence and Switch (D-138): their pins added and removed with wires
 ## following them, a case's value, validation, the generated code — a
 ## Sequence's next output waits for the chain before it, Delay included —, the
 ## three kinds of Switch and a repeated case.
@@ -1357,7 +1357,7 @@ func _test_sequence_switch() -> void:
 	await process_frame
 
 
-## Break and Make (D-135): the fields of built-in values, of a script class
+## Break and Make (D-139): the fields of built-in values, of a script class
 ## and of an engine class; a wire typing an untyped Break; hiding a field with
 ## the wires following; the generated code and its values; a value of another
 ## class, a subclass and a field gone from its class.

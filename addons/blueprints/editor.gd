@@ -13,7 +13,7 @@ signal graph_scene_requested
 ## Compact views can supply headset text input without depending on XR classes.
 signal text_edit_requested(field: LineEdit)
 
-# The built-in compound values (D-135): vectors blue, whole vectors green, boxes teal, a rotation violet, transforms orange.
+# The built-in compound values (D-139): vectors blue, whole vectors green, boxes teal, a rotation violet, transforms orange.
 const PORT_COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("b4e05a"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878"), Color("89adff"), Color("9fd36a"), Color("9fd36a"), Color("6fc3c8"), Color("6fc3c8"), Color("c38bf0"), Color("f0a35e"), Color("f0a35e"), Color("f0a35e"), Color("6fc3c8")]
 
 var document: XREBlueprintDocument
@@ -399,7 +399,7 @@ func _refresh() -> void:
 			_fill_operator(node, block, inputs, outputs)
 			node.selected = selected.has(block["id"])
 			continue
-		# A Sequence's outputs and a Switch's cases come and go (D-134): × by one under the mouse, "+ pin" under them.
+		# A Sequence's outputs and a Switch's cases come and go (D-138): × by one under the mouse, "+ pin" under them.
 		var pins := XREBlueprintGraph.variable_pins(block)
 		var id: int = block["id"]
 		for slot: int in maxi(inputs.size(), outputs.size()):
@@ -458,7 +458,7 @@ func _refresh() -> void:
 
 ## An operator as Unreal draws one (D-065): no title, the literal of each
 ## input without a wire by its port, the symbol in the middle, the result on
-## the right. Its name is its tooltip. A variadic one (D-132) shows × by an
+## the right. Its name is its tooltip. A variadic one (D-136) shows × by an
 ## input under the mouse while it has more than two, and "+ pin" under them.
 func _fill_operator(node: GraphNode, block: Dictionary, inputs: Array, outputs: Array) -> void:
 	node.title = ""
@@ -561,16 +561,16 @@ func _refresh_details() -> void:
 	if block["kind"] == "call":
 		_call_details(block)
 	for key: String in (params if block["kind"] != "call" else {}):
-		# The counts of pins change by the pins (D-132, D-134); what a Switch is on is its kind.
+		# The counts of pins change by the pins (D-136, D-138); what a Switch is on is its kind.
 		if key in ["operands", "outputs", "cases", "on", "enum"] or not _shows(block, key) or XREBlueprintGraph.is_unused(block, key): continue
 		_label(_details, key.capitalize())
 		if block["kind"] == "switch" and params.get("on") == "enum" and (key == "selection" or key.begins_with("case_")):
-			# An enumeration's case and selection are its constants' names (D-134).
+			# An enumeration's case and selection are its constants' names (D-138).
 			var names: Array[String] = []
 			names.assign(XREBlueprintGraph.enum_constants(str(params.get("enum", ""))).keys())
 			_options(block["id"], key, names, str(params[key]))
 		elif key == "op":
-			# Another operator of the same group and as many operands (D-065); past two, a variadic one (D-132).
+			# Another operator of the same group and as many operands (D-065); past two, a variadic one (D-136).
 			var op := str(params[key])
 			var many := XREBlueprintGraph.operand_count(block) > XREBlueprintOperators.MIN_OPERANDS
 			var same: Array[String] = []
@@ -595,7 +595,7 @@ func _refresh_details() -> void:
 	# Values taken out in the headset leave their sockets empty (D-054).
 	if block["kind"] != "call":
 		var defaults: Dictionary = (XREBlueprintGraph.BLOCKS[block["kind"]]["params"] as Dictionary).duplicate()
-		# Every input of an operator, C… too (D-132).
+		# Every input of an operator, C… too (D-136).
 		if block["kind"] == "operator":
 			for index: int in XREBlueprintGraph.operand_count(block):
 				defaults[XREBlueprintOperators.OPERAND_KEYS[index]] = XREBlueprintOperators.operand_default(XREBlueprintGraph.operator_of(block), index)
@@ -623,7 +623,7 @@ func _refresh_details() -> void:
 		_bind_text_inputs(_details)
 
 
-## A Break's or a Make's fields, each shown while ticked (D-135): one with a
+## A Break's or a Make's fields, each shown while ticked (D-139): one with a
 ## wire can't be hidden. Without a type, how to give it one.
 func _field_toggles(block: Dictionary) -> void:
 	var struct: Dictionary = block.get("struct", {})

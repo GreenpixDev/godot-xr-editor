@@ -477,7 +477,7 @@ static func _property_actions(info: Dictionary, owner: String) -> Array[Dictiona
 	var setter := XREBlueprintGraph.make_node(0, "set_property", Vector2.ZERO)
 	setter["params"]["property"] = name
 	setter["property_type"] = type
-	# An enumeration's Get makes a Switch wired from it one on its constants (D-134).
+	# An enumeration's Get makes a Switch wired from it one on its constants (D-138).
 	var enum_path := XREBlueprintSchema.property_enum(owner, info)
 	if not enum_path.is_empty(): getter["property_enum"] = enum_path
 	if XREBlueprintGraph.is_literal(XREBlueprintSchema.default_value(type)): setter["params"]["value"] = XREBlueprintSchema.default_value(type)
@@ -625,7 +625,7 @@ func _global_actions() -> Array[Dictionary]:
 	if _classes.has("@GlobalScope"): return _classes["@GlobalScope"]["actions"]
 	var actions: Array[Dictionary] = []
 	for name: String in XREBlueprintGlobals.FUNCTIONS:
-		# The Min and Max operators take their place (D-132); old blocks still build.
+		# The Min and Max operators take their place (D-136); old blocks still build.
 		if name in ["min", "max"]: continue
 		var signature := XREBlueprintFunctions.global(name)
 		var action := _call_action("global:" + name, signature, signature["category"])
@@ -679,7 +679,7 @@ func _operator_actions(title: String, graph: XREBlueprintGraph, host: Node) -> A
 	return _bind(actions, host, false, graph)
 
 
-## Break and Make (D-135): untyped, which a wire types — into Break's Target,
+## Break and Make (D-139): untyped, which a wire types — into Break's Target,
 ## from Make's Result —, then of each built-in compound value and of each
 ## script class of the project with fields; Make only of what it can build.
 func _struct_actions() -> Array[Dictionary]:
@@ -720,7 +720,7 @@ func _native_actions(graph: XREBlueprintGraph, host: Node, one_set: bool = false
 	for entry: Array in natives:
 		actions.append({"id": "native:" + entry[0], "title": entry[1], "subtitle": "native · " + entry[2], "kind": entry[3], "keywords": entry[2],
 				"category": "Native", "block": XREBlueprintGraph.make_node(0, entry[0], Vector2.ZERO), "target": null, "disabled": ""})
-	# What orders a run (D-134): outputs one after another, one output by a value.
+	# What orders a run (D-138): outputs one after another, one output by a value.
 	actions.append({"id": "native:sequence", "title": "Sequence", "subtitle": "native · then, then", "kind": "native", "keywords": "sequence order then steps do",
 			"category": "Native", "block": XREBlueprintGraph.make_node(0, "sequence", Vector2.ZERO), "target": null, "disabled": ""})
 	for on: String in ["int", "string"]:

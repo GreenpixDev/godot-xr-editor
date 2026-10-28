@@ -56,6 +56,8 @@ func _enter_tree() -> void:
 	_session = XRESession.new()
 	_session.name = "XRESession"
 	add_child(_session)
+	_session.set_antialiasing(document.features.get_value(XREFeatureSettings.ANTIALIASING))
+	document.features.changed.connect(_on_feature_changed)
 	var xr := _session.get_xr_interface()
 	if xr != null:
 		var runtime := XREFeatureSettings.layout_for_runtime(
@@ -176,6 +178,7 @@ func _exit_tree() -> void:
 	if _can_hide_ui():
 		remove_tool_menu_item(_HIDE_UI_MENU)
 	_session.simulator_closed.disconnect(_on_simulator_closed)
+	document.features.changed.disconnect(_on_feature_changed)
 	# All of them have already left the tree with this node: the palette threw
 	# away what it held, the panels committed what their inspectors edited, the
 	# manipulator put back what it held, the session restored the editor's
@@ -212,6 +215,11 @@ func _forget_tools() -> void:
 	if document != null:
 		document.history.forget(XREHistory.Kind.VIEW)
 		document.history.forget(XREHistory.Kind.GRAPH)
+
+
+## Antialiasing takes effect at once (D-134), in the headset and in the simulator's window.
+func _on_feature_changed(key: StringName) -> void:
+	if key == XREFeatureSettings.ANTIALIASING: _session.set_antialiasing(document.features.get_value(key))
 
 
 ## Opens the VR view without a headset, or closes it (D-057).

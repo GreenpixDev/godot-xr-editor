@@ -155,7 +155,7 @@ func _shot_d090(head: Vector3, host: Node3D) -> void:
 	await _frames(3)
 
 
-## D-136: Switch, Sequence, Break Vector4 and Make Transform3D, each in focus,
+## D-140: Switch, Sequence, Break Vector4 and Make Transform3D, each in focus,
 ## then with the ray on its second output's name, which keeps its × or eye.
 func _shot_pins() -> void:
 	var switch := XREBlueprintGraph.make_switch(0, "int", Vector2.ZERO)
@@ -244,7 +244,7 @@ func _run() -> void:
 	_service.open_selected()
 	await _frames(10)
 	var start := _service.blueprint.history.get_version()
-	# XRE_SHOT_ONLY=pins shoots only the cards whose pins change (D-136).
+	# XRE_SHOT_ONLY=pins shoots only the cards whose pins change (D-140).
 	if OS.get_environment("XRE_SHOT_ONLY") == "pins":
 		await _shot_pins()
 		while _service.blueprint.history.get_version() > start: _service.blueprint.undo()
