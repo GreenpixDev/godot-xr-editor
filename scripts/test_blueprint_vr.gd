@@ -348,6 +348,7 @@ func _run() -> void:
 	await _test_d122()
 	await _test_d123()
 	await _test_d125()
+	await _test_d133()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -2377,7 +2378,10 @@ func _test_d122() -> void:
 	_check(copy == null or copy.get_parent() == null, "undo takes the copy out")
 	_document.features.set_value(XREFeatureSettings.COPY_BLUEPRINT, XREFeatureSettings.SHARED)
 	for file: String in [path, path.get_basename() + ".generated.gd", path.get_basename() + ".generated.gd.uid"]:
-		if not file.is_empty() and FileAccess.file_exists(file): DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
+		if file.is_empty() or not FileAccess.file_exists(file): continue
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
+		# The editor's file system forgets it too, or the graph catalog still lists the removed graph.
+		EditorInterface.get_resource_filesystem().update_file(file)
 
 
 ## D-128: with Copy objects on Clipboard, a card's copy button puts the block
@@ -2424,6 +2428,165 @@ func _test_d123() -> void:
 
 ## D-130: a click in the graph's empty space lets go of the selected blocks;
 ## with the other hand adding, it keeps them.
+## D-133: pins of a variadic operator in the headset. The ray on Add shows
+## the plus under its trash; trigger on it adds input C. The ray on an input
+## shows its ×; trigger on the × removes the input. Each is one edit, A undoes it.
+func _test_d133() -> void:
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var id := _service.blueprint.insert_block(XREBlueprintGraph.make_operator(0, "add", Vector2.ZERO), Vector2(-900, 900))
+	await _frames()
+	var card := _card(id)
+	_check(card != null and card.pin_plus != null and card.pin_marks.size() == 2 and card.pin_marks[0] == null, "Add of two inputs has a plus and no ×")
+	if card == null or card.pin_plus == null: return
+	_check(is_equal_approx(card.pin_plus_point.x, -absf(card.trash_point.x)) and card.pin_plus_point.y < -card.height * 0.5, "the plus is under the node's left corner, on the inputs' side (D-134)")
+	var front := card.node.global_basis.z.normalized()
+	_aim_from(card.node.global_position, front)
+	await _frames()
+	_check(card.pin_plus.visible, "the ray on the node shows the plus with the trash")
+	_aim_from(card.node.to_global(card.pin_plus_point), front)
+	await _frames()
+	# Both hands cast every frame: the plus growing says the right hand's ray is on it.
+	_check(card.pin_plus.visible and card.pin_plus.scale.x > 1.0, "the ray takes the plus: it grows")
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(XREBlueprintGraph.operand_count(graph.find_node(id)) == 3, "trigger on the plus adds input C")
+	card = _card(id)
+	_check(card != null and card.pin_marks.size() == 3 and card.pin_marks[1] != null and not card.pin_marks[1].visible, "three inputs: each has a ×, hidden")
+	if card == null or card.pin_marks.size() < 3 or card.pin_marks[1] == null: return
+	front = card.node.global_basis.z.normalized()
+	_aim_from(canvas.to_global(canvas.port_position(id, 1, true)), front)
+	await _frames()
+	_check(card.pin_marks[1].visible and not card.pin_marks[0].visible, "the ray on input B shows its × only")
+	_aim_from(card.node.to_global(card.pin_marks[1].position), front)
+	await _frames()
+	_check(card.pin_marks[1].visible and card.pin_marks[1].scale.x > 1.0, "the ray takes the ×, which stays and grows")
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(XREBlueprintGraph.operand_count(graph.find_node(id)) == 2, "trigger on the × removes input B")
+	_service.blueprint.undo()
+	await _frames()
+	_check(XREBlueprintGraph.operand_count(graph.find_node(id)) == 3, "A brings it back")
+	_service.blueprint.undo()
+	_service.blueprint.undo()
+	await _frames()
+	_check(graph.find_node(id).is_empty(), "two more undos take the operator out")
+	# D-134: a Sequence's plus is under its right corner, on the outputs' side; × stands left of an output's name.
+	var sequence := _service.blueprint.insert_block(XREBlueprintGraph.make_node(0, "sequence", Vector2.ZERO), Vector2(-900, 900))
+	await _frames()
+	card = _card(sequence)
+	_check(card != null and card.pin_plus != null and card.pin_plus_point.x > 0.0 and not card.pin_input, "a Sequence's plus is under its right corner")
+	if card == null or card.pin_plus == null: return
+	front = card.node.global_basis.z.normalized()
+	_aim_from(card.node.global_position, front)
+	await _frames()
+	_aim_from(card.node.to_global(card.pin_plus_point), front)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(XREBlueprintGraph.pin_count(graph.find_node(sequence)) == 3, "trigger on it adds Then 2")
+	card = _card(sequence)
+	if card == null or card.pin_marks.size() < 3 or card.pin_marks[1] == null: return
+	front = card.node.global_basis.z.normalized()
+	_aim_from(canvas.to_global(canvas.port_position(sequence, 1, false)), front)
+	await _frames()
+	_check(card.pin_marks[1].visible and card.pin_marks[1].position.x < card.outputs[1].x - 0.03, "the ray on Then 1 shows its ×, left of its name")
+	# D-136: on the way from the port to the ×, over the name, the × stays.
+	var on_name := (card.pin_marks[1].position + Vector3(card.outputs[1].x, card.outputs[1].y, card.pin_marks[1].position.z)) * 0.5
+	_aim_from(card.node.to_global(on_name), front)
+	await _frames()
+	_check(card.pin_marks[1].visible and not card.pin_marks[0].visible, "the ray on Then 1's name keeps its ×")
+	_aim_from(card.node.to_global(card.pin_marks[1].position), front)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(XREBlueprintGraph.pin_count(graph.find_node(sequence)) == 2, "trigger on the × removes Then 1")
+	for step: int in 3: _service.blueprint.undo()
+	await _frames()
+	_check(graph.find_node(sequence).is_empty(), "undos take the Sequence out")
+	# D-136: a Switch has In and Selection only; its cases are pucks where its outputs' names are, with plugs too.
+	var saved_values: Variant = _document.features.get_value(XREFeatureSettings.VALUE_INPUT)
+	for mode: StringName in [XREFeatureSettings.PUCKS, XREFeatureSettings.PLUGS]:
+		_document.features.set_value(XREFeatureSettings.VALUE_INPUT, mode)
+		var switch := _service.blueprint.insert_block(XREBlueprintGraph.make_switch(0, "int", Vector2.ZERO), Vector2(-900, 900))
+		await _frames()
+		card = _card(switch)
+		var cases: Array[XREBlueprintCanvas.Socket] = []
+		for socket: XREBlueprintCanvas.Socket in card.sockets if card != null else []:
+			if socket.key.begins_with("case_"): cases.append(socket)
+		_check(card != null and card.inputs.size() == 2 and cases.size() == 2, "%s: a Switch has two inputs, In and Selection, and two case pucks" % mode)
+		_check(cases.all(func(socket: XREBlueprintCanvas.Socket) -> bool: return socket.center.x > 0.0 and absf(socket.center.y - card.outputs[cases.find(socket)].y) < 0.002),
+				"%s: each case's puck is in its output's row, right of the middle" % mode)
+		_check(card != null and card.pin_marks.size() == 2 and card.pin_shifts[0] < -0.03, "%s: a case's × would stand left of its puck" % mode)
+		_service.blueprint.undo()
+		await _frames()
+	_document.features.set_value(XREFeatureSettings.VALUE_INPUT, saved_values)
+	await _frames()
+	# D-135: Break says "Break Vector3" as Get says its member; an eye by a field hides it, a chip lists the hidden.
+	var split_action: Dictionary = {}
+	for action: Dictionary in XREBlueprintActions.new().call("_struct_actions") as Array:
+		if action["id"] == "struct:break:Vector3": split_action = action
+	var split_block: Dictionary = (split_action.get("block", {}) as Dictionary).duplicate(true)
+	# Its header in Member, as ⇄ sets it on archetype cards.
+	split_block["vr_heading"] = "member"
+	var saved_style: Variant = _document.features.get_value(XREFeatureSettings.NODE_STYLE)
+	_document.features.set_value(XREFeatureSettings.NODE_STYLE, XREFeatureSettings.ARCHETYPES)
+	var split := _service.blueprint.insert_block(split_block, Vector2(-900, 900)) if not split_action.is_empty() else -1
+	await _frames()
+	card = _card(split)
+	_check(card != null and card.pin_eyes and card.pin_marks.size() == 3 and card.hidden_chip == null, "Break Vector3 has an eye by x, y and z and no chip")
+	if card == null or card.pin_marks.size() < 3:
+		_document.features.set_value(XREFeatureSettings.NODE_STYLE, saved_style)
+		return
+	var member := card.node.get_node_or_null(^"Member") as Label3D
+	_check(member != null and member.text == "Vector3" and (card.node.get_node(^"Verb") as Label3D).text == "Break", "its header says Break Vector3")
+	# D-136: its Target takes only a wire; its frame and icon are in Vector3's color, not its x's.
+	_check(not card.sockets.any(func(socket: XREBlueprintCanvas.Socket) -> bool: return socket.kind in [XREBlueprintCanvas.TOKEN, XREBlueprintCanvas.SQUARE]), "Break's Target has no token")
+	_check(XREBlueprintCanvas._pure_type(graph.find_node(split), graph.ports(graph.find_node(split), false)) == XREBlueprintGraph.VECTOR3, "Break is in the color of what it takes apart")
+	front = card.node.global_basis.z.normalized()
+	_aim_from(canvas.to_global(canvas.port_position(split, 1, false)), front)
+	await _frames()
+	_check(card.pin_marks[1].visible and not card.pin_marks[0].visible, "the ray on y shows its eye")
+	_aim_from(card.node.to_global((card.pin_marks[1].position + Vector3(card.outputs[1].x, card.outputs[1].y, card.pin_marks[1].position.z)) * 0.5), front)
+	await _frames()
+	_check(card.pin_marks[1].visible, "the ray on y's name keeps its eye")
+	_aim_from(card.node.to_global(card.pin_marks[1].position), front)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check((graph.find_node(split)["hidden"] as Array).has("y"), "trigger on the eye hides y")
+	card = _card(split)
+	_check(card != null and card.hidden_chip != null and card.pin_marks.size() == 2, "a chip says one is hidden; x and z keep their eyes")
+	if card == null or card.hidden_chip == null:
+		_document.features.set_value(XREFeatureSettings.NODE_STYLE, saved_style)
+		return
+	_aim_from(card.node.to_global(card.hidden_chip_point), card.node.global_basis.z.normalized())
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check((_service.get("_choice") as XREBlueprintPetals).is_open(), "trigger on the chip lists the hidden on petals")
+	_service.call("_choose_petal", _service.get("_choice"), {"text": "y", "show_field": [split, "y"], "enabled": true}, _rig.right_hand)
+	await _frames()
+	_check(not (graph.find_node(split)["hidden"] as Array).has("y"), "its petal shows y again")
+	for step: int in 3: _service.blueprint.undo()
+	_document.features.set_value(XREFeatureSettings.NODE_STYLE, saved_style)
+	await _frames()
+	_aim_from(Vector3(0, -50, 0), Vector3.BACK)
+	await _frames()
+
+
 func _test_d125() -> void:
 	var graph := _service.blueprint.graph
 	var canvas := _service.canvas

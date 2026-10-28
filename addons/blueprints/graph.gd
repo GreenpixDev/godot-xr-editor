@@ -43,6 +43,22 @@ const VECTOR2 := 6
 const VECTOR3 := 7
 const OBJECT := 8
 const COLOR := 9
+## The built-in compound values Break takes apart and Make puts together (D-135).
+const VECTOR4 := 10
+const VECTOR2I := 11
+const VECTOR3I := 12
+const RECT2 := 13
+const BOUNDS := 14
+const QUATERNION := 15
+const BASIS := 16
+const TRANSFORM2D := 17
+const TRANSFORM3D := 18
+const PLANE := 19
+## Variant types of the port categories that have one, by category.
+const CATEGORY_TYPES: Dictionary[int, int] = {BOOLEAN: TYPE_BOOL, INTEGER: TYPE_INT, NUMBER: TYPE_FLOAT, TEXT: TYPE_STRING, VECTOR2: TYPE_VECTOR2,
+		VECTOR3: TYPE_VECTOR3, OBJECT: TYPE_OBJECT, COLOR: TYPE_COLOR, VECTOR4: TYPE_VECTOR4, VECTOR2I: TYPE_VECTOR2I, VECTOR3I: TYPE_VECTOR3I,
+		RECT2: TYPE_RECT2, BOUNDS: TYPE_AABB, QUATERNION: TYPE_QUATERNION, BASIS: TYPE_BASIS, TRANSFORM2D: TYPE_TRANSFORM2D,
+		TRANSFORM3D: TYPE_TRANSFORM3D, PLANE: TYPE_PLANE}
 ## Port entries are [label, type, key]: the key names the parameter an
 ## unconnected input takes its value from, empty for none. Execution flows and
 ## values cannot be mixed. A call block's ports come from its function ([XREBlueprintFunctions]).
@@ -54,9 +70,18 @@ const BLOCKS := {
 	"get_property": {"title": "Get Property", "in": [["Target", OBJECT, "target"]], "out": [["Value", VALUE, ""]], "params": {"target": ".", "property": "visible"}},
 	"set_property": {"title": "Set Property", "in": [["In", EXEC, ""], ["Value", VALUE, "value"], ["Target", OBJECT, "target"]], "out": [["Then", EXEC, ""]], "params": {"target": ".", "property": "visible", "value": true}},
 	"equals": {"title": "Equal", "in": [["A", VALUE, "a"], ["B", VALUE, "b"]], "out": [["Result", BOOLEAN, ""]], "params": {"a": 1.0, "b": 1.0}},
-	# Its ports follow its operator ([method ports]); a unary one has no B.
+	# Its ports follow its operator ([method ports]); a unary one has no B, a
+	# variadic one keeps its count in "operands" and C… as its parameters (D-132).
 	"operator": {"title": "Operator", "in": [["A", VALUE, "a"], ["B", VALUE, "b"]], "out": [["Result", VALUE, ""]], "params": {"op": "add", "a": 0.0, "b": 0.0}},
 	"get_variable": {"title": "Get Variable", "in": [], "out": [["Value", VALUE, ""]], "params": {"variable": ""}},
+	# Its outputs Then 0… follow "outputs" (D-134); each runs after the chain of the one before ends.
+	"sequence": {"title": "Sequence", "in": [["In", EXEC, ""]], "out": [], "params": {"outputs": 2}},
+	# A case per output, its value in case_0…, then Default (D-134); "on" is int, string or enum.
+	"switch": {"title": "Switch", "in": [["In", EXEC, ""], ["Selection", INTEGER, "selection"]], "out": [], "params": {"on": "int", "selection": 0, "cases": 2, "case_0": 0, "case_1": 1}},
+	# A value taken apart into its fields and one put together from them (D-135):
+	# their ports follow the block's "struct" and "hidden" ([XREBlueprintStructs]).
+	"break": {"title": "Break", "in": [["Target", VALUE, ""]], "out": [], "params": {}},
+	"make": {"title": "Make", "in": [], "out": [["Result", VALUE, ""]], "params": {}},
 	"set_variable": {"title": "Set Variable", "in": [["In", EXEC, ""], ["Value", VALUE, "value"]], "out": [["Then", EXEC, ""]], "params": {"variable": "", "value": false}},
 }
 ## Shortcuts that are a configured block of another kind (D-051): On Ready is
@@ -188,6 +213,14 @@ static func title(block: Dictionary) -> String:
 		"operator":
 			var op := str(params.get("op", ""))
 			return str((XREBlueprintOperators.OPERATORS[op] as Dictionary)["title"]) if XREBlueprintOperators.OPERATORS.has(op) else "Operator"
+		"break", "make":
+			var name := XREBlueprintStructs.name_of(block.get("struct", {}))
+			return ("Break" if kind == "break" else "Make") + (" " + name if not name.is_empty() else "")
+		"switch":
+			match str(params.get("on", "")):
+				"string": return "Switch on String"
+				"enum": return "Switch on " + str(params.get("enum", "Enum")).get_slice(".", 1)
+			return "Switch on Int"
 	return str(BLOCKS[kind]["title"]) if BLOCKS.has(kind) else kind
 
 
@@ -292,6 +325,15 @@ func ports(block: Dictionary, input: bool) -> Array:
 	if kind == "operator": return _operator_ports(block, input)
 	var result: Array = (BLOCKS[kind]["in" if input else "out"] as Array).duplicate(true)
 	var params: Dictionary = block["params"]
+	if kind == "sequence" and not input:
+		for index: int in pin_count(block): result.append(["Then %d" % index, EXEC])
+	if kind == "switch":
+		# Selection is of the cases' type; an output per case, keyed by its value's parameter, then Default (D-134).
+		if input: result[1][1] = TEXT if params.get("on") == "string" else INTEGER
+		else:
+			for index: int in pin_count(block): result.append([case_label(block, index), EXEC, case_key(index)])
+			result.append(["Default", EXEC])
+	if kind in ["break", "make"]: return _struct_ports(block, input)
 	if not input and kind == "signal":
 		for argument: Dictionary in block.get("arguments", []):
 			result.append([argument["name"], port_type(argument["type"]), ""])
@@ -307,25 +349,321 @@ func ports(block: Dictionary, input: bool) -> Array:
 	return result
 
 
-## An operator's ports (D-065): A and B, or A alone, of the type its group
-## takes — booleans for logic, numbers to order, any value else — and its
-## Result, of the type its operands give ([method operand_type]).
+## An operator's ports (D-065): A and B, or A alone, or from A to H for a
+## variadic one (D-132), of the type its operator takes — booleans for logic,
+## numbers to order and for min and max, any value else — and its Result, of
+## the type its operands give ([method operand_type]).
 func _operator_ports(block: Dictionary, input: bool) -> Array:
 	var op := str((block["params"] as Dictionary).get("op", ""))
-	var group := XREBlueprintOperators.group_of(op)
+	var count := operand_count(block)
 	if input:
-		var operand := BOOLEAN if group == XREBlueprintOperators.LOGIC else NUMBER if group == XREBlueprintOperators.ORDER else VALUE
-		var inputs: Array = [["A", operand, "a"]]
-		if not XREBlueprintOperators.is_unary(op): inputs.append(["B", operand, "b"])
+		var operand := port_type(XREBlueprintOperators.operand_type(op))
+		var inputs: Array = []
+		for index: int in count:
+			var key: String = XREBlueprintOperators.OPERAND_KEYS[index]
+			inputs.append([key.to_upper(), operand, key])
 		return inputs
-	return [["Result", port_type(XREBlueprintOperators.result_type(op, operand_type(block, "a"), operand_type(block, "b"))), ""]]
+	var types: Array[int] = []
+	for index: int in count: types.append(operand_type(block, XREBlueprintOperators.OPERAND_KEYS[index]))
+	return [["Result", port_type(XREBlueprintOperators.fold_type(op, types)), ""]]
 
 
-## The Variant type of operand [param key] (A or B) of an operator or Equal
+## How many operands an operator or Equal block has: one for a unary
+## operator, its [code]operands[/code] for a variadic one (D-132), else two.
+static func operand_count(block: Dictionary) -> int:
+	if block.get("kind") == "equals": return 2
+	var op := operator_of(block)
+	if XREBlueprintOperators.is_unary(op): return 1
+	var count: Variant = (block.get("params", {}) as Dictionary).get("operands", XREBlueprintOperators.MIN_OPERANDS)
+	if not XREBlueprintOperators.is_variadic(op) or not count is int: return XREBlueprintOperators.MIN_OPERANDS
+	return clampi(count, XREBlueprintOperators.MIN_OPERANDS, XREBlueprintOperators.MAX_OPERANDS)
+
+
+## Fewest and most pins a block whose pins change has (D-132, D-134).
+const MIN_PINS := 2
+const MAX_PINS := 8
+
+
+## How many outputs a Sequence has, or cases a Switch (D-134), from two to eight.
+static func pin_count(block: Dictionary) -> int:
+	var params: Dictionary = block.get("params", {})
+	var count: Variant = params.get("outputs" if block.get("kind") == "sequence" else "cases", MIN_PINS)
+	return clampi(count, MIN_PINS, MAX_PINS) if count is int else MIN_PINS
+
+
+## The parameter of a Switch's case [param index]: its value (D-134).
+static func case_key(index: int) -> String:
+	return "case_%d" % index
+
+
+## What the output of a Switch's case [param index] says: its value, a text in
+## quotes; an enumeration's case keeps its constant's name (D-134).
+static func case_label(block: Dictionary, index: int) -> String:
+	var params: Dictionary = block.get("params", {})
+	var value: Variant = params.get(case_key(index))
+	return "\"%s\"" % str(value) if params.get("on") == "string" else str(value)
+
+
+## The constants of enumeration [param path], "Class.Enum", by name: of an
+## engine class or of a script class's enum; empty if there is none.
+static func enum_constants(path: String) -> Dictionary:
+	var result := {}
+	var cls := path.get_slice(".", 0)
+	var name := path.get_slice(".", 1)
+	if cls.is_empty() or name.is_empty(): return result
+	if ClassDB.class_exists(cls):
+		if not ClassDB.class_has_enum(cls, name): return result
+		for constant: String in ClassDB.class_get_enum_constants(cls, name): result[constant] = ClassDB.class_get_integer_constant(cls, constant)
+		return result
+	var script := XREBlueprintFunctions.global_script(cls)
+	var found: Variant = script.get_script_constant_map().get(name) if script != null else null
+	if found is Dictionary: result = (found as Dictionary).duplicate()
+	return result
+
+
+## The pins of [param block] that are added and removed (D-132, D-134):
+## [code]{"input": side, "count": n, "can_add": bool}[/code] — a variadic
+## operator's inputs, a Sequence's outputs, a Switch's cases before Default —,
+## empty for a block whose pins are fixed. They are the first of their side.
+static func variable_pins(block: Dictionary) -> Dictionary:
+	match str(block.get("kind", "")):
+		"operator":
+			if not XREBlueprintOperators.is_variadic(operator_of(block)): return {}
+			var count := operand_count(block)
+			return {"input": true, "count": count, "can_add": count < XREBlueprintOperators.MAX_OPERANDS}
+		"sequence":
+			return {"input": false, "count": pin_count(block), "can_add": pin_count(block) < MAX_PINS}
+		"switch":
+			var count := pin_count(block)
+			var free := count < MAX_PINS
+			var params: Dictionary = block["params"]
+			if free and params.get("on") == "enum":
+				var used: Array = []
+				for index: int in count: used.append(params.get(case_key(index)))
+				free = enum_constants(str(params.get("enum", ""))).keys().any(func(name: Variant) -> bool: return not used.has(name))
+			return {"input": false, "count": count, "can_add": free}
+	return {}
+
+
+## The value a new case of Switch [param block] takes (D-134): the largest
+## number + 1, a text no case has, the name of the first constant no case
+## has; null when an enumeration has none left.
+static func next_case(block: Dictionary) -> Variant:
+	var params: Dictionary = block["params"]
+	var used: Array = []
+	for index: int in pin_count(block): used.append(params.get(case_key(index)))
+	match str(params.get("on", "")):
+		"string":
+			var index := used.size()
+			while used.has("case_%d" % index): index += 1
+			return "case_%d" % index
+		"enum":
+			for name: String in enum_constants(str(params.get("enum", ""))):
+				if not used.has(name): return name
+			return null
+	var largest := -1
+	for value: Variant in used:
+		if value is int: largest = maxi(largest, value)
+	return largest + 1
+
+
+## Creates a Switch on [param on] — "int", "string" or "enum" of
+## [param enum_path] — with two cases (D-134).
+static func make_switch(id: int, on: String, position: Vector2, enum_path: String = "") -> Dictionary:
+	var block := make_node(id, "switch", position)
+	var params: Dictionary = block["params"]
+	params["on"] = on
+	if on == "string":
+		params["selection"] = ""
+		params["case_0"] = "case_0"
+		params["case_1"] = "case_1"
+	elif on == "enum":
+		# An enumeration's cases and selection keep its constants' names; the build makes them numbers.
+		params["enum"] = enum_path
+		var names := enum_constants(enum_path).keys()
+		params["selection"] = str(names[0]) if not names.is_empty() else ""
+		params["case_0"] = str(names[0]) if names.size() > 0 else ""
+		params["case_1"] = str(names[1]) if names.size() > 1 else ""
+	return block
+
+
+## The enumeration, "Class.Enum", whose constant output [param port] of
+## [param block] gives, empty when none (D-134): a property's, a call's
+## result, a signal's argument, a Break's field.
+func output_enum(block: Dictionary, port: int) -> String:
+	var path := ""
+	match str(block.get("kind", "")):
+		"get_property": path = str(block.get("property_enum", "")) if port == 0 else ""
+		"call", "signal", "break": path = output_class(block, port)
+	var outputs := ports(block, false)
+	if not path.contains(".") or port < 0 or port >= outputs.size() or outputs[port][1] != INTEGER: return ""
+	return path if enum_constants(path).size() >= MIN_PINS else ""
+
+
+## A new wire into a Switch's Selection from an enumeration's constant makes
+## it a Switch on that enumeration (D-134), as a wire into Break types it:
+## its cases take the constants in order, as many as it had while there are;
+## the wires of cases gone go, Default keeps its own. [param before] are the
+## edges before the edit; true if a block changed.
+func adopt_enums(before: Array) -> bool:
+	var changed := false
+	for edge: Dictionary in edges.duplicate():
+		if before.has(edge) or not edge.get("to") is int or not edge.get("from") is int: continue
+		var target := find_node(edge["to"])
+		if target.get("kind") != "switch" or edge["to_port"] != input_port(target, "selection"): continue
+		var path := output_enum(find_node(edge["from"]), int(edge["from_port"]))
+		var params: Dictionary = target["params"]
+		if path.is_empty() or (params.get("on") == "enum" and str(params.get("enum", "")) == path): continue
+		var names := enum_constants(path).keys()
+		var old_count := pin_count(target)
+		var count := mini(old_count, names.size())
+		for index: int in old_count: params.erase(case_key(index))
+		params["on"] = "enum"
+		params["enum"] = path
+		params["cases"] = count
+		params["selection"] = str(names[0])
+		for index: int in count: params[case_key(index)] = str(names[index])
+		var kept: Array[Dictionary] = []
+		for wire: Dictionary in edges:
+			if wire["from"] == target["id"] and int(wire["from_port"]) >= count:
+				if int(wire["from_port"]) < old_count: continue
+				wire["from_port"] = count
+			kept.append(wire)
+		edges = kept
+		changed = true
+	return changed
+
+
+## Break's Target and the fields it shows, Make's fields and its Result
+## (D-135), each field keyed by its name: Make's input of a literal type falls
+## back to its parameter, Break's Target to "value" for a vector or a color.
+## Without a struct Break takes any value and gives nothing, Make gives any.
+static func _struct_ports(block: Dictionary, input: bool) -> Array:
+	var struct: Dictionary = block.get("struct", {})
+	var type := port_type(int(struct["type"])) if not struct.is_empty() else VALUE
+	var result: Array = []
+	if block["kind"] == "break":
+		if input: return [["Target", type, "value"]]
+		for field: Dictionary in XREBlueprintStructs.shown(block): result.append([str(field["name"]), port_type(int(field["type"])), str(field["name"])])
+		return result
+	if not input: return [["Result", type, ""]]
+	for field: Dictionary in XREBlueprintStructs.shown(block): result.append([str(field["name"]), port_type(int(field["type"])), str(field["name"])])
+	return result
+
+
+## The class of the object output [param port] of [param block] gives, empty
+## when unknown: a signal argument's, a call's result's, a Break's field's,
+## a Make's (D-135).
+func output_class(block: Dictionary, port: int) -> String:
+	match str(block.get("kind", "")):
+		"signal":
+			var arguments: Array = block.get("arguments", [])
+			return str((arguments[port - 1] as Dictionary).get("class_name", "")) if port >= 1 and port <= arguments.size() else ""
+		"call":
+			var outputs := ports(block, false)
+			return str((block["function"] as Dictionary).get("return_class", "")) if port >= 0 and port < outputs.size() and outputs[port][0] == "Result" else ""
+		"break":
+			var fields := XREBlueprintStructs.shown(block)
+			return str(fields[port].get("class_name", "")) if port >= 0 and port < fields.size() else ""
+		"make":
+			return str((block.get("struct", {}) as Dictionary).get("class", ""))
+	return ""
+
+
+## The class an object input [param port] of [param block] wants, empty when
+## any: a call argument's (D-135).
+func input_class(block: Dictionary, port: int) -> String:
+	if block.get("kind") != "call": return ""
+	var inputs := ports(block, true)
+	if port < 0 or port >= inputs.size() or str(inputs[port][2]).is_empty(): return ""
+	for argument: Dictionary in (block["function"] as Dictionary)["args"]:
+		if str(argument.get("key", "")) == str(inputs[port][2]): return str(argument.get("class_name", ""))
+	return ""
+
+
+## A new wire types a Break or a Make (D-135), as a wire into Set's Target
+## picks its kind (D-102): into Break's Target, by what comes — its type, its
+## class —; from Make's Result, by the input it goes into, when Make can build
+## that. A block of the same type stays. Its wires keep their fields by name;
+## a field the new type hasn't takes its wire away. [param before] are the
+## edges before the edit; true if a block changed.
+func adopt_structs(before: Array) -> bool:
+	var retypes: Dictionary = {}
+	for edge: Dictionary in edges:
+		if before.has(edge) or not edge.get("to") is int or not edge.get("from") is int: continue
+		var target := find_node(edge["to"])
+		var source := find_node(edge["from"])
+		if target.get("kind") == "break" and edge["to_port"] == 0 and not source.is_empty():
+			var outputs := ports(source, false)
+			if edge["from_port"] < 0 or edge["from_port"] >= outputs.size(): continue
+			var struct := XREBlueprintStructs.describe(variant_type(outputs[edge["from_port"]][1]), output_class(source, edge["from_port"]))
+			if not struct.is_empty() and not _same_struct(target, struct): retypes[target["id"]] = struct
+		if source.get("kind") == "make" and edge["from_port"] == 0 and not target.is_empty():
+			var inputs := ports(target, true)
+			if edge["to_port"] < 0 or edge["to_port"] >= inputs.size(): continue
+			var type := variant_type(inputs[edge["to_port"]][1])
+			var cls := input_class(target, edge["to_port"])
+			if XREBlueprintStructs.can_make(type, cls):
+				var made := XREBlueprintStructs.describe(type, cls, true)
+				if not _same_struct(source, made): retypes[source["id"]] = made
+	for id: int in retypes: retype(id, retypes[id])
+	return not retypes.is_empty()
+
+
+static func _same_struct(block: Dictionary, struct: Dictionary) -> bool:
+	var own: Dictionary = block.get("struct", {})
+	return not own.is_empty() and own["type"] == struct["type"] and str(own.get("class", "")) == str(struct.get("class", ""))
+
+
+## Gives Break or Make [param id] [param struct] (D-135): its fields hidden at
+## first, a Make's literals for its fields — kept where a field of the name had
+## one —, and its wires moved to their fields by name, those without one gone.
+func retype(id: int, struct: Dictionary) -> void:
+	var block := find_node(id)
+	if block.is_empty(): return
+	var before_in := _struct_keys(ports(block, true))
+	var before_out := _struct_keys(ports(block, false))
+	block["struct"] = struct
+	block["hidden"] = XREBlueprintStructs.default_hidden(struct)
+	if block["kind"] == "make":
+		var old: Dictionary = block["params"]
+		var params := {}
+		for field: Dictionary in struct["fields"]:
+			var name := str(field["name"])
+			if int(field["type"]) in XREBlueprintSchema.LITERAL_TYPES:
+				params[name] = old[name] if old.has(name) and typeof(old[name]) == int(field["type"]) else XREBlueprintSchema.default_value(int(field["type"]))
+		block["params"] = params
+	elif int(struct["type"]) in XREBlueprintSchema.LITERAL_TYPES:
+		(block["params"] as Dictionary)["value"] = XREBlueprintSchema.default_value(int(struct["type"]))
+	else:
+		(block["params"] as Dictionary).erase("value")
+	var after_in := _struct_keys(ports(block, true))
+	var after_out := _struct_keys(ports(block, false))
+	var kept: Array[Dictionary] = []
+	for edge: Dictionary in edges:
+		if edge["to"] == id:
+			var index := after_in.find(before_in[edge["to_port"]]) if edge["to_port"] < before_in.size() else -1
+			if index < 0: continue
+			edge["to_port"] = index
+		if edge["from"] == id:
+			var index := after_out.find(before_out[edge["from_port"]]) if edge["from_port"] < before_out.size() else -1
+			if index < 0: continue
+			edge["from_port"] = index
+		kept.append(edge)
+	edges.assign(kept)
+
+
+static func _struct_keys(specs: Array) -> Array[String]:
+	var keys: Array[String] = []
+	for spec: Array in specs: keys.append(str(spec[2]) if spec.size() > 2 and not str(spec[2]).is_empty() else "#" + str(spec[0]))
+	return keys
+
+
+## The Variant type of operand [param key] (A, B, C…) of an operator or Equal
 ## block: of the output its wire comes from, else of its literal; TYPE_NIL
 ## when it can't be known before the game runs.
 func operand_type(block: Dictionary, key: String) -> int:
-	var port := 0 if key == "a" else 1
+	var port := XREBlueprintOperators.OPERAND_KEYS.find(key)
 	for edge: Dictionary in edges:
 		if edge.get("to") != block.get("id") or edge.get("to_port") != port or not edge.get("from_port") is int: continue
 		var source := find_node(int(edge.get("from", -1)))
@@ -341,7 +679,7 @@ func operand_type(block: Dictionary, key: String) -> int:
 
 ## Whether operand [param key] of [param block] has a wire into it.
 func _operand_wired(block: Dictionary, key: String) -> bool:
-	var port := 0 if key == "a" else 1
+	var port := XREBlueprintOperators.OPERAND_KEYS.find(key)
 	for edge: Dictionary in edges:
 		if edge.get("to") == block.get("id") and edge.get("to_port") == port: return true
 	return false
@@ -365,29 +703,37 @@ static func symbol(block: Dictionary) -> String:
 	return str((XREBlueprintOperators.OPERATORS[op] as Dictionary)["symbol"]) if XREBlueprintOperators.OPERATORS.has(op) else "?"
 
 
-## Whether parameter [param key] of [param block] is unused: B of a unary operator.
+## Whether parameter [param key] of [param block] is unused: B of a unary
+## operator, an operand past a variadic one's count (D-132).
 static func is_unused(block: Dictionary, key: String) -> bool:
-	return block.get("kind") == "operator" and key == "b" and XREBlueprintOperators.is_unary(operator_of(block))
+	if block.get("kind") == "switch" and key.begins_with("case_") and key.trim_prefix("case_").is_valid_int():
+		return int(key.trim_prefix("case_")) >= pin_count(block)
+	if block.get("kind") != "operator": return false
+	var index := XREBlueprintOperators.OPERAND_KEYS.find(key)
+	return index >= 0 and index >= operand_count(block)
 
 
 ## A new wire into an operand of an arithmetic or equality operator (D-065):
-## the other operand's literal takes the wire's type, as Unreal's wildcard pins
+## the other operands' literals take the wire's type, as Unreal's wildcard pins
 ## do — a number stays by a vector it multiplies, or divides. [param before]
 ## are the edges before the edit; true if a literal changed.
 func adopt_operands(before: Array) -> bool:
 	var changed := false
 	for edge: Dictionary in edges:
-		if before.has(edge) or not edge.get("to") is int or not edge.get("to_port") in [0, 1]: continue
+		if before.has(edge) or not edge.get("to") is int or not edge.get("to_port") is int: continue
 		var block := find_node(edge["to"])
 		if not is_operator(block) or not block.get("params") is Dictionary: continue
-		var key := "a" if edge["to_port"] == 0 else "b"
-		var other := "b" if key == "a" else "a"
+		var port: int = edge["to_port"]
+		if port < 0 or port >= operand_count(block): continue
+		var key: String = XREBlueprintOperators.OPERAND_KEYS[port]
 		var params: Dictionary = block["params"]
-		if not params.has(other) or is_unused(block, other) or _operand_wired(block, other): continue
-		var adopted: Variant = adopted_literal(operator_of(block), key, operand_type(block, key), params[other])
-		if adopted == null: continue
-		params[other] = adopted
-		changed = true
+		for index: int in operand_count(block):
+			var other: String = XREBlueprintOperators.OPERAND_KEYS[index]
+			if other == key or not params.has(other) or _operand_wired(block, other): continue
+			var adopted: Variant = adopted_literal(operator_of(block), key, operand_type(block, key), params[other])
+			if adopted == null: continue
+			params[other] = adopted
+			changed = true
 	return changed
 
 
@@ -410,7 +756,6 @@ static func adopted_literal(op: String, key: String, wired: int, literal: Varian
 ## Equal and the equality operators compare anything.
 func operand_types(block: Dictionary, key: String, types: Array) -> Array[int]:
 	var op := operator_of(block)
-	var other := "b" if key == "a" else "a"
 	var params: Dictionary = block.get("params", {})
 	var result: Array[int] = []
 	for candidate: Variant in types:
@@ -418,14 +763,19 @@ func operand_types(block: Dictionary, key: String, types: Array) -> Array[int]:
 		if op == "equal":
 			result.append(type)
 			continue
-		var second := TYPE_NIL
-		if not XREBlueprintOperators.is_unary(op):
-			second = operand_type(block, other)
+		# The operands as they would be with this wire, folded in order (D-132).
+		var operands: Array[int] = []
+		for index: int in operand_count(block):
+			var other: String = XREBlueprintOperators.OPERAND_KEYS[index]
+			if other == key:
+				operands.append(type)
+				continue
+			var second := operand_type(block, other)
 			if not _operand_wired(block, other) and params.has(other):
 				var adopted: Variant = adopted_literal(op, key, type, params[other])
 				if adopted != null: second = typeof(adopted)
-		var works := XREBlueprintOperators.result_type(op, type, second) if key == "a" else XREBlueprintOperators.result_type(op, second, type)
-		if works != XREBlueprintOperators.INVALID: result.append(type)
+			operands.append(second)
+		if XREBlueprintOperators.fold_type(op, operands) != XREBlueprintOperators.INVALID: result.append(type)
 	return result
 
 
@@ -444,16 +794,7 @@ static func convert_literal(value: Variant, type: int) -> Variant:
 
 ## The Variant type of values of port category [param category]; TYPE_NIL for any value.
 static func variant_type(category: int) -> int:
-	match category:
-		BOOLEAN: return TYPE_BOOL
-		INTEGER: return TYPE_INT
-		NUMBER: return TYPE_FLOAT
-		TEXT: return TYPE_STRING
-		VECTOR2: return TYPE_VECTOR2
-		VECTOR3: return TYPE_VECTOR3
-		OBJECT: return TYPE_OBJECT
-		COLOR: return TYPE_COLOR
-	return TYPE_NIL
+	return CATEGORY_TYPES.get(category, TYPE_NIL)
 
 
 ## Index of the input of [param block] whose unconnected value is parameter
@@ -470,7 +811,10 @@ func input_port(block: Dictionary, key: String) -> int:
 
 ## Maps Godot's Variant type to a graph port category.
 static func port_type(type: int) -> int:
-	return {TYPE_BOOL: BOOLEAN, TYPE_INT: INTEGER, TYPE_FLOAT: NUMBER, TYPE_STRING: TEXT, TYPE_STRING_NAME: TEXT, TYPE_VECTOR2: VECTOR2, TYPE_VECTOR3: VECTOR3, TYPE_OBJECT: OBJECT, TYPE_COLOR: COLOR}.get(type, VALUE)
+	if type == TYPE_STRING_NAME: return TEXT
+	for category: int in CATEGORY_TYPES:
+		if CATEGORY_TYPES[category] == type: return category
+	return VALUE
 
 
 ## Allowed data conversions; execution can only connect to execution.
@@ -501,7 +845,7 @@ static func has_target(block: Dictionary) -> bool:
 ## Whether a block computes data on demand, without execution ports.
 static func is_pure(block: Dictionary) -> bool:
 	match block.get("kind"):
-		"value", "get_property", "equals", "operator", "get_variable": return true
+		"value", "get_property", "equals", "operator", "get_variable", "break", "make": return true
 		"call":
 			var function: Variant = block.get("function")
 			return function is Dictionary and bool((function as Dictionary).get("pure", false))
@@ -632,6 +976,9 @@ func validate() -> PackedStringArray:
 				errors.append("Block #%s: unknown operator." % id)
 			if key == "variable" and not params[key] is String:
 				errors.append("Block #%s: variable must be an identifier." % id)
+		if kind == "operator": errors.append_array(_validate_operands(block))
+		if kind in ["sequence", "switch"]: errors.append_array(_validate_pins(block))
+		if kind in ["break", "make"]: errors.append_array(_validate_struct(block))
 		if block.has("property_type") and (not block["property_type"] is int or block["property_type"] < TYPE_NIL or block["property_type"] >= TYPE_MAX):
 			errors.append("Block #%s: invalid property type." % id)
 		if not block.get("arguments", []) is Array:
@@ -687,6 +1034,76 @@ func validate() -> PackedStringArray:
 				pending.append(next)
 	if visited != ids.size():
 		errors.append("Data dependency cycles are not supported. Store changing state in a variable.")
+	return errors
+
+
+## The operands of an operator block past A and B (D-132): a count only a
+## variadic operator has, from two to eight, and a literal for each operand
+## that keeps one, none past the count.
+static func _validate_operands(block: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var params: Dictionary = block["params"]
+	var op := str(params.get("op", ""))
+	if params.has("operands"):
+		var count: Variant = params["operands"]
+		if not XREBlueprintOperators.is_variadic(op) or not count is int or int(count) < XREBlueprintOperators.MIN_OPERANDS or int(count) > XREBlueprintOperators.MAX_OPERANDS:
+			errors.append("Block #%s: invalid number of operands." % block["id"])
+			return errors
+	var count := operand_count(block)
+	for index: int in range(XREBlueprintOperators.MIN_OPERANDS, XREBlueprintOperators.OPERAND_KEYS.size()):
+		var key: String = XREBlueprintOperators.OPERAND_KEYS[index]
+		if not params.has(key): continue
+		if index >= count: errors.append("Block #%s: %s is past its operands." % [block["id"], key])
+		elif not is_literal(params[key]): errors.append("Block #%s: invalid %s." % [block["id"], key])
+	return errors
+
+
+## A Break's or a Make's struct (D-135): a type, a class, fields with names and
+## types, the names it hides; its literals.
+static func _validate_struct(block: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var struct: Variant = block.get("struct", {})
+	if not struct is Dictionary or not block.get("hidden", []) is Array:
+		errors.append("Block #%s has an invalid struct." % block["id"])
+		return errors
+	var shape := struct as Dictionary
+	if shape.is_empty(): return errors
+	if not shape.get("type") is int or not shape.get("class", "") is String or not shape.get("fields") is Array:
+		errors.append("Block #%s has an invalid struct." % block["id"])
+		return errors
+	for field: Variant in shape["fields"]:
+		if not field is Dictionary or not (field as Dictionary).get("name") is String or not (field as Dictionary).get("type") is int:
+			errors.append("Block #%s has an invalid field." % block["id"])
+			return errors
+	var params: Dictionary = block["params"]
+	for key: String in params:
+		if not is_literal(params[key]): errors.append("Block #%s: invalid %s." % [block["id"], key])
+	return errors
+
+
+## A Sequence's count of outputs and a Switch's of cases, from two to eight,
+## and a Switch's kind and its cases' values of its type, none past the count (D-134).
+static func _validate_pins(block: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var params: Dictionary = block["params"]
+	var key := "outputs" if block["kind"] == "sequence" else "cases"
+	if not params.get(key) is int or int(params[key]) < MIN_PINS or int(params[key]) > MAX_PINS:
+		errors.append("Block #%s: invalid number of %s." % [block["id"], key])
+		return errors
+	if block["kind"] == "sequence": return errors
+	var on := str(params.get("on", ""))
+	if not on in ["int", "string", "enum"]:
+		errors.append("Block #%s: a Switch is on int, string or enum." % block["id"])
+		return errors
+	var constants := enum_constants(str(params.get("enum", ""))) if on == "enum" else {}
+	if on == "enum" and constants.is_empty():
+		errors.append("Block #%s: unknown enumeration %s." % [block["id"], params.get("enum", "")])
+	var type := TYPE_INT if on == "int" else TYPE_STRING
+	for index: int in MAX_PINS:
+		var value: Variant = params.get(case_key(index))
+		if index < int(params[key]) and typeof(value) != type: errors.append("Block #%s: case %d must be %s." % [block["id"], index, type_string(type)])
+		elif index < int(params[key]) and on == "enum" and not constants.is_empty() and not constants.has(value): errors.append("Block #%s: %s is no constant of %s." % [block["id"], value, params["enum"]])
+		elif index >= int(params[key]) and params.has(case_key(index)): errors.append("Block #%s: case %d is past its cases." % [block["id"], index])
 	return errors
 
 

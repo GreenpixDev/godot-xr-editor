@@ -95,7 +95,8 @@ const HIT_DOT_OFFSET := 0.012
 ## Colors of the port types of [XREBlueprintGraph], as the 2D view has them:
 ## execution, any value, bool, int (lime, apart from float since D-080), float
 ## (sea green), text, the vectors, object, color.
-const COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("b4e05a"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878")]
+# The built-in compound values (D-135): vectors blue, whole vectors green, boxes teal, a rotation violet, transforms orange.
+const COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("b4e05a"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878"), Color("89adff"), Color("9fd36a"), Color("9fd36a"), Color("6fc3c8"), Color("6fc3c8"), Color("c38bf0"), Color("f0a35e"), Color("f0a35e"), Color("f0a35e"), Color("6fc3c8")]
 ## Dark saturated faces: events, properties/motion, flow, values, audio, animation.
 const CARD_PALETTE: Array[Color] = [Color("174479"), Color("155947"), Color("553478"), Color("323e73"), Color("785016"), Color("743351")]
 ## Faces of the native blocks; a call's face follows its function ([method card_group]).
@@ -130,6 +131,9 @@ const WIRE_MARGIN := 0.1
 ## A puck's depth on the card, a plug's, how far left of the port a plug's
 ## body is, and how faint a token is under a wire.
 const PUCK_DEPTH := 0.008
+## How far a Switch case's puck ends left of the card's right edge (D-136):
+## just short of its output's port.
+const CASE_INSET := 0.02
 const PLUG_DEPTH := 0.012
 const PLUG_GAP := 0.022
 const FADED := 0.35
@@ -173,6 +177,11 @@ const ICON_PIXELS := 64
 const TRASH_COLOR := Color("ff6b7a")
 const TRASH_SCALE := 1.3
 const TRASH_RISE := 0.02
+## The grey of the × that removes an input (D-133), how far right of its
+## port it stands, inside the node, and how wide its cross and its hit square are.
+const PIN_MARK_COLOR := Color("9aa1b1")
+const PIN_MARK_SHIFT := 0.018
+const PIN_MARK_SIZE := 0.012
 const FALLBACK_SIZE := 30
 ## A sign (D-100): the width of its rim and of a math function's inner rim, how
 ## far in the inner rim is and how much of it is seen; the font size of a
@@ -313,6 +322,24 @@ class Card:
 	## The copy button (D-093), or null while cards have none.
 	var copy: Node3D
 	var copy_point: Vector3
+	## A variadic operator's plus that adds an input (D-133), under its trash,
+	## or null; the grey × that removes each input, by input port, null for
+	## none while it has the fewest.
+	var pin_plus: Node3D
+	var pin_plus_point: Vector3
+	var pin_marks: Array[Node3D] = []
+	## Whether those pins are inputs or outputs (D-134), and how far each × is
+	## right of its pin (left of an output's name, negative).
+	var pin_input := true
+	var pin_shifts: Array[float] = []
+	var pin_front := 0.0
+	## A Break's or a Make's marks are eyes that hide a field, not × (D-135),
+	## and its chip of hidden fields under it, where it is and how large; null
+	## while none is hidden.
+	var pin_eyes := false
+	var hidden_chip: Node3D
+	var hidden_chip_point: Vector3
+	var hidden_chip_size: Vector2
 	var inputs: Array[Vector3] = []
 	var outputs: Array[Vector3] = []
 	var input_types: Array[int] = []
@@ -452,6 +479,29 @@ var _copy_left := -1
 var _copy_shown := false
 var _copy_mesh: ArrayMesh
 var _copy_material: Material
+## The pins of a variadic operator (D-133): what the last ray hit — its plus,
+## or the × of an input, by port, -1 for none — and how far, and what is under
+## each hand's ray, as [code](card, port)[/code] for a ×.
+var _hit_pin_plus := false
+var _hit_pin_mark := -1
+## Whether the last ray hit a Break's or a Make's chip of hidden fields (D-135).
+var _hit_hidden_chip := false
+var _eye_mesh: ArrayMesh
+var _pin_distance := -1.0
+var _pin_plus_right := -1
+var _pin_plus_left := -1
+var _pin_mark_right := Vector2i(-1, -1)
+var _pin_mark_left := Vector2i(-1, -1)
+## The pin whose half-row each hand's ray is on — its port, its name, its × or
+## eye, a Switch case's puck (D-136) —, (card, pin) or (-1, -1).
+var _pin_row_right := Vector2i(-1, -1)
+var _pin_row_left := Vector2i(-1, -1)
+## The pin whose half-row the last ray hit, of card [member _pin_row_card].
+var _hit_pin_row := -1
+var _pin_row_card := -1
+var _pin_mark_mesh: ArrayMesh
+var _pin_mark_material: Material
+var _pin_plus_material: Material
 var _body_materials: Array[ShaderMaterial] = []
 ## Archetypes (D-099): the headers by [enum XREBlueprintIcons.Group], the faces
 ## under a header, of a pure function and of an operator, the frames by port
@@ -603,6 +653,10 @@ void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 	_trash_material = material(Color("ffabb4"), true)
 	_copy_mesh = _make_copy_mesh()
 	_copy_material = material(COPY_COLOR, true)
+	_pin_mark_mesh = _make_pin_mark_mesh()
+	_eye_mesh = _make_eye_mesh()
+	_pin_mark_material = material(PIN_MARK_COLOR, true)
+	_pin_plus_material = material(Color.WHITE, true)
 	_preview = create_scene_wire(Color("ffda82"))
 	_preview.visible = false
 	_boxes = XREBlueprintBoxes.new(_trash_mesh, _trash_material, material(TRASH_COLOR, true))
@@ -788,6 +842,8 @@ func heading_of(block: Dictionary) -> StringName:
 ## a property, an animation —, a variable's Set. A call without a member, as
 ## Rotate X, has only its operation: its object is no member of it.
 static func can_head(block: Dictionary) -> bool:
+	# Break and Make say their type or class as Get says its property (D-135).
+	if block.get("kind") in ["break", "make"]: return not (block.get("struct", {}) as Dictionary).is_empty()
 	return block.get("kind") in ["set_variable", "signal"] or not XREBlueprintTokens.member_key(block).is_empty()
 
 
@@ -795,6 +851,7 @@ static func can_head(block: Dictionary) -> bool:
 ## property or animation, its variable, or what to pick.
 static func member_of(block: Dictionary) -> String:
 	var params: Dictionary = block.get("params", {})
+	if block.get("kind") in ["break", "make"]: return XREBlueprintStructs.name_of(block.get("struct", {}))
 	if block.get("kind") == "set_variable":
 		var variable := str(params.get("variable", ""))
 		return variable if not variable.is_empty() else "choose a box"
@@ -807,6 +864,7 @@ static func member_of(block: Dictionary) -> String:
 ## Signal for every event — On Ready is one too (D-107) —, else its title.
 static func operation_of(block: Dictionary) -> String:
 	if block.get("kind") == "signal": return "On Signal"
+	if block.get("kind") in ["break", "make"]: return "Break" if block["kind"] == "break" else "Make"
 	return "Set" if block.get("kind") in ["set_property", "set_variable"] else XREBlueprintGraph.title(block)
 
 
@@ -1076,10 +1134,10 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			chip = _head_layout(block, inputs, outputs, layout)
 		if card.bead or card.tag: pass
 		elif card.shape != XREBlueprintShapes.Shape.NONE:
-			var size := XREBlueprintShapes.size_of(card.shape)
+			var size := XREBlueprintShapes.size_of(card.shape, inputs.size())
 			card.width = size.x
 			card.height = size.y
-			card.outline = XREBlueprintShapes.outline(card.shape)
+			card.outline = XREBlueprintShapes.outline(card.shape, inputs.size())
 			card.shape_inputs = XREBlueprintShapes.inputs(card.shape, inputs.size())
 		elif card.compact:
 			card.height = OPERATOR_PAD + maxi((layout[0] as Array).size(), 1) * ROW_HEIGHT
@@ -1107,7 +1165,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 				card.normal = _head_materials[group]
 				card.frame_material = _type_frame(XREBlueprintGraph.EXEC)
 			# A pure function is framed in its result's color, as its wire is.
-			if pure and not outputs.is_empty(): card.frame_material = _type_frame(int((outputs[0] as Array)[1]))
+			if pure and _pure_type(block, outputs) >= 0: card.frame_material = _type_frame(_pure_type(block, outputs))
 		# An archetype's card is rounded (D-109), picked by its outline as a sign is.
 		if card.headed: card.outline = XREBlueprintShapes.rounded_rect(Vector2(card.width, card.height), _corners(block))
 		var body: Mesh
@@ -1179,6 +1237,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			card.copy.add_child(XRERig.create_vr_mesh(_copy_mesh, _copy_material))
 			if archetype: card.copy.visible = false
 		_add_rows(card, graph, block, inputs, outputs, layout)
+		_add_pin_buttons(card, block, archetype, outputs, graph)
 		if not chip.is_empty() and _value_mode != XREFeatureSettings.WINDOW: _add_chip(card, block, chip, group)
 		if archetype and can_head(block) and not card.bead: _add_swap(card, block)
 		if card.bead or card.tag: pass
@@ -1241,6 +1300,16 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	_show_link_wires()
 
 
+## The port type a pure [param block]'s frame and icon take, -1 for none: its
+## first output's, a Break's what it takes apart (D-136), as Make's is what it
+## gives.
+static func _pure_type(block: Dictionary, outputs: Array) -> int:
+	if block.get("kind") == "break":
+		var struct: Dictionary = block.get("struct", {})
+		return XREBlueprintGraph.port_type(int(struct["type"])) if not struct.is_empty() else XREBlueprintGraph.VALUE
+	return int((outputs[0] as Array)[1]) if not outputs.is_empty() else -1
+
+
 ## An archetype's header (D-099) on [param card] of [param block], of
 ## [param group]: a band in the group's color with the icon on its circle,
 ## then the title; a pure function has no band, its icon in its result's
@@ -1249,7 +1318,7 @@ func _add_head(card: Card, block: Dictionary, group: int, outputs: Array, in_por
 	var front := card.face + CARD_THICKNESS * 0.5
 	var row := card.height * 0.5 - HEAD_HEIGHT * 0.5
 	var pure := group == XREBlueprintIcons.Group.PURE
-	var tint := COLORS[int((outputs[0] as Array)[1])] if pure and not outputs.is_empty() else Color.WHITE
+	var tint := COLORS[_pure_type(block, outputs)] if pure and _pure_type(block, outputs) >= 0 else Color.WHITE
 	if not pure:
 		# Its top corners as the card's (D-109).
 		var corners := _corners(block)
@@ -1287,7 +1356,8 @@ func _add_head(card: Card, block: Dictionary, group: int, outputs: Array, in_por
 		verb.name = "Verb"
 		verb.position = Vector3(left + text_width(verb.text, 21) * 0.5, row, front + 0.0005)
 		card.node.add_child(verb)
-		var member := member_of(block).capitalize() if not member_of(block).contains(" ") else member_of(block)
+		# A Break's or a Make's type or class stays as written: Vector3, not Vector 3.
+		var member := member_of(block) if member_of(block).contains(" ") or block.get("kind") in ["break", "make"] else member_of(block).capitalize()
 		var after := left + text_width(verb.text + " ", 21)
 		var member_label := label(member, 21)
 		member_label.name = "Member"
@@ -1342,7 +1412,8 @@ func _head_layout(block: Dictionary, inputs: Array, outputs: Array, layout: Arra
 	first["head"] = true
 	left.push_front(first)
 	var then: Dictionary = {"blank": true}
-	if block.get("kind") != "branch":
+	# Branch, Sequence and Switch keep every output a row of its own (D-106, D-134).
+	if not block.get("kind") in ["branch", "sequence", "switch"]:
 		for entry: Dictionary in right:
 			if entry.has("port") and int((outputs[int(entry["port"])] as Array)[1]) == XREBlueprintGraph.EXEC:
 				then = entry
@@ -1517,7 +1588,7 @@ func _add_bead(card: Card, block: Dictionary, group: int, outputs: Array) -> voi
 	card.frame.set_meta(&"painted", true)
 	card.node.add_child(card.frame)
 	var pure := group == XREBlueprintIcons.Group.PURE
-	var tint := COLORS[int((outputs[0] as Array)[1])] if pure and not outputs.is_empty() else Color.WHITE
+	var tint := COLORS[_pure_type(block, outputs)] if pure and _pure_type(block, outputs) >= 0 else Color.WHITE
 	var radius := card.width * 0.5
 	var icon: Variant = XREBlueprintIcons.icon_of(block, _class_icon)
 	var center := Vector3(0, 0, front + 0.0004)
@@ -1537,13 +1608,15 @@ func _add_bead(card: Card, block: Dictionary, group: int, outputs: Array) -> voi
 
 
 ## The shape of [param block]'s sign as an archetype (D-100), or none: an
-## operator by its group, a math function by its inputs from
+## operator by its group — arithmetic a circle, from four inputs a column
+## (D-132) —, Append a card, a math function by its inputs from
 ## [constant XREFeatureSettings.NODE_SHRINK] + Math on.
 func _sign_shape(block: Dictionary, inputs: Array, outputs: Array) -> XREBlueprintShapes.Shape:
 	if XREBlueprintGraph.is_operator(block):
 		match XREBlueprintOperators.group_of(XREBlueprintGraph.operator_of(block)):
-			XREBlueprintOperators.MATH: return XREBlueprintShapes.Shape.CIRCLE
+			XREBlueprintOperators.MATH: return XREBlueprintShapes.Shape.CIRCLE if inputs.size() <= 3 else XREBlueprintShapes.Shape.COLUMN
 			XREBlueprintOperators.LOGIC: return XREBlueprintShapes.Shape.PILL
+			XREBlueprintOperators.TEXT: return XREBlueprintShapes.Shape.NONE
 		return XREBlueprintShapes.Shape.DIAMOND
 	# + Math and every level after it (D-100, D-103).
 	if SHRINK_LEVELS.find(_shrink) >= 1 and not XREBlueprintShapes.word_of(block, inputs, outputs).is_empty():
@@ -1818,7 +1891,9 @@ func stand_in(id: int) -> Node3D:
 	var card := _find_card(id)
 	if card == null: return null
 	var copy := card.node.duplicate() as Node3D
-	for button: Node3D in [card.plus, card.trash, card.copy, card.swap, card.tip]:
+	var buttons: Array[Node3D] = [card.plus, card.trash, card.copy, card.swap, card.tip, card.pin_plus, card.hidden_chip]
+	buttons.append_array(card.pin_marks)
+	for button: Node3D in buttons:
 		if button != null: (copy.get_child(button.get_index()) as Node3D).visible = false
 	copy.transform = Transform3D(Basis.from_scale(card.node.global_basis.get_scale()), Vector3.ZERO)
 	return copy
@@ -2546,6 +2621,8 @@ func _look_card(card: Card) -> void:
 		card.trash.visible = _in_focus(card.id)
 		if card.swap != null: card.swap.visible = card.trash.visible
 		if card.copy != null: card.copy.visible = card.trash.visible
+		# A variadic operator's plus shows with its trash, under it (D-133).
+		if card.pin_plus != null: card.pin_plus.visible = card.trash.visible
 		# A bead's name shows under the ray (D-103, D-108).
 		if card.tip != null: card.tip.visible = card.trash.visible
 
@@ -2627,6 +2704,8 @@ func _scale_ports() -> void:
 		for index: int in card.ports.size():
 			var hovered := Vector2i(card.id, index) == _port_right or Vector2i(card.id, index) == _port_left
 			card.ports[index].scale = Vector3.ONE * (HOVER_SCALE if hovered else COMPATIBLE_SCALE if _compatible(card, index) else 1.0)
+	# An input's × shows while the ray is on its port (D-133).
+	_show_pins()
 	update_wires()
 
 
@@ -2654,10 +2733,11 @@ func is_port_hovered(id: int, port: int, input: bool) -> bool:
 ## or the one the ray is on ([method get_hit_wire]), or -1.
 ## A variable's box under that ray is let go too, unless [param keep_box];
 ## the copy button grows with [param copy].
-func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1, keep_box: bool = false, copy: bool = false) -> void:
+func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1, keep_box: bool = false, copy: bool = false, pin_plus: bool = false, pin_mark: int = -1, pin_row: int = -1) -> void:
 	if not keep_box: _boxes.hover(-1, -1, right)
 	hover_plus(id if plus else -1, right)
 	_hover_copy(id if copy else -1, right)
+	_hover_pins(id, pin_plus, pin_mark, pin_row, right)
 	_hover_port(id, port, input, right)
 	_hover_edge(edge, right)
 	var hovered := id if trash else -1
@@ -2745,6 +2825,212 @@ static func _make_copy_mesh() -> ArrayMesh:
 	return surface.commit()
 
 
+## A plain cross of two bars (D-133): the × that removes an input.
+static func _make_pin_mark_mesh() -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for angle: float in [PI * 0.25, -PI * 0.25]:
+		var bar := BoxMesh.new()
+		bar.size = Vector3(PIN_MARK_SIZE, 0.0022, 0.002)
+		surface.append_from(bar, 0, Transform3D(Basis(Vector3.BACK, angle), Vector3.ZERO))
+	return surface.commit()
+
+
+## The pins' buttons of [param block]'s card when its pins change
+## ([method XREBlueprintGraph.variable_pins], D-133, D-134): the plus under
+## the card's corner on the side of those pins — left for inputs, right for
+## outputs, the trash's height mirrored — while it can take another, and a grey
+## × by each of them, inside the card, while it has more than the fewest. In
+## archetypes the plus shows with the trash, a × while the ray is on its pin
+## or on itself ([method _show_pins]); a classic card shows its plus always.
+func _add_pin_buttons(card: Card, block: Dictionary, archetype: bool, outputs: Array, graph: XREBlueprintGraph) -> void:
+	var pins := XREBlueprintGraph.variable_pins(block)
+	if pins.is_empty():
+		if block.get("kind") in ["break", "make"]: _add_field_buttons(card, block, graph)
+		return
+	var count: int = pins["count"]
+	card.pin_input = pins["input"]
+	var front := card.face + CARD_THICKNESS * 0.5 + 0.002
+	card.pin_front = front
+	if pins["can_add"]:
+		card.pin_plus_point = Vector3(absf(card.trash_point.x) * (-1.0 if card.pin_input else 1.0), -card.trash_point.y, front)
+		card.pin_plus = Node3D.new()
+		card.pin_plus.name = "PinPlus"
+		card.pin_plus.position = card.pin_plus_point
+		card.node.add_child(card.pin_plus)
+		for size: Vector3 in [Vector3(0.018, 0.004, 0.002), Vector3(0.004, 0.018, 0.002)]:
+			var bar := BoxMesh.new()
+			bar.size = size
+			card.pin_plus.add_child(XRERig.create_vr_mesh(bar, _pin_plus_material))
+		card.pin_plus.visible = not archetype
+	card.pin_marks.clear()
+	card.pin_shifts.clear()
+	for index: int in count:
+		var mark: Node3D = null
+		# Right of an input's port; left of an output's name, which stands left of its port.
+		var shift := PIN_MARK_SHIFT
+		if not card.pin_input:
+			var name := str((outputs[index] as Array)[0]) if index < outputs.size() else ""
+			shift = -(0.022 + text_width(name, 18) + PIN_MARK_SHIFT * 0.6)
+			# Left of a Switch case's puck, which stands for its name (D-136); its port is on the edge.
+			if block["kind"] == "switch" and _value_mode != XREFeatureSettings.WINDOW:
+				var case := XREBlueprintGraph.case_key(index)
+				shift = -(CASE_INSET + XREBlueprintTokens.width(XREBlueprintTokens.shown((block["params"] as Dictionary).get(case), case, "")) + PIN_MARK_SHIFT * 0.6)
+		if count > XREBlueprintGraph.MIN_PINS:
+			mark = Node3D.new()
+			mark.name = "PinMark%d" % index
+			mark.add_child(XRERig.create_vr_mesh(_pin_mark_mesh, _pin_mark_material))
+			mark.visible = false
+			card.node.add_child(mark)
+		card.pin_marks.append(mark)
+		card.pin_shifts.append(shift)
+	_place_pin_marks(card)
+
+
+## A Break's or a Make's eye by each field without a wire, which hides it,
+## and, while fields are hidden, a chip under the card on the fields' side
+## saying how many, which lists them to show again (D-135). The eyes show as
+## a × does: while the ray is on the field's pin or on the eye.
+func _add_field_buttons(card: Card, block: Dictionary, graph: XREBlueprintGraph) -> void:
+	if (block.get("struct", {}) as Dictionary).is_empty(): return
+	card.pin_eyes = true
+	card.pin_input = block["kind"] == "make"
+	var front := card.face + CARD_THICKNESS * 0.5 + 0.002
+	card.pin_front = front
+	var wired: Dictionary[int, bool] = {}
+	for edge: Dictionary in graph.edges:
+		if card.pin_input and edge["to"] == card.id: wired[int(edge["to_port"])] = true
+		if not card.pin_input and edge["from"] == card.id: wired[int(edge["from_port"])] = true
+	var fields := XREBlueprintStructs.shown(block)
+	var count := fields.size()
+	card.pin_marks.clear()
+	card.pin_shifts.clear()
+	for index: int in count:
+		# Past the field's name, which stands by its port on either side (D-136).
+		var width := text_width(str(fields[index]["name"]), 18) + 0.022 + PIN_MARK_SHIFT * 0.6
+		var shift := width if card.pin_input else -width
+		var mark: Node3D = null
+		if not wired.has(index):
+			mark = Node3D.new()
+			mark.name = "FieldEye%d" % index
+			mark.add_child(XRERig.create_vr_mesh(_eye_mesh, _pin_mark_material))
+			mark.visible = false
+			card.node.add_child(mark)
+		card.pin_marks.append(mark)
+		card.pin_shifts.append(shift)
+	_place_pin_marks(card)
+	var hidden: int = (block.get("hidden", []) as Array).size()
+	if hidden == 0: return
+	var text := label("··· %d hidden" % hidden, 16)
+	text.modulate = Color("aab2c3")
+	card.hidden_chip_size = Vector2(text_width(text.text, 16) + 0.016, 0.02)
+	# Flush with the card's edge on the fields' side, just under it.
+	var side := -1.0 if card.pin_input else 1.0
+	card.hidden_chip_point = Vector3(side * (card.width * 0.5 - card.hidden_chip_size.x * 0.5), -card.height * 0.5 - 0.016, front)
+	card.hidden_chip = Node3D.new()
+	card.hidden_chip.name = "HiddenChip"
+	card.hidden_chip.position = card.hidden_chip_point
+	card.node.add_child(card.hidden_chip)
+	var pill := XRERig.create_vr_mesh(XREBlueprintShapes.body(XREBlueprintShapes.stadium(card.hidden_chip_size), 0.001), material(Color("232a3b"), true))
+	card.hidden_chip.add_child(pill)
+	text.position = Vector3(0, 0, 0.0008)
+	card.hidden_chip.add_child(text)
+
+
+## An open eye: an almond's rim and its pupil (D-135).
+static func _make_eye_mesh() -> ArrayMesh:
+	var almond := PackedVector2Array()
+	for index: int in 24:
+		var angle := TAU * index / 24.0
+		almond.append(Vector2(cos(angle) * 0.0072, sin(angle) * 0.0042))
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.append_from(XREBlueprintShapes.ring(almond, 0.0, 0.0012, 0.0), 0, Transform3D.IDENTITY)
+	surface.append_from(XREBlueprintShapes.body(XREBlueprintShapes.circle(0.0018), 0.001), 0, Transform3D.IDENTITY)
+	return surface.commit()
+
+
+## Whether the last ray hit the chip of a Break's or a Make's hidden fields (D-135).
+func get_hit_hidden_chip() -> bool:
+	return _hit_hidden_chip
+
+
+## Puts each × of [param card] by its pin as it stands now (D-133).
+func _place_pin_marks(card: Card) -> void:
+	var ports := card.inputs if card.pin_input else card.outputs
+	for index: int in card.pin_marks.size():
+		var mark := card.pin_marks[index]
+		if mark != null and index < ports.size(): mark.position = Vector3(ports[index].x + card.pin_shifts[index], ports[index].y, card.pin_front)
+
+
+## Shows the × of each pin under a hand's ray, on the pin or on the ×
+## itself, by its pin as it stands now (D-133) — on the pin is anywhere in its
+## half of the row, its name too (D-136) —, and grows the plus or the × under a ray.
+func _show_pins() -> void:
+	for card: Card in _cards:
+		if card.pin_plus != null:
+			card.pin_plus.scale = Vector3.ONE * (HOVER_SCALE if card.id == _pin_plus_right or card.id == _pin_plus_left else 1.0)
+		if card.pin_marks.is_empty(): continue
+		var first := 0 if card.pin_input else card.inputs.size()
+		for index: int in card.pin_marks.size():
+			var mark := card.pin_marks[index]
+			if mark == null: continue
+			var key := Vector2i(card.id, index)
+			var port := Vector2i(card.id, first + index)
+			var on_mark := key == _pin_mark_right or key == _pin_mark_left
+			mark.visible = on_mark or port == _port_right or port == _port_left or key == _pin_row_right or key == _pin_row_left
+			mark.scale = Vector3.ONE * (HOVER_SCALE if on_mark else 1.0)
+		_place_pin_marks(card)
+
+
+func _hover_pins(id: int, plus: bool, mark: int, row: int, right: bool) -> void:
+	var plus_id := id if plus else -1
+	var mark_key := Vector2i(id, mark) if mark >= 0 else Vector2i(-1, -1)
+	var row_key := Vector2i(id, row) if row >= 0 else Vector2i(-1, -1)
+	if plus_id == (_pin_plus_right if right else _pin_plus_left) and mark_key == (_pin_mark_right if right else _pin_mark_left) \
+			and row_key == (_pin_row_right if right else _pin_row_left): return
+	if right:
+		_pin_plus_right = plus_id
+		_pin_mark_right = mark_key
+		_pin_row_right = row_key
+	else:
+		_pin_plus_left = plus_id
+		_pin_mark_left = mark_key
+		_pin_row_left = row_key
+	_show_pins()
+
+
+## Whether the last ray hit the plus of a variadic operator (D-133).
+func get_hit_pin_plus() -> bool:
+	return _hit_pin_plus
+
+
+## The input whose × the last ray hit (D-133), or -1.
+func get_hit_pin_mark() -> int:
+	return _hit_pin_mark
+
+
+## The pin of the card under the last ray whose half-row it hit (D-136): its
+## port, its name, its × or eye; -1 elsewhere.
+func get_hit_pin_row() -> int:
+	return _hit_pin_row if _pin_row_card == _hit_id and _hit_id >= 0 else -1
+
+
+## The pin of [param card] whose half of the row [param at] is in, on the face,
+## -1 when none (D-136): from the card's middle to its port and a little past
+## it — past its × or eye too, which an output's has left of its name.
+func _pin_row(card: Card, at: Vector3) -> int:
+	if absf(at.z - card.pin_front) > CARD_THICKNESS + 0.02: return -1
+	var ports := card.inputs if card.pin_input else card.outputs
+	for index: int in mini(card.pin_marks.size(), ports.size()):
+		var mark := card.pin_marks[index]
+		if mark == null or absf(at.y - ports[index].y) > ROW_HEIGHT * 0.5: continue
+		var reach := PIN_MARK_SIZE
+		if card.pin_input and at.x >= ports[index].x - reach and at.x <= maxf(0.0, mark.position.x + reach): return index
+		if not card.pin_input and at.x <= ports[index].x + reach and at.x >= minf(0.0, mark.position.x - reach): return index
+	return -1
+
+
 static func _make_trash_mesh() -> ArrayMesh:
 	# One shared mesh/material, one draw per icon instead of seven separate bars.
 	var surface := SurfaceTool.new()
@@ -2774,6 +3060,12 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 	_hit_delete = false
 	_hit_swap = false
 	_hit_copy = false
+	_hit_pin_plus = false
+	_hit_pin_mark = -1
+	_hit_hidden_chip = false
+	_hit_pin_row = -1
+	_pin_row_card = -1
+	_pin_distance = -1.0
 	_hit_edge = -1
 	_hit_height = 0.0
 	_hit_socket = -1
@@ -2854,6 +3146,37 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_delete = false
 				_hit_swap = false
 				_hit_copy = true
+		# A variadic operator's plus under it and the × by an input (D-133); a later,
+		# nearer hit of anything else takes the ray back ([method _settle_pins]).
+		if card.pin_plus != null and card.pin_plus.visible:
+			var pin_size := Vector3.ONE * PLUS_RADIUS * card.pin_plus.scale.x * 2.0
+			var pin_hit := _box_distance(card_origin, card_direction, AABB(card.pin_plus_point - pin_size * 0.5, pin_size), nearest)
+			if pin_hit >= 0:
+				nearest = pin_hit
+				_pin_distance = pin_hit
+				_hit_id = card.id
+				_hit_port = -1
+				_hit_plus = false
+				_hit_delete = false
+				_hit_swap = false
+				_hit_copy = false
+				_hit_pin_plus = true
+				_hit_pin_mark = -1
+		if card.hidden_chip != null and card.hidden_chip.visible:
+			var chip_size := Vector3(card.hidden_chip_size.x, card.hidden_chip_size.y, 0.006)
+			var chip_hit := _box_distance(card_origin, card_direction, AABB(card.hidden_chip_point - chip_size * 0.5, chip_size), nearest)
+			if chip_hit >= 0:
+				nearest = chip_hit
+				_pin_distance = chip_hit
+				_hit_id = card.id
+				_hit_port = -1
+				_hit_plus = false
+				_hit_delete = false
+				_hit_swap = false
+				_hit_copy = false
+				_hit_pin_plus = false
+				_hit_pin_mark = -1
+				_hit_hidden_chip = true
 		for index: int in card.inputs.size():
 			var center := card.inputs[index]
 			var hit := _port_distance(card_origin, card_direction, center, card.ports[index].scale, nearest)
@@ -2886,6 +3209,26 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_swap = false
 				_hit_copy = false
 				_hit_height = (card_origin + card_direction * hit - center).y / ((PORT_RADIUS + PORT_HIT_MARGIN) * card.ports[card.inputs.size() + index].scale.y)
+		# An input's × (D-133) lies on the face beside its port, which bulges over the face:
+		# as a token on the face, it wins over the port and the face.
+		for index: int in card.pin_marks.size():
+			var mark := card.pin_marks[index]
+			if mark == null or not mark.visible: continue
+			var mark_size := Vector3.ONE * PIN_MARK_SIZE * mark.scale.x
+			var mark_hit := _box_distance(card_origin, card_direction, AABB(mark.position - mark_size * 0.5, mark_size), nearest + 0.02)
+			if mark_hit < 0: continue
+			nearest = minf(mark_hit, nearest)
+			_pin_distance = nearest
+			_hit_id = card.id
+			_hit_port = -1
+			_hit_input = false
+			_hit_plus = false
+			_hit_delete = false
+			_hit_swap = false
+			_hit_copy = false
+			_hit_pin_plus = false
+			_hit_pin_mark = index
+			_hit_hidden_chip = false
 		for index: int in card.sockets.size():
 			var socket := card.sockets[index]
 			var hit := -1.0
@@ -2912,6 +3255,13 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_delete = false
 			_hit_swap = false
 			_hit_copy = false
+		# The ray anywhere in a pin's half-row shows its × or eye (D-136): on its
+		# name too, on the way from the port to the ×.
+		if _hit_id == card.id and not card.pin_marks.is_empty():
+			var row := _pin_row(card, card_origin + card_direction * nearest)
+			if row >= 0:
+				_hit_pin_row = row
+				_pin_row_card = card.id
 		# The air between an archetype's buttons and between them and its card keeps
 		# the card under the ray, so its buttons don't hide on the way to one (D-114).
 		if _hit_id != card.id and _style == XREFeatureSettings.ARCHETYPES and card.trash.visible:
@@ -2924,6 +3274,12 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			var floor_y := card.bounds.get_center().y if not card.outline.is_empty() else card.bounds.end.y
 			reach = reach.expand(Vector3(reach.position.x, floor_y, reach.position.z))
 			var gap := _box_distance(card_origin, card_direction, reach, nearest)
+			# The air down to a variadic operator's plus under it too (D-133).
+			if gap < 0 and card.pin_plus != null and card.pin_plus.visible:
+				var pin_size := Vector3.ONE * PLUS_RADIUS * card.pin_plus.scale.x * 2.0
+				var below := AABB(card.pin_plus_point - pin_size * 0.5, pin_size)
+				below = below.expand(Vector3(below.position.x, card.bounds.get_center().y if not card.outline.is_empty() else card.bounds.position.y, below.position.z))
+				gap = _box_distance(card_origin, card_direction, below, nearest)
 			if gap >= 0:
 				nearest = gap
 				_hit_id = card.id
@@ -2935,10 +3291,18 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_delete = false
 				_hit_swap = false
 				_hit_copy = false
+				_hit_pin_plus = false
+				_hit_pin_mark = -1
 	# A wire in front of a card's face takes the ray from it; ports, sockets and
 	# the cards' buttons keep it. Not while a wire is drawn: it ends on ports.
 	var drawing := _preview.visible or _compatible_type >= 0
-	if _bends_shown and not drawing and _hit_port < 0 and _hit_socket < 0 and not _hit_plus and not _hit_delete and not _hit_copy:
+	# A pin's button keeps the ray only if nothing nearer took it after (D-133).
+	if (_hit_pin_plus or _hit_pin_mark >= 0 or _hit_hidden_chip) and (not is_equal_approx(_pin_distance, nearest) or _hit_port >= 0 or _hit_socket >= 0):
+		_hit_pin_plus = false
+		_hit_pin_mark = -1
+		_hit_hidden_chip = false
+	var on_pin := _hit_pin_plus or _hit_pin_mark >= 0 or _hit_hidden_chip
+	if _bends_shown and not drawing and _hit_port < 0 and _hit_socket < 0 and not _hit_plus and not _hit_delete and not _hit_copy and not on_pin:
 		var wire_hit := _intersect_wires(local_origin, local_direction, nearest)
 		if wire_hit >= 0:
 			nearest = wire_hit
@@ -2955,6 +3319,9 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			_hit_delete = false
 			_hit_swap = false
 			_hit_copy = false
+			_hit_pin_plus = false
+			_hit_pin_mark = -1
+			_hit_hidden_chip = false
 			_hit_wire = -1
 			_hit_bend = -1
 			return nearest
@@ -3901,7 +4268,7 @@ func _row_point(card: Card, row: int, input: bool) -> Vector3:
 		return Vector3(spot.x, spot.y, card.face + 0.003)
 	# A sign's ports are on its outline (D-100).
 	if card.shape != XREBlueprintShapes.Shape.NONE:
-		var place := XREBlueprintShapes.output(card.shape) if not input else card.shape_inputs[row] if row < card.shape_inputs.size() else Vector2(-card.width * 0.5, -row * ROW_HEIGHT)
+		var place := Vector2(card.width * 0.5, 0) if not input else card.shape_inputs[row] if row < card.shape_inputs.size() else Vector2(-card.width * 0.5, -row * ROW_HEIGHT)
 		return Vector3(place.x, place.y, card.face + 0.003)
 	var top := 0.0 if card.compact and not input else card.first_row
 	return Vector3((-card.width * 0.5 + 0.014) if input else (card.width * 0.5 - 0.014), top - row * ROW_HEIGHT, card.face + 0.003)
@@ -4027,6 +4394,11 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 		if entry.has("port"):
 			var text := _add_port(card, outputs[entry["port"]], entry["port"], false, row)
 			if entry.has("head"): text.text = ""
+			# A Switch's case is its value's puck where its output's name is (D-136).
+			if block["kind"] == "switch" and _value_mode != XREFeatureSettings.WINDOW and int(entry["port"]) < XREBlueprintGraph.pin_count(block):
+				text.text = ""
+				var case := XREBlueprintGraph.case_key(int(entry["port"]))
+				_add_case_token(card, case, params.get(case), row)
 			if card.headed and block["kind"] == "branch": _add_tab(card, card.outputs[int(entry["port"])], int(entry["port"]), str((outputs[int(entry["port"])] as Array)[0]))
 			# A bead's outputs have small names outside it when it has more than one (D-103).
 			if card.bead and right.size() > 1: _name_outside(text, str((outputs[entry["port"]] as Array)[0]))
@@ -4035,6 +4407,30 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 			if card.bead: _name_outside(finished, "Finished")
 			card.finished = card.sockets.size() - 1
 			card.waits = bool(params.get("wait", false))
+
+
+## The value of a Switch's case [param key] as a puck in the row of its
+## output, where the output's name would be, right by its port (D-136): the
+## case is an output, so its value is never a plug or an input's socket.
+func _add_case_token(card: Card, key: String, value: Variant, row: int) -> void:
+	var shown := XREBlueprintTokens.shown(value, key, "")
+	var width := XREBlueprintTokens.width(shown)
+	var point := _row_point(card, row, false)
+	var center := Vector3(card.width * 0.5 - CASE_INSET - width * 0.5, point.y, card.face + PUCK_DEPTH * 0.5 + 0.001)
+	var token := make_token(value, key, width, false, false, false, -1, shown)
+	token.position = center
+	card.node.add_child(token)
+	var socket := Socket.new()
+	socket.kind = SQUARE
+	socket.key = key
+	socket.type = XREBlueprintTokens.color_type(value, key)
+	socket.port = -1
+	socket.center = center
+	socket.size = Vector3(width, XREBlueprintTokens.HEIGHT + 0.004, PUCK_DEPTH + 0.004)
+	socket.visual = token
+	socket.text = token.get_meta(&"text") as Label3D if token.has_meta(&"text") else null
+	socket.value = value
+	card.sockets.append(socket)
 
 
 ## Puts a bead's output name [param text] small, outside it over its port (D-103).

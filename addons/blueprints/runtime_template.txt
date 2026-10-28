@@ -105,6 +105,61 @@ func _bp_result(run: XREBlueprintRun, block_id: int) -> Variant:
 	return run.values[block_id]
 
 
+# A Sequence (D-134): Then 0 runs now, the other outputs wait in the run's stack.
+# Coming back into a Sequence whose frame waits starts it over, so a loop through it doesn't grow the stack.
+func _bp_sequence(run: XREBlueprintRun, block_id: int, targets: Array) -> int:
+	for index: int in range(run.stack.size() - 1, -1, -1):
+		if run.stack[index][0] == block_id:
+			run.stack.resize(index)
+			break
+	if run.stack.size() >= 64:
+		_bp_error(run, block_id, "Sequences nest deeper than 64.")
+		return -1
+	run.stack.append([block_id, 1, targets])
+	return targets[0]
+
+
+# The next output of the innermost Sequence once a chain ends, an empty one passed over; -1 when none waits.
+func _bp_sequence_next(run: XREBlueprintRun) -> int:
+	while not run.stack.is_empty():
+		var frame: Array = run.stack.back()
+		var targets: Array = frame[2]
+		if frame[1] >= targets.size():
+			run.stack.pop_back()
+			continue
+		var target: int = targets[frame[1]]
+		frame[1] += 1
+		if target >= 0:
+			return target
+	return -1
+
+
+# What a Break takes apart (D-135): nothing, a value of another type or an object of another class is its error.
+func _bp_struct(value: Variant, type: int, cls: String, run: XREBlueprintRun, block_id: int) -> Variant:
+	if value == null or (value is Object and not is_instance_valid(value)):
+		_bp_error(run, block_id, "Break has nothing to take apart.")
+		return null
+	if typeof(value) != type:
+		_bp_error(run, block_id, "Expected %s, got %s." % [type_string(type), type_string(typeof(value))])
+		return null
+	if type == TYPE_OBJECT and not cls.is_empty() and not XREBlueprintSchema.is_of_class(value, cls):
+		_bp_error(run, block_id, "Expected %s, got %s." % [cls, (value as Object).get_class()])
+		return null
+	return value
+
+
+# A field of what a Break took apart (D-135); null stays null, its error already reported.
+func _bp_field(value: Variant, name: StringName, run: XREBlueprintRun, block_id: int) -> Variant:
+	if value == null:
+		return null
+	if value is Object:
+		if not name in value:
+			_bp_error(run, block_id, "No field %s." % name)
+			return null
+		return (value as Object).get(name)
+	return value[name]
+
+
 # Component [param index] of a broken value (D-084): null stays null, its error already reported.
 func _bp_component(value: Variant, index: int) -> Variant:
 	if value == null:

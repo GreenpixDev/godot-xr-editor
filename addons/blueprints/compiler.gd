@@ -48,8 +48,22 @@ static func compile(source: XREBlueprintGraph) -> Dictionary:
 				"operator":
 					var op := XREBlueprintGraph.operator_of(block)
 					var second := "null" if XREBlueprintOperators.is_unary(op) else _input(graph, block, "b")
-					code += "\treturn _bp_operate(%s, %s, %s, run, %d)\n" % [var_to_str(op), _input(graph, block, "a"), second, id]
+					var count := XREBlueprintGraph.operand_count(block)
+					if count <= 2:
+						code += "\treturn _bp_operate(%s, %s, %s, run, %d)\n" % [var_to_str(op), _input(graph, block, "a"), second, id]
+					else:
+						# Folded from the left (D-132); an operand that failed has reported its error.
+						code += "\tvar value: Variant = _bp_operate(%s, %s, %s, run, %d)\n" % [var_to_str(op), _input(graph, block, "a"), second, id]
+						for index: int in range(2, count):
+							var operand := _input(graph, block, XREBlueprintOperators.OPERAND_KEYS[index])
+							code += "\tif value == null:\n\t\treturn null\n\tvalue = _bp_operate(%s, value, %s, run, %d)\n" % [var_to_str(op), operand, id]
+						code += "\treturn value\n"
 				"get_property": code += "\treturn _bp_read(%s, %s, %d, run, %d)\n" % [_target(graph, block), var_to_str(params["property"]), block.get("property_type", TYPE_NIL), id]
+				"break", "make":
+					# One value a step (D-135): each output read in a step takes its field from the same one.
+					code += "\tif run != null and run.has_snapshot(%d):\n\t\treturn run.snapshots[%d][1]\n" % [id, id]
+					code += _struct_value(graph, block)
+					code += "\tif run != null:\n\t\trun.keep(%d, value)\n\treturn value\n" % id
 				"call":
 					if XREBlueprintGraph.is_pure(block): code += _call(graph, block, true)
 					else: code += "\treturn _bp_result(run, %d)\n" % id
@@ -58,6 +72,27 @@ static func compile(source: XREBlueprintGraph) -> Dictionary:
 		match kind:
 			"branch":
 				code += "\tvar condition: Variant = %s\n\tif not _bp_alive(run) or not _bp_check_value(condition, TYPE_BOOL, run, %d):\n\t\treturn -1\n\tif condition:\n%s\telse:\n%s" % [_input(graph, block, "condition"), id, _next(graph, id, 0, "\t\t"), _next(graph, id, 1, "\t\t")]
+				continue
+			"sequence":
+				# Then 0 now; the others wait in the run's stack for the chain before them to end (D-134).
+				# Untyped, so that the generated code reads [7, 9, 12].
+				var targets: Array = []
+				for port: int in XREBlueprintGraph.pin_count(block): targets.append(_follow_exec(graph, id, port))
+				code += "\treturn _bp_sequence(run, %d, %s)\n" % [id, var_to_str(targets)]
+				continue
+			"switch":
+				var on := str(params["on"])
+				# An enumeration's names become its numbers, each named beside it.
+				var constants := XREBlueprintGraph.enum_constants(str(params.get("enum", ""))) if on == "enum" else {}
+				var selection := _input(graph, block, "selection")
+				if on == "enum" and not _connected(graph, id, graph.input_port(block, "selection")): selection = var_to_str(constants.get(params["selection"], -1))
+				code += "\tvar selection: Variant = %s\n\tif not _bp_alive(run) or not _bp_check_value(selection, %d, run, %d):\n\t\treturn -1\n\tmatch selection:\n" % [selection, TYPE_STRING if on == "string" else TYPE_INT, id]
+				var count := XREBlueprintGraph.pin_count(block)
+				for port: int in count:
+					var value: Variant = params[XREBlueprintGraph.case_key(port)]
+					var pattern := var_to_str(constants.get(value, -1)) if on == "enum" else var_to_str(value)
+					code += "\t\t%s:%s\n%s" % [pattern, "  # " + str(value) if on == "enum" else "", _next(graph, id, port, "\t\t\t")]
+				code += "\t\t_:\n%s" % _next(graph, id, count, "\t\t\t")
 				continue
 			"set_property":
 				code += "\tvar target := %s\n\tvar value: Variant = %s\n" % [_target(graph, block), _input(graph, block, "value")]
@@ -68,11 +103,19 @@ static func compile(source: XREBlueprintGraph) -> Dictionary:
 			"call":
 				code += _call(graph, block, false)
 		code += _next(graph, id, 0, "\t")
-	code += "\n\n# Iterative execution permits back edges without recursive call-stack growth.\nfunc _bp_execute(block_id: int, run: XREBlueprintRun) -> void:\n\tvar steps := 0\n\twhile block_id >= 0 and _bp_alive(run):\n\t\tmatch block_id:\n"
+	code += "\n\n# Iterative execution permits back edges without recursive call-stack growth.\nfunc _bp_execute(block_id: int, run: XREBlueprintRun) -> void:\n\tvar steps := 0\n"
+	if graph.nodes.any(func(block: Dictionary) -> bool: return block["kind"] == "sequence"):
+		# A chain that ends goes on with the next output of the Sequence it came from (D-134).
+		code += "\twhile _bp_alive(run):\n\t\tif block_id < 0:\n\t\t\tblock_id = _bp_sequence_next(run)\n\t\t\tif block_id < 0:\n\t\t\t\treturn\n\t\tmatch block_id:\n"
+	else:
+		code += "\twhile block_id >= 0 and _bp_alive(run):\n\t\tmatch block_id:\n"
 	for block: Dictionary in graph.nodes:
 		if XREBlueprintGraph.is_pure(block): continue
 		code += "\t\t\t%d: block_id = await _bp_n%d(run)\n" % [block["id"], block["id"]]
-	code += "\t\t\t_: return\n\t\tsteps += 1\n\t\tif steps >= 64 and block_id >= 0 and _bp_alive(run):\n\t\t\tsteps = 0\n\t\t\tawait get_tree().process_frame\n"
+	code += "\t\t\t_: return\n"
+	# A new step reads Break and Make anew (D-135).
+	if graph.nodes.any(func(block: Dictionary) -> bool: return block["kind"] in ["break", "make"]): code += "\t\trun.step += 1\n"
+	code += "\t\tsteps += 1\n\t\tif steps >= 64 and block_id >= 0 and _bp_alive(run):\n\t\t\tsteps = 0\n\t\t\tawait get_tree().process_frame\n"
 	return {"code": code, "errors": errors}
 
 
@@ -160,6 +203,10 @@ static func _wired(graph: XREBlueprintGraph, block: Dictionary, port: int) -> St
 		if edge["to"] == block["id"] and edge["to_port"] == port:
 			var source := graph.find_node(edge["from"])
 			if source["kind"] == "signal": return "_bp_argument(run, %d, %d, %d)" % [edge["from"], edge["from_port"] - 1, block["id"]]
+			if source["kind"] == "break":
+				var outputs := graph.ports(source, false)
+				var field := str(outputs[edge["from_port"]][2]) if edge["from_port"] < outputs.size() else ""
+				return "_bp_field(_bp_value%d(run), &%s, run, %d)" % [edge["from"], var_to_str(field), edge["from"]]
 			if source["kind"] == "call" and not ((source["function"] as Dictionary).get("break", []) as Array).is_empty():
 				return "_bp_component(_bp_value%d(run), %d)" % [edge["from"], edge["from_port"]]
 			return "_bp_value%d(run)" % edge["from"]
@@ -179,9 +226,14 @@ static func _target(graph: XREBlueprintGraph, block: Dictionary) -> String:
 
 
 static func _next(graph: XREBlueprintGraph, id: int, port: int, indent: String) -> String:
+	return "%sreturn %d\n" % [indent, _follow_exec(graph, id, port)]
+
+
+## The block execution output [param port] of block [param id] goes to, -1 for none.
+static func _follow_exec(graph: XREBlueprintGraph, id: int, port: int) -> int:
 	for edge: Dictionary in graph.edges:
-		if edge["from"] == id and edge["from_port"] == port: return "%sreturn %d\n" % [indent, edge["to"]]
-	return indent + "return -1\n"
+		if edge["from"] == id and edge["from_port"] == port: return edge["to"]
+	return -1
 
 
 static func _connected(graph: XREBlueprintGraph, id: int, port: int) -> bool:
@@ -202,6 +254,8 @@ static func _validate_program(graph: XREBlueprintGraph) -> PackedStringArray:
 			var key: String = spec[2] if spec.size() > 2 else ""
 			if key.is_empty() or key == "target" or (block["params"] as Dictionary).has(key) or _connected(graph, block["id"], index): continue
 			if block["kind"] == "call" and not _literal_argument(block, key): continue
+			# An untyped Break says how to give it a type instead ([method _validate_struct], D-135).
+			if block["kind"] == "break" and (block.get("struct", {}) as Dictionary).is_empty(): continue
 			errors.append("Block #%d: %s is empty: put a token in or wire it." % [block["id"], spec[0]])
 	if not errors.is_empty(): return errors
 	var origins: Dictionary = {}
@@ -231,6 +285,14 @@ static func _validate_program(graph: XREBlueprintGraph) -> PackedStringArray:
 			errors.append_array(_validate_arguments(graph, block))
 		if block["kind"] == "operator":
 			errors.append_array(_validate_operator(graph, block))
+		if block["kind"] in ["break", "make"]: errors.append_array(_validate_struct(graph, block))
+		if block["kind"] == "switch":
+			# Each case once (D-134): a second one could never run.
+			var seen: Array = []
+			for port: int in XREBlueprintGraph.pin_count(block):
+				var value: Variant = params[XREBlueprintGraph.case_key(port)]
+				if seen.has(value): errors.append("Block #%d: case %s repeats." % [id, XREBlueprintGraph.case_label(block, port)])
+				seen.append(value)
 		if XREBlueprintGraph.is_pure(block): continue
 		var dependencies: Array[int] = [id]
 		var seen: Array[int] = []
@@ -248,6 +310,45 @@ static func _validate_program(graph: XREBlueprintGraph) -> PackedStringArray:
 	return errors
 
 
+## The statements of a Break's or a Make's value (D-135), into [code]value[/code]:
+## the value checked to be of its type and class, or one built — a built-in
+## value by its members, an object by [code]new()[/code] and its fields; a
+## hidden field keeps its default.
+static func _struct_value(graph: XREBlueprintGraph, block: Dictionary) -> String:
+	var struct: Dictionary = block["struct"]
+	var type := int(struct["type"])
+	var id: int = block["id"]
+	if block["kind"] == "break":
+		return "\tvar value: Variant = _bp_struct(%s, %d, %s, run, %d)\n" % [_input(graph, block, "value"), type, var_to_str(str(struct.get("class", ""))), id]
+	# Typed by what it is, so that its members are set safely.
+	var code := "\tvar value := %s\n" % (str(struct["class"]) + ".new()" if type == TYPE_OBJECT else type_string(type) + "()")
+	for field: Dictionary in XREBlueprintStructs.shown(block):
+		var name := str(field["name"])
+		if type == TYPE_OBJECT: code += "\tvalue.set(&%s, %s)\n" % [var_to_str(name), _input(graph, block, name)]
+		else: code += "\tvalue.%s = %s\n" % [name, _input(graph, block, name)]
+	return code
+
+
+## What keeps a Break or a Make from building (D-135): no type yet, its class
+## gone, a shown field gone from it, a class Make can't build.
+static func _validate_struct(graph: XREBlueprintGraph, block: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var id: int = block["id"]
+	var struct: Dictionary = block.get("struct", {})
+	if struct.is_empty():
+		errors.append("Block #%d: wire its Target to give the Break a type." % id if block["kind"] == "break" else "Block #%d: wire its Result into an input to give the Make a type." % id)
+		return errors
+	var name := XREBlueprintStructs.name_of(struct)
+	if XREBlueprintStructs.describe(int(struct["type"]), str(struct.get("class", "")), block["kind"] == "make").is_empty():
+		errors.append("Block #%d: missing class %s." % [id, name])
+		return errors
+	if block["kind"] == "make" and not XREBlueprintStructs.can_make(int(struct["type"]), str(struct.get("class", ""))):
+		errors.append("Block #%d: Make can't build %s: a node, or a class whose _init() wants arguments." % [id, name])
+	for field: Dictionary in XREBlueprintStructs.shown(block):
+		if field.get("missing", false): errors.append("Block #%d: %s has no field %s." % [id, name, field["name"]])
+	return errors
+
+
 ## The operands of an operator, as far as they are known before the game
 ## runs (D-065): types it takes, no integer division by a literal zero.
 static func _validate_operator(graph: XREBlueprintGraph, block: Dictionary) -> PackedStringArray:
@@ -255,7 +356,14 @@ static func _validate_operator(graph: XREBlueprintGraph, block: Dictionary) -> P
 	var op := XREBlueprintGraph.operator_of(block)
 	var a := graph.operand_type(block, "a")
 	var b := TYPE_NIL if XREBlueprintOperators.is_unary(op) else graph.operand_type(block, "b")
-	if XREBlueprintOperators.result_type(op, a, b) == XREBlueprintOperators.INVALID:
+	# Folded from the left (D-132): the first pair that can't go together is the error.
+	var result := XREBlueprintOperators.result_type(op, a, b)
+	for index: int in range(2, XREBlueprintGraph.operand_count(block)):
+		if result == XREBlueprintOperators.INVALID: break
+		a = result
+		b = graph.operand_type(block, XREBlueprintOperators.OPERAND_KEYS[index])
+		result = XREBlueprintOperators.result_type(op, a, b)
+	if result == XREBlueprintOperators.INVALID:
 		errors.append("Block #%d: %s" % [block["id"], XREBlueprintOperators.describe(op, a, b)])
 	elif op in ["divide", "modulo"] and a == TYPE_INT and not _connected(graph, block["id"], 1) and (block["params"] as Dictionary).get("b") is int and int(block["params"]["b"]) == 0:
 		errors.append("Block #%d: division by zero." % block["id"])
@@ -289,6 +397,6 @@ static func _validate_arguments(graph: XREBlueprintGraph, block: Dictionary) -> 
 				continue
 			if type in [TYPE_STRING_NAME, TYPE_NODE_PATH]: type = TYPE_STRING
 			if not XREBlueprintSchema.accepts(type, typeof(value)): errors.append("Block #%d: %s expects %s, got %s." % [id, argument["label"], XREBlueprintSchema.type_name(type), type_string(typeof(value))])
-		elif type == TYPE_OBJECT and not argument.has("default"):
+		elif type in XREBlueprintFunctions.WIRED_TYPES and not argument.has("default"):
 			errors.append("Block #%d: connect %s." % [id, argument["label"]])
 	return errors

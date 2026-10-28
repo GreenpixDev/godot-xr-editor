@@ -338,6 +338,54 @@ func _test_archetypes(graph: XREBlueprintGraph) -> void:
 	_check(card.node.get_node_or_null("Head") == null and card.trash.visible and card.trash_point.x < 0.0, "classic cards have their trash in the left corner again")
 
 
+## Signs of variadic operators (D-132): Add of three is a circle with its
+## inputs on the arc, of five a column, AND of four a taller pill, each input
+## on the outline a step apart; Append is a card.
+func _test_growing_signs() -> void:
+	var graph := XREBlueprintGraph.new()
+	var specs := [["add", 3], ["add", 5], ["and", 4], ["append", 3], ["min", 2]]
+	for index: int in specs.size():
+		var block := XREBlueprintGraph.make_operator(index + 1, str(specs[index][0]), Vector2(0, index * 300))
+		for extra: int in range(2, int(specs[index][1])): block["params"][XREBlueprintOperators.OPERAND_KEYS[extra]] = XREBlueprintOperators.operand_default(str(specs[index][0]), extra)
+		if int(specs[index][1]) > 2: block["params"]["operands"] = specs[index][1]
+		graph.nodes.append(block)
+	_check(graph.validate().is_empty(), "the operators validate: %s" % graph.validate())
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.rebuild(graph)
+	_canvas.face_user(Vector3(0, 0, 50))
+	var cards := _canvas.get("_cards") as Array
+	var shapes: Array[int] = [XREBlueprintShapes.Shape.CIRCLE, XREBlueprintShapes.Shape.COLUMN, XREBlueprintShapes.Shape.PILL, XREBlueprintShapes.Shape.NONE, XREBlueprintShapes.Shape.CIRCLE]
+	for index: int in shapes.size():
+		_check((cards[index] as XREBlueprintCanvas.Card).shape == shapes[index], "%s of %d is shape %d" % [specs[index][0], specs[index][1], shapes[index]])
+	_check((cards[3] as XREBlueprintCanvas.Card).compact, "Append is a compact card")
+	var column := cards[1] as XREBlueprintCanvas.Card
+	_check(column.height > column.width + XREBlueprintShapes.INPUT_STEP and is_equal_approx(column.width, XREBlueprintShapes.CIRCLE_RADIUS * 2.0), "the column is as wide as the circle and taller")
+	for index: int in [0, 1, 2]:
+		var card := cards[index] as XREBlueprintCanvas.Card
+		var on_outline := true
+		var places: Array[float] = []
+		for port: int in int(specs[index][1]):
+			var at := _canvas.port_position(index + 1, port, true) - card.node.position
+			places.append(at.y)
+			on_outline = on_outline and _outline_distance(card.outline, Vector2(at.x, at.y)) < 0.001
+		_check(on_outline, "the inputs of %s of %d are on its outline" % specs[index])
+		var falling := true
+		for port: int in range(1, places.size()): falling = falling and places[port] < places[port - 1]
+		_check(falling, "its inputs go down from the top: %s" % [places])
+		if index > 0: _check(is_equal_approx(places[0] - places[1], XREBlueprintShapes.INPUT_STEP), "a step of %.3f m apart" % XREBlueprintShapes.INPUT_STEP)
+	_check(_hit(column.node.position + Vector3(0, column.height * 0.4, 0), Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 2, "the column takes the ray near its top")
+	_check(((cards[4] as XREBlueprintCanvas.Card).node.get_node("Symbol") as Label3D).text == "min", "min is a circle with its word")
+
+
+## The distance from [param point] to the nearest edge of [param outline].
+func _outline_distance(outline: PackedVector2Array, point: Vector2) -> float:
+	var nearest := INF
+	for index: int in outline.size():
+		var closest := Geometry2D.get_closest_point_to_segment(point, outline[index], outline[(index + 1) % outline.size()])
+		nearest = minf(nearest, closest.distance_to(point))
+	return nearest
+
+
 ## Signs (D-100): an archetype's operator is a circle, a comparison a
 ## diamond, logic a pill, each in its result's color and picked inside its
 ## outline; with Node shrink on + Math a math function of one or two inputs is
@@ -825,6 +873,7 @@ func _run() -> void:
 	_test_parts_and_wires()
 	_test_archetypes(graph)
 	_test_signs()
+	_test_growing_signs()
 	_test_headings()
 	_test_beads()
 	_test_port_shapes()

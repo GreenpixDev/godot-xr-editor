@@ -2312,6 +2312,40 @@ func switch_heading(id: int) -> void:
 	blueprint.perform(blueprint.commit.bind("Switch Heading", state), &"vr_graph")
 
 
+## Adds a pin after the last that changes of block [param id] — an
+## operator's input, a Sequence's output, a Switch's case (D-133, D-134): the
+## plus under its corner on that side. One edit of the graph, which A undoes.
+func add_pin(id: int) -> void:
+	if not blueprint.perform(blueprint.add_pin.bind(id), &"vr_graph"): _message(blueprint.last_error)
+
+
+## Removes pin [param port] of its side of block [param id] with its wire
+## (D-133, D-134): the × by it. One edit of the graph, which A undoes.
+func remove_pin(id: int, port: int) -> void:
+	if not blueprint.perform(blueprint.remove_pin.bind(id, port), &"vr_graph"): _message(blueprint.last_error)
+
+
+## Hides the field of Break or Make [param id] at pin [param port] of its
+## fields' side (D-135): its eye. One edit of the graph, which A undoes.
+func hide_field(id: int, port: int) -> void:
+	var block := blueprint.graph.find_node(id)
+	var fields := XREBlueprintStructs.shown(block)
+	if port < 0 or port >= fields.size(): return
+	if not blueprint.perform(blueprint.set_field_hidden.bind(id, str(fields[port]["name"]), true), &"vr_graph"): _message(blueprint.last_error)
+
+
+## The hidden fields of Break or Make [param id] on a fan of petals at
+## [param point] (D-135): picking one shows it again.
+func _open_hidden_fields(id: int, point: Vector3) -> void:
+	var block := blueprint.graph.find_node(id)
+	var items: Array[Dictionary] = []
+	for name: Variant in block.get("hidden", []): items.append({"text": str(name), "show_field": [id, str(name)], "enabled": true})
+	if items.is_empty(): return
+	_use_choice(_fan_choice)
+	_choice_menu = false
+	_choice.open(canvas, point, _rig.camera.global_position, _rig.global_basis.y, [{"header": "Hidden", "items": items}])
+
+
 ## Removes the selected block and incident wires through the graph document.
 ## A block of several selected takes them all along, as one undo step (D-122).
 func delete_block(id: int = -1) -> void:
@@ -3970,7 +4004,8 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	# The card is in focus wherever on it the ray is; a port or a detail grows over that (D-072).
 	pointer.focus = id
 	if pointer.brushing: _brush_block(pointer, id)
-	canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), right, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1, false, canvas.get_hit_copy())
+	canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), right, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1, false, canvas.get_hit_copy(),
+			canvas.get_hit_pin_plus(), canvas.get_hit_pin_mark(), canvas.get_hit_pin_row())
 	canvas.hover_socket(id, socket, right)
 	var link := canvas.get_hit_link() if kind == XREBlueprintCanvas.LINK else {}
 	_update_link_button(pointer, id, kind, link, origin + direction * hit)
@@ -3984,7 +4019,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 			if wire.id == id: wire.lit = true
 	var token := kind in [XREBlueprintCanvas.TOKEN, XREBlueprintCanvas.SQUARE]
 	if token and canvas.token_value(id, key) != null and _token_editor.mode in [&"", XREBlueprintTokenEditor.HINT]:
-		_token_editor.show_hint(_token_pose(id, key, ""), XREBlueprintTokens.hint(XREBlueprintTokens.kind_of(canvas.token_value(id, key), key)) + "  ·  grip: move")
+		_token_editor.show_hint(_token_pose(id, key, ""), XREBlueprintTokens.hint(_token_kind(id, key, canvas.token_value(id, key))) + "  ·  grip: move")
 		_hint_frame = Engine.get_process_frames()
 	elif kind == XREBlueprintCanvas.MEMBER and not key.is_empty() and _token_editor.mode in [&"", XREBlueprintTokenEditor.HINT]:
 		var at := canvas.to_global(canvas.socket_position(id, XREBlueprintCanvas.MEMBER))
@@ -4009,6 +4044,10 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		elif canvas.get_hit_delete(): delete_block(id)
 		elif canvas.get_hit_copy(): _start_copy(id, hand, origin + direction * hit)
 		elif canvas.get_hit_swap(): switch_heading(id)
+		elif canvas.get_hit_pin_plus(): add_pin(id)
+		elif canvas.get_hit_pin_mark() >= 0 and blueprint.graph.find_node(id).get("kind") in ["break", "make"]: hide_field(id, canvas.get_hit_pin_mark())
+		elif canvas.get_hit_pin_mark() >= 0: remove_pin(id, canvas.get_hit_pin_mark())
+		elif canvas.get_hit_hidden_chip(): _open_hidden_fields(id, origin + direction * hit)
 		elif token and key == "policy" and canvas.get_style() == XREFeatureSettings.ARCHETYPES: _next_policy(id)
 		elif token: _start_turn(pointer, id, key, "", origin + direction * hit)
 		# With Wire menu the trigger on a link makes it its wire again, with no button (D-090).
@@ -4316,9 +4355,9 @@ func _start_turn(pointer: Pointer, id: int, key: String, box: String, point: Vec
 	pointer.token_distance = pointer.hand.global_position.distance_to(point)
 	var pose := _token_pose(id, key, box)
 	_token_editor.scale_mode = _document.features.get_value(XREFeatureSettings.AXIS_SCALE)
-	match XREBlueprintTokens.kind_of(value, key):
+	match _token_kind(id if box.is_empty() else -1, key, value):
 		XREBlueprintTokens.NUMBER: _token_editor.open_dial(pose, value, XREBlueprintTokens.minimum(blueprint.graph.find_node(id), key, value))
-		XREBlueprintTokens.CHOICE: _token_editor.open_choice(pose, XREBlueprintTokens.POLICIES, str(value))
+		XREBlueprintTokens.CHOICE: _token_editor.open_choice(pose, _token_choices(id, key), str(value))
 	pointer.token_block = id
 	pointer.token_key = key
 	pointer.token_box = box
@@ -4349,7 +4388,7 @@ func _update_turn(pointer: Pointer, delta: float) -> void:
 		_end_turn(pointer, false)
 		return
 	var key := pointer.token_key
-	var kind := XREBlueprintTokens.kind_of(pointer.token_value, key)
+	var kind := _token_kind(pointer.token_block if pointer.token_box.is_empty() else -1, key, pointer.token_value)
 	# The trigger never moves the token (D-061): the grip does. Held on a number
 	# it shows the number line (D-062): the ray along it sets the value, past
 	# its ends faster and faster; held on a choice, the ray on a value picks it.
@@ -4383,9 +4422,10 @@ func _update_turn(pointer: Pointer, delta: float) -> void:
 			if pointer.token_line and not is_nan(across): value = _token_editor.line_to(across, delta)
 		else:
 			var picked := _token_editor.choice_at(hand.global_position, -hand.global_basis.z.normalized())
-			if picked >= 0: value = XREBlueprintTokens.POLICIES[picked]
+			var options := _token_choices(pointer.token_block, key)
+			if picked >= 0 and picked < options.size(): value = options[picked]
 			if steps != pointer.token_steps:
-				value = XREBlueprintTokens.turned(value, key, steps - pointer.token_steps, false)
+				value = _choice_step(pointer.token_block, key, value, steps - pointer.token_steps)
 				pointer.token_steps = steps
 		# Zero is as far as a non-negative number goes, a step above it a positive one (D-063).
 		var least := XREBlueprintTokens.minimum(blueprint.graph.find_node(pointer.token_block), key, value)
@@ -4395,7 +4435,7 @@ func _update_turn(pointer: Pointer, delta: float) -> void:
 			pointer.token_value = value
 			if pointer.token_box.is_empty(): canvas.preview_token(pointer.token_block, key, value)
 			else: canvas.get_boxes().preview_value(pointer.token_box, value)
-			if kind == XREBlueprintTokens.CHOICE: _token_editor.set_choice(str(value), XREBlueprintTokens.POLICIES)
+			if kind == XREBlueprintTokens.CHOICE: _token_editor.set_choice(str(value), _token_choices(pointer.token_block, key))
 			_message("%s: %s" % [key.capitalize() if not key.is_empty() else pointer.token_box, XREBlueprintTokens.text(value, key)])
 	if not hand.trigger_held: _end_turn(pointer, true)
 
@@ -4414,6 +4454,26 @@ func _ray_across(pointer: Pointer, hand: XREHand) -> float:
 	var along := (pointer.token_point - origin).dot(normal) / toward
 	if along < 0.0: return NAN
 	return (origin + direction * along - pointer.token_point).dot(facing.x.normalized())
+
+
+## The kind of block [param id]'s token of [param key] holding [param value]:
+## a choice when it has values to choose among — a policy, an enumeration
+## Switch's names (D-134) —, else by its value. -1 is a variable's box.
+func _token_kind(id: int, key: String, value: Variant) -> StringName:
+	if not _token_choices(id, key).is_empty(): return XREBlueprintTokens.CHOICE
+	return XREBlueprintTokens.kind_of(value, key)
+
+
+## The values block [param id]'s token of [param key] is chosen among, empty for none.
+func _token_choices(id: int, key: String) -> Array[String]:
+	return XREBlueprintTokens.choices(blueprint.graph.find_node(id) if id >= 0 else {}, key)
+
+
+## The choice [param steps] after [param value] among those of block [param id]'s token of [param key], round.
+func _choice_step(id: int, key: String, value: Variant, steps: int) -> Variant:
+	var options := _token_choices(id, key)
+	if options.is_empty(): return value
+	return options[posmod(options.find(str(value)) + steps, options.size())]
 
 
 func _end_turn(pointer: Pointer, commit: bool) -> void:
@@ -4440,13 +4500,14 @@ func _end_turn(pointer: Pointer, commit: bool) -> void:
 		if box.is_empty(): _set_token(id, key, value, "Turn Token")
 		else: _set_box(box, value, "Turn Token")
 		return
-	if not clicked and XREBlueprintTokens.kind_of(value, key) in [XREBlueprintTokens.NUMBER, XREBlueprintTokens.CHOICE]: return
-	match XREBlueprintTokens.kind_of(value, key):
+	var kind := _token_kind(id if box.is_empty() else -1, key, value)
+	if not clicked and kind in [XREBlueprintTokens.NUMBER, XREBlueprintTokens.CHOICE]: return
+	match kind:
 		XREBlueprintTokens.TOGGLE:
 			if box.is_empty(): _set_token(id, key, not value, "Turn Token")
 			else: _set_box(box, not value, "Turn Token")
 		XREBlueprintTokens.CHOICE:
-			_set_token(id, key, XREBlueprintTokens.turned(value, key, 1, false), "Turn Token")
+			_set_token(id, key, _choice_step(id, key, value, 1), "Turn Token")
 		XREBlueprintTokens.COLOR:
 			_open_color(id, key, box, value)
 		XREBlueprintTokens.VECTOR:
@@ -5917,6 +5978,12 @@ func _choose_petal(fan: XREBlueprintPetals, item: Dictionary, hand: XREHand) -> 
 		return
 	if fan == _choice and _choice_menu:
 		_choose_offered(item)
+		return
+	# A hidden field of a Break or a Make shown again (D-135).
+	if fan == _choice and item.has("show_field"):
+		_choice.close()
+		var field: Array = item["show_field"]
+		if not blueprint.perform(blueprint.set_field_hidden.bind(int(field[0]), str(field[1]), false), &"vr_graph"): _message(blueprint.last_error)
 		return
 	if fan == _choice:
 		_choice.close()

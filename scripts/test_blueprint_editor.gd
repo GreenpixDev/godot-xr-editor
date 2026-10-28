@@ -29,6 +29,7 @@ func run(plugin: EditorPlugin, document: XREBlueprintDocument, view: XREBlueprin
 	_check(view.visible, "main screen tab activates")
 	await _test_scene_switch(document, view)
 	await _test_target_input(document, view)
+	await _test_operator_pins(document, view)
 	view.canvas.node_selected.emit(view.canvas.get_node("6"))
 	await get_tree().process_frame
 	_check((view.canvas.get_node("6") as GraphNode).get_input_port_count() == 3, "property block has execution, value and target inputs")
@@ -134,6 +135,33 @@ func run(plugin: EditorPlugin, document: XREBlueprintDocument, view: XREBlueprin
 		EditorInterface.set_distraction_free_mode(false)
 	print("test_blueprint_editor: %d of %d checks failed" % [_failures, _checks])
 	get_tree().quit(1 if _failures > 0 else 0)
+
+
+## A variadic operator's pins in GraphEdit (D-132): "+ pin" under its inputs
+## adds one, × by an input removes it; the graph is left as it was.
+func _test_operator_pins(document: XREBlueprintDocument, view: XREBlueprintEditor) -> void:
+	var before := document.graph.snapshot()
+	var id := document.insert_block(XREBlueprintGraph.make_operator(0, "add", Vector2.ZERO), Vector2(0, 900))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var node := view.canvas.get_node_or_null(str(id)) as GraphNode
+	var add := node.find_child("AddPin", true, false) as Button if node != null else null
+	_check(add != null and node.find_child("RemoveA", true, false) == null, "Add of two inputs shows + pin and no ×")
+	if add == null: return
+	add.pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	node = view.canvas.get_node(str(id)) as GraphNode
+	_check(node.get_input_port_count() == 3 and XREBlueprintGraph.operand_count(document.graph.find_node(id)) == 3, "+ pin adds input C")
+	var remove := node.find_child("RemoveB", true, false) as Button
+	_check(remove != null and is_zero_approx(remove.modulate.a), "× by B waits for the mouse")
+	if remove != null: remove.pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(XREBlueprintGraph.operand_count(document.graph.find_node(id)) == 2, "× removes input B")
+	for step: int in 3: document.undo()
+	await get_tree().process_frame
+	_check(document.graph.snapshot() == before, "three undos leave the graph as it was")
 
 
 func _block_count(view: XREBlueprintEditor) -> int:

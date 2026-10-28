@@ -153,6 +153,7 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 			result.append(_section(group, categories[group], context))
 	if chip in [NATIVE, ALL]:
 		result.append(_section("Native", _native_actions(graph, host, context.get("one_set", false)), context))
+		result.append(_section("Break & Make", _bind(_struct_actions(), host, false, graph), context))
 		result.append(_section("Variables", _variable_actions(graph, host, context), context))
 		for title: String in ["Math", "Comparison", "Logic"]:
 			result.append(_section(title, _operator_actions(title, graph, host), context))
@@ -210,8 +211,9 @@ static func task_of(action: Dictionary) -> String:
 	if action.get("kind", "") == "variable" or id in ["native:value", "preset:boolean"]: return "Variables"
 	if id == "native:equals": return "Logic"
 	if id.begins_with("operator:"):
-		return "Arithmetic" if XREBlueprintOperators.group_of(id.trim_prefix("operator:")) == XREBlueprintOperators.MATH else "Logic"
-	if id in ["native:branch", "preset:delay"]: return "Flow"
+		return "Arithmetic" if XREBlueprintOperators.group_of(id.trim_prefix("operator:")) in [XREBlueprintOperators.MATH, XREBlueprintOperators.TEXT] else "Logic"
+	if id in ["native:branch", "preset:delay", "native:sequence"] or id.begins_with("native:switch_"): return "Flow"
+	if id.begins_with("struct:"): return "Math"
 	if id == "preset:print": return "Utility"
 	if id == "preset:tween": return "Move"
 	if id in ["preset:play_sound", "preset:play_animation"]: return "Sound"
@@ -475,6 +477,9 @@ static func _property_actions(info: Dictionary, owner: String) -> Array[Dictiona
 	var setter := XREBlueprintGraph.make_node(0, "set_property", Vector2.ZERO)
 	setter["params"]["property"] = name
 	setter["property_type"] = type
+	# An enumeration's Get makes a Switch wired from it one on its constants (D-134).
+	var enum_path := XREBlueprintSchema.property_enum(owner, info)
+	if not enum_path.is_empty(): getter["property_enum"] = enum_path
 	if XREBlueprintGraph.is_literal(XREBlueprintSchema.default_value(type)): setter["params"]["value"] = XREBlueprintSchema.default_value(type)
 	var subtitle := "property %s: %s" % [name, type_string(type)]
 	return [
@@ -620,6 +625,8 @@ func _global_actions() -> Array[Dictionary]:
 	if _classes.has("@GlobalScope"): return _classes["@GlobalScope"]["actions"]
 	var actions: Array[Dictionary] = []
 	for name: String in XREBlueprintGlobals.FUNCTIONS:
+		# The Min and Max operators take their place (D-132); old blocks still build.
+		if name in ["min", "max"]: continue
 		var signature := XREBlueprintFunctions.global(name)
 		var action := _call_action("global:" + name, signature, signature["category"])
 		var ports := _ports(action["block"], XREBlueprintGraph.new())
@@ -672,6 +679,37 @@ func _operator_actions(title: String, graph: XREBlueprintGraph, host: Node) -> A
 	return _bind(actions, host, false, graph)
 
 
+## Break and Make (D-135): untyped, which a wire types — into Break's Target,
+## from Make's Result —, then of each built-in compound value and of each
+## script class of the project with fields; Make only of what it can build.
+func _struct_actions() -> Array[Dictionary]:
+	var actions: Array[Dictionary] = []
+	for kind: String in ["break", "make"]:
+		actions.append({"id": "struct:" + kind, "title": kind.capitalize(), "subtitle": "native · by its wire's type", "kind": "pure",
+				"keywords": "break split fields components struct" if kind == "break" else "make build construct fields struct",
+				"category": "Break & Make", "block": XREBlueprintGraph.make_node(0, kind, Vector2.ZERO), "target": null, "disabled": ""})
+	var types: Array = []
+	for type: int in XREBlueprintStructs.BUILTIN: types.append([type, ""])
+	for entry: Dictionary in ProjectSettings.get_global_class_list():
+		if not str(entry.get("path", "")).begins_with("res://addons/"): types.append([TYPE_OBJECT, str(entry["class"])])
+	for pair: Array in types:
+		var name := type_string(int(pair[0])) if int(pair[0]) != TYPE_OBJECT else str(pair[1])
+		for kind: String in ["break", "make"]:
+			var struct := XREBlueprintStructs.describe(int(pair[0]), str(pair[1]), kind == "make")
+			if struct.is_empty() or (struct["fields"] as Array).is_empty() or (kind == "make" and not XREBlueprintStructs.can_make(int(pair[0]), str(pair[1]))): continue
+			var block := XREBlueprintGraph.make_node(0, kind, Vector2.ZERO)
+			block["struct"] = struct
+			block["hidden"] = XREBlueprintStructs.default_hidden(struct)
+			if kind == "make":
+				for field: Dictionary in struct["fields"]:
+					if int(field["type"]) in XREBlueprintSchema.LITERAL_TYPES: block["params"][field["name"]] = XREBlueprintSchema.default_value(int(field["type"]))
+			elif int(pair[0]) in XREBlueprintSchema.LITERAL_TYPES:
+				block["params"]["value"] = XREBlueprintSchema.default_value(int(pair[0]))
+			actions.append({"id": "struct:%s:%s" % [kind, name], "title": "%s %s" % [kind.capitalize(), name], "subtitle": "native · " + ("fields of " if kind == "break" else "from fields ") + name,
+					"kind": "pure", "keywords": "%s %s fields components" % [kind, name.to_lower()], "category": "Break & Make", "block": block, "target": null, "disabled": ""})
+	return actions
+
+
 ## Branch, Value, properties and events; with [param one_set] Set Property is
 ## Set, which writes a variable too, by the wire of its Target (D-102).
 func _native_actions(graph: XREBlueprintGraph, host: Node, one_set: bool = false) -> Array[Dictionary]:
@@ -682,6 +720,12 @@ func _native_actions(graph: XREBlueprintGraph, host: Node, one_set: bool = false
 	for entry: Array in natives:
 		actions.append({"id": "native:" + entry[0], "title": entry[1], "subtitle": "native · " + entry[2], "kind": entry[3], "keywords": entry[2],
 				"category": "Native", "block": XREBlueprintGraph.make_node(0, entry[0], Vector2.ZERO), "target": null, "disabled": ""})
+	# What orders a run (D-134): outputs one after another, one output by a value.
+	actions.append({"id": "native:sequence", "title": "Sequence", "subtitle": "native · then, then", "kind": "native", "keywords": "sequence order then steps do",
+			"category": "Native", "block": XREBlueprintGraph.make_node(0, "sequence", Vector2.ZERO), "target": null, "disabled": ""})
+	for on: String in ["int", "string"]:
+		actions.append({"id": "native:switch_" + on, "title": "Switch on " + ("Int" if on == "int" else "String"), "subtitle": "native · case by value", "kind": "native",
+				"keywords": "switch case select match " + on, "category": "Native", "block": XREBlueprintGraph.make_switch(0, on, Vector2.ZERO), "target": null, "disabled": ""})
 	for name: String in ["ready", "boolean", "print", "delay"]:
 		var preset := _preset_action(name)
 		if not preset.is_empty(): actions.append(preset)

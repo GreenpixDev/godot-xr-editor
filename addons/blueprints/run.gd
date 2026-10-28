@@ -27,6 +27,23 @@ var values: Dictionary[int, Variant] = {}
 ## Tweens and waited AnimationPlayers that cancelling stops.
 var tweens: Array[Tween] = []
 var players: Array[AnimationPlayer] = []
+## The Sequences whose later outputs wait for the chain running now to end
+## (D-134), innermost last: each frame is [code][sequence ID, next output, targets][/code].
+var stack: Array[Array] = []
+## The step the run is at, and the value each Break and Make gave in it, by
+## block ID: [code][step, value][/code] (D-135).
+var step := 0
+var snapshots: Dictionary[int, Array] = {}
+
+
+## Whether block [param id] gave its value in this step already.
+func has_snapshot(id: int) -> bool:
+	return snapshots.has(id) and int(snapshots[id][0]) == step
+
+
+## Keeps [param value] as block [param id]'s for this step.
+func keep(id: int, value: Variant) -> void:
+	snapshots[id] = [step, value]
 
 
 ## Whether the run may continue: not cancelled, and its host is in the tree.

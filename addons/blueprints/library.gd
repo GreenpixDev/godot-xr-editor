@@ -161,6 +161,7 @@ static func tween_property(target: Node, property: String = "position", value: V
 ## @bp_category Vector
 ## @bp_keywords vector construct compose xy point size
 ## @bp_pure
+## @bp_hide
 static func make_vector2(x: float = 0.0, y: float = 0.0) -> Vector2:
 	return Vector2(x, y)
 
@@ -170,6 +171,7 @@ static func make_vector2(x: float = 0.0, y: float = 0.0) -> Vector2:
 ## @bp_category Vector
 ## @bp_keywords vector construct compose xyz position direction
 ## @bp_pure
+## @bp_hide
 static func make_vector3(x: float = 0.0, y: float = 0.0, z: float = 0.0) -> Vector3:
 	return Vector3(x, y, z)
 
@@ -179,6 +181,7 @@ static func make_vector3(x: float = 0.0, y: float = 0.0, z: float = 0.0) -> Vect
 ## @bp_category Color
 ## @bp_keywords color colour construct compose rgb rgba tint
 ## @bp_pure
+## @bp_hide
 static func make_color(r: float = 1.0, g: float = 1.0, b: float = 1.0, a: float = 1.0) -> Color:
 	return Color(r, g, b, a)
 
@@ -188,6 +191,7 @@ static func make_color(r: float = 1.0, g: float = 1.0, b: float = 1.0, a: float 
 ## @bp_category Vector
 ## @bp_keywords vector split components get x y
 ## @bp_break X Y
+## @bp_hide
 static func break_vector2(vector: Vector2 = Vector2.ZERO) -> Vector2:
 	return vector
 
@@ -197,6 +201,7 @@ static func break_vector2(vector: Vector2 = Vector2.ZERO) -> Vector2:
 ## @bp_category Vector
 ## @bp_keywords vector split components get x y z
 ## @bp_break X Y Z
+## @bp_hide
 static func break_vector3(vector: Vector3 = Vector3.ZERO) -> Vector3:
 	return vector
 
@@ -206,6 +211,7 @@ static func break_vector3(vector: Vector3 = Vector3.ZERO) -> Vector3:
 ## @bp_category Color
 ## @bp_keywords color colour split components get rgba red green blue alpha
 ## @bp_break R G B A
+## @bp_hide
 static func break_color(color: Color = Color.WHITE) -> Color:
 	return color
 

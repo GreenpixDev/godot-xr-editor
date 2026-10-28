@@ -155,6 +155,39 @@ func _shot_d090(head: Vector3, host: Node3D) -> void:
 	await _frames(3)
 
 
+## D-136: Switch, Sequence, Break Vector4 and Make Transform3D, each in focus,
+## then with the ray on its second output's name, which keeps its × or eye.
+func _shot_pins() -> void:
+	var switch := XREBlueprintGraph.make_switch(0, "int", Vector2.ZERO)
+	# A third case with a long value, as the author's.
+	switch["params"]["cases"] = 3
+	switch["params"]["case_2"] = 194513308
+	var blocks: Array[Dictionary] = [switch, XREBlueprintGraph.make_node(0, "sequence", Vector2.ZERO)]
+	for action: Dictionary in XREBlueprintActions.new().call("_struct_actions") as Array:
+		if action["id"] in ["struct:break:Vector4", "struct:make:Transform3D"]: blocks.append(action["block"])
+	for index: int in blocks.size():
+		_service.call("_add_from_menu", {"id": "shot:pins_%d" % index, "title": XREBlueprintGraph.title(blocks[index]), "target": null, "block": blocks[index]})
+		await _frames(6)
+		var added_id: int = _service.blueprint.graph.nodes.back()["id"]
+		var card: XREBlueprintCanvas.Card = null
+		for each: XREBlueprintCanvas.Card in _service.canvas.get("_cards") as Array:
+			if each.id == added_id: card = each
+		if card == null: continue
+		var face := card.node.global_transform
+		var front := face.basis.z.normalized()
+		_look(face.origin + front * 0.3, face.origin)
+		_aim(face.origin, front)
+		await _shot("30_pins_%d_focus" % index)
+		var pins := card.inputs if card.pin_input else card.outputs
+		if card.pin_marks.size() > 1 and pins.size() > 1:
+			var mark := card.pin_marks[1].position if card.pin_marks[1] != null else pins[1]
+			_aim(card.node.to_global((mark + Vector3(pins[1].x, pins[1].y, mark.z)) * 0.5), front)
+			await _shot("30_pins_%d_name" % index)
+		_aim(Vector3(-50, 0, 0), Vector3.BACK)
+		_service.blueprint.undo()
+		await _frames(3)
+
+
 func _run() -> void:
 	for frame: int in 600:
 		await get_tree().process_frame
@@ -211,6 +244,14 @@ func _run() -> void:
 	_service.open_selected()
 	await _frames(10)
 	var start := _service.blueprint.history.get_version()
+	# XRE_SHOT_ONLY=pins shoots only the cards whose pins change (D-136).
+	if OS.get_environment("XRE_SHOT_ONLY") == "pins":
+		await _shot_pins()
+		while _service.blueprint.history.get_version() > start: _service.blueprint.undo()
+		await _frames()
+		print("shot_blueprint_vr: done, graph back to version %d" % _service.blueprint.history.get_version())
+		get_tree().quit(0)
+		return
 	_look(head, host.global_position)
 	await _shot("01_overview")
 	var cards := _service.canvas.get("_cards") as Array

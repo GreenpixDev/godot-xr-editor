@@ -31,6 +31,22 @@ static func default_value(type: int) -> Variant:
 	return null
 
 
+## The enumeration, "Class.Enum", of property [param info] of class
+## [param cls], empty when it has none (D-134). A script's property says it;
+## an engine's says only its hint, its getter's result names it.
+static func property_enum(cls: String, info: Dictionary) -> String:
+	if int(info.get("type", TYPE_NIL)) != TYPE_INT: return ""
+	if int(info.get("usage", 0)) & PROPERTY_USAGE_CLASS_IS_ENUM: return str(info.get("class_name", ""))
+	if int(info.get("hint", 0)) != PROPERTY_HINT_ENUM or not ClassDB.class_exists(cls): return ""
+	var getter := ClassDB.class_get_property_getter(cls, str(info["name"]))
+	if getter.is_empty(): return ""
+	for method: Dictionary in ClassDB.class_get_method_list(cls):
+		if method["name"] != getter: continue
+		var result: Dictionary = method["return"]
+		return str(result["class_name"]) if int(result["usage"]) & PROPERTY_USAGE_CLASS_IS_ENUM else ""
+	return ""
+
+
 ## Describes a property without accessing a nonexistent property. Component paths
 ## such as position:x are supported for vectors and colors.
 static func property_info(object: Object, path: String) -> Dictionary:

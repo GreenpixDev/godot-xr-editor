@@ -9,8 +9,12 @@ extends RefCounted
 ## of three an oval. Inputs sit on the left of the outline, the result on the
 ## right. Outlines run counterclockwise in the card's plane, around its center;
 ## meshes are built on rebuilds, the ray is tested against the outline.
+##
+## A variadic operator grows with its inputs (D-132): a circle takes three on
+## its arc, from four it is a column — a circle stretched down —, and a pill
+## grows taller, the inputs [constant INPUT_STEP] apart on its left.
 
-enum Shape { NONE, CIRCLE, DIAMOND, PILL, OVAL }
+enum Shape { NONE, CIRCLE, DIAMOND, PILL, OVAL, COLUMN }
 ## Sizes in meters: a circle's radius, a diamond's half diagonal, a pill's and
 ## an oval's width and height, a diamond's rounding.
 const CIRCLE_RADIUS := 0.036
@@ -18,6 +22,10 @@ const DIAMOND_RADIUS := 0.044
 const PILL_SIZE := Vector2(0.1, 0.056)
 const OVAL_SIZE := Vector2(0.11, 0.08)
 const ROUNDING := 0.008
+## How far apart the inputs of a growing sign are, and how far the first and
+## the last stay from its top and bottom (D-132).
+const INPUT_STEP := 0.027
+const INPUT_MARGIN := 0.018
 ## Points on a full turn of an outline.
 const SEGMENTS := 48
 ## Port types a math sign takes and gives: numbers, vectors, any value.
@@ -36,18 +44,22 @@ const WORDS: Dictionary[String, String] = {
 const LONGEST := 5
 
 
-## Size of [param shape], width and height.
-static func size_of(shape: Shape) -> Vector2:
+## Size of [param shape] with [param count] inputs, width and height: a
+## column and a pill tall enough for them (D-132).
+static func size_of(shape: Shape, count: int = 2) -> Vector2:
+	var span := (count - 1) * INPUT_STEP + INPUT_MARGIN * 2.0
 	match shape:
 		Shape.CIRCLE: return Vector2.ONE * CIRCLE_RADIUS * 2.0
 		Shape.DIAMOND: return Vector2.ONE * DIAMOND_RADIUS * 2.0
-		Shape.PILL: return PILL_SIZE
+		Shape.PILL: return Vector2(PILL_SIZE.x, maxf(PILL_SIZE.y, span)) if count > 2 else PILL_SIZE
 		Shape.OVAL: return OVAL_SIZE
+		Shape.COLUMN: return Vector2(CIRCLE_RADIUS * 2.0, maxf(CIRCLE_RADIUS * 2.0, span))
 	return Vector2.ZERO
 
 
-## The outline of [param shape], counterclockwise.
-static func outline(shape: Shape) -> PackedVector2Array:
+## The outline of [param shape] with [param count] inputs, counterclockwise.
+static func outline(shape: Shape, count: int = 2) -> PackedVector2Array:
+	if shape == Shape.COLUMN or shape == Shape.PILL: return stadium(size_of(shape, count))
 	var points := PackedVector2Array()
 	match shape:
 		Shape.CIRCLE:
@@ -84,8 +96,13 @@ static func rounded_rect(size: Vector2, radii: Vector4) -> PackedVector2Array:
 	return points
 
 
-## A pill [param size] wide and high, its ends round, counterclockwise.
+## A pill [param size] wide and high, its ends round, counterclockwise; a
+## taller one stands up, its ends at the top and the bottom (D-132).
 static func stadium(size: Vector2) -> PackedVector2Array:
+	if size.y > size.x:
+		var lying := stadium(Vector2(size.y, size.x))
+		for index: int in lying.size(): lying[index] = lying[index].rotated(PI * 0.5)
+		return lying
 	var points := PackedVector2Array()
 	var radius := size.y * 0.5
 	var reach := maxf(size.x * 0.5 - radius, 0.0)
@@ -97,12 +114,20 @@ static func stadium(size: Vector2) -> PackedVector2Array:
 ## Where the [param count] inputs of [param shape] are, top first.
 static func inputs(shape: Shape, count: int) -> Array[Vector2]:
 	var result: Array[Vector2] = []
-	var size := size_of(shape)
+	var size := size_of(shape, count)
+	if shape == Shape.COLUMN or (shape == Shape.PILL and count > 2):
+		# A column of inputs on the left edge of the outline (D-132).
+		for index: int in count:
+			var y := (count - 1) * INPUT_STEP * 0.5 - index * INPUT_STEP
+			result.append(Vector2(_left_edge(size, y), y))
+		return result
 	match shape:
 		Shape.CIRCLE:
 			if count == 1: result.append(Vector2(-CIRCLE_RADIUS, 0))
-			# 35° above and below the left: as far apart as two ports need, on the circle.
-			else: result.assign([Vector2.from_angle(PI - deg_to_rad(35.0)) * CIRCLE_RADIUS, Vector2.from_angle(PI + deg_to_rad(35.0)) * CIRCLE_RADIUS])
+			# 35° above and below the left: as far apart as two ports need, on the circle;
+			# a third between them, the others 50° away (D-132).
+			elif count == 2: result.assign([Vector2.from_angle(PI - deg_to_rad(35.0)) * CIRCLE_RADIUS, Vector2.from_angle(PI + deg_to_rad(35.0)) * CIRCLE_RADIUS])
+			else: result.assign([Vector2.from_angle(PI - deg_to_rad(50.0)) * CIRCLE_RADIUS, Vector2(-CIRCLE_RADIUS, 0), Vector2.from_angle(PI + deg_to_rad(50.0)) * CIRCLE_RADIUS])
 		Shape.DIAMOND:
 			if count == 1: result.append(Vector2(-DIAMOND_RADIUS, 0))
 			else: result.assign([Vector2(-0.5, 0.5) * DIAMOND_RADIUS, Vector2(-0.5, -0.5) * DIAMOND_RADIUS])
@@ -114,9 +139,14 @@ static func inputs(shape: Shape, count: int) -> Array[Vector2]:
 	return result
 
 
-## Where the result of [param shape] is: the middle of its right side.
-static func output(shape: Shape) -> Vector2:
-	return Vector2(size_of(shape).x * 0.5, 0)
+## The x of the left edge of a stadium [param size] at height [param y]: on
+## its round end, or its straight side.
+static func _left_edge(size: Vector2, y: float) -> float:
+	var radius := minf(size.x, size.y) * 0.5
+	if size.x >= size.y:
+		return -(size.x * 0.5 - radius) - sqrt(maxf(radius * radius - y * y, 0.0))
+	var over := absf(y) - (size.y * 0.5 - radius)
+	return -radius if over <= 0.0 else -sqrt(maxf(radius * radius - over * over, 0.0))
 
 
 ## Shared meshes of the ports' shapes by type, radius and depth (D-104).

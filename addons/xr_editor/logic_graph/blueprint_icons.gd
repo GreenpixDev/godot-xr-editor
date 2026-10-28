@@ -101,6 +101,7 @@ const CATEGORIES: Dictionary[String, StringName] = {
 const KINDS: Dictionary[String, StringName] = {
 	"signal": &"event", "set_property": &"set", "set_variable": &"set",
 	"get_property": &"get", "get_variable": &"get", "branch": &"flow",
+	"sequence": &"flow", "switch": &"flow", "break": &"break", "make": &"make",
 }
 
 
@@ -114,7 +115,7 @@ static func group_of(block: Dictionary, inputs: Array, outputs: Array) -> Group:
 	for spec: Array in inputs + outputs:
 		if int(spec[1]) == XREBlueprintGraph.EXEC: executes = true
 	if not executes: return Group.PURE
-	if kind == "branch" or (kind == "call" and _category(block) == "Flow"): return Group.FLOW
+	if kind in ["branch", "sequence", "switch"] or (kind == "call" and _category(block) == "Flow"): return Group.FLOW
 	return Group.FUNCTION
 
 

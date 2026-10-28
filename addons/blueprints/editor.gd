@@ -13,7 +13,8 @@ signal graph_scene_requested
 ## Compact views can supply headset text input without depending on XR classes.
 signal text_edit_requested(field: LineEdit)
 
-const PORT_COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("b4e05a"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878")]
+# The built-in compound values (D-135): vectors blue, whole vectors green, boxes teal, a rotation violet, transforms orange.
+const PORT_COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("b4e05a"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878"), Color("89adff"), Color("9fd36a"), Color("9fd36a"), Color("6fc3c8"), Color("6fc3c8"), Color("c38bf0"), Color("f0a35e"), Color("f0a35e"), Color("f0a35e"), Color("6fc3c8")]
 
 var document: XREBlueprintDocument
 ## Input origin of this view. The compact XR inspector uses vr_panel.
@@ -398,16 +399,34 @@ func _refresh() -> void:
 			_fill_operator(node, block, inputs, outputs)
 			node.selected = selected.has(block["id"])
 			continue
+		# A Sequence's outputs and a Switch's cases come and go (D-134): × by one under the mouse, "+ pin" under them.
+		var pins := XREBlueprintGraph.variable_pins(block)
+		var id: int = block["id"]
 		for slot: int in maxi(inputs.size(), outputs.size()):
 			var row := HBoxContainer.new()
+			row.mouse_filter = Control.MOUSE_FILTER_PASS
 			node.add_child(row)
 			var left := _label(row, inputs[slot][0] if slot < inputs.size() else "")
 			left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			if not pins.is_empty() and not pins["input"] and slot < int(pins["count"]) and int(pins["count"]) > XREBlueprintGraph.MIN_PINS:
+				var remove := _button(row, "×", _set_call_option.bind(document.remove_pin.bind(id, slot)))
+				remove.name = "RemovePin%d" % slot
+				remove.flat = true
+				remove.tooltip_text = "Remove %s and its wire" % outputs[slot][0]
+				remove.modulate.a = 0.0
+				row.mouse_entered.connect(func() -> void: remove.modulate.a = 1.0)
+				row.mouse_exited.connect(func() -> void: remove.modulate.a = 0.0)
 			_label(row, outputs[slot][0] if slot < outputs.size() else "")
 			var left_type: int = inputs[slot][1] if slot < inputs.size() else 0
 			var right_type: int = outputs[slot][1] if slot < outputs.size() else 0
 			row.tooltip_text = "%s → %s" % [_port_name(left_type), _port_name(right_type)]
 			node.set_slot(slot, slot < inputs.size(), left_type, PORT_COLORS[left_type], slot < outputs.size(), right_type, PORT_COLORS[right_type])
+		if not pins.is_empty() and pins["can_add"]:
+			var add := _button(node, "+ pin", _set_call_option.bind(document.add_pin.bind(id)))
+			add.name = "AddPin"
+			add.flat = true
+			add.size_flags_horizontal = Control.SIZE_SHRINK_END
+			add.tooltip_text = "Add an output"
 		var summary := _label(node, _summary(block))
 		summary.modulate = Color("adbac9")
 		summary.custom_minimum_size.x = 160
@@ -439,20 +458,32 @@ func _refresh() -> void:
 
 ## An operator as Unreal draws one (D-065): no title, the literal of each
 ## input without a wire by its port, the symbol in the middle, the result on
-## the right. Its name is its tooltip.
+## the right. Its name is its tooltip. A variadic one (D-132) shows × by an
+## input under the mouse while it has more than two, and "+ pin" under them.
 func _fill_operator(node: GraphNode, block: Dictionary, inputs: Array, outputs: Array) -> void:
 	node.title = ""
 	node.tooltip_text = "%s · %d" % [XREBlueprintGraph.title(block), block["id"]]
 	node.custom_minimum_size.x = 0
 	var params: Dictionary = block["params"]
+	var id: int = block["id"]
+	var variadic := XREBlueprintOperators.is_variadic(XREBlueprintGraph.operator_of(block))
 	var wired: Dictionary[int, bool] = {}
 	for edge: Dictionary in document.graph.edges:
 		if edge["to"] == block["id"]: wired[int(edge["to_port"])] = true
 	for slot: int in inputs.size():
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override(&"separation", 10)
+		row.mouse_filter = Control.MOUSE_FILTER_PASS
 		node.add_child(row)
 		var key: String = inputs[slot][2]
+		if variadic and inputs.size() > XREBlueprintOperators.MIN_OPERANDS:
+			var remove := _button(row, "×", _set_call_option.bind(document.remove_operand.bind(id, key)))
+			remove.name = "Remove" + key.to_upper()
+			remove.flat = true
+			remove.tooltip_text = "Remove input %s and its wire" % key.to_upper()
+			remove.modulate.a = 0.0
+			row.mouse_entered.connect(func() -> void: remove.modulate.a = 1.0)
+			row.mouse_exited.connect(func() -> void: remove.modulate.a = 0.0)
 		var left := _label(row, _short(params[key]) if params.has(key) and not wired.has(slot) else "")
 		left.modulate = Color("adbac9")
 		left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -465,6 +496,12 @@ func _fill_operator(node: GraphNode, block: Dictionary, inputs: Array, outputs: 
 		# Wired, an input of any value is in the color of what comes in; its type still takes any wire.
 		var shown := XREBlueprintGraph.port_type(document.graph.operand_type(block, key)) if left_type == XREBlueprintGraph.VALUE and wired.has(slot) else left_type
 		node.set_slot(slot, true, left_type, PORT_COLORS[shown], slot == 0, right_type, PORT_COLORS[right_type])
+	if variadic and inputs.size() < XREBlueprintOperators.MAX_OPERANDS:
+		var add := _button(node, "+ pin", _set_call_option.bind(document.add_operand.bind(id)))
+		add.name = "AddPin"
+		add.flat = true
+		add.size_flags_horizontal = Control.SIZE_SHRINK_END
+		add.tooltip_text = "Add an input"
 
 
 ## A literal in a few characters, for an operator's input.
@@ -483,7 +520,7 @@ func _summary(block: Dictionary) -> String:
 
 
 func _port_name(type: int) -> String:
-	return ["Execution", "Variant", "bool", "int", "float", "String", "Vector2", "Vector3", "Object", "Color"][type]
+	return ["Execution", "Variant", "bool", "int", "float", "String", "Vector2", "Vector3", "Object", "Color", "Vector4", "Vector2i", "Vector3i", "Rect2", "AABB", "Quaternion", "Basis", "Transform2D", "Transform3D", "Plane"][type]
 
 
 func _select_block(node: Node) -> void:
@@ -524,14 +561,22 @@ func _refresh_details() -> void:
 	if block["kind"] == "call":
 		_call_details(block)
 	for key: String in (params if block["kind"] != "call" else {}):
-		if not _shows(block, key) or XREBlueprintGraph.is_unused(block, key): continue
+		# The counts of pins change by the pins (D-132, D-134); what a Switch is on is its kind.
+		if key in ["operands", "outputs", "cases", "on", "enum"] or not _shows(block, key) or XREBlueprintGraph.is_unused(block, key): continue
 		_label(_details, key.capitalize())
-		if key == "op":
-			# Another operator of the same group and as many operands (D-065).
+		if block["kind"] == "switch" and params.get("on") == "enum" and (key == "selection" or key.begins_with("case_")):
+			# An enumeration's case and selection are its constants' names (D-134).
+			var names: Array[String] = []
+			names.assign(XREBlueprintGraph.enum_constants(str(params.get("enum", ""))).keys())
+			_options(block["id"], key, names, str(params[key]))
+		elif key == "op":
+			# Another operator of the same group and as many operands (D-065); past two, a variadic one (D-132).
 			var op := str(params[key])
+			var many := XREBlueprintGraph.operand_count(block) > XREBlueprintOperators.MIN_OPERANDS
 			var same: Array[String] = []
 			for other: String in XREBlueprintOperators.OPERATORS:
-				if XREBlueprintOperators.group_of(other) == XREBlueprintOperators.group_of(op) and XREBlueprintOperators.is_unary(other) == XREBlueprintOperators.is_unary(op): same.append(other)
+				if XREBlueprintOperators.group_of(other) == XREBlueprintOperators.group_of(op) and XREBlueprintOperators.is_unary(other) == XREBlueprintOperators.is_unary(op) \
+						and (not many or XREBlueprintOperators.is_variadic(other)): same.append(other)
 			_options(block["id"], key, same, op)
 		elif key == "target":
 			_target_editor(block)
@@ -543,17 +588,22 @@ func _refresh_details() -> void:
 			_options(block["id"], key, names, params[key])
 		elif key in ["property", "signal", "animation"] and document.target_node(block["id"]) != null:
 			_scene_options(block, key)
-		elif key in ["value", "a", "b"] and block["kind"] != "boolean" and not block["kind"] == "set_variable":
+		elif (key == "value" or key in XREBlueprintOperators.OPERAND_KEYS) and block["kind"] != "boolean" and not block["kind"] == "set_variable":
 			_literal_editor(block["id"], key, params[key])
 		else:
 			_parameter_editor(block["id"], key, params[key])
 	# Values taken out in the headset leave their sockets empty (D-054).
 	if block["kind"] != "call":
-		var defaults: Dictionary = XREBlueprintGraph.BLOCKS[block["kind"]]["params"]
+		var defaults: Dictionary = (XREBlueprintGraph.BLOCKS[block["kind"]]["params"] as Dictionary).duplicate()
+		# Every input of an operator, C… too (D-132).
+		if block["kind"] == "operator":
+			for index: int in XREBlueprintGraph.operand_count(block):
+				defaults[XREBlueprintOperators.OPERAND_KEYS[index]] = XREBlueprintOperators.operand_default(XREBlueprintGraph.operator_of(block), index)
 		for key: String in defaults:
 			if params.has(key) or not _shows(block, key) or XREBlueprintGraph.is_unused(block, key): continue
 			_label(_details, key.capitalize())
 			_empty_editor(block["id"], key, defaults[key])
+	if block["kind"] in ["break", "make"]: _field_toggles(block)
 	if block.has("property_type"):
 		_label(_details, "Property type: " + XREBlueprintSchema.type_name(block["property_type"]))
 	if block["kind"] == "signal":
@@ -571,6 +621,26 @@ func _refresh_details() -> void:
 		_target_changed(draft)
 	if _parameters_only:
 		_bind_text_inputs(_details)
+
+
+## A Break's or a Make's fields, each shown while ticked (D-135): one with a
+## wire can't be hidden. Without a type, how to give it one.
+func _field_toggles(block: Dictionary) -> void:
+	var struct: Dictionary = block.get("struct", {})
+	if struct.is_empty():
+		var hint := _label(_details, "Wire its Target to give it a type." if block["kind"] == "break" else "Wire its Result into an input to give it a type.")
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		return
+	_label(_details, "Fields")
+	var hidden: Array = block.get("hidden", [])
+	for field: Dictionary in struct["fields"]:
+		var name := str(field["name"])
+		var check := CheckBox.new()
+		check.name = "Field_" + name
+		check.text = "%s  %s%s" % [name, XREBlueprintSchema.type_name(int(field["type"])), "  · missing" if field.get("missing", false) else ""]
+		check.button_pressed = not hidden.has(name)
+		_details.add_child(check)
+		check.toggled.connect(func(shown: bool) -> void: _set_call_option(document.set_field_hidden.bind(block["id"], name, not shown)))
 
 
 func _bind_text_inputs(parent: Node) -> void:

@@ -105,6 +105,9 @@ func _run() -> void:
 	_test_actions()
 	_test_palette_variants()
 	_test_operators()
+	_test_variadic_operators()
+	await _test_sequence_switch()
+	_test_break_make()
 	print("test_blueprints: %d of %d checks failed" % [_failures, _checks])
 	quit(1 if _failures > 0 else 0)
 
@@ -278,7 +281,8 @@ func _test_wire_bends() -> void:
 func _test_all_blocks_compile() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.variables.append({"name": "flag", "value": false})
-	var kinds: Array = XREBlueprintGraph.BLOCKS.keys().filter(func(kind: String) -> bool: return kind != "call")
+	# Break and Make take their type from a wire (D-135): their own test builds them.
+	var kinds: Array = XREBlueprintGraph.BLOCKS.keys().filter(func(kind: String) -> bool: return not kind in ["call", "break", "make"])
 	kinds.append_array(XREBlueprintGraph.PRESETS.keys())
 	for kind: String in kinds:
 		_block(graph, kind, {"variable": "flag"} if kind in ["get_variable", "set_variable"] else {})
@@ -1003,7 +1007,7 @@ func _test_makers_and_time() -> void:
 	instance.free()
 	var actions := XREBlueprintActions.new()
 	var ids := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.LIBRARY, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
-	_check(["make_vector2", "make_vector3", "make_color", "get_time"].all(func(name: String) -> bool: return ids.has("static:XREBlueprintLibrary." + name)), "the menu's Library offers the makers and Get Time")
+	_check(ids.has("static:XREBlueprintLibrary.get_time") and not ids.has("static:XREBlueprintLibrary.make_vector3"), "the menu's Library offers Get Time; Make Vector3 is Make's now (D-135)")
 
 
 func _library_call(graph: XREBlueprintGraph, name: String, params: Dictionary = {}) -> int:
@@ -1072,9 +1076,9 @@ func _test_vectors() -> void:
 	instance.free()
 	var actions := XREBlueprintActions.new()
 	var ids := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.LIBRARY, "graph": graph})).map(func(action: Dictionary) -> String: return str(action["id"]))
-	_check(["break_vector2", "break_vector3", "break_color", "vector3_cross", "vector2_distance"].all(func(name: String) -> bool: return ids.has("static:XREBlueprintLibrary." + name)), "the menu's Library offers Break and vector math")
-	var pin := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.LIBRARY, "graph": graph, "pin": {"type": XREBlueprintGraph.VECTOR3, "output": true}}))
-	_check(pin.any(func(action: Dictionary) -> bool: return action["id"] == "static:XREBlueprintLibrary.break_vector3"), "a Vector3 wire let go offers Break Vector3")
+	_check(["vector3_cross", "vector2_distance"].all(func(name: String) -> bool: return ids.has("static:XREBlueprintLibrary." + name)) and not ids.has("static:XREBlueprintLibrary.break_vector3"), "the menu's Library offers vector math; Break Vector3 is Break's now (D-135)")
+	var pin := XREBlueprintActions.flatten(actions.sections({"chip": XREBlueprintActions.NATIVE, "graph": graph, "pin": {"type": XREBlueprintGraph.VECTOR3, "output": true}}))
+	_check(pin.any(func(action: Dictionary) -> bool: return action["id"] == "struct:break:Vector3") and pin.any(func(action: Dictionary) -> bool: return action["id"] == "struct:break"), "a Vector3 wire let go offers Break Vector3 and Break")
 
 
 func _test_insert_block() -> void:
@@ -1120,6 +1124,332 @@ func _test_paste_blocks() -> void:
 	var copies := source.paste_blocks(setters, edges, Vector2(0, 200), 0.0, "Duplicate Blocks", outer)
 	_check(copies.size() == 1 and source.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == value and edge["to"] == copies[0]),
 			"an outer wire into a pasted block comes from the same output")
+
+
+## Variadic operators (D-132): types folded from the left, pins added and
+## removed with their wires following them by key, validation, the menu, the
+## generated code and its values.
+func _test_variadic_operators() -> void:
+	var invalid := XREBlueprintOperators.INVALID
+	_check(XREBlueprintOperators.is_variadic("add") and XREBlueprintOperators.is_variadic("append") and not XREBlueprintOperators.is_variadic("subtract") and not XREBlueprintOperators.is_variadic("not"),
+			"add, multiply, AND, OR, min, max and append take more inputs; subtract and NOT don't")
+	_check(XREBlueprintOperators.fold_type("add", [TYPE_INT, TYPE_INT, TYPE_FLOAT] as Array[int]) == TYPE_FLOAT and XREBlueprintOperators.fold_type("add", [TYPE_INT, TYPE_INT, TYPE_INT] as Array[int]) == TYPE_INT,
+			"int + int + float is a float, three ints an int")
+	_check(XREBlueprintOperators.fold_type("min", [TYPE_INT, TYPE_INT] as Array[int]) == TYPE_INT and XREBlueprintOperators.fold_type("max", [TYPE_INT, TYPE_FLOAT, TYPE_INT] as Array[int]) == TYPE_FLOAT
+			and XREBlueprintOperators.result_type("min", TYPE_STRING, TYPE_INT) == invalid, "min and max take numbers: ints give an int, with a real a real")
+	_check(XREBlueprintOperators.fold_type("append", [TYPE_STRING, TYPE_INT, TYPE_VECTOR3] as Array[int]) == TYPE_STRING and XREBlueprintOperators.fold_type("add", [TYPE_VECTOR3, TYPE_VECTOR3, TYPE_FLOAT] as Array[int]) == invalid,
+			"append makes text of anything; a vector and a number don't add at the third input")
+
+	# Pins: added at the end with a literal that changes nothing, removed with their wires.
+	var doc := XREBlueprintDocument.new()
+	var sum := doc.insert_block(XREBlueprintGraph.make_operator(0, "add", Vector2.ZERO), Vector2(400, 0))
+	var one := doc.insert_block(XREBlueprintGraph.make_node(0, "value", Vector2.ZERO), Vector2(0, 0))
+	var two := doc.insert_block(XREBlueprintGraph.make_node(0, "value", Vector2.ZERO), Vector2(0, 100))
+	var reader := doc.insert_block(XREBlueprintGraph.make_node(0, "set_variable", Vector2.ZERO), Vector2(700, 0))
+	_check(doc.add_operand(sum) and doc.add_operand(sum), "two inputs added to Add")
+	var block := doc.graph.find_node(sum)
+	var inputs := doc.graph.ports(block, true)
+	_check(inputs.size() == 4 and inputs[2][0] == "C" and inputs[3][2] == "d" and block["params"]["operands"] == 4 and block["params"]["d"] == 0.0, "Add has A, B, C, D; D starts at 0: %s" % [block["params"]])
+	_check(doc.connect_blocks(one, 0, sum, 0) and doc.connect_blocks(two, 0, sum, 2) and doc.connect_blocks(sum, 0, reader, 1), "values wire into A and C, the result out")
+	doc.set_parameter(sum, "d", 7.0)
+	var history := doc.history.get_history_count()
+	_check(doc.remove_operand(sum, "b"), "B is removed")
+	block = doc.graph.find_node(sum)
+	var into: Dictionary = {}
+	for edge: Dictionary in doc.graph.edges:
+		if edge["to"] == sum: into[edge["from"]] = edge["to_port"]
+	_check(into.get(one) == 0 and into.get(two) == 1 and block["params"]["operands"] == 3 and block["params"]["c"] == 7.0 and not (block["params"] as Dictionary).has("d"),
+			"C's wire and D's literal moved up a pin: %s %s" % [into, block["params"]])
+	_check(doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == sum and edge["to"] == reader), "the result's wire stays")
+	_check(doc.remove_operand(sum, "b"), "the wired B, once C, is removed")
+	block = doc.graph.find_node(sum)
+	_check(not doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == two) and not (block["params"] as Dictionary).has("operands") and block["params"]["b"] == 7.0,
+			"its wire went with it; two inputs left, the count gone: %s" % [block["params"]])
+	_check(not doc.remove_operand(sum, "a") and doc.last_error.contains("at least"), "two inputs stay: %s" % doc.last_error)
+	_check(doc.history.get_history_count() == history + 2, "each removal is one edit")
+	doc.undo()
+	doc.undo()
+	block = doc.graph.find_node(sum)
+	_check(block["params"]["operands"] == 4 and doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == two and edge["to"] == sum and edge["to_port"] == 2), "undo brings back the pins and C's wire")
+	for count: int in range(4, XREBlueprintOperators.MAX_OPERANDS): doc.add_operand(sum)
+	_check(XREBlueprintGraph.operand_count(doc.graph.find_node(sum)) == 8 and not doc.add_operand(sum), "at most eight inputs")
+	_check(not doc.add_operand(doc.insert_block(XREBlueprintGraph.make_operator(0, "subtract", Vector2.ZERO), Vector2(0, 600))), "Subtract takes no more inputs")
+	var product := doc.insert_block(XREBlueprintGraph.make_operator(0, "multiply", Vector2.ZERO), Vector2(0, 700))
+	var both := doc.insert_block(XREBlueprintGraph.make_operator(0, "and", Vector2.ZERO), Vector2(0, 800))
+	var either := doc.insert_block(XREBlueprintGraph.make_operator(0, "or", Vector2.ZERO), Vector2(0, 900))
+	var least := doc.insert_block(XREBlueprintGraph.make_operator(0, "min", Vector2.ZERO), Vector2(0, 1000))
+	var text := doc.insert_block(XREBlueprintGraph.make_operator(0, "append", Vector2.ZERO), Vector2(0, 1100))
+	doc.set_parameter(least, "b", 5.0)
+	for id: int in [product, both, either, least, text]: doc.add_operand(id)
+	_check(doc.graph.find_node(product)["params"]["c"] == 1.0 and doc.graph.find_node(both)["params"]["c"] == true and doc.graph.find_node(either)["params"]["c"] == false
+			and doc.graph.find_node(least)["params"]["c"] == 5.0 and doc.graph.find_node(text)["params"]["c"] == "", "a new input changes nothing: ×1, AND true, OR false, min the last, append empty")
+	var vectors := doc.insert_block(XREBlueprintGraph.make_operator(0, "add", Vector2.ZERO), Vector2(0, 1200))
+	doc.set_parameter(vectors, "a", Vector3.ONE)
+	doc.add_operand(vectors)
+	_check(doc.graph.find_node(vectors)["params"]["c"] == Vector3.ZERO, "added to vectors, a zero vector")
+	var count := doc.insert_block(XREBlueprintGraph.make_node(0, "value", Vector2.ZERO), Vector2(0, 1300))
+	doc.set_parameter(count, "value", 3)
+	_check(doc.connect_blocks(count, 0, product, 2) and doc.graph.find_node(product)["params"]["a"] is int and doc.graph.find_node(product)["params"]["b"] is int, "an int wired into C makes A and B ints")
+	_check(doc.graph.operand_types(doc.graph.find_node(least), "c", [TYPE_BOOL, TYPE_INT, TYPE_STRING]) == [TYPE_INT], "min's input takes numbers only")
+	_check(doc.graph.ports(doc.graph.find_node(least), true)[0][1] == XREBlueprintGraph.NUMBER and doc.graph.ports(doc.graph.find_node(text), false)[0][1] == XREBlueprintGraph.TEXT, "min's inputs are numbers; append gives text")
+
+	# Validation: a count only a variadic operator has, no literal past it.
+	var graph := XREBlueprintGraph.new()
+	_operator(graph, "subtract", {"operands": 3, "c": 1.0})
+	_operator(graph, "add", {"operands": 9})
+	_operator(graph, "add", {"d": 1.0})
+	var errors := "\n".join(graph.validate())
+	_check(errors.contains("#1: invalid number of operands") and errors.contains("#2: invalid number of operands") and errors.contains("#3: d is past its operands"), "counts and literals are checked: %s" % errors)
+
+	# The menu: Min and Max are operators, @GlobalScope's min() and max() are gone from it.
+	var found := XREBlueprintActions.flatten(XREBlueprintActions.new().sections({"chip": XREBlueprintActions.ALL, "graph": doc.graph, "query": "max"}))
+	var ids: Array[String] = []
+	for action: Dictionary in found: ids.append(str(action["id"]))
+	_check(ids.has("operator:max") and not ids.has("global:max") and ids.has("global:maxf"), "max is the operator, maxf stays: %s" % [ids])
+	found = XREBlueprintActions.flatten(XREBlueprintActions.new().sections({"chip": XREBlueprintActions.ALL, "graph": doc.graph, "query": "concat"}))
+	_check(found.size() == 1 and found[0]["id"] == "operator:append" and XREBlueprintActions.task_of(found[0]) == "Arithmetic", "Append is found as concat, in Arithmetic")
+
+	# Generated code folds the inputs from the left.
+	graph = XREBlueprintGraph.new()
+	var ten := _operator(graph, "add", {"operands": 4, "a": 1, "b": 2, "c": 3, "d": 4})
+	var joined := _operator(graph, "append", {"operands": 3, "a": "level ", "b": 5, "c": "!"})
+	var smallest := _operator(graph, "min", {"operands": 3, "a": 3, "b": 7, "c": 5})
+	var largest := _operator(graph, "max", {"operands": 3, "a": 3, "b": 7.5, "c": 5})
+	var all := _operator(graph, "and", {"operands": 3, "a": true, "b": true, "c": false})
+	var any := _operator(graph, "or", {"operands": 3, "a": false, "b": false, "c": true})
+	var plain := _operator(graph, "add", {"a": 1, "b": 2})
+	var source := XREBlueprintCompiler.compile(graph)["code"] as String
+	_check(source.contains("\treturn _bp_operate(\"add\", 1, 2, run, %d)\n" % plain), "two inputs compile as before")
+	var instance := Node.new()
+	instance.set_script(_script(graph))
+	_check(instance.call("_bp_value%d" % ten) == 10 and instance.call("_bp_value%d" % joined) == "level 5!", "1 + 2 + 3 + 4 is 10; append makes level 5!")
+	_check(instance.call("_bp_value%d" % smallest) == 3 and is_equal_approx(float(instance.call("_bp_value%d" % largest)), 7.5) and instance.call("_bp_value%d" % smallest) is int, "min of ints is the int 3, max 7.5")
+	_check(instance.call("_bp_value%d" % all) == false and instance.call("_bp_value%d" % any) == true, "true AND true AND false; false OR false OR true")
+	instance.free()
+	graph = XREBlueprintGraph.new()
+	_operator(graph, "add", {"operands": 3, "a": 1, "b": 2, "c": "x"})
+	errors = "\n".join(XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray)
+	_check(errors.contains("Add doesn't take int and String"), "the build names the pair that can't go together: %s" % errors)
+
+
+## Sequence and Switch (D-134): their pins added and removed with wires
+## following them, a case's value, validation, the generated code — a
+## Sequence's next output waits for the chain before it, Delay included —, the
+## three kinds of Switch and a repeated case.
+func _test_sequence_switch() -> void:
+	# Pins: a Sequence's outputs and a Switch's cases, the wires following them.
+	var doc := XREBlueprintDocument.new()
+	var sequence := doc.insert_block(XREBlueprintGraph.make_node(0, "sequence", Vector2.ZERO), Vector2(0, 0))
+	var first := doc.insert_block(XREBlueprintGraph.make_node(0, "branch", Vector2.ZERO), Vector2(400, 0))
+	var second := doc.insert_block(XREBlueprintGraph.make_node(0, "branch", Vector2.ZERO), Vector2(400, 200))
+	_check(doc.graph.ports(doc.graph.find_node(sequence), false).size() == 2 and doc.add_pin(sequence), "a Sequence has Then 0 and Then 1, and takes Then 2")
+	var outputs := doc.graph.ports(doc.graph.find_node(sequence), false)
+	_check(outputs.size() == 3 and outputs[2][0] == "Then 2", "Then 2 is its third output: %s" % [outputs])
+	doc.connect_blocks(sequence, 0, first, 0)
+	doc.connect_blocks(sequence, 2, second, 0)
+	_check(doc.remove_pin(sequence, 1), "Then 1 is removed")
+	var from: Dictionary = {}
+	for edge: Dictionary in doc.graph.edges:
+		if edge["from"] == sequence: from[edge["to"]] = edge["from_port"]
+	_check(from.get(first) == 0 and from.get(second) == 1, "Then 2's wire moved up to Then 1: %s" % [from])
+	_check(not doc.remove_pin(sequence, 0) and doc.last_error.contains("at least"), "two outputs stay")
+	var switch := doc.insert_block(XREBlueprintGraph.make_switch(0, "int", Vector2.ZERO), Vector2(0, 400))
+	_check(XREBlueprintGraph.title(doc.graph.find_node(switch)) == "Switch on Int" and doc.add_pin(switch), "Switch on Int takes a case")
+	var block := doc.graph.find_node(switch)
+	outputs = doc.graph.ports(block, false)
+	_check(block["params"]["case_2"] == 2 and outputs.size() == 4 and outputs[2][0] == "2" and outputs[3][0] == "Default", "the new case is 2, before Default: %s" % [outputs])
+	doc.connect_blocks(switch, 3, second, 0)
+	_check(doc.remove_pin(switch, 0), "case 0 is removed")
+	block = doc.graph.find_node(switch)
+	_check(block["params"]["case_0"] == 1 and block["params"]["case_1"] == 2 and not (block["params"] as Dictionary).has("case_2")
+			and doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == switch and edge["from_port"] == 2 and edge["to"] == second), "the cases moved up; Default's wire follows it")
+	var words := doc.insert_block(XREBlueprintGraph.make_switch(0, "string", Vector2.ZERO), Vector2(0, 600))
+	doc.add_pin(words)
+	_check(doc.graph.find_node(words)["params"]["case_2"] == "case_2" and doc.graph.ports(doc.graph.find_node(words), false)[0][0] == "\"case_0\"", "a String case is a new text, its output in quotes")
+	var mode := doc.insert_block(XREBlueprintGraph.make_switch(0, "enum", Vector2.ZERO, "Node.ProcessMode"), Vector2(0, 800))
+	block = doc.graph.find_node(mode)
+	_check(XREBlueprintGraph.title(block) == "Switch on ProcessMode" and block["params"]["case_1"] == "PROCESS_MODE_PAUSABLE", "Switch on an enumeration names its constants")
+	for count: int in 3: doc.add_pin(mode)
+	_check(XREBlueprintGraph.pin_count(doc.graph.find_node(mode)) == 5 and not XREBlueprintGraph.variable_pins(doc.graph.find_node(mode))["can_add"], "every constant used: no more cases")
+	_check(not doc.set_parameter(mode, "case_0", "NO_SUCH_MODE"), "a name the enumeration hasn't is refused")
+	# A wire from an enumeration's Get makes an Int Switch one on its constants; Default keeps its wire.
+	var process_info: Dictionary = {}
+	for entry: Dictionary in ClassDB.class_get_property_list("Node"):
+		if entry["name"] == "process_mode": process_info = entry
+	var getter: Dictionary = XREBlueprintActions._property_actions(process_info, "Node")[0]["block"]
+	_check(getter.get("property_enum") == "Node.ProcessMode", "Get Process Mode knows its enumeration: %s" % [getter.get("property_enum")])
+	var read := doc.insert_block(getter, Vector2(-400, 1000))
+	var by_number := doc.insert_block(XREBlueprintGraph.make_node(0, "switch", Vector2.ZERO), Vector2(0, 1000))
+	doc.add_pin(by_number)
+	doc.connect_blocks(by_number, 3, second, 0)
+	_check(doc.connect_blocks(read, 0, by_number, 1), "Process Mode is wired into the Int Switch's Selection: %s" % doc.last_error)
+	block = doc.graph.find_node(by_number)
+	_check(block["params"]["on"] == "enum" and block["params"]["enum"] == "Node.ProcessMode" and block["params"]["case_2"] == "PROCESS_MODE_WHEN_PAUSED", "the Switch is on ProcessMode, its three cases its first constants: %s" % [block["params"]])
+	_check(doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == by_number and edge["from_port"] == 3 and edge["to"] == second), "Default keeps its wire")
+	_check((XREBlueprintCompiler.compile(doc.graph)["errors"] as PackedStringArray).is_empty(), "it builds")
+	doc.undo()
+	_check(doc.graph.find_node(by_number)["params"]["on"] == "int", "undo takes the wire and the enumeration back")
+
+	# Validation.
+	var graph := XREBlueprintGraph.new()
+	_block(graph, "sequence", {"outputs": 9})
+	_block(graph, "switch", {"on": "float"})
+	_block(graph, "switch", {"case_1": "one"})
+	_block(graph, "switch", {"case_4": 4})
+	var errors := "\n".join(graph.validate())
+	_check(errors.contains("#1: invalid number of outputs") and errors.contains("#2: a Switch is on int") and errors.contains("#3: case 1 must be int") and errors.contains("#4: case 4 is past"), "pins are checked: %s" % errors)
+	graph = XREBlueprintGraph.new()
+	_block(graph, "ready")
+	_block(graph, "switch", {"case_1": 0})
+	_wire(graph, 1, 2)
+	errors = "\n".join(XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray)
+	_check(errors.contains("case 0 repeats"), "a repeated case is a build error: %s" % errors)
+
+	# The generated code: Then 1 waits for Then 0's Delay; each Switch takes its case.
+	graph = XREBlueprintGraph.new()
+	graph.variables.append_array([{"name": "waited", "value": false}, {"name": "seen", "value": false}, {"name": "done", "value": false}, {"name": "hit", "value": ""}])
+	var ready := _block(graph, "ready")
+	var order := _block(graph, "sequence", {"outputs": 3})
+	var delay := graph.nodes.size() + 1
+	var wait := XREBlueprintGraph.make_node(delay, "delay", Vector2.ZERO)
+	wait["params"]["seconds"] = 0.05
+	graph.nodes.append(wait)
+	var after := _block(graph, "set_variable", {"variable": "waited", "value": true})
+	var reader := _block(graph, "set_variable", {"variable": "seen", "value": false})
+	var waited := _block(graph, "get_variable", {"variable": "waited"})
+	var cases := _block(graph, "sequence", {"outputs": 3})
+	var numbers := graph.nodes.size() + 1
+	graph.nodes.append(XREBlueprintGraph.make_switch(numbers, "int", Vector2.ZERO))
+	(graph.nodes[numbers - 1]["params"] as Dictionary).merge({"selection": 2, "cases": 3, "case_2": 2}, true)
+	var two := _block(graph, "set_variable", {"variable": "hit", "value": "two"})
+	var texts := graph.nodes.size() + 1
+	graph.nodes.append(XREBlueprintGraph.make_switch(texts, "string", Vector2.ZERO))
+	(graph.nodes[texts - 1]["params"] as Dictionary).merge({"selection": "case_1"}, true)
+	var run := _block(graph, "set_variable", {"variable": "hit", "value": "two run"})
+	var modes := graph.nodes.size() + 1
+	graph.nodes.append(XREBlueprintGraph.make_switch(modes, "enum", Vector2.ZERO, "Node.ProcessMode"))
+	(graph.nodes[modes - 1]["params"] as Dictionary).merge({"selection": "PROCESS_MODE_PAUSABLE"}, true)
+	var always := _block(graph, "set_variable", {"variable": "hit", "value": "two run pausable"})
+	var done := _block(graph, "set_variable", {"variable": "done", "value": true})
+	_wire(graph, ready, order)
+	_wire(graph, order, delay, 0)
+	_wire(graph, delay, after)
+	_wire(graph, order, reader, 1)
+	_wire(graph, waited, reader, 0, 1)
+	_wire(graph, order, cases, 2)
+	_wire(graph, cases, numbers, 0)
+	_wire(graph, numbers, two, 2)
+	_wire(graph, cases, texts, 1)
+	_wire(graph, texts, run, 1)
+	_wire(graph, cases, modes, 2)
+	_wire(graph, modes, always, 1)
+	_wire(graph, always, done)
+	var source := XREBlueprintCompiler.compile(graph)["code"] as String
+	_check(source.contains("_bp_sequence(run, %d, [%d, %d, %d])" % [order, delay, reader, cases]) and source.contains("\t\t1:  # PROCESS_MODE_PAUSABLE\n"), "Sequence and Switch compile readably")
+	var scene := Node.new()
+	scene.set_script(_script(graph))
+	root.add_child(scene)
+	await _wait_until(func() -> bool: return scene.get("_bp_var_done") == true)
+	_check(scene.get("_bp_var_seen") == true, "Then 1 ran after Then 0's Delay ended")
+	_check(scene.get("_bp_var_hit") == "two run pausable", "each Switch took its case: %s" % scene.get("_bp_var_hit"))
+	_check((scene.get("_bp_runs") as Array).is_empty(), "the run ended with its stack")
+	scene.queue_free()
+	await process_frame
+
+
+## Break and Make (D-135): the fields of built-in values, of a script class
+## and of an engine class; a wire typing an untyped Break; hiding a field with
+## the wires following; the generated code and its values; a value of another
+## class, a subclass and a field gone from its class.
+func _test_break_make() -> void:
+	var vector := XREBlueprintStructs.describe(TYPE_VECTOR3)
+	_check((vector["fields"] as Array).map(func(field: Dictionary) -> String: return field["name"]) == ["x", "y", "z"], "Vector3 has x, y, z")
+	var color := XREBlueprintStructs.describe(TYPE_COLOR)
+	_check(XREBlueprintStructs.default_hidden(color) == ["h", "s", "v"] and (XREBlueprintStructs.describe(TYPE_COLOR, "", true)["fields"] as Array).size() == 4, "Color's h, s, v start hidden; Make has r, g, b, a only")
+	var transform := XREBlueprintStructs.describe(TYPE_TRANSFORM3D)
+	_check(transform["fields"][0]["type"] == TYPE_BASIS and transform["fields"][1]["name"] == "origin" and XREBlueprintGraph.port_type(TYPE_TRANSFORM3D) == XREBlueprintGraph.TRANSFORM3D, "Transform3D has basis and origin, a port of its own")
+	var stats := XREBlueprintStructs.describe(TYPE_OBJECT, "XREDemoStats")
+	var names: Array = (stats["fields"] as Array).map(func(field: Dictionary) -> String: return field["name"])
+	var hidden := XREBlueprintStructs.default_hidden(stats)
+	_check(names.slice(0, 4) == ["hp", "speed", "title", "_cooldown"] and hidden.has("_cooldown") and hidden.has("resource_name") and not hidden.has("hp"), "a script class's variables, its engine base's properties hidden: %s" % [names])
+	_check(XREBlueprintStructs.can_make(TYPE_OBJECT, "XREDemoStats") and not XREBlueprintStructs.can_make(TYPE_OBJECT, "Node3D") and not XREBlueprintStructs.describe(TYPE_OBJECT, "Node3D").is_empty(), "Make builds a resource, not a node; Break takes an engine class apart")
+	_check((XREBlueprintStructs.describe(TYPE_OBJECT, "XREDemoEliteStats")["fields"] as Array).map(func(field: Dictionary) -> String: return field["name"]).slice(0, 2) == ["shield", "hp"], "a subclass's fields come first, then its base script's")
+
+	# A wire types an untyped Break; hiding a field moves the wires after it.
+	var doc := XREBlueprintDocument.new()
+	var typed := XREBlueprintGraph.new()
+	typed.nodes.append(XREBlueprintGraph.make_node(1, "make", Vector2.ZERO))
+	typed.retype(1, XREBlueprintStructs.describe(TYPE_OBJECT, "XREDemoStats", true))
+	var maker := doc.insert_block(typed.nodes[0], Vector2(0, 0))
+	var split := doc.insert_block(XREBlueprintGraph.make_node(0, "break", Vector2.ZERO), Vector2(300, 0))
+	_check(doc.graph.ports(doc.graph.find_node(split), false).is_empty() and doc.connect_blocks(maker, 0, split, 0), "an untyped Break has no fields; the Make's wire goes into its Target")
+	var block := doc.graph.find_node(split)
+	var outputs := doc.graph.ports(block, false)
+	_check(XREBlueprintGraph.title(block) == "Break XREDemoStats" and outputs.map(func(spec: Array) -> String: return spec[0]) == ["hp", "speed", "title"], "the wire typed it: hp, speed, title shown: %s" % [outputs])
+	var text := doc.insert_block(XREBlueprintGraph.make_operator(0, "append", Vector2.ZERO), Vector2(600, 0))
+	doc.connect_blocks(split, 2, text, 0)
+	_check(doc.set_field_hidden(split, "speed", true), "speed is hidden")
+	_check(doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == split and edge["from_port"] == 1 and edge["to"] == text), "title's wire moved up with it")
+	_check(not doc.set_field_hidden(split, "title", true) and doc.last_error.contains("wire"), "a field with a wire stays")
+	_check(doc.set_field_hidden(split, "speed", false) and doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == split and edge["from_port"] == 2), "shown again, it takes its place back")
+
+	# Generated code: a Make's fields, a Break's, built-in values, another class, a gone field.
+	var graph := XREBlueprintGraph.new()
+	var make_stats := _block(graph, "make")
+	graph.retype(make_stats, XREBlueprintStructs.describe(TYPE_OBJECT, "XREDemoStats", true))
+	(graph.find_node(make_stats)["params"] as Dictionary).merge({"hp": 7, "title": "elf"}, true)
+	var break_stats := _block(graph, "break")
+	_wire(graph, make_stats, break_stats)
+	graph.adopt_structs([])
+	var plus := _operator(graph, "add", {"b": 3})
+	_wire(graph, break_stats, plus, 0, 0)
+	var shout := _operator(graph, "append", {"b": "!"})
+	_wire(graph, break_stats, shout, 2, 0)
+	var make_vector := _block(graph, "make")
+	graph.retype(make_vector, XREBlueprintStructs.describe(TYPE_VECTOR3, "", true))
+	(graph.find_node(make_vector)["params"] as Dictionary).merge({"x": 1.0, "y": 2.0, "z": 3.0}, true)
+	var make_transform := _block(graph, "make")
+	graph.retype(make_transform, XREBlueprintStructs.describe(TYPE_TRANSFORM3D, "", true))
+	# A hidden basis keeps the default's; origin is then the only input.
+	graph.find_node(make_transform)["hidden"] = ["basis"]
+	_wire(graph, make_vector, make_transform, 0, 0)
+	var break_transform := _block(graph, "break")
+	_wire(graph, make_transform, break_transform)
+	graph.adopt_structs([])
+	var break_color := _block(graph, "break")
+	graph.retype(break_color, XREBlueprintStructs.describe(TYPE_COLOR))
+	graph.find_node(break_color)["params"]["value"] = Color(1, 0, 0, 1)
+	graph.find_node(break_color)["hidden"] = []
+	var hue := _operator(graph, "add", {"b": 0.25})
+	_wire(graph, break_color, hue, 4, 0)
+	_check(graph.validate().is_empty(), "a graph of Break and Make is valid: %s" % graph.validate())
+	var source := XREBlueprintCompiler.compile(graph)["code"] as String
+	_check(source.contains("var value := XREDemoStats.new()") and source.contains("value.set(&\"hp\", 7)") and source.contains("var value := Transform3D()") and source.contains("_bp_field(_bp_value%d(run), &\"title\"" % break_stats),
+			"Make and Break read as code")
+	var instance := Node.new()
+	instance.set_script(_script(graph))
+	var problems: Array[String] = []
+	instance.connect(&"blueprint_error", func(_id: int, message: String) -> void: problems.append(message))
+	_check(instance.call("_bp_value%d" % plus) == 10 and instance.call("_bp_value%d" % shout) == "elf!", "Break reads Make's hp 7 and title elf")
+	_check((instance.call("_bp_value%d" % break_transform) as Transform3D).origin == Vector3(1, 2, 3), "Make Transform3D takes its origin from Make Vector3, Break gives it back")
+	_check(is_equal_approx(float(instance.call("_bp_value%d" % hue)), 0.25), "a shown h of red is 0")
+	_check(instance.call("_bp_struct", XREDemoEliteStats.new(), TYPE_OBJECT, "XREDemoStats", null, 9) is XREDemoEliteStats, "a subclass's value is taken apart")
+	_check(instance.call("_bp_struct", RefCounted.new(), TYPE_OBJECT, "XREDemoStats", null, 9) == null, "another class's is not")
+	instance.free()
+	# A field gone from its class: dropped without a wire, kept red with one; the build stops.
+	var stale := graph.find_node(break_stats)
+	(stale["struct"]["fields"] as Array).append({"name": "mana", "type": TYPE_FLOAT, "class_name": ""})
+	(stale["struct"]["fields"] as Array).append({"name": "luck", "type": TYPE_FLOAT, "class_name": ""})
+	var now: Dictionary = XREBlueprintStructs.reconciled(stale, ["mana"])
+	var kept: Array = (now["fields"] as Array).map(func(field: Dictionary) -> String: return field["name"] + ("!" if field.get("missing", false) else ""))
+	_check(kept.has("mana!") and not kept.has("luck") and not kept.has("luck!"), "a gone field with a wire stays, missing; without one it goes: %s" % [kept])
+	stale["struct"] = now
+	var errors := "\n".join(XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray)
+	_check(errors.contains("XREDemoStats has no field mana"), "the build names the gone field: %s" % errors)
+	graph = XREBlueprintGraph.new()
+	_block(graph, "break")
+	errors = "\n".join(XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray)
+	_check(errors.contains("wire its Target"), "an untyped Break says how to type it")
 
 
 func _operator(graph: XREBlueprintGraph, op: String, params: Dictionary = {}) -> int:

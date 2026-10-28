@@ -38,7 +38,11 @@ extends RefCounted
 ## Class of the event's run, a library function's optional last argument.
 const RUN_CLASS := &"XREBlueprintRun"
 ## Argument types a port or a value can carry; TYPE_NIL is Variant.
-const PORT_TYPES: Array[int] = [TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING, TYPE_STRING_NAME, TYPE_NODE_PATH, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_COLOR, TYPE_OBJECT]
+const PORT_TYPES: Array[int] = [TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING, TYPE_STRING_NAME, TYPE_NODE_PATH, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_COLOR, TYPE_OBJECT,
+		TYPE_VECTOR4, TYPE_VECTOR2I, TYPE_VECTOR3I, TYPE_RECT2, TYPE_AABB, TYPE_QUATERNION, TYPE_BASIS, TYPE_TRANSFORM2D, TYPE_TRANSFORM3D, TYPE_PLANE]
+## Argument types a port carries but no literal does (D-135): an object and
+## the compound values Make builds; such an argument is wired.
+const WIRED_TYPES: Array[int] = [TYPE_OBJECT, TYPE_VECTOR4, TYPE_VECTOR2I, TYPE_VECTOR3I, TYPE_RECT2, TYPE_AABB, TYPE_QUATERNION, TYPE_BASIS, TYPE_TRANSFORM2D, TYPE_TRANSFORM3D, TYPE_PLANE]
 ## Parameters of a block that no argument may use as its key.
 const RESERVED_KEYS: Array[String] = ["target", "policy", "signal", "function"]
 ## Labels of a vararg function's extra arguments' keys: value, value_2…
@@ -350,7 +354,7 @@ static func _as_literal(value: Variant) -> Variant:
 static func has_literal(argument: Dictionary) -> bool:
 	if argument.get("run", false) or argument.get("fixed", false) or argument.get("target", false):
 		return false
-	return int(argument["type"]) != TYPE_OBJECT and not str(argument.get("key", "")).is_empty()
+	return not int(argument["type"]) in WIRED_TYPES and not str(argument.get("key", "")).is_empty()
 
 
 ## Parameters a new block of [param signature] starts with.

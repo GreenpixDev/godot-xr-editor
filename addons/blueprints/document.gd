@@ -109,6 +109,7 @@ func open_graph(file_path: String) -> bool:
 	_bound_paths.clear()
 	_select_graph_context(previous_root)
 	refresh_bindings()
+	refresh_structs()
 	changed.emit()
 	_record(&"open_graph")
 	return true
@@ -185,6 +186,7 @@ func build() -> bool:
 	if path.is_empty():
 		return _fail("Save the graph before building it.")
 	refresh_bindings()
+	refresh_structs()
 	var scene_errors := validate_scene()
 	if not scene_errors.is_empty(): return _fail("\n".join(scene_errors))
 	var result := XREBlueprintCompiler.compile(graph)
@@ -379,6 +381,200 @@ func set_extra_arguments(id: int, count: int) -> bool:
 	return commit("Set Arguments", state)
 
 
+## Changes the pins of block [param id] as one edit [param title] (D-132):
+## [param change] edits the block's copy in place, then every wire of the
+## block follows its pin by key — an input by the parameter it falls back to,
+## any other pin by its label — so that its port number may move. A key in
+## [param renames] is the pin's new key; an empty one, or a key the block no
+## longer has, takes the wire away in the same edit.
+func reshape_pins(id: int, change: Callable, renames: Dictionary = {}, title: String = "Change Pins") -> bool:
+	var block := graph.find_node(id)
+	if block.is_empty(): return _fail("The block is missing.")
+	var state := graph.snapshot()
+	var changed: Dictionary = {}
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] != id: continue
+		change.call(entry)
+		changed = entry
+	var candidate := XREBlueprintGraph.new()
+	candidate.restore(state)
+	var inputs := [_pin_keys(graph.ports(block, true)), _pin_keys(candidate.ports(changed, true))]
+	var outputs := [_pin_keys(graph.ports(block, false)), _pin_keys(candidate.ports(changed, false))]
+	var kept: Array = []
+	for edge: Dictionary in state["edges"]:
+		if edge["to"] == id:
+			edge["to_port"] = _follow_pin(int(edge["to_port"]), inputs[0], inputs[1], renames)
+			if edge["to_port"] < 0: continue
+		if edge["from"] == id:
+			edge["from_port"] = _follow_pin(int(edge["from_port"]), outputs[0], outputs[1], renames)
+			if edge["from_port"] < 0: continue
+		kept.append(edge)
+	state["edges"] = kept
+	return commit(title, state)
+
+
+## The key of each pin of [param ports] ([method reshape_pins]): the parameter
+## it falls back to, else its label after "#".
+static func _pin_keys(ports: Array) -> Array[String]:
+	var keys: Array[String] = []
+	for spec: Array in ports:
+		var key: String = spec[2] if spec.size() > 2 else ""
+		keys.append(key if not key.is_empty() else "#" + str(spec[0]))
+	return keys
+
+
+## Where pin [param port] of keys [param before] is among [param after],
+## renamed by [param renames]; -1 when it is gone.
+static func _follow_pin(port: int, before: Array[String], after: Array[String], renames: Dictionary) -> int:
+	if port < 0 or port >= before.size(): return -1
+	var key: String = renames.get(before[port], before[port])
+	return after.find(key) if not key.is_empty() else -1
+
+
+## Adds a pin after the last of block [param id]'s pins that change
+## ([method XREBlueprintGraph.variable_pins]): an operator's input, a
+## Sequence's output, a Switch's case before Default (D-134). One edit.
+func add_pin(id: int) -> bool:
+	var block := graph.find_node(id)
+	var pins := XREBlueprintGraph.variable_pins(block)
+	if pins.is_empty(): return _fail("This block's pins are fixed.")
+	if not pins["can_add"]: return _fail("This block takes no more pins.")
+	match str(block["kind"]):
+		"operator": return add_operand(id)
+		"sequence":
+			var count := XREBlueprintGraph.pin_count(block)
+			var grow := func(entry: Dictionary) -> void: entry["params"]["outputs"] = count + 1
+			return reshape_pins(id, grow, {}, "Add Pin")
+		"switch":
+			var count := XREBlueprintGraph.pin_count(block)
+			var value: Variant = XREBlueprintGraph.next_case(block)
+			var grow := func(entry: Dictionary) -> void:
+				entry["params"]["cases"] = count + 1
+				entry["params"][XREBlueprintGraph.case_key(count)] = value
+			return reshape_pins(id, grow, {}, "Add Pin")
+	return false
+
+
+## Removes pin [param port] — of its side, as [method XREBlueprintGraph.variable_pins]
+## says — of block [param id] with its wire (D-134); the pins after it move
+## up with their values and wires. At least two stay.
+func remove_pin(id: int, port: int) -> bool:
+	var block := graph.find_node(id)
+	var pins := XREBlueprintGraph.variable_pins(block)
+	if pins.is_empty(): return _fail("This block's pins are fixed.")
+	var count: int = pins["count"]
+	if port < 0 or port >= count: return _fail("The block has no such pin.")
+	if count <= XREBlueprintGraph.MIN_PINS: return _fail("A block keeps at least %d pins." % XREBlueprintGraph.MIN_PINS)
+	match str(block["kind"]):
+		"operator": return remove_operand(id, XREBlueprintOperators.OPERAND_KEYS[port])
+		"sequence":
+			var renames := {"#Then %d" % port: ""}
+			for after: int in range(port + 1, count): renames["#Then %d" % after] = "#Then %d" % (after - 1)
+			var shrink := func(entry: Dictionary) -> void: entry["params"]["outputs"] = count - 1
+			return reshape_pins(id, shrink, renames, "Remove Pin")
+		"switch":
+			var renames := {XREBlueprintGraph.case_key(port): ""}
+			for after: int in range(port + 1, count): renames[XREBlueprintGraph.case_key(after)] = XREBlueprintGraph.case_key(after - 1)
+			var shrink := func(entry: Dictionary) -> void:
+				var params: Dictionary = entry["params"]
+				for after: int in range(port, count - 1): params[XREBlueprintGraph.case_key(after)] = params[XREBlueprintGraph.case_key(after + 1)]
+				params.erase(XREBlueprintGraph.case_key(count - 1))
+				params["cases"] = count - 1
+			return reshape_pins(id, shrink, renames, "Remove Pin")
+	return false
+
+
+## Hides or shows field [param name] of Break or Make [param id] (D-135): a
+## pin with a wire stays. One edit; its other wires follow their fields.
+func set_field_hidden(id: int, name: String, hidden: bool) -> bool:
+	var block := graph.find_node(id)
+	if not block.get("kind") in ["break", "make"]: return _fail("Only Break and Make hide fields.")
+	var ports := graph.ports(block, block["kind"] == "make")
+	if hidden:
+		for edge: Dictionary in graph.edges:
+			var port: int = edge["from_port"] if block["kind"] == "break" else edge["to_port"]
+			var mine: bool = edge["from"] == id if block["kind"] == "break" else edge["to"] == id
+			if mine and port < ports.size() and str(ports[port][2]) == name: return _fail("A wire holds this pin.")
+	var change := func(entry: Dictionary) -> void:
+		var names: Array = entry.get("hidden", [])
+		if hidden and not names.has(name): names.append(name)
+		elif not hidden: names.erase(name)
+		entry["hidden"] = names
+	return reshape_pins(id, change, {}, "Hide Field" if hidden else "Show Field")
+
+
+## Brings every Break's and Make's fields to their classes as they are now
+## (D-135), on opening a graph and before building it: no undo step, as the
+## scene bindings ([method refresh_bindings]). A field gone keeps its pin,
+## red, while a wire reads it.
+func refresh_structs() -> void:
+	var state := graph.snapshot()
+	var changed := false
+	for block: Dictionary in state["nodes"]:
+		if not block.get("kind") in ["break", "make"] or (block.get("struct", {}) as Dictionary).is_empty(): continue
+		var wired: Array[String] = []
+		var ports := graph.ports(block, block["kind"] == "make")
+		for edge: Dictionary in graph.edges:
+			if block["kind"] == "break" and edge["from"] == block["id"] and edge["from_port"] < ports.size(): wired.append(str(ports[edge["from_port"]][2]))
+			if block["kind"] == "make" and edge["to"] == block["id"] and edge["to_port"] < ports.size(): wired.append(str(ports[edge["to_port"]][2]))
+		var now: Variant = XREBlueprintStructs.reconciled(block, wired)
+		if now == null or now == block["struct"]: continue
+		block["struct"] = now
+		changed = true
+	if not changed: return
+	var candidate := XREBlueprintGraph.new()
+	candidate.restore(state)
+	if candidate.validate().is_empty(): graph.restore(state)
+
+
+## Adds an operand after the last one of variadic operator block [param id]
+## (D-132). Its literal changes nothing — 0 to add, 1 to multiply, true for
+## AND, false for OR, an empty text to append, the last literal for min and
+## max — in the type of operand A's.
+func add_operand(id: int) -> bool:
+	var block := graph.find_node(id)
+	var op := XREBlueprintGraph.operator_of(block)
+	if block.get("kind") != "operator" or not XREBlueprintOperators.is_variadic(op): return _fail("This block takes no more inputs.")
+	var count := XREBlueprintGraph.operand_count(block)
+	if count >= XREBlueprintOperators.MAX_OPERANDS: return _fail("An operator takes at most %d inputs." % XREBlueprintOperators.MAX_OPERANDS)
+	var params: Dictionary = block["params"]
+	var key: String = XREBlueprintOperators.OPERAND_KEYS[count]
+	var literal: Variant = XREBlueprintOperators.operand_default(op, count)
+	var last: String = XREBlueprintOperators.OPERAND_KEYS[count - 1]
+	if op in ["min", "max"] and params.has(last): literal = params[last]
+	else:
+		var adopted: Variant = XREBlueprintGraph.adopted_literal(op, "a", graph.operand_type(block, "a"), literal)
+		if adopted != null: literal = adopted
+	var change := func(entry: Dictionary) -> void:
+		entry["params"]["operands"] = count + 1
+		entry["params"][key] = literal
+	return reshape_pins(id, change, {}, "Add Pin")
+
+
+## Removes operand [param key] of variadic operator block [param id] with its
+## wire (D-132): the operands after it move up, with their literals and wires.
+## At least two stay.
+func remove_operand(id: int, key: String) -> bool:
+	var block := graph.find_node(id)
+	if block.get("kind") != "operator" or not XREBlueprintOperators.is_variadic(XREBlueprintGraph.operator_of(block)): return _fail("This block's inputs are fixed.")
+	var count := XREBlueprintGraph.operand_count(block)
+	var index := XREBlueprintOperators.OPERAND_KEYS.find(key)
+	if index < 0 or index >= count: return _fail("The block has no input %s." % key.to_upper())
+	if count <= XREBlueprintOperators.MIN_OPERANDS: return _fail("An operator keeps at least %d inputs." % XREBlueprintOperators.MIN_OPERANDS)
+	var keys := XREBlueprintOperators.OPERAND_KEYS
+	var renames := {key: ""}
+	for after: int in range(index + 1, count): renames[keys[after]] = keys[after - 1]
+	var change := func(entry: Dictionary) -> void:
+		var params: Dictionary = entry["params"]
+		for after: int in range(index, count - 1):
+			if params.has(keys[after + 1]): params[keys[after]] = params[keys[after + 1]]
+			else: params.erase(keys[after])
+		params.erase(keys[count - 1])
+		if count - 1 > XREBlueprintOperators.MIN_OPERANDS: params["operands"] = count - 1
+		else: params.erase("operands")
+	return reshape_pins(id, change, renames, "Remove Pin")
+
+
 ## How many ports a call block's shown advanced arguments add after its other inputs.
 static func _advanced_count(block: Dictionary) -> int:
 	var count := 0
@@ -439,7 +635,12 @@ func commit(title: String, state: Dictionary) -> bool:
 	var candidate := XREBlueprintGraph.new()
 	candidate.restore(state)
 	# A wire into an operator's operand: the other's literal takes its type (D-065).
-	if candidate.adopt_operands(graph.edges): state = candidate.snapshot()
+	var adopted := candidate.adopt_operands(graph.edges)
+	# A wire into Break's Target or from Make's Result types the block (D-135).
+	if candidate.adopt_structs(graph.edges): adopted = true
+	# A wire from an enumeration's constant into a Switch's Selection makes it a Switch on it (D-134).
+	if candidate.adopt_enums(graph.edges): adopted = true
+	if adopted: state = candidate.snapshot()
 	var errors := candidate.validate()
 	if not errors.is_empty():
 		return _fail("\n".join(errors))
@@ -908,6 +1109,9 @@ func _reflect(block: Dictionary, host: Node, adjust_default: bool = false) -> vo
 	var info := XREBlueprintSchema.property_info(target, params[property_key])
 	if info.is_empty(): return
 	block["property_type"] = int(info["type"])
+	var enum_path := XREBlueprintSchema.property_enum(target.get_class(), info) if not str(params[property_key]).contains(":") else ""
+	if not enum_path.is_empty(): block["property_enum"] = enum_path
+	else: block.erase("property_enum")
 	var value_key := "value" if block["kind"] in ["get_property", "set_property"] else _typed_key(block, property_key)
 	if adjust_default and params.has(value_key) and not XREBlueprintSchema.accepts(info["type"], typeof(params[value_key])) and XREBlueprintGraph.is_literal(info["value"]): params[value_key] = info["value"]
 
