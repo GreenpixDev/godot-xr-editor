@@ -15,5 +15,19 @@
       "Bash(ya tool ast-index *)",
       "Bash(ast-index *)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "py \"$CLAUDE_PROJECT_DIR/scripts/hooks/gd_check.py\"",
+            "timeout": 70
+          }
+        ]
+      }
+    ]
   }
 }

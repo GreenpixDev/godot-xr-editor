@@ -59,6 +59,8 @@ scripts/test_blueprints.gd        тесты графа, сохранения, u
 scripts/test_blueprint_editor.gd  тест Blueprints внутри редактора: граф, назначение скрипта и история сцены (для check.sh)
 scripts/test_blueprint_vr.gd      тест VR-графа в headless-редакторе с фейковыми контроллерами (для check.sh)
 scripts/shot_blueprint_vr.gd      снимки графа с головы в обычном редакторе с GPU, без XR (D-056): build/shots/*.png
+scripts/hooks/gd_check.py  хук Claude Code после правки `.gd`: `godot --check-only` по файлу, ошибки разбора и типов сразу в ответ (подключён в .claude/settings.json)
+.claude/skills/merge-master/  навык `/merge-master`: слияние ветки в master с перенумерацией D-NNN, проверкой и уборкой
 scripts/xr_extensions.py   расширения OpenXR-рантайма без шлема и без Godot
 scripts/xr_editor.py       запуск редактора: сам выбирает рантайм со шлемом (SteamVR, Meta) или запуск без VR
 scripts/quest.py           автономный шлем по USB (adb): копирует проект, открывает редактор в VR, показывает и пишет лог
