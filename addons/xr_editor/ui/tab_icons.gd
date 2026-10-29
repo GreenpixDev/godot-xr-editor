@@ -43,7 +43,10 @@ stroke-linecap="round"/>"""],
 	&"tokens": ["#4fd0e8", "#1f8fb5", """<g fill="none" stroke="#fff" stroke-width="8"><rect x="22" y="30" width="38" height="24" rx="12"/>
 <rect x="68" y="30" width="38" height="24" rx="12"/><rect x="22" y="74" width="38" height="24" rx="12"/></g>
 <rect x="68" y="74" width="38" height="24" rx="12" fill="#fff"/>"""],
-	&"settings": ["#9aa3b2", "#5c6472", """<g fill="none" stroke="#fff" stroke-linecap="round">
+	# The graph's own functions (D-144): ƒ.
+	&"functions": ["#4fd0e8", "#1f8fb5", """<path d="M86 32Q74 22 64 34L52 96Q48 108 34 102M44 60H82" fill="none" stroke="#fff"
+stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>"""],
+	&"settings": ["#9aa3b2", "#5c6472","""<g fill="none" stroke="#fff" stroke-linecap="round">
 <circle cx="64" cy="64" r="24" stroke-width="8"/><circle cx="64" cy="64" r="8" stroke-width="7"/>
 <path stroke-width="11" d="M92 64H100M36 64H28M64 36V28M64 92V100M83.8 44.2L89.5 38.5M44.2 83.8L38.5 89.5
 M83.8 83.8L89.5 89.5M44.2 44.2L38.5 38.5"/></g>"""],
@@ -73,6 +76,8 @@ const GLYPHS: Dictionary[StringName, String] = {
 	&"pin": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <path d="M46 18H82M54 18V50L36 70H92L74 50V18M64 70V110"/></g>""",
 	&"close": """<path d="M34 34L94 94M94 34L34 94" stroke="#fff" stroke-width="11" stroke-linecap="round"/>""",
+	# Back from a function's body to its graph (docs/blueprint_functions.md).
+	&"back": """<path d="M76 30L42 64L76 98" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>""",
 	# The object's shortcut (D-088): rename, a pencil; a round button's face, to tint.
 	&"rename": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <path d="M28 100L34 76L82 28L100 46L52 94Z"/><path d="M70 40L88 58M66 104H104"/></g>""",

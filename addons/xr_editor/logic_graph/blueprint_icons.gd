@@ -4,8 +4,9 @@ extends RefCounted
 ## Groups and icons of the logic graph's blocks as archetypes draw them
 ## ([constant XREFeatureSettings.NODE_STYLE], D-099). A block with execution
 ## has a header in its group's color: signals red, Set green, flow grey, every
-## other function blue. A pure function has none: its card is framed in its
-## result's type color.
+## other function blue, the graph's own functions teal — their calls, the
+## Entry and Return of their bodies (docs/blueprint_functions.md). A pure
+## function has none: its card is framed in its result's type color.
 ## [br][br]
 ## An icon says what a block does, white on its header's dark circle, or larger in its
 ## result's color on a pure function. The first found of: its function's
@@ -17,9 +18,9 @@ extends RefCounted
 ## 1.5, as the editor's icons are; drawn on rebuilds, never per frame.
 
 ## Groups of the archetypes, by [method group_of].
-enum Group { EVENT, SET, FUNCTION, FLOW, PURE }
+enum Group { EVENT, SET, FUNCTION, FLOW, MINE, PURE }
 ## Header colors of [enum Group]: a deep red for signals, apart from the coral of delete (D-079).
-const HEADS: Array[Color] = [Color("7d2630"), Color("155947"), Color("1f4c80"), Color("3d4450")]
+const HEADS: Array[Color] = [Color("7d2630"), Color("155947"), Color("1f4c80"), Color("3d4450"), Color("1a5c66")]
 ## Faces of a card with a header, a pure function's and an operator's.
 const BODY := Color("161b26")
 const PURE_BODY := Color("131925")
@@ -68,6 +69,11 @@ const GLYPHS: Dictionary[StringName, String] = {
 	&"drawer_open": '<path d="M-4 -2L0 2L4 -2" {S}/>',
 	&"drawer_shut": '<path d="M-2 -4L2 0L-2 4" {S}/>',
 	&"random": '<rect x="-5" y="-5" width="10" height="10" rx="2.5" {S}/><circle cx="-2" cy="-2" r="1" {F}/><circle cx="2" cy="2" r="1" {F}/>',
+	# A function's body (docs/blueprint_functions.md): Entry's arrow into it, Return's out of it.
+	&"entry": '<path d="M-6 0H3M0 -3.5L3.5 0L0 3.5M6 -5.5V5.5" {S}/>',
+	&"return": '<path d="M6 0H-3M0 -3.5L-3.5 0L0 3.5M-6 -5.5V5.5" {S}/>',
+	# A call's body waits (docs/blueprint_functions.md): an hourglass on its header.
+	&"waits": '<path d="M-4 -5.5H4M-4 5.5H4M-3 -5.5C-3 -1 3 1 3 5.5M3 -5.5C3 -1 -3 1 -3 5.5" {S}/>',
 }
 ## Glyphs drawn in their own colors, never tinted.
 const COLORED: Array[StringName] = [&"color", &"dial", &"dice"]
@@ -102,6 +108,7 @@ const KINDS: Dictionary[String, StringName] = {
 	"signal": &"event", "set_property": &"set", "set_variable": &"set",
 	"get_property": &"get", "get_variable": &"get", "branch": &"flow",
 	"sequence": &"flow", "switch": &"flow", "break": &"break", "make": &"make",
+	"entry": &"entry", "return": &"return",
 }
 
 
@@ -111,11 +118,14 @@ static func group_of(block: Dictionary, inputs: Array, outputs: Array) -> Group:
 	var kind := str(block.get("kind", ""))
 	if kind == "signal": return Group.EVENT
 	if kind in ["set_property", "set_variable"]: return Group.SET
+	# A body's ends keep their header when the function is pure: its switch is there.
+	if kind in ["entry", "return"]: return Group.MINE
 	var executes := false
 	for spec: Array in inputs + outputs:
 		if int(spec[1]) == XREBlueprintGraph.EXEC: executes = true
 	if not executes: return Group.PURE
 	if kind in ["branch", "sequence", "switch"] or (kind == "call" and _category(block) == "Flow"): return Group.FLOW
+	if XREBlueprintUserFunctions.is_call(block): return Group.MINE
 	return Group.FUNCTION
 
 

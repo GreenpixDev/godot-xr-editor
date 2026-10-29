@@ -30,8 +30,9 @@ const TICK := 0.01
 ## The groups of the ring, clockwise from the top: Object, always here, dim
 ## without an object (D-096), at the top under the middle of the arc of the
 ## object's other groups (D-097), then the general ones, as
-## [constant XREBlueprintActions.GENERAL_TASKS] names them.
-const ORDER: Array[String] = ["Object", "Arithmetic", "Logic", "Math", "Flow", "Utility", "Events", "Variables"]
+## [constant XREBlueprintActions.GENERAL_TASKS] names them, and last, between
+## Variables and Object, the graph's own functions (docs/blueprint_functions.md).
+const ORDER: Array[String] = ["Object", "Arithmetic", "Logic", "Math", "Flow", "Utility", "Events", "Variables", "Functions"]
 ## The arc of the object's other groups — Move, Look, Sound (D-095, D-096):
 ## its radii, in meters, and the angle of one group on it.
 const BAND_IN := 0.152
@@ -45,6 +46,8 @@ const GROUP_CARDS: Dictionary[String, int] = {"Events": 0, "Move": 1, "Look": 1,
 ## The light edges of the card faces, by [constant XREBlueprintCanvas.CARD_PALETTE]; the Object group's own gray.
 const CARD_EDGES: Array[Color] = [Color("89adff"), Color("7be5b3"), Color("c9a8f2"), Color("a9b4f5"), Color("e5b57b"), Color("e8879b")]
 const OBJECT_EDGE := Color("c8cdd8")
+## Functions' stripe: the teal of their calls.
+const FUNCTIONS_EDGE := Color("6fd3dc")
 const FILL := Color("1d2026", 0.94)
 const FILL_HOT := Color("3b404b", 0.97)
 const DISC_FILL := Color("2b2f38", 0.96)
@@ -366,7 +369,7 @@ func _add_sector(index: int) -> void:
 	var fill := _wedge_mesh(inner + EDGE, outer - EDGE, from + inset, to - inset, Color(FILL, FILL.a * alpha))
 	fill.position.z = 0.0012
 	node.add_child(fill)
-	var color: Color = CARD_EDGES[GROUP_CARDS[title]] if GROUP_CARDS.has(title) else OBJECT_EDGE
+	var color: Color = CARD_EDGES[GROUP_CARDS[title]] if GROUP_CARDS.has(title) else FUNCTIONS_EDGE if title == "Functions" else OBJECT_EDGE
 	var stripe := _wedge_mesh(outer - EDGE - 0.004, outer - EDGE, from + inset, to - inset, Color(color, 0.9 * alpha))
 	stripe.position.z = 0.0016
 	node.add_child(stripe)

@@ -24,8 +24,15 @@ extends Resource
 ## card's header shows in the VR editor's archetypes (D-101), over the
 ## editor's setting; a variable's [code]vr_collapsed[/code] false opens its box's
 ## drawer of components there, shut without it (D-108, D-114). The compiler and GraphEdit ignore them too.
+##
+## Format 4 adds the graph's own functions ([member functions],
+## [XREBlueprintUserFunctions]): each keeps its body's blocks and wires, from
+## an Entry to its Returns. A body is edited as a graph of its own
+## ([method body]) whose edits go back into this one ([method embed]), so
+## that one history covers the file. A call of one is a [code]call[/code]
+## whose function's scope is "local".
 
-const FORMAT_VERSION := 3
+const FORMAT_VERSION := 4
 const MAX_NODES := 256
 ## Most bends one wire keeps (D-081).
 const MAX_BENDS := 16
@@ -83,6 +90,9 @@ const BLOCKS := {
 	"break": {"title": "Break", "in": [["Target", VALUE, ""]], "out": [], "params": {}},
 	"make": {"title": "Make", "in": [], "out": [["Result", VALUE, ""]], "params": {}},
 	"set_variable": {"title": "Set Variable", "in": [["In", EXEC, ""], ["Value", VALUE, "value"]], "out": [["Then", EXEC, ""]], "params": {"variable": "", "value": false}},
+	# A function body's start and ends: their ports are its inputs and outputs ([member function_signature]).
+	"entry": {"title": "Entry", "in": [], "out": [], "params": {}},
+	"return": {"title": "Return", "in": [], "out": [], "params": {}},
 }
 ## Shortcuts that are a configured block of another kind (D-051): On Ready is
 ## On Signal of the host's ready, Boolean a Value, the rest call a function
@@ -112,13 +122,23 @@ const _V2_INPUTS := {"print": ["", "value"], "tween": ["", "value", "target"], "
 @export var vr_placed := false
 @export var vr_workspace := Transform3D.IDENTITY
 @export var vr_center := Vector2.ZERO
+## The graph's own functions (format 4, [XREBlueprintUserFunctions]):
+## [code]{"name", "pure", "inputs", "outputs", "nodes", "edges", "vr_center"}[/code].
+@export var functions: Array[Dictionary] = []
+## Of a function's body ([method body]): its signature, the function without
+## its blocks and wires, which its Entry and Return take their ports from.
+## Empty for a file's graph.
+var function_signature: Dictionary = {}
+## Of a function's body: the graph it belongs to, whose functions its calls call.
+var parent: XREBlueprintGraph
 ## How deep [method operand_type] follows wires back through operators, against a cycle that validation reports.
 var _resolving := 0
 
 
 ## Independent snapshot for undo and dirty-state comparison.
 func snapshot() -> Dictionary:
-	return {"nodes": nodes.duplicate(true), "edges": edges.duplicate(true), "variables": variables.duplicate(true), "host_path": host_path, "scene_path": scene_path, "format_version": format_version, "vr_placed": vr_placed, "vr_workspace": vr_workspace, "vr_center": vr_center}
+	return {"nodes": nodes.duplicate(true), "edges": edges.duplicate(true), "variables": variables.duplicate(true), "host_path": host_path, "scene_path": scene_path, "format_version": format_version, "vr_placed": vr_placed, "vr_workspace": vr_workspace, "vr_center": vr_center,
+			"functions": functions.duplicate(true), "function": function_signature.duplicate(true)}
 
 
 ## Everything a view draws except placement — of blocks, of variables' boxes
@@ -147,7 +167,9 @@ func structure_key() -> Array:
 		shape.erase("vr_position")
 		shape.erase("vr_depth")
 		kept.append(shape)
-	return [blocks, wires, kept, host_path, scene_path, vr_placed, vr_workspace, vr_center]
+	# The functions' signatures (their plates and calls), not their bodies; a body's own.
+	var signatures: Array = functions.map(XREBlueprintUserFunctions.signature_of)
+	return [blocks, wires, kept, host_path, scene_path, vr_placed, vr_workspace, vr_center, signatures, function_signature]
 
 
 ## Applies one complete edit and notifies every view of this resource.
@@ -161,7 +183,65 @@ func restore(state: Dictionary) -> void:
 	vr_placed = state.get("vr_placed", false)
 	vr_workspace = state.get("vr_workspace", Transform3D.IDENTITY)
 	vr_center = state.get("vr_center", Vector2.ZERO)
+	functions.assign((state.get("functions", []) as Array).duplicate(true))
+	function_signature = (state.get("function", {}) as Dictionary).duplicate(true)
 	emit_changed()
+
+
+## The index of function [param name] among [member functions], -1 if there is none.
+func function_index(name: String) -> int:
+	for index: int in functions.size():
+		if functions[index].get("name") == name: return index
+	return -1
+
+
+## Function [param name] of this graph, or of the graph a body belongs to; empty if there is none.
+func find_function(name: String) -> Dictionary:
+	var owner := parent if parent != null else self
+	var index := owner.function_index(name)
+	return owner.functions[index] if index >= 0 else {}
+
+
+## The state of function [param name]'s body as a graph of its own: its blocks,
+## wires and center, this graph's variables, host and placement.
+func body_state(name: String) -> Dictionary:
+	var index := function_index(name)
+	if index < 0: return {}
+	var entry: Dictionary = functions[index]
+	var state := snapshot()
+	state["nodes"] = (entry.get("nodes", []) as Array).duplicate(true)
+	state["edges"] = (entry.get("edges", []) as Array).duplicate(true)
+	state["vr_center"] = entry.get("vr_center", Vector2.ZERO)
+	state["functions"] = []
+	state["function"] = XREBlueprintUserFunctions.signature_of(entry)
+	return state
+
+
+## Function [param name]'s body as a graph of its own, which its views edit:
+## [method embed] puts its edits back. Null if there is no such function.
+func body(name: String) -> XREBlueprintGraph:
+	if function_index(name) < 0: return null
+	var view := XREBlueprintGraph.new()
+	view.parent = self
+	view.restore(body_state(name))
+	return view
+
+
+## This graph's state with [param state], an edit of function [param name]'s
+## body, put back: its blocks, wires and center into the function, what the
+## body shares — variables, host, placement — into the graph.
+func embed(name: String, state: Dictionary) -> Dictionary:
+	var result := snapshot()
+	var index := function_index(name)
+	if index < 0: return result
+	var entry: Dictionary = (result["functions"] as Array)[index]
+	entry["nodes"] = (state["nodes"] as Array).duplicate(true)
+	entry["edges"] = (state["edges"] as Array).duplicate(true)
+	entry["vr_center"] = state.get("vr_center", Vector2.ZERO)
+	result["variables"] = (state.get("variables", result["variables"]) as Array).duplicate(true)
+	for key: String in ["host_path", "scene_path", "vr_placed", "vr_workspace"]:
+		if state.has(key): result[key] = state[key]
+	return result
 
 
 ## Finds a block by its stable integer ID, independent of its screen position.
@@ -222,6 +302,12 @@ static func title(block: Dictionary) -> String:
 				"enum": return "Switch on " + str(params.get("enum", "Enum")).get_slice(".", 1)
 			return "Switch on Int"
 	return str(BLOCKS[kind]["title"]) if BLOCKS.has(kind) else kind
+
+
+## The title of [param block] in this graph: an Entry shows its function's name.
+func title_of(block: Dictionary) -> String:
+	if block.get("kind") == "entry" and not function_signature.is_empty(): return str(function_signature.get("name", "Entry"))
+	return title(block)
 
 
 ## Migrates older files in memory. Saving is explicit and preserves old wires:
@@ -323,6 +409,7 @@ func ports(block: Dictionary, input: bool) -> Array:
 		if not function is Dictionary or not (function as Dictionary).get("args") is Array: return []
 		return (XREBlueprintFunctions.ports(function, int(block.get("property_type", TYPE_NIL)))[0 if input else 1] as Array).duplicate(true)
 	if kind == "operator": return _operator_ports(block, input)
+	if kind in ["entry", "return"]: return XREBlueprintUserFunctions.body_ports(function_signature, kind, input)
 	var result: Array = (BLOCKS[kind]["in" if input else "out"] as Array).duplicate(true)
 	var params: Dictionary = block["params"]
 	if kind == "sequence" and not input:
@@ -443,6 +530,21 @@ static func variable_pins(block: Dictionary) -> Dictionary:
 				free = enum_constants(str(params.get("enum", ""))).keys().any(func(name: Variant) -> bool: return not used.has(name))
 			return {"input": false, "count": count, "can_add": free}
 	return {}
+
+
+## The pins of [param block] that are added and removed, as
+## [method variable_pins] says, with [code]"offset"[/code], how many ports of
+## their side come before them, and [code]"fewest"[/code] it keeps: of a
+## body's Entry the function's inputs, of its Return the outputs, after Then
+## or In, from none ([XREBlueprintUserFunctions]).
+func pins_of(block: Dictionary) -> Dictionary:
+	var kind := str(block.get("kind", ""))
+	if kind in ["entry", "return"] and not function_signature.is_empty():
+		var count := (function_signature.get("inputs" if kind == "entry" else "outputs", []) as Array).size()
+		return {"input": kind == "return", "count": count, "can_add": count < XREBlueprintUserFunctions.MAX_PINS, "offset": 0 if function_signature.get("pure", false) else 1, "fewest": 0}
+	var pins := variable_pins(block)
+	if not pins.is_empty(): pins.merge({"offset": 0, "fewest": MIN_PINS})
+	return pins
 
 
 ## The value a new case of Switch [param block] takes (D-138): the largest
@@ -915,6 +1017,8 @@ func validate() -> PackedStringArray:
 		errors.append("Unsupported graph format: %d." % format_version)
 	if nodes.size() > MAX_NODES:
 		errors.append("A graph can contain at most %d blocks." % MAX_NODES)
+	if function_signature.is_empty(): errors.append_array(XREBlueprintUserFunctions.validate(self))
+	else: errors.append_array(XREBlueprintUserFunctions.validate_body(self))
 	var ids: Dictionary = {}
 	var names: Dictionary = {}
 	for variable: Dictionary in variables:
@@ -938,6 +1042,10 @@ func validate() -> PackedStringArray:
 		ids[id] = true
 		if not kind is String or not BLOCKS.has(kind):
 			errors.append("Block #%s has an unknown kind." % id)
+			continue
+		# An Entry and a Return belong to a function's body; an event doesn't.
+		if kind in ["entry", "return"] and function_signature.is_empty() or kind == "signal" and not function_signature.is_empty():
+			errors.append("Block #%s: %s can't be here." % [id, title(block)])
 			continue
 		if not block.get("position") is Vector2 or not block.get("params") is Dictionary:
 			errors.append("Block #%s has invalid position or parameters." % id)
@@ -976,6 +1084,9 @@ func validate() -> PackedStringArray:
 				errors.append("Block #%s: unknown operator." % id)
 			if key == "variable" and not params[key] is String:
 				errors.append("Block #%s: variable must be an identifier." % id)
+		if kind == "return":
+			for key: String in params:
+				if not is_literal(params[key]): errors.append("Block #%s: invalid %s." % [id, key])
 		if kind == "operator": errors.append_array(_validate_operands(block))
 		if kind in ["sequence", "switch"]: errors.append_array(_validate_pins(block))
 		if kind in ["break", "make"]: errors.append_array(_validate_struct(block))
@@ -1113,10 +1224,17 @@ func _validate_call(block: Dictionary) -> PackedStringArray:
 	var id: int = block["id"]
 	var function: Variant = block.get("function")
 	if not function is Dictionary or not (function as Dictionary).get("args") is Array or not (function as Dictionary).get("name") is String \
-			or str((function as Dictionary)["name"]).is_empty() or not (function as Dictionary).get("scope") in ["method", "static", "global"]:
+			or str((function as Dictionary)["name"]).is_empty() or not (function as Dictionary).get("scope") in ["method", "static", "global", "local"]:
 		errors.append("Block #%d has an invalid function." % id)
 		return errors
 	var signature := function as Dictionary
+	if signature["scope"] == "local":
+		var own := find_function(str(signature["name"]))
+		if own.is_empty():
+			errors.append("Block #%d: there is no function %s." % [id, signature["name"]])
+			return errors
+		if not XREBlueprintUserFunctions.matches(signature, own):
+			errors.append("Block #%d: the call of %s is out of date." % [id, signature["name"]])
 	if not XREBlueprintFunctions.problem(signature).is_empty():
 		errors.append("Block #%d: %s." % [id, XREBlueprintFunctions.problem(signature)])
 	var params: Dictionary = block["params"]

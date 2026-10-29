@@ -9,7 +9,10 @@ extends XREPanelSurface
 ## Blueprint button: filled when the object has a graph, which it opens, and
 ## faint with a plus when it has none, which it creates. In the graph
 ## ([method show_graph]) it holds the graph's name and round buttons: add a
-## block, delete the Blueprint, close the graph. Delete asks once more: the
+## block, delete the Blueprint, close the graph; with a function's body
+## shown, back first and the function's name in place of the object's: it
+## then stands over the body's Entry (D-144), and its trash deletes the
+## function, not the Blueprint (D-145). Delete asks once more: the
 ## first click arms it, red, for [constant ARM_USEC]. A message
 ## ([method show_message]) shows over the pill for [constant MESSAGE_USEC].
 ## [XREBlueprints] places it each frame ([method place], [method float_at]).
@@ -22,9 +25,13 @@ signal add_pressed
 signal delete_pressed
 ## Emitted by × in the graph.
 signal close_pressed
+## Emitted by ‹ while a function's body is shown.
+signal back_pressed
 
 ## The pill, in interface pixels, each [constant PIXEL_SIZE] meters: 23 × 4 cm.
 const SIZE := Vector2(360.0, 64.0)
+## How much wider the pill is with a function's body shown: ‹ and the function's name fit (D-144).
+const BODY_EXTRA := 130.0
 const PIXEL_SIZE := 0.00065
 const BUTTON_SIZE := 44.0
 const GLYPH_SIZE := 26.0
@@ -58,6 +65,7 @@ var _title: Label
 var _add: Button
 var _trash: Button
 var _close: Button
+var _back: Button
 var _graph_name := ""
 var _armed_usec := -1
 var _message: Label3D
@@ -105,6 +113,12 @@ func _init(theme: Theme) -> void:
 	_scene_row.add_child(_blueprint)
 
 	_graph_row = _row(rows)
+	var glyph_px := roundi(GLYPH_SIZE * 1.5)
+	_back = _round_button(_graph_row, "Back to the graph", &"back", glyph_px)
+	_back.pressed.connect(func() -> void:
+		_disarm()
+		back_pressed.emit())
+	_back.visible = false
 	var icon := TextureRect.new()
 	icon.texture = XRETabIcons.tab(&"blueprints", roundi(ICON_SIZE * 1.5))
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -112,7 +126,6 @@ func _init(theme: Theme) -> void:
 	icon.custom_minimum_size = Vector2.ONE * ICON_SIZE
 	_graph_row.add_child(icon)
 	_title = _label(_graph_row, bold)
-	var glyph_px := roundi(GLYPH_SIZE * 1.5)
 	_add = _round_button(_graph_row, "Add block", &"plus", glyph_px)
 	_add.pressed.connect(func() -> void:
 		_disarm()
@@ -182,18 +195,24 @@ func show_scene(object_name: String, has_blueprint: bool) -> void:
 	_disarm()
 	_scene_row.visible = true
 	_graph_row.visible = false
+	if not is_equal_approx(size_px.x, SIZE.x): resize(SIZE, PIXEL_SIZE)
 	_name.text = object_name
 	_blueprint.icon = XRETabIcons.glyph(&"blueprint" if has_blueprint else &"plus", roundi(GLYPH_SIZE * 1.5))
 	_blueprint.tooltip_text = "Open Blueprint" if has_blueprint else "Create Blueprint"
 	_set_styles(_blueprint, _filled_styles if has_blueprint else _faint_styles)
 
 
-## The graph's badge, named [param graph_name]: add a block, delete, close.
-func show_graph(graph_name: String) -> void:
+## The graph's badge, named [param graph_name]: add a block, delete, close;
+## with [param function_name]'s body shown, back first and the function's name.
+func show_graph(graph_name: String, function_name: String = "") -> void:
 	_scene_row.visible = false
 	_graph_row.visible = true
-	_graph_name = graph_name
-	if _armed_usec < 0: _title.text = graph_name
+	_back.visible = not function_name.is_empty()
+	_trash.tooltip_text = "Delete Blueprint" if function_name.is_empty() else "Delete function"
+	_graph_name = graph_name if function_name.is_empty() else "ƒ " + function_name
+	var width := SIZE.x + (0.0 if function_name.is_empty() else BODY_EXTRA)
+	if not is_equal_approx(size_px.x, width): resize(Vector2(width, SIZE.y), PIXEL_SIZE)
+	if _armed_usec < 0: _title.text = _graph_name
 
 
 ## Whether the badge shows the graph's buttons.
@@ -234,6 +253,10 @@ func get_trash_button() -> Button:
 
 func get_close_button() -> Button:
 	return _close
+
+
+func get_back_button() -> Button:
+	return _back
 
 
 ## The leader to the object and the dot on it: [XREBlueprints]'s tests look at them.
@@ -292,7 +315,7 @@ func _trash_pressed() -> void:
 		delete_pressed.emit()
 		return
 	_armed_usec = Time.get_ticks_usec()
-	_title.text = "Delete Blueprint?"
+	_title.text = "Delete Blueprint?" if not _back.visible else "Delete function?"
 	_title.add_theme_color_override(&"font_color", ARMED.lightened(0.35))
 	_set_styles(_trash, _armed_styles)
 

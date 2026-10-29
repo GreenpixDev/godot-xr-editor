@@ -688,9 +688,11 @@ func on_top_surface(hand: XREHand, origin: Vector3, direction: Vector3) -> XREPa
 
 ## Whether a window drawn over everything is shown, as the block palette
 ## (D-086): the rays are drawn over it then (D-090), however it was opened.
-func has_window_on_top() -> bool:
+## A window of tab class [param except] doesn't count: one open all the time
+## the graph is, as Functions (D-144), would put the rays over the cards always.
+func has_window_on_top(except: Script = null) -> bool:
 	for window: XREPanelWindow in _windows:
-		if window.is_on_top() and window.is_shown(): return true
+		if window.is_on_top() and window.is_shown() and (except == null or window.tab.get_script() != except): return true
 	return false
 
 

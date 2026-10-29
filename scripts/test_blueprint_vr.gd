@@ -353,6 +353,7 @@ func _run() -> void:
 	await _test_d125()
 	await _test_d135()
 	await _test_d137()
+	await _test_functions()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -5772,3 +5773,153 @@ func _line_edits(node: Node, found: Array[LineEdit]) -> Array[LineEdit]:
 		_line_edits(child, found)
 	return found
 
+
+
+## The graph's own functions in the headset (docs/blueprint_functions.md), by
+## the right hand's ray and trigger: a call's open button left of its copy
+## shows the body in the graph's place, the badge's ‹ back; the Entry's plus,
+## right, adds an input, the Return's, left, an output; the Entry's pure
+## switch makes the function pure; a plate in the Functions window shows the
+## body too, the plus plate makes a function, the grip takes a call out
+## (D-144); the badge over the Entry goes back where it was entered from; the
+## ring has Functions.
+func _test_functions() -> void:
+	var start := _service.blueprint.history.get_version()
+	await _functions_in_headset()
+	# Whatever step stopped it, the graph is shown and the edits are undone for the tests after it.
+	_service.open_function("")
+	while _service.blueprint.history.get_version() > start and _service.blueprint.history.has_undo(): _service.blueprint.undo()
+	await _frames()
+	_check(_service.blueprint.root.functions.is_empty() and _service.blueprint.opened.is_empty(), "undo takes the function and its call out")
+
+
+func _functions_in_headset() -> void:
+	var blueprint := _service.blueprint
+	var canvas := _service.canvas
+	var name := blueprint.create_function()
+	# Deep in VR, as cards moved by hand are: the body is shown as deep.
+	var call := blueprint.add_function_call(name, Vector2(-900, 900), {}, 0.6)
+	await _frames()
+	var card := _card(call)
+	_check(card != null and card.open != null and (card.copy == null or is_equal_approx(card.open_point.x, card.copy_point.x - XREBlueprintCanvas.SWAP_SHIFT) and is_equal_approx(card.open_point.y, card.copy_point.y))
+			and card.open_point.y > card.height * 0.4, "a call of the graph's function has its open button over it, left of its copy in their row")
+	if card == null or card.open == null: return
+	var front := card.node.global_basis.z.normalized()
+	_aim_from(card.node.global_position, front)
+	await _frames()
+	_check(card.open.visible and card.trash.visible and (card.copy == null or card.copy.visible), "the ray on the call shows the open button with the trash and the copy")
+	_aim_from(card.node.to_global(card.open_point), front)
+	await _frames()
+	_check(card.open.scale.x > 1.0, "the ray takes the open button: it grows")
+	var call_point := canvas.position_from_block(blueprint.graph.find_node(call))
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(blueprint.opened == name and _card(call) == null and _card(1) != null and _card(2) != null, "trigger shows the body: its Entry and Return in the graph's place")
+	var entry_point := canvas.position_from_block(blueprint.graph.find_node(1))
+	_check(entry_point.distance_to(call_point) < 0.001, "the body's Entry stands where its call was, as deep: %s, %s" % [entry_point, call_point])
+	var up := _rig.global_basis.y.normalized()
+	var entry_world := canvas.to_global(canvas.get_block_transform(1).origin)
+	var entry_height := canvas.get_block_size(1).y
+	var window := _panels.find_window(XREBlueprintFunctionsTab)
+	_check(window != null and window.is_on_top(), "the Functions window is open, drawn over the scene and the cards")
+	if window == null: return
+	var under := canvas.to_global(canvas.get_block_transform(1).origin - Vector3.UP * entry_height * 0.5) - up * (XREBlueprints.FUNCTIONS_GAP + window.size_m.y * 0.5)
+	_check(window.global_position.distance_to(under) < 0.01, "the window comes under the body's Entry: %s, %s" % [window.global_position, under])
+	var badge: XREBlueprintBadge = _service.get("_badge")
+	var title: Label = badge.get("_title")
+	_check(badge.get_back_button().visible and title.text == "ƒ " + name, "the badge has ‹ back and the function's name while the body is shown: %s" % title.text)
+	_check(badge.global_position.y > entry_world.y + entry_height * 0.5 and Vector2(badge.global_position.x - entry_world.x, badge.global_position.z - entry_world.z).length() < 0.2,
+			"the badge stands over the Entry, not over the object: %s, %s" % [badge.global_position, entry_world])
+	var entry := _card(1)
+	var ending := _card(2)
+	_check(entry != null and entry.pure_switch != null and entry.pin_plus != null and entry.pin_plus_point.x > 0.0, "the Entry has its pure switch and its plus under its right corner")
+	_check(ending != null and ending.pin_plus != null and ending.pin_plus_point.x < 0.0, "the Return's plus is under its left corner, on its inputs' side")
+	if entry == null or entry.pin_plus == null: return
+	front = entry.node.global_basis.z.normalized()
+	_aim_from(entry.node.global_position, front)
+	await _frames()
+	_aim_from(entry.node.to_global(entry.pin_plus_point), front)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check((blueprint.root.find_function(name)["inputs"] as Array).size() == 1, "trigger on the Entry's plus adds an input")
+	entry = _card(1)
+	if entry == null or entry.pure_switch == null: return
+	_aim_from(entry.node.to_global(entry.pure_point), front)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_check(bool(blueprint.root.find_function(name)["pure"]) and _card(1) != null and _card(1).pure_on, "trigger on the pure switch makes the function pure")
+	# A function's body entered from this one's call: back comes here, as it was shown.
+	var inner := blueprint.create_function()
+	var shown_view := canvas.get_view()
+	var inner_call := blueprint.add_function_call(inner, Vector2(300, 300))
+	await _frames()
+	_service.open_function(inner, canvas.position_from_block(blueprint.graph.find_node(inner_call)), true)
+	await _frames()
+	_check(blueprint.opened == inner, "a call's open button in a body shows the other body")
+	await _click_on(badge, _pixel_of(badge.get_back_button()))
+	_check(blueprint.opened == name and canvas.get_view().is_equal_approx(shown_view), "‹ comes back to the body it was entered from, as it was shown")
+	await _click_on(badge, _pixel_of(badge.get_back_button()))
+	_check(blueprint.opened.is_empty() and _card(call) != null and not badge.get_back_button().visible, "‹ again: the graph")
+	blueprint.undo()
+	blueprint.undo()
+	await _frames()
+	_check(blueprint.root.find_function(inner).is_empty(), "undo takes the inner function out")
+	var plates := _service.plates
+	_check(plates.plate_count() == 1, "the function has a plate in the Functions window")
+	var spot := window.global_position
+	await _click_on(window, _pixel_of(plates.get_plate(name)))
+	_check(blueprint.opened == name, "trigger on the plate shows the body")
+	var over := canvas.to_local(window.global_position + window.global_basis.y.normalized() * (window.size_m.y * 0.5 + XREBlueprints.FUNCTIONS_LIFT))
+	var shown := canvas.position_from_block(blueprint.graph.find_node(1))
+	_check(shown.distance_to(over) < 0.001 and window.global_position.is_equal_approx(spot), "its Entry stands over the window, which stays: %s, %s" % [shown, over])
+	# Another function from the plus plate, then back to the first: the Entry stays where it was.
+	var top := window.global_position + window.global_basis.y.normalized() * window.size_m.y * 0.5
+	await _click_on(window, _pixel_of(plates.get_plus()))
+	await _frames()
+	var second := blueprint.opened
+	_check(blueprint.root.functions.size() == 2 and second != name and canvas.position_from_block(blueprint.graph.find_node(1)).distance_to(shown) < 0.001,
+			"the plus plate makes a function whose Entry stands where the first's did")
+	var grown_top := window.global_position + window.global_basis.y.normalized() * window.size_m.y * 0.5
+	_check(grown_top.distance_to(top) < 0.001 and plates.plate_count() == 2, "the window grows by a plate downward, its top where it was: %s, %s" % [grown_top, top])
+	await _click_on(window, _pixel_of(plates.get_plate(name)))
+	_check(blueprint.opened == name and canvas.position_from_block(blueprint.graph.find_node(1)).distance_to(shown) < 0.001, "the first's plate: its Entry where it was")
+	# The grip on a plate takes a call out into the body shown.
+	var calls := XREBlueprintUserFunctions.count_calls(blueprint.root, second)
+	spot = window.global_position
+	_right.set_pose(&"aim", _pose_at(window, _pixel_of(plates.get_plate(second))), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await _frames()
+	_right.set_input(&"grip", 1.0)
+	await _frames()
+	_right.set_input(&"grip", 0.0)
+	await _frames()
+	_check(XREBlueprintUserFunctions.count_calls(blueprint.root, second) == calls + 1 and window.global_position.is_equal_approx(spot), "the grip on a plate takes a call out, the window stays")
+	# The badge's trash in a body deletes the function, not the Blueprint (D-145).
+	var path := blueprint.path
+	_service.call("_create_from_plates")
+	await _frames()
+	var third := blueprint.opened
+	await _click_on(badge, _pixel_of(badge.get_trash_button()))
+	_check(blueprint.root.find_function(third).size() > 0 and title.text == "Delete function?", "the first click on the body's trash arms it: %s" % title.text)
+	await _click_on(badge, _pixel_of(badge.get_trash_button()))
+	_check(blueprint.root.find_function(third).is_empty() and blueprint.root.functions.size() == 2 and blueprint.opened.is_empty() and _service.is_open() and blueprint.path == path,
+			"the second deletes the function only: the graph is shown, the Blueprint stays")
+	_service.call("_open_from_plates", name)
+	await _frames()
+	await _click_on(badge, _pixel_of(badge.get_trash_button()))
+	await _click_on(badge, _pixel_of(badge.get_trash_button()))
+	_check(not blueprint.root.find_function(name).is_empty() and blueprint.opened.is_empty() and _service.is_open() and blueprint.path == path,
+			"a function with calls stays: back in the graph, where its calls flash")
+	var items: Array[Dictionary] = _service.call("_function_items")
+	_check(items.size() == 4 and str(items[0]["text"]) == "ƒ " + name and items[3]["text"] == "+ Function", "the ring's Functions: a call of each, + Pure function, + Function")
+	_service.call("_create_from_menu", false, canvas.to_global(Vector3(0.3, 0.0, 0.0)))
+	await _frames()
+	_check(blueprint.root.functions.size() == 3 and not blueprint.opened.is_empty() and XREBlueprintUserFunctions.count_calls(blueprint.root, blueprint.opened) == 1,
+			"+ Function from the ring adds its call where the ring was and shows its body")

@@ -34,6 +34,17 @@ var stack: Array[Array] = []
 ## block ID: [code][step, value][/code] (D-139).
 var step := 0
 var snapshots: Dictionary[int, Array] = {}
+## Of a call of one of the graph's own functions: the run of the call, its
+## name and how deep it nests, and the outputs its Return gives, the
+## defaults of their types until then. It shares its caller's Tweens and
+## AnimationPlayers, and dies with it.
+var parent: XREBlueprintRun
+var function := ""
+var depth := 0
+var returned: Array = []
+## Which way out of the function its Return took: 0 for Then, else the place
+## of its output of execution among them, after Then.
+var exit := 0
 
 
 ## Whether block [param id] gave its value in this step already.
@@ -48,7 +59,7 @@ func keep(id: int, value: Variant) -> void:
 
 ## Whether the run may continue: not cancelled, and its host is in the tree.
 func alive() -> bool:
-	return active and is_instance_valid(host) and host.is_inside_tree()
+	return active and is_instance_valid(host) and host.is_inside_tree() and (parent == null or parent.alive())
 
 
 ## The host's scene tree, or null once it left it.

@@ -10,7 +10,8 @@ extends RefCounted
 ## from live reflection.
 ##
 ## A signature is a Dictionary:
-## [code]scope[/code] ("method", "static" or "global"), [code]class[/code],
+## [code]scope[/code] ("method", "static", "global" or "local", a function of
+## the graph itself with its [code]outputs[/code], [XREBlueprintUserFunctions]), [code]class[/code],
 ## [code]name[/code], [code]title[/code], [code]category[/code],
 ## [code]description[/code], [code]keywords[/code], [code]icon[/code] (its
 ## [code]@bp_icon[/code]: the name of a glyph of the headset's cards or a
@@ -385,6 +386,8 @@ static func ports(signature: Dictionary, property_type: int) -> Array:
 	if not signature.get("pure", false):
 		inputs.append(["In", XREBlueprintGraph.EXEC, ""])
 		outputs.append([str(signature.get("then", "Then")), XREBlueprintGraph.EXEC, ""])
+	# Another way into a function of the graph, after In.
+	for key: Variant in signature.get("exec_inputs", []): inputs.append([str(key), XREBlueprintGraph.EXEC, ""])
 	var advanced: Array = []
 	for argument: Dictionary in signature["args"]:
 		if argument.get("run", false) or argument.get("fixed", false) or argument.get("literal", false):
@@ -401,6 +404,10 @@ static func ports(signature: Dictionary, property_type: int) -> Array:
 	for index: int in int(signature.get("extra", 0)):
 		inputs.append([title_of(extra_key(index)), XREBlueprintGraph.VALUE, extra_key(index)])
 	inputs.append_array(advanced)
+	# A call of the graph's own function: an output per output of the function.
+	if signature.get("scope") == "local":
+		for pin: Dictionary in signature.get("outputs", []) as Array: outputs.append([str(pin["key"]), XREBlueprintUserFunctions.pin_category(pin)])
+		return [inputs, outputs]
 	var broken: Array = signature.get("break", [])
 	for label: Variant in broken:
 		outputs.append([str(label), XREBlueprintGraph.NUMBER])

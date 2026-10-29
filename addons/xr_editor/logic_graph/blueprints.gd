@@ -125,6 +125,10 @@ const LINK_HINT := "click: another one  ·  grip: move, let go in the air: a wir
 const LINK_MENU_HINT := "click: a wire again  ·  grip: move"
 ## How long the cards that keep a variable from being deleted flash, in seconds (D-079).
 const FLASH_TIME := 1.5
+## How far above the Functions window's top the Entry of a body opened from it
+## stands, in meters; how far under a body's Entry the window comes (D-144).
+const FUNCTIONS_LIFT := 0.12
+const FUNCTIONS_GAP := 0.06
 ## What of the graph is open for the user, bits of [method _open_inputs]: each
 ## one opened is a change of the headset's history, which undo closes (D-087).
 const _OPEN_GRAPH := 1
@@ -387,6 +391,8 @@ var _drag_distance := 0.6
 var _ghost: Node3D
 ## The ready tokens of the Tokens window ([XREBlueprintTokensTab], D-052).
 var token_tray: XREBlueprintTokenTray
+## The plates of the graph's own functions in the Functions window ([XREBlueprintFunctionsTab], D-144).
+var plates: XREBlueprintPlates
 ## The members of a scene object a wire picks, and the white outline of that object (D-052).
 var _petals: XREBlueprintPetals
 var _petal_outline: XREOutline
@@ -413,6 +419,16 @@ var _copy_source := -1
 var _copy_start := Vector3.ZERO
 ## Where the suggestions or the ring stood whose block is being added (D-093): it goes there without a card; else null.
 var _offered_at: Variant = null
+## Where the body being opened stands, in the canvas's space: the call's or the
+## plate's place it was opened from ([method open_function]), null for its center.
+var _open_at: Variant = null
+## The view a body is shown from when back comes to it ([method go_back]), null for none.
+var _open_view: Variant = null
+## Where back goes (D-144): the graph or the bodies a call's open button was
+## pressed in, the last nearest, each with its view; empty in the file's graph.
+var _trail: Array[Dictionary] = []
+## The Entry of the body shown, which the badge stands over (D-144); -1 in the file's graph.
+var _entry_id := -1
 ## A wire from a petal of the selected object (Create from scene) and the hand that draws it.
 var _member_link: Dictionary = {}
 var _member_hand: XREHand
@@ -455,6 +471,8 @@ var _fade := XREBlueprintFade.new()
 var _focus_targets := PackedVector4Array()
 ## Whether the hands' rays are drawn over everything now.
 var _rays_on_top := false
+## The frame a ray was last on a window drawn over everything.
+var _on_top_frame := -1
 ## How long what the rays were on stays in focus after they left it (D-072).
 var _focus_hold := 0.0
 ## The token the Vector or the Color window edits: [code]{"block", "key", "box", "value", "start"}[/code],
@@ -635,6 +653,12 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	if theme != null: token_tray.theme = theme
 	token_tray.cells_changed.connect(func() -> void: _tray_dirty = true)
 	_forms_home.add_child(token_tray)
+	plates = XREBlueprintPlates.new()
+	if theme != null: plates.theme = theme
+	plates.open_requested.connect(_open_from_plates)
+	plates.create_requested.connect(_create_from_plates)
+	plates.delete_requested.connect(delete_function)
+	_forms_home.add_child(plates)
 	_token_field = LineEdit.new()
 	_token_field.name = "TokenText"
 	_token_field.text_submitted.connect(_token_text_submitted)
@@ -650,8 +674,9 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_badge = XREBlueprintBadge.new(theme)
 	_badge.blueprint_pressed.connect(open_selected)
 	_badge.add_pressed.connect(open_block_menu)
-	_badge.delete_pressed.connect(delete_blueprint)
+	_badge.delete_pressed.connect(_delete_from_badge)
 	_badge.close_pressed.connect(close_graph)
+	_badge.back_pressed.connect(go_back)
 	add_child(_badge)
 	_badge.set_shown(false)
 	for hand: XREHand in [rig.right_hand, rig.left_hand]:
@@ -674,6 +699,7 @@ func _enter_tree() -> void:
 	_root = _document.get_scene_root()
 	blueprint.update_active_scene(_root)
 	blueprint.changed.connect(_schedule_rebuild)
+	blueprint.body_opened.connect(_body_opened)
 	blueprint.operation_recorded.connect(_graph_operation)
 	blueprint.history.version_changed.connect(_graph_history_changed)
 	_graph_version = blueprint.history.get_version()
@@ -706,6 +732,7 @@ func _exit_tree() -> void:
 	save_draft()
 	if blueprint.amend == _link_new_references: blueprint.amend = Callable()
 	blueprint.changed.disconnect(_schedule_rebuild)
+	blueprint.body_opened.disconnect(_body_opened)
 	blueprint.operation_recorded.disconnect(_graph_operation)
 	blueprint.history.version_changed.disconnect(_graph_history_changed)
 	_document.history.replayed.disconnect(_see_inputs)
@@ -727,7 +754,12 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	var head := _rig.camera.global_position
 	var up := _rig.global_basis.y.normalized()
-	if is_instance_valid(_badge_anchor) and _badge_anchor.is_inside_tree():
+	if _workspace.visible and _entry_id >= 0 and canvas.has_block(_entry_id):
+		# A body's badge stands over its Entry, at hand where the body is (D-144).
+		var entry := canvas.get_block_transform(_entry_id).origin + Vector3.UP * canvas.get_block_size(_entry_id).y * 0.5
+		var top := canvas.to_global(entry)
+		_badge.place(top, head, up, maxf(top.distance_to(head) / BADGE_DISTANCE, 1.0))
+	elif is_instance_valid(_badge_anchor) and _badge_anchor.is_inside_tree():
 		# As light icons do (XREIcons), the badge keeps its size in view farther than
 		# BADGE_DISTANCE away, so that its text stays readable (D-043); nearer, it keeps its size.
 		var top := _badge_top()
@@ -775,7 +807,8 @@ func _process(delta: float) -> void:
 	# The rays over an input in use (D-061), over what Front draws over everything (D-075) and over
 	# the block palette, drawn over everything too (D-086): with no card in focus, as from the badge's
 	# plus, it hid the ray on it (D-090) — opened by the graph, or from the launcher's Add block.
-	var rays_on_top := _focused or canvas.is_front_focused() or is_block_palette_shown() or (is_instance_valid(panels) and panels.has_window_on_top())
+	# The Functions window, open with the graph, puts them over it only while a ray is on it (D-144).
+	var rays_on_top := _focused or canvas.is_front_focused() or is_block_palette_shown() or _on_top_frame == Engine.get_process_frames() 			or (is_instance_valid(panels) and panels.has_window_on_top(XREBlueprintFunctionsTab))
 	if rays_on_top != _rays_on_top:
 		_rays_on_top = rays_on_top
 		for hand: XREHand in [_rig.left_hand, _rig.right_hand]: hand.set_on_top(rays_on_top)
@@ -1211,6 +1244,10 @@ func show_graph() -> void:
 	_set_ui_overlay(true)
 	parameters.select_block(-1)
 	_update_tray()
+	_trail.clear()
+	_find_entry()
+	plates.rebuild(blueprint.root, blueprint.opened)
+	_open_plates()
 	_update_selection_fan()
 	_update_badge()
 	_schedule_rebuild()
@@ -1232,6 +1269,7 @@ func close_graph() -> void:
 	close_block_palette()
 	close_parameters()
 	_dismiss_window(XREBlueprintTokensTab, true)
+	_dismiss_window(XREBlueprintFunctionsTab, true)
 	_token_editor.close()
 	_petals.close()
 	_choice.close()
@@ -1469,7 +1507,7 @@ func _free_place(start: Vector3) -> Vector3:
 ## Graph X and Y of workspace point [param point], with its depth.
 func _graph_place(point: Vector3) -> Vector3:
 	var at := canvas.block_position(point)
-	return Vector3(at.x, at.y, point.z)
+	return Vector3(at.x, at.y, canvas.block_depth(point))
 
 
 ## Where a block the menu adds with no card to go beside stands, in the
@@ -1747,7 +1785,7 @@ func _place_group_copy(action: Dictionary, point: Vector3, beside: bool) -> void
 	var edges: Array[Dictionary] = []
 	edges.assign(action["edges"])
 	var offset := canvas.block_position(point) - (source["position"] as Vector2)
-	var depth := point.z - float(source.get("vr_depth", 0.0))
+	var depth := canvas.block_depth(point) - float(source.get("vr_depth", 0.0))
 	if beside:
 		var top := INF
 		var bottom := -INF
@@ -1778,7 +1816,7 @@ func _place_copy(action: Dictionary, point: Vector3, beside: bool) -> void:
 	var block: Dictionary = (action["block"] as Dictionary).duplicate(true)
 	var source := blueprint.graph.find_node(_copy_source)
 	var position := canvas.block_position(point)
-	block["vr_depth"] = point.z
+	block["vr_depth"] = canvas.block_depth(point)
 	if beside and not source.is_empty():
 		var below: Vector2 = source["position"] + Vector2(0, 160)
 		var place := _free_place(Vector3(below.x, below.y, float(source.get("vr_depth", 0.0))))
@@ -2053,7 +2091,7 @@ func paste_clipboard(origin: Vector3, direction: Vector3) -> bool:
 	var local: Vector2 = point
 	var offset := canvas.block_position(Vector3(local.x, local.y, 0.0)) - (first["position"] as Vector2)
 	var no_outer: Array[Dictionary] = []
-	var ids: Array[int] = blueprint.perform(blueprint.paste_blocks.bind(blocks, edges, offset, -float(first.get("vr_depth", 0.0)), "Paste Blocks", no_outer, variables), &"vr_graph")
+	var ids: Array[int] = blueprint.perform(blueprint.paste_blocks.bind(blocks, edges, offset, canvas.block_depth(Vector3.ZERO) - float(first.get("vr_depth", 0.0)), "Paste Blocks", no_outer, variables), &"vr_graph")
 	if ids.is_empty():
 		_message(blueprint.last_error)
 		return false
@@ -2334,6 +2372,96 @@ func switch_heading(id: int) -> void:
 ## Adds a pin after the last that changes of block [param id] — an
 ## operator's input, a Sequence's output, a Switch's case (D-137, D-138): the
 ## plus under its corner on that side. One edit of the graph, which A undoes.
+## Shows function [param name]'s body in place of the graph, an empty name
+## the file's graph again (docs/blueprint_functions.md, Function view Enter).
+## The body stands where it was opened from: centered on [param at], the
+## call's or the plate's place in the canvas's space, null for the graph's center.
+## [param enter], from a call: back ([method go_back]) comes to the graph shown
+## now, and the Functions window comes under the body's Entry (D-144).
+func open_function(name: String, at: Variant = null, enter: bool = false) -> void:
+	cancel_connection()
+	var from := blueprint.opened
+	var view := canvas.get_view()
+	_open_at = at
+	var opened: bool = blueprint.perform(blueprint.open_function.bind(name), &"vr_graph")
+	_open_at = null
+	if not opened:
+		_message(blueprint.last_error)
+		return
+	if name.is_empty(): _trail.clear()
+	elif enter and from != name:
+		_trail.append({"name": from, "view": view})
+		_plates_under_entry()
+
+
+## The badge's trash (D-145): in a body, the badge is the function's, and so is
+## the trash — it deletes the function and goes back where it was entered from;
+## a function with calls stays, and back its calls flash where they are, as
+## from its plate. In the file's graph it deletes the Blueprint.
+func _delete_from_badge() -> void:
+	var name := blueprint.opened
+	if name.is_empty():
+		delete_blueprint()
+		return
+	if XREBlueprintUserFunctions.count_calls(blueprint.root, name) > 0:
+		go_back()
+		delete_function(name)
+		return
+	if not blueprint.perform(blueprint.delete_function.bind(name), &"vr_graph"):
+		_message(blueprint.last_error)
+		return
+	# The document shows the file's graph once the body is gone.
+	go_back()
+	_message("Deleted function %s." % name)
+
+
+## Keeps the Entry of the body shown, -1 in the file's graph.
+func _find_entry() -> void:
+	_entry_id = -1
+	if blueprint.opened.is_empty(): return
+	for block: Dictionary in blueprint.graph.nodes:
+		if block["kind"] == "entry": _entry_id = block["id"]
+
+
+## ‹ on the badge (D-144): back to the graph or the body whose call opened the
+## one shown, as it was shown; with none, the file's graph.
+func go_back() -> void:
+	while not _trail.is_empty():
+		var last: Dictionary = _trail.pop_back()
+		var name := str(last["name"])
+		if name == blueprint.opened or (not name.is_empty() and blueprint.root.find_function(name).is_empty()): continue
+		_open_view = last["view"] if not name.is_empty() else null
+		open_function(name)
+		_open_view = null
+		return
+	open_function("")
+
+
+## The views show another graph, a body or the file's (docs/blueprint_functions.md),
+## opened here or by an undo: nothing of the last one stays picked; a body stands
+## where it was opened from, or as it was shown when back comes to it; the file's
+## graph where it always is.
+func _body_opened(name: String) -> void:
+	_target_pick = -1
+	_selected = -1
+	_selected_blocks.clear()
+	if not name.is_empty() and _open_view is Vector3: canvas.set_view(_open_view)
+	elif not name.is_empty() and _open_at is Vector3: canvas.center_at(blueprint.graph, _open_at)
+	else: canvas.center_graph(blueprint.graph)
+	_find_entry()
+	plates.rebuild(blueprint.root, blueprint.opened)
+	if not _workspace.visible: return
+	canvas.rebuild(blueprint.graph)
+	_update_selection_fan()
+	_update_badge()
+
+
+## Makes the function whose body is shown pure, or not (docs/blueprint_functions.md).
+func set_function_pure(pure: bool) -> void:
+	if blueprint.opened.is_empty(): return
+	if not blueprint.perform(blueprint.set_function_pure.bind(blueprint.opened, pure), &"vr_graph"): _message(blueprint.last_error)
+
+
 func add_pin(id: int) -> void:
 	if not blueprint.perform(blueprint.add_pin.bind(id), &"vr_graph"): _message(blueprint.last_error)
 
@@ -2705,10 +2833,13 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	# windows, which covered them and took the ray, they take it first.
 	var fan_first := _workspace.visible and is_focused() and (_choice.is_open() or (_petals.is_open() and (_petal_block >= 0 or _petal_dynamic)))
 	if fan_first and _point_at_petals(pointer, origin, direction, 5.0, delta): return
+	# The Functions window is drawn over everything, and its grip takes a call out before the panels move it (D-144).
+	if _workspace.visible and not (pointer.surface != null and pointer.surface.is_pressed()) and _take_from_plates(pointer, origin, direction): return
 	# A window of the panels drawn over everything, as the block palette (D-086), is the
 	# panels' from the next frame, however near the cards in front of it; the keyboard, over it, stays.
 	if _workspace.visible and is_instance_valid(panels) and not (pointer.surface != null and pointer.surface.is_pressed()) \
 			and not (_keyboard.is_shown() and _keyboard.intersect_ray(origin, direction, INF) >= 0) and panels.on_top_surface(hand, origin, direction) != null:
+		_on_top_frame = Engine.get_process_frames()
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
 		_leave(pointer)
 		hand.unclaim(self)
@@ -3082,6 +3213,8 @@ func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance:
 	if hand.grip_pressed and touch_block(hand) >= 0: return true
 	for pointer: Pointer in _pointers:
 		if pointer.hand == hand and (pointer.carried != null or not pointer.pull.is_empty() or not pointer.token_key.is_empty() or not pointer.token_box.is_empty()): return true
+	# The grip on a plate of the Functions window takes a call out, not the window (D-144).
+	if _workspace.visible and hand.grip_pressed and not _plate_under(origin, direction).is_empty(): return true
 	if on_top: return false
 	for pointer: Pointer in _pointers:
 		# A link button, or a wire that may become a link, nearer than the panel (D-074).
@@ -3110,7 +3243,8 @@ func _selection_changed() -> void:
 
 ## The badge (D-085): in the scene, over the one selected object, with its
 ## Blueprint button; in the graph, over the graph's object, with the graph's
-## buttons, drawn over everything — or over the graph, if no object has it.
+## buttons, drawn over everything — or over the graph, if no object has it;
+## with a function's body shown, over its Entry, named as the function (D-144).
 ## With the object's shortcut on, the scene has no badge: the shortcut's
 ## Blueprint takes its place (D-088).
 func _update_badge() -> void:
@@ -3124,7 +3258,7 @@ func _update_badge() -> void:
 	if _badge_anchor != null: _collect_badge_geometry(_badge_anchor)
 	if graph:
 		var title := str(object.name) if is_instance_valid(object) else blueprint.path.get_file().get_basename()
-		_badge.show_graph(title if not title.is_empty() else "Untitled")
+		_badge.show_graph(title if not title.is_empty() else "Untitled", blueprint.opened)
 	elif selected != null:
 		_badge.show_scene(str(selected.name), related_host(selected) != null)
 	_badge.set_on_top(graph)
@@ -3363,6 +3497,7 @@ func _rebuild() -> void:
 	_cancel_bends()
 	# A move or its undo keeps every card: rebuilding them all hitches on the headset.
 	if not canvas.sync_placement(blueprint.graph): canvas.rebuild(blueprint.graph)
+	plates.rebuild(blueprint.root, blueprint.opened)
 	_rebuild_target_wires()
 	if _target_pick >= 0 and blueprint.graph.find_node(_target_pick).is_empty(): _target_pick = -1
 	if _pending_id >= 0:
@@ -3515,12 +3650,27 @@ func _show_palette() -> void:
 		var items: Array[Dictionary] = []
 		for action: Dictionary in tasks[task]: items.append({"text": action["title"], "action": action, "origin": "ring", "enabled": true})
 		groups[task] = items
+	groups["Functions"] = _function_items()
 	_use_choice(_ring)
 	# The object's groups on the arc are those it has whatever the wire (D-095): the ring keeps its shape for the object.
 	var context := block_menu.menu_context()
 	_ring.open_ring(canvas, _choice_anchor, _rig.camera.global_position, _rig.global_basis.y, groups, {"text": "Search…", "list": true, "enabled": true},
 			block_menu.actions.object_tasks(context), str(context.get("label", "")))
 	_choice_menu = true
+
+
+## The Functions group of the ring (docs/blueprint_functions.md): a call of each
+## of the graph's functions, then + Pure function and + Function, nearest the ring.
+func _function_items() -> Array[Dictionary]:
+	var items: Array[Dictionary] = []
+	var awaits := XREBlueprintUserFunctions.awaiting(blueprint.root.snapshot())
+	for entry: Dictionary in blueprint.root.functions:
+		var name := str(entry["name"])
+		var action := XREBlueprintActions._call_action("function:" + name, XREBlueprintUserFunctions.call_signature(entry, awaits.get(name, false)), "Functions")
+		items.append({"text": "ƒ " + name, "action": action, "origin": "ring", "enabled": true})
+	items.append({"text": "+ Pure function", "create": true, "pure": true, "enabled": true})
+	items.append({"text": "+ Function", "create": true, "pure": false, "enabled": true})
+	return items
 
 
 ## Makes [param fan] the choice at a point in use, closing the other (D-093); it is not the block menu's until that says so.
@@ -3541,6 +3691,11 @@ func _choose_offered(item: Dictionary) -> void:
 	# Where More… or Search… was clicked: the ring or the window opens there (D-094).
 	var at := _choice.item_position(item)
 	_choice.close()
+	# A new function from the ring's Functions, its call where the ring was (docs/blueprint_functions.md).
+	if item.has("create"):
+		_choice_menu = false
+		_create_from_menu(bool(item["pure"]), at)
+		return
 	if item.has("more") and _document.features.get_value(XREFeatureSettings.BLOCK_PALETTE) == XREFeatureSettings.RING:
 		_choice_anchor = at
 		_show_palette()
@@ -4032,7 +4187,7 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 	pointer.focus = id
 	if pointer.brushing: _brush_block(pointer, id)
 	canvas.hover_actions(id, canvas.get_hit_plus(), canvas.get_hit_delete(), right, canvas.get_hit_port(), canvas.get_hit_input(), canvas.get_hit_edge() if _pending_id < 0 else -1, false, canvas.get_hit_copy(), canvas.get_hit_swap(),
-			canvas.get_hit_pin_plus(), canvas.get_hit_pin_mark(), canvas.get_hit_pin_row())
+			canvas.get_hit_pin_plus(), canvas.get_hit_pin_mark(), canvas.get_hit_pin_row(), canvas.get_hit_open(), canvas.get_hit_pure())
 	canvas.hover_socket(id, socket, right)
 	var link := canvas.get_hit_link() if kind == XREBlueprintCanvas.LINK else {}
 	_update_link_button(pointer, id, kind, link, origin + direction * hit)
@@ -4070,6 +4225,11 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		if canvas.get_hit_plus(): _show_block_palette(id)
 		elif canvas.get_hit_delete(): delete_block(id)
 		elif canvas.get_hit_copy(): _start_copy(id, hand, origin + direction * hit)
+		elif canvas.get_hit_open():
+			# Its Entry takes the call's place, as deep: where the block is, not where its card turned to.
+			var call := blueprint.graph.find_node(id)
+			open_function(str((call["function"] as Dictionary)["name"]), canvas.position_from_block(call), true)
+		elif canvas.get_hit_pure(): set_function_pure(not bool(blueprint.graph.function_signature.get("pure", false)))
 		elif canvas.get_hit_swap(): switch_heading(id)
 		elif canvas.get_hit_pin_plus(): add_pin(id)
 		elif canvas.get_hit_pin_mark() >= 0 and blueprint.graph.find_node(id).get("kind") in ["break", "make"]: hide_field(id, canvas.get_hit_pin_mark())
@@ -5566,6 +5726,125 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 				_message("Press trigger on the Variable of a Get or Set Variable.")
 
 
+## The window that shows the functions' plates, or null while it is closed (D-144).
+func _plates_window() -> XREPanelSurface:
+	if not XREBlueprintFunctionsTab in _open_windows or not plates.is_inside_tree(): return null
+	return plates.get_viewport().get_parent() as XREPanelSurface
+
+
+## The grip on a function's plate in the Functions window takes a call of it
+## out into the graph shown, held as a card is (D-144). The trigger is the
+## panels': a plate is a button ([method _open_from_plates]).
+func _take_from_plates(pointer: Pointer, origin: Vector3, direction: Vector3) -> bool:
+	if not pointer.hand.grip_pressed: return false
+	var name := _plate_under(origin, direction)
+	if name.is_empty(): return false
+	_leave(pointer)
+	_take_call(pointer, name, _plates_window().pixel_to_global(_plates_window().get_hit_pixel()))
+	return true
+
+
+## The function of the plate in the Functions window under the ray, or empty.
+func _plate_under(origin: Vector3, direction: Vector3) -> String:
+	var window := _plates_window()
+	if window == null or window.intersect_ray(origin, direction, XREPanels.POINT_DISTANCE) < 0: return ""
+	return plates.plate_at(window.get_hit_pixel())
+
+
+## Over the Functions window, in the canvas's space: where the Entry of a body
+## opened from it stands, in one place whichever function it is; null while the
+## window is closed.
+func _over_plates() -> Variant:
+	var window := _plates_window()
+	if window == null: return null
+	var up := window.global_basis.y.normalized()
+	return canvas.to_local(window.global_position + up * (window.size_m.y * 0.5 + FUNCTIONS_LIFT))
+
+
+## The trigger on a plate shows its function's body over the window.
+func _open_from_plates(name: String) -> void:
+	open_function(name, _over_plates())
+
+
+## The plus plate makes a function and shows its body over the window.
+func _create_from_plates() -> void:
+	create_function(false, _over_plates())
+
+
+## Opens the Functions window with the graph (D-144): beside where the graph's
+## toolbar was, right of it; a window open already stays where it is.
+func _open_plates() -> void:
+	if XREBlueprintFunctionsTab in _open_windows: return
+	var point := _floating_ui.global_transform * Vector3(0.75, -0.2, 0.05)
+	_request_window(XREBlueprintFunctionsTab, Transform3D(XREPanels.facing(point, _rig.camera.global_position, _rig.global_basis.y), point))
+
+
+## Brings the Functions window under the Entry of the body shown, as a body
+## opened from a call is shown in the call's place (D-144).
+func _plates_under_entry() -> void:
+	if _entry_id < 0 or not canvas.has_block(_entry_id): return
+	var window := _plates_window()
+	var height := window.size_m.y if window != null else plates.window_size().y * XREPanels.WINDOW_PIXEL_SIZE
+	var up := _rig.global_basis.y.normalized()
+	var bottom := canvas.to_global(canvas.get_block_transform(_entry_id).origin - Vector3.UP * canvas.get_block_size(_entry_id).y * 0.5)
+	var point := bottom - up * (FUNCTIONS_GAP + height * 0.5)
+	_request_window(XREBlueprintFunctionsTab, Transform3D(XREPanels.facing(point, _rig.camera.global_position, up), point))
+
+
+## A call of function [param name] where the hand takes it from its plate, in
+## the hand to put down as a card is held.
+func _take_call(pointer: Pointer, name: String, point: Vector3) -> void:
+	cancel_connection()
+	var local := canvas.to_local(point)
+	var id: int = blueprint.perform(blueprint.add_function_call.bind(name, canvas.block_position(local), {}, canvas.block_depth(local)), &"vr_graph")
+	if id < 0:
+		_message(blueprint.last_error)
+		return
+	canvas.rebuild(blueprint.graph)
+	_start_hold(pointer, canvas, id, point)
+
+
+## A new function of the graph, its body shown at once, centered on [param at]
+## (docs/blueprint_functions.md).
+func create_function(pure: bool = false, at: Variant = null) -> void:
+	var name: String = blueprint.perform(blueprint.create_function.bind(pure), &"vr_graph")
+	if name.is_empty():
+		_message(blueprint.last_error)
+		return
+	open_function(name, at)
+
+
+## + Function or + Pure function in the ring: a new function and its call where
+## the ring was, wired to the wire the ring was opened from as any block from it
+## is; then its body, on the call's place.
+func _create_from_menu(pure: bool, at: Vector3) -> void:
+	var name: String = blueprint.perform(blueprint.create_function.bind(pure), &"vr_panel")
+	if name.is_empty():
+		_message(blueprint.last_error)
+		return
+	var entry := blueprint.root.find_function(name)
+	var action := XREBlueprintActions._call_action("function:" + name, XREBlueprintUserFunctions.call_signature(entry, false), "Functions")
+	action["origin"] = "ring"
+	_offered_at = at
+	_add_from_menu(action)
+	_offered_at = null
+	var call := {}
+	for block: Dictionary in blueprint.graph.nodes:
+		if XREBlueprintUserFunctions.is_call(block, name): call = block
+	open_function(name, canvas.position_from_block(call) if not call.is_empty() else null, true)
+
+
+## Deletes function [param name]; one with calls stays, its calls flash.
+func delete_function(name: String) -> void:
+	if blueprint.perform(blueprint.delete_function.bind(name), &"vr_graph"): return
+	_message(blueprint.last_error)
+	var calls: Array[int] = []
+	for block: Dictionary in blueprint.graph.nodes:
+		if XREBlueprintUserFunctions.is_call(block, name): calls.append(block["id"])
+	canvas.flash_cards(calls)
+	get_tree().create_timer(FLASH_TIME).timeout.connect(func() -> void: if is_instance_valid(canvas): canvas.flash_cards(calls, false))
+
+
 ## A Variable wire from block [param id]'s socket to the box of [param variable], as one edit.
 func _wire_variable(id: int, variable: String) -> void:
 	var block := blueprint.graph.find_node(id)
@@ -5724,7 +6003,7 @@ func _add_new_variable(edit: Dictionary, text: String) -> void:
 		_message("A variable needs a new name of letters, digits and _.")
 		return
 	var at: Vector3 = edit["at"]
-	var place := {"vr_position": canvas.block_position(at), "vr_depth": at.z}
+	var place := {"vr_position": canvas.box_position(at), "vr_depth": at.z}
 	var wire: Dictionary = edit["wire"]
 	if not wire.is_empty():
 		var added := {"name": variable, "value": value}
@@ -6113,7 +6392,7 @@ func _create_member_block(kind: String) -> void:
 	var key := XREBlueprintTokens.member_key(block)
 	if not key.is_empty() and not str(item["member"]).is_empty(): block["params"][key] = item["member"]
 	if item.get("anchor") is Vector3: block["vr_anchor"] = item["anchor"]
-	block["vr_depth"] = _choice_point.z
+	block["vr_depth"] = canvas.block_depth(_choice_point)
 	canvas.turn_to_head(block, _choice_point)
 	var id: int = blueprint.perform(blueprint.insert_block.bind(block, canvas.block_position(_choice_point), {}, item["node"] as Node, "Create From Scene"), &"vr_graph")
 	cancel_connection()

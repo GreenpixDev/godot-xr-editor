@@ -4,6 +4,9 @@ extends RefCounted
 ## Standalone graph document and the only bridge to scene/editor mutations (D-021).
 
 signal changed
+## The graph the views show changed to a function's body, [param name], or back
+## to the file's graph, an empty name ([method open_function]).
+signal body_opened(name: String)
 ## Compatible telemetry boundary for the future XR view of this graph.
 signal operation_recorded(operation: StringName, source: StringName, time_usec: int)
 
@@ -19,7 +22,13 @@ var operation_source: StringName = &"desktop_graph"
 ## (D-077). Empty for none.
 var amend := Callable()
 
+## The graph the views show and edit: the file's, [member root], or one of its
+## functions' bodies ([method open_function]), whose edits go into the file's.
 var graph := XREBlueprintGraph.new()
+## The file's graph, with its functions; one history covers all of it.
+var root := graph
+## The function whose body [member graph] is, empty for the file's graph.
+var opened := ""
 var path := ""
 var history := UndoRedo.new()
 var last_error := ""
@@ -75,6 +84,7 @@ func _notification(what: int) -> void:
 
 ## Starts an empty document. The view must resolve unsaved edits before calling.
 func new_graph() -> void:
+	_show("")
 	history.clear_history()
 	graph.format_version = XREBlueprintGraph.FORMAT_VERSION
 	path = ""
@@ -99,6 +109,7 @@ func open_graph(file_path: String) -> bool:
 	var errors := loaded.validate()
 	if not errors.is_empty():
 		return _fail("\n".join(errors))
+	_show("")
 	history.clear_history()
 	graph.format_version = loaded.format_version
 	path = file_path
@@ -117,7 +128,7 @@ func open_graph(file_path: String) -> bool:
 
 ## True after an edit that has not been saved, including after undoing a saved edit.
 func is_dirty() -> bool:
-	return graph.snapshot() != _saved_state
+	return root.snapshot() != _saved_state
 
 
 ## Takes the graph as it is now for saved, its history starting here: a new
@@ -125,18 +136,18 @@ func is_dirty() -> bool:
 ## is changed (D-063).
 func mark_saved() -> void:
 	history.clear_history()
-	_saved_state = graph.snapshot()
+	_saved_state = root.snapshot()
 
 
 ## Saves the source even when it is incomplete. Compilation is a separate operation.
 func save_graph(file_path: String) -> bool:
 	if not file_path.begins_with("res://") or file_path.get_extension() != "tres":
 		return _fail("Save the graph as a .tres file inside the project.")
-	var error := ResourceSaver.save(graph, file_path)
+	var error := ResourceSaver.save(root, file_path)
 	if error != OK:
 		return _fail("Could not save graph: %s." % error_string(error))
 	path = file_path
-	_saved_state = graph.snapshot()
+	_saved_state = root.snapshot()
 	if Engine.is_editor_hint(): EditorInterface.get_resource_filesystem().update_file(file_path)
 	changed.emit()
 	_record(&"save_graph")
@@ -145,7 +156,7 @@ func save_graph(file_path: String) -> bool:
 
 ## Preserves unnamed work when the editor's Save All / Save and Quit cannot show a file picker.
 func save_recovery(recovery_path: String = RECOVERY_PATH) -> bool:
-	var error := ResourceSaver.save(graph, recovery_path)
+	var error := ResourceSaver.save(root, recovery_path)
 	if error != OK:
 		return _fail("Could not save the unnamed graph: %s." % error_string(error))
 	return true
@@ -160,6 +171,7 @@ func recover(recovery_path: String = RECOVERY_PATH) -> bool:
 		return false
 	draft.upgrade()
 	if not draft.validate().is_empty(): return false
+	_show("")
 	history.clear_history()
 	path = ""
 	_saved_state = {}
@@ -189,7 +201,7 @@ func build() -> bool:
 	refresh_structs()
 	var scene_errors := validate_scene()
 	if not scene_errors.is_empty(): return _fail("\n".join(scene_errors))
-	var result := XREBlueprintCompiler.compile(graph)
+	var result := XREBlueprintCompiler.compile(root)
 	var errors: PackedStringArray = result["errors"]
 	if not errors.is_empty():
 		return _fail("\n".join(errors))
@@ -436,10 +448,12 @@ static func _follow_pin(port: int, before: Array[String], after: Array[String], 
 ## Sequence's output, a Switch's case before Default (D-138). One edit.
 func add_pin(id: int) -> bool:
 	var block := graph.find_node(id)
-	var pins := XREBlueprintGraph.variable_pins(block)
+	var pins := graph.pins_of(block)
 	if pins.is_empty(): return _fail("This block's pins are fixed.")
 	if not pins["can_add"]: return _fail("This block takes no more pins.")
 	match str(block["kind"]):
+		# A body's Entry adds an input of its function, its Return an output.
+		"entry", "return": return not add_function_pin(opened, block["kind"] == "entry").is_empty()
 		"operator": return add_operand(id)
 		"sequence":
 			var count := XREBlueprintGraph.pin_count(block)
@@ -460,12 +474,16 @@ func add_pin(id: int) -> bool:
 ## up with their values and wires. At least two stay.
 func remove_pin(id: int, port: int) -> bool:
 	var block := graph.find_node(id)
-	var pins := XREBlueprintGraph.variable_pins(block)
+	var pins := graph.pins_of(block)
 	if pins.is_empty(): return _fail("This block's pins are fixed.")
 	var count: int = pins["count"]
 	if port < 0 or port >= count: return _fail("The block has no such pin.")
-	if count <= XREBlueprintGraph.MIN_PINS: return _fail("A block keeps at least %d pins." % XREBlueprintGraph.MIN_PINS)
+	if count <= int(pins["fewest"]): return _fail("A block keeps at least %d pins." % pins["fewest"])
 	match str(block["kind"]):
+		"entry", "return":
+			var input: bool = block["kind"] == "entry"
+			var key := str((graph.function_signature["inputs" if input else "outputs"] as Array)[port]["key"])
+			return remove_function_pin(opened, input, key)
 		"operator": return remove_operand(id, XREBlueprintOperators.OPERAND_KEYS[port])
 		"sequence":
 			var renames := {"#Then %d" % port: ""}
@@ -523,8 +541,9 @@ func refresh_structs() -> void:
 		changed = true
 	if not changed: return
 	var candidate := XREBlueprintGraph.new()
+	candidate.parent = graph.parent
 	candidate.restore(state)
-	if candidate.validate().is_empty(): graph.restore(state)
+	if candidate.validate().is_empty(): _restore_view(state)
 
 
 ## Adds an operand after the last one of variadic operator block [param id]
@@ -628,11 +647,14 @@ func set_parameter(id: int, key: String, value: Variant, edits: Dictionary = {})
 	return commit("Set %s" % key.capitalize(), state)
 
 
-## Records a complete graph change. Used for group dragging too.
+## Records a complete graph change. Used for group dragging too. [param state]
+## is of the graph the views show: a function's body goes into the file's
+## graph, a first wire of one of its Entry's or Return's pins giving it its type.
 func commit(title: String, state: Dictionary) -> bool:
 	last_error = ""
 	if amend.is_valid(): amend.call(state)
 	var candidate := XREBlueprintGraph.new()
+	candidate.parent = graph.parent
 	candidate.restore(state)
 	# A wire into an operator's operand: the other's literal takes its type (D-065).
 	var adopted := candidate.adopt_operands(graph.edges)
@@ -641,31 +663,254 @@ func commit(title: String, state: Dictionary) -> bool:
 	# A wire from an enumeration's constant into a Switch's Selection makes it a Switch on it (D-138).
 	if candidate.adopt_enums(graph.edges): adopted = true
 	if adopted: state = candidate.snapshot()
-	var errors := candidate.validate()
+	if opened.is_empty():
+		if state == graph.snapshot():
+			return true
+		return _record_state(title, state, _binding_snapshot(state))
+	var full := root.embed(opened, state)
+	var typed := XREBlueprintUserFunctions.adopt_pins(full, opened, graph.edges)
+	XREBlueprintUserFunctions.sync(full, root.snapshot(), typed["renames"], {}, typed["literals"], typed["changed"])
+	if full == root.snapshot():
+		return true
+	return _record_state(title, full, _binding_snapshot(state))
+
+
+## Records [param state] of the file's graph, its functions too, as one edit
+## [param title], after checking it: [param bindings] are the targets of the
+## blocks of the graph the views show ([method _binding_snapshot]).
+func _record_state(title: String, state: Dictionary, bindings: Dictionary) -> bool:
+	var check := XREBlueprintGraph.new()
+	check.restore(state)
+	var errors := check.validate()
 	if not errors.is_empty():
 		return _fail("\n".join(errors))
-	if state == graph.snapshot():
-		return true
 	history.create_action("Blueprints: " + title)
 	# Weak references in history preserve chosen identities across scene renames,
 	# without a reference cycle between this document and its UndoRedo object.
-	history.add_do_method(_restore_bound.bind(weakref(self), state.duplicate(true), _binding_snapshot(state)))
-	history.add_undo_method(_restore_bound.bind(weakref(self), graph.snapshot(), _targets.duplicate()))
+	history.add_do_method(_restore_bound.bind(weakref(self), state.duplicate(true), bindings, opened))
+	history.add_undo_method(_restore_bound.bind(weakref(self), root.snapshot(), _targets.duplicate(), opened))
 	history.commit_action()
 	_record(StringName(title.to_snake_case()))
 	return true
 
 
-static func _restore_bound(ref: WeakRef, state: Dictionary, bindings: Dictionary) -> void:
+## Puts the file's graph to [param state] and the body the views show with it.
+## [param bindings] are of the graph [param view] showed: a view of another
+## graph binds its targets anew by their paths.
+static func _restore_bound(ref: WeakRef, state: Dictionary, bindings: Dictionary, view: String) -> void:
 	var document := ref.get_ref() as XREBlueprintDocument
 	if document == null: return
-	document._targets.assign(bindings)
+	document.root.restore(state)
+	document._sync_view()
+	document._targets.clear()
 	document._bound_paths.clear()
-	for block: Dictionary in state["nodes"]:
-		var params: Dictionary = block["params"]
-		if params.has("target"): document._bound_paths[block["id"]] = params["target"]
-	document.graph.restore(state)
+	if view == document.opened:
+		document._targets.assign(bindings)
+		for block: Dictionary in document.graph.nodes:
+			var params: Dictionary = block["params"]
+			if params.has("target"): document._bound_paths[block["id"]] = params["target"]
 	document.refresh_bindings()
+
+
+## The body the views show as the file's graph has it now; the file's graph
+## when its function is gone.
+func _sync_view() -> void:
+	if opened.is_empty(): return
+	if root.function_index(opened) < 0:
+		_show("")
+		return
+	graph.restore(root.body_state(opened))
+
+
+## Shows the graph [param state] of the graph the views show, outside history: a
+## refresh of what the scene says ([method refresh_bindings], [method refresh_structs]).
+func _restore_view(state: Dictionary) -> void:
+	if not opened.is_empty(): root.restore(root.embed(opened, state))
+	graph.restore(state)
+
+
+## The views show function [param name]'s body, or the file's graph for an
+## empty name. Not an edit: undo doesn't change what is shown, but an undo of
+## an edit of the body shown keeps it shown.
+func open_function(name: String) -> bool:
+	if name == opened: return true
+	if not name.is_empty() and root.function_index(name) < 0: return _fail("There is no function %s." % name)
+	_show(name)
+	_record(&"enter_function" if not name.is_empty() else &"exit_function")
+	return true
+
+
+func _show(name: String) -> void:
+	if name == opened and (name.is_empty() or graph != root): return
+	graph.changed.disconnect(changed.emit)
+	opened = name
+	graph = root if name.is_empty() else root.body(name)
+	graph.changed.connect(changed.emit)
+	_targets.clear()
+	_bound_paths.clear()
+	refresh_bindings()
+	body_opened.emit(name)
+	changed.emit()
+
+
+## Adds a function to the file's graph, pure or not, named
+## [param name] or function_1… (docs/blueprint_functions.md): its body has
+## only its Entry and Return. One edit; returns its name, empty if refused.
+func create_function(pure: bool = false, name: String = "") -> String:
+	var names := XREBlueprintUserFunctions.names(root.functions)
+	if name.is_empty(): name = XREBlueprintUserFunctions.free_name("function_", names)
+	if not XREBlueprintUserFunctions.valid_name(name) or names.has(name):
+		_fail("A function needs a free name that is an identifier.")
+		return ""
+	var state := root.snapshot()
+	(state["functions"] as Array).append(XREBlueprintUserFunctions.make(name, pure))
+	return name if _commit_functions("Create Function", state) else ""
+
+
+## Removes function [param name], which nothing calls any more. One edit.
+func delete_function(name: String) -> bool:
+	var index := root.function_index(name)
+	if index < 0: return _fail("There is no function %s." % name)
+	var calls := XREBlueprintUserFunctions.count_calls(root, name)
+	if calls > 0: return _fail("%s has %d calls: delete them first." % [name, calls])
+	var state := root.snapshot()
+	(state["functions"] as Array).remove_at(index)
+	return _commit_functions("Delete Function", state)
+
+
+## Renames function [param name] to [param new_name]; its calls follow. One edit.
+func rename_function(name: String, new_name: String) -> bool:
+	var index := root.function_index(name)
+	if index < 0: return _fail("There is no function %s." % name)
+	if new_name == name: return true
+	if not XREBlueprintUserFunctions.valid_name(new_name) or root.function_index(new_name) >= 0: return _fail("A function needs a free name that is an identifier.")
+	var state := root.snapshot()
+	state["functions"][index]["name"] = new_name
+	var was := opened
+	if opened == name: opened = new_name
+	if not _commit_functions("Rename Function", state, {}, {name: new_name}):
+		opened = was
+		return false
+	return true
+
+
+## Makes function [param name] pure or not, which always works: going pure,
+## its Entry, its Return and its calls lose Then and In with their wires;
+## blocks with execution stay in its body, never run (docs/blueprint_functions.md).
+## Going back, an Entry joins its Return when the body has nothing to run. One edit.
+func set_function_pure(name: String, pure: bool) -> bool:
+	var index := root.function_index(name)
+	if index < 0: return _fail("There is no function %s." % name)
+	if bool(root.functions[index].get("pure", false)) == pure: return true
+	var state := root.snapshot()
+	var entry: Dictionary = state["functions"][index]
+	entry["pure"] = pure
+	# A pure function has no execution: its pins of execution have no type again.
+	if pure:
+		for side: String in ["inputs", "outputs"]:
+			for pin: Dictionary in entry[side] as Array: pin.erase("exec")
+	XREBlueprintUserFunctions.sync(state, root.snapshot())
+	if not pure:
+		var view := XREBlueprintGraph.new()
+		view.restore(state)
+		var body := view.body(name)
+		var start := -1
+		var finish := -1
+		var runs := false
+		for block: Dictionary in body.nodes:
+			if block["kind"] == "entry": start = block["id"]
+			elif block["kind"] == "return": finish = block["id"] if finish < 0 else finish
+			elif not XREBlueprintGraph.is_pure(block): runs = true
+		if not runs and start > 0 and finish > 0: (entry["edges"] as Array).append({"from": start, "from_port": 0, "to": finish, "to_port": 0})
+	return _commit_functions("Set Function Pure", state, {}, {}, {}, false)
+
+
+## Adds an input ([param input]) or an output to function [param name]:
+## input_1… or output_1…, without a type until its first wire gives one. One
+## edit with its calls; returns the pin's name, empty if refused.
+func add_function_pin(name: String, input: bool) -> String:
+	var index := root.function_index(name)
+	if index < 0:
+		_fail("There is no function %s." % name)
+		return ""
+	var side := "inputs" if input else "outputs"
+	var pins: Array = root.functions[index][side]
+	if pins.size() >= XREBlueprintUserFunctions.MAX_PINS:
+		_fail("A function has at most %d %s." % [XREBlueprintUserFunctions.MAX_PINS, side])
+		return ""
+	var key := XREBlueprintUserFunctions.free_name("input_" if input else "output_", XREBlueprintUserFunctions.names_of(pins))
+	var state := root.snapshot()
+	(state["functions"][index][side] as Array).append({"key": key})
+	return key if _commit_functions("Add Function Input" if input else "Add Function Output", state) else ""
+
+
+## Removes input ([param input]) or output [param key] of function
+## [param name] with its wires, in the body and at every call. One edit.
+func remove_function_pin(name: String, input: bool, key: String) -> bool:
+	var index := root.function_index(name)
+	if index < 0: return _fail("There is no function %s." % name)
+	var side := "inputs" if input else "outputs"
+	var state := root.snapshot()
+	var pins: Array = state["functions"][index][side]
+	var at := XREBlueprintUserFunctions.names_of(pins).find(key)
+	if at < 0: return _fail("%s has no pin %s." % [name, key])
+	pins.remove_at(at)
+	return _commit_functions("Remove Function Pin", state, {name: {key: "", "#" + key: ""}})
+
+
+## Renames pin [param key] of function [param name] to [param new_key]; its
+## wires and the calls' values stay. One edit.
+func rename_function_pin(name: String, input: bool, key: String, new_key: String) -> bool:
+	var index := root.function_index(name)
+	if index < 0: return _fail("There is no function %s." % name)
+	if new_key == key: return true
+	var side := "inputs" if input else "outputs"
+	var state := root.snapshot()
+	var pins: Array = state["functions"][index][side]
+	var names := XREBlueprintUserFunctions.names_of(pins)
+	var at := names.find(key)
+	if at < 0: return _fail("%s has no pin %s." % [name, key])
+	if not XREBlueprintUserFunctions.valid_name(new_key) or names.has(new_key): return _fail("A pin needs a free name that is an identifier.")
+	pins[at]["key"] = new_key
+	return _commit_functions("Rename Function Pin", state, {name: {key: new_key, "#" + key: "#" + new_key}})
+
+
+## Moves pin [param key] of function [param name] to place [param place] of
+## its side; the wires follow. One edit.
+func move_function_pin(name: String, input: bool, key: String, place: int) -> bool:
+	var index := root.function_index(name)
+	if index < 0: return _fail("There is no function %s." % name)
+	var side := "inputs" if input else "outputs"
+	var state := root.snapshot()
+	var pins: Array = state["functions"][index][side]
+	var at := XREBlueprintUserFunctions.names_of(pins).find(key)
+	if at < 0: return _fail("%s has no pin %s." % [name, key])
+	place = clampi(place, 0, pins.size() - 1)
+	if place == at: return true
+	var pin: Variant = pins.pop_at(at)
+	pins.insert(place, pin)
+	return _commit_functions("Move Function Pin", state)
+
+
+## Adds a call of function [param name] at [param position] of the graph the
+## views show, [param depth] deep in VR, wired as [method insert_block] does.
+## Returns its ID, -1 if refused.
+func add_function_call(name: String, position: Vector2, wire: Dictionary = {}, depth: float = 0.0) -> int:
+	var index := root.function_index(name)
+	if index < 0: return _fail_id("There is no function %s." % name)
+	var awaits: bool = XREBlueprintUserFunctions.awaiting(root.snapshot()).get(name, false)
+	var signature := XREBlueprintUserFunctions.call_signature(root.functions[index], awaits)
+	var block := XREBlueprintGraph.make_call(0, signature, position)
+	if not is_zero_approx(depth): block["vr_depth"] = depth
+	return insert_block(block, position, wire, null, "Add Function Call")
+
+
+## Records [param state], an edit of the file's graph's functions, after
+## bringing their calls and bodies up to date ([method XREBlueprintUserFunctions.sync]).
+func _commit_functions(title: String, state: Dictionary, renames: Dictionary = {}, renamed: Dictionary = {}, literals: Dictionary = {}, sync: bool = true) -> bool:
+	if sync: XREBlueprintUserFunctions.sync(state, root.snapshot(), renames, renamed, literals)
+	if state == root.snapshot(): return true
+	return _record_state(title, state, _targets.duplicate())
 
 
 func _binding_snapshot(state: Dictionary) -> Dictionary:
@@ -946,9 +1191,10 @@ func refresh_bindings() -> void:
 			_bound_paths[block["id"]] = params["target"]
 		_reflect(block, host)
 	var candidate := XREBlueprintGraph.new()
+	candidate.parent = graph.parent
 	candidate.restore(state)
 	if candidate.validate().is_empty() and state != graph.snapshot():
-		graph.restore(state)
+		_restore_view(state)
 		_record(&"refresh_scene_bindings")
 
 

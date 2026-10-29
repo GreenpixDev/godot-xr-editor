@@ -32,7 +32,7 @@ addons/blueprints/         отдельный аддон Blueprints 2D (D-021): 
                            С D-051: сигнатуры вызовов (XREBlueprintFunctions), глобальные функции (XREBlueprintGlobals), библиотека (XREBlueprintLibrary),
                            токен запуска (XREBlueprintRun), база действий (XREBlueprintActions) и меню добавления (XREBlueprintActionMenu);
                            операторы блока Operator — типы и вычисление (XREBlueprintOperators, D-065)
-addons/xr_editor/logic_graph/ пространственные карточки и XR-адаптер общего документа Blueprints (D-025); окна Параметры, меню Add block и Tokens — вкладки окон панелей (XREBlueprintFormTab, D-044, D-051);
+addons/xr_editor/logic_graph/ пространственные карточки и XR-адаптер общего документа Blueprints (D-025); окна Параметры, меню Add block, Tokens и Functions — вкладки окон панелей (XREBlueprintFormTab, D-044, D-051, D-144);
                            параметры в графе (D-052): фишки (XREBlueprintTokens, XREBlueprintTokenTray, XREBlueprintValuePanel), лепестки членов (XREBlueprintPetals), ящики переменных в графе (XREBlueprintBoxes, D-078); окно Vector с 3D-стрелками (XREBlueprintVectorTab, XREBlueprintVectorPanel, D-061);
                            окно Color — 2D-пикер или глобус цветов (XREBlueprintColorTab, XREBlueprintColorPanel, D-064), пипетка — цвет материала (XREBlueprintColorSampler);
                            ярлык объекта с пунктиром к нему: Blueprint в сцене, «+», корзина и × в графе (XREBlueprintBadge, D-085)

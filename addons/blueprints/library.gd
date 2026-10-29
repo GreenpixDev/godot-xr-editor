@@ -307,6 +307,16 @@ static func get_time() -> float:
 	return Time.get_ticks_usec() / 1000000.0
 
 
+## A if the condition holds, else B: the "if" of a pure function, which has
+## no Branch. Both are read either way.
+## @bp_name Select
+## @bp_category Flow
+## @bp_keywords select if else choose condition ternary pick
+## @bp_pure
+static func select(condition: bool = true, a: Variant = 0.0, b: Variant = 0.0) -> Variant:
+	return a if condition else b
+
+
 static func _validate_play_animation(target: Node, args: Dictionary) -> String:
 	var player := target as AnimationPlayer
 	var animation := StringName(str(args.get("animation", "")))

@@ -32,12 +32,37 @@ func _bp_end(run: XREBlueprintRun) -> void:
 
 
 func _bp_alive(run: XREBlueprintRun) -> bool:
-	return run != null and run.active and is_inside_tree()
+	return run != null and run.active and is_inside_tree() and (run.parent == null or _bp_alive(run.parent))
+
+
+# A call of the graph's own function: a run of its own, with its arguments, under its caller's.
+func _bp_child(parent: XREBlueprintRun, args: Array, function_name: String, outputs: Array) -> XREBlueprintRun:
+	var depth := parent.depth + 1 if parent != null else 1
+	if depth > 64:
+		_bp_error(parent, parent.block if parent != null else -1, "Calls of %s nest deeper than 64." % function_name)
+		return null
+	var run := XREBlueprintRun.new()
+	run.parent = parent
+	run.depth = depth
+	run.function = function_name
+	run.args = args
+	run.host = self
+	run.returned = outputs.duplicate()
+	if parent != null:
+		run.event_id = parent.event_id
+		run.tweens = parent.tweens
+		run.players = parent.players
+	return run
 
 
 func _bp_error(run: XREBlueprintRun, block_id: int, message: String) -> void:
-	if run != null:
-		run.cancel()
+	# An error in a function stops the event that called it.
+	if run != null and not run.function.is_empty():
+		message = "in %s: %s" % [run.function, message]
+	var current := run
+	while current != null:
+		current.cancel()
+		current = current.parent
 	# An attached error handler can present or record the failure itself.
 	if not blueprint_error.has_connections():
 		push_error("Blueprints block #%d: %s" % [block_id, message])

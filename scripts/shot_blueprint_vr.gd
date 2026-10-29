@@ -188,6 +188,93 @@ func _shot_pins() -> void:
 		await _frames(3)
 
 
+## The graph's own functions (docs/blueprint_functions.md): a call under the
+## ray with its open button, the Functions window (D-144), then the body —
+## Entry and Return, under the ray with their plus, the badge over the Entry,
+## the window under it — and the pure Entry.
+func _shot_functions() -> void:
+	var blueprint := _service.blueprint
+	var name := blueprint.create_function(false, "open_door")
+	blueprint.add_function_pin(name, true)
+	blueprint.add_function_pin(name, false)
+	# Deep in VR, as a card moved by hand is.
+	var call := blueprint.add_function_call(name, Vector2(-600, 700), {}, 0.4)
+	await _frames(6)
+	var card := _card(call)
+	if card == null: return
+	var face := card.node.global_transform
+	var front := face.basis.z.normalized()
+	_look(face.origin + front * 0.35, face.origin)
+	_aim(face.origin, front)
+	await _shot("40_fn_call_focus")
+	var window := _service.panels.find_window(XREBlueprintFunctionsTab)
+	if window == null: return
+	var toward := window.global_basis.z.normalized()
+	_look(window.global_position + toward * 0.45, window.global_position)
+	await _shot("41_fn_plates")
+	_aim(Vector3(-50, 0, 0), Vector3.BACK)
+	# The same head before and after: the body's Entry takes the call's place, as deep.
+	var canvas := _service.canvas
+	var place := canvas.position_from_block(blueprint.graph.find_node(call))
+	var head := canvas.to_global(place + Vector3(0.15, 0.05, 0.8))
+	var seen := canvas.to_global(place + Vector3(0.15, 0.0, 0.0))
+	_look(head, seen)
+	await _shot("46_fn_open_before")
+	_service.open_function(name, place, true)
+	await _frames(10)
+	_look(head, seen)
+	await _shot("47_fn_open_after")
+	# Farther back: the badge over the Entry, the window under it.
+	_look(canvas.to_global(place + Vector3(0.1, -0.1, 1.1)), canvas.to_global(place + Vector3(0.1, -0.12, 0.0)))
+	await _shot("51_fn_badge_window")
+	var entry := _card(1)
+	var ending := _card(2)
+	if entry == null or ending == null: return
+	var middle := (entry.node.global_position + ending.node.global_position) * 0.5
+	_look(middle + front * 0.6, middle)
+	await _shot("42_fn_body")
+	_aim(entry.node.global_position, front)
+	_look(entry.node.global_position + front * 0.35, entry.node.global_position)
+	await _shot("43_fn_entry_focus")
+	_aim(ending.node.global_position, front)
+	_look(ending.node.global_position + front * 0.35, ending.node.global_position)
+	await _shot("44_fn_return_focus")
+	_service.set_function_pure(true)
+	await _frames(10)
+	entry = _card(1)
+	if entry != null:
+		_aim(entry.node.global_position, front)
+		_look(entry.node.global_position + front * 0.35, entry.node.global_position)
+		await _shot("45_fn_entry_pure")
+	_aim(Vector3(-50, 0, 0), Vector3.BACK)
+	# From the window: whichever function, a new one too, its Entry stands in one place over it.
+	toward = window.global_basis.z.normalized()
+	head = window.global_position + toward * 0.75 + Vector3.UP * 0.12
+	seen = window.global_position + Vector3.UP * 0.12
+	_service.open_function("")
+	await _frames(6)
+	_service.call("_open_from_plates", name)
+	await _frames(10)
+	_look(head, seen)
+	await _shot("48_fn_row_first")
+	_service.call("_create_from_plates")
+	await _frames(10)
+	_look(head, seen)
+	await _shot("49_fn_row_new")
+	_service.call("_open_from_plates", name)
+	await _frames(10)
+	_look(head, seen)
+	await _shot("50_fn_row_back")
+	_service.open_function("")
+	await _frames(6)
+
+
+func _card(id: int) -> XREBlueprintCanvas.Card:
+	for each: XREBlueprintCanvas.Card in _service.canvas.get("_cards") as Array:
+		if each.id == id: return each
+	return null
+
+
 func _run() -> void:
 	for frame: int in 600:
 		await get_tree().process_frame
@@ -245,8 +332,10 @@ func _run() -> void:
 	await _frames(10)
 	var start := _service.blueprint.history.get_version()
 	# XRE_SHOT_ONLY=pins shoots only the cards whose pins change (D-140).
-	if OS.get_environment("XRE_SHOT_ONLY") == "pins":
-		await _shot_pins()
+	# XRE_SHOT_ONLY=functions shoots only the graph's own functions (docs/blueprint_functions.md).
+	if OS.get_environment("XRE_SHOT_ONLY") in ["pins", "functions"]:
+		if OS.get_environment("XRE_SHOT_ONLY") == "pins": await _shot_pins()
+		else: await _shot_functions()
 		while _service.blueprint.history.get_version() > start: _service.blueprint.undo()
 		await _frames()
 		print("shot_blueprint_vr: done, graph back to version %d" % _service.blueprint.history.get_version())

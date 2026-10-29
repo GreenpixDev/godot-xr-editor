@@ -108,6 +108,7 @@ func _run() -> void:
 	_test_variadic_operators()
 	await _test_sequence_switch()
 	_test_break_make()
+	await _test_functions()
 	print("test_blueprints: %d of %d checks failed" % [_failures, _checks])
 	quit(1 if _failures > 0 else 0)
 
@@ -281,8 +282,9 @@ func _test_wire_bends() -> void:
 func _test_all_blocks_compile() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.variables.append({"name": "flag", "value": false})
-	# Break and Make take their type from a wire (D-139): their own test builds them.
-	var kinds: Array = XREBlueprintGraph.BLOCKS.keys().filter(func(kind: String) -> bool: return not kind in ["call", "break", "make"])
+	# Break and Make take their type from a wire (D-139), Entry and Return belong to a
+	# function's body: their own tests build them.
+	var kinds: Array = XREBlueprintGraph.BLOCKS.keys().filter(func(kind: String) -> bool: return not kind in ["call", "break", "make", "entry", "return"])
 	kinds.append_array(XREBlueprintGraph.PRESETS.keys())
 	for kind: String in kinds:
 		_block(graph, kind, {"variable": "flag"} if kind in ["get_variable", "set_variable"] else {})
@@ -1738,3 +1740,182 @@ func _test_actions() -> void:
 	actions.remember(preset)
 	_check(actions.sections({"chip": XREBlueprintActions.CONTEXT, "node": player, "host": scene, "graph": doc.graph})[0]["title"] == "Recent", "recently added actions come first")
 	scene.free()
+
+
+## The graph's own functions (docs/blueprint_functions.md): one created and
+## its body shown as the graph, an input and an output typed and named by
+## their first wire with the calls following, pure and back with undo, a pin
+## renamed and removed, the file saved and opened; the generated code: a
+## function waiting for its Delay, a pure one, a call too deep, a pure one
+## reading itself and a pin without a type.
+func _test_functions() -> void:
+	var doc := XREBlueprintDocument.new()
+	doc.add_variable("opened", false)
+	doc.add_variable("result", false)
+	doc.add_variable("speed", 0.0)
+	var name := doc.create_function()
+	_check(name == "function_1" and doc.root.functions.size() == 1 and doc.rename_function(name, "open_door"), "a new function is function_1; it is renamed")
+	var input := doc.add_function_pin("open_door", true)
+	var output := doc.add_function_pin("open_door", false)
+	_check(input == "input_1" and output == "output_1", "new pins are input_1 and output_1")
+	# A call made while the input has no type yet: its literal follows the first wire.
+	var call := doc.add_function_call("open_door", Vector2(300, 100), {"from": 1, "from_port": 0})
+	var block := doc.graph.find_node(call)
+	_check(call > 0 and doc.graph.ports(block, true).size() == 2 and doc.graph.ports(block, false).size() == 2, "the call has In, input_1, Then and output_1: %s" % doc.last_error)
+	var reader := doc.insert_block(XREBlueprintGraph.make_node(0, "set_variable", Vector2.ZERO), Vector2(600, 100), {"from": call, "from_port": 0})
+	doc.set_parameter(reader, "variable", "result")
+
+	_check(doc.open_function("open_door") and doc.opened == "open_door" and doc.graph != doc.root, "the body is the graph the views show")
+	var entry := doc.graph.find_node(1)
+	_check(doc.graph.title_of(entry) == "open_door" and doc.graph.ports(entry, false).size() == 2 and doc.graph.ports(doc.graph.find_node(2), true).size() == 2, "Entry is named after the function: Then and input_1; Return: In and output_1")
+	var delay := doc.insert_block(XREBlueprintGraph.make_node(0, "delay", Vector2.ZERO), Vector2(200, 100))
+	doc.set_parameter(delay, "seconds", 0.05)
+	var opener := doc.insert_block(XREBlueprintGraph.make_node(0, "set_variable", Vector2.ZERO), Vector2(400, 100))
+	doc.set_parameter(opener, "variable", "opened")
+	doc.set_parameter(opener, "value", true)
+	var getter := doc.insert_block(XREBlueprintGraph.make_node(0, "get_variable", Vector2.ZERO), Vector2(400, 300))
+	doc.set_parameter(getter, "variable", "opened")
+	doc.disconnect_blocks(1, 0, 2, 0)
+	doc.connect_blocks(1, 0, delay, 0)
+	doc.connect_blocks(delay, 0, opener, 0)
+	doc.connect_blocks(opener, 0, 2, 0)
+	_check(doc.connect_blocks(1, 1, delay, 1), "Entry's input_1 goes into Delay's Seconds: %s" % doc.last_error)
+	_check(doc.root.functions[0]["inputs"][0] == {"key": "seconds", "type": TYPE_FLOAT}, "the first wire typed and named the input: %s" % [doc.root.functions[0]["inputs"]])
+	_check(doc.connect_blocks(getter, 0, 2, 1), "Get opened goes into Return's output_1: %s" % doc.last_error)
+	_check(doc.root.functions[0]["outputs"][0] == {"key": "value", "type": TYPE_BOOL}, "and the output: %s" % [doc.root.functions[0]["outputs"]])
+	block = doc.root.find_node(call)
+	_check(block["function"]["args"][0]["key"] == "seconds" and is_equal_approx(float(block["params"]["seconds"]), 0.05) and block["function"]["awaits"], "the call's input is seconds with Delay's 0.05; it waits: %s" % [block["params"]])
+	var wires := doc.graph.edges.size()
+	doc.open_function("")
+	doc.undo()
+	_check(doc.opened == "" and not (doc.root.find_node(call)["function"]["outputs"][0] as Dictionary).has("type"), "an undo while the file's graph shows undoes the body's edit and its calls")
+	doc.redo()
+	_check(doc.connect_blocks(call, 1, reader, 1), "the call's output, a bool now, goes into Set result: %s" % doc.last_error)
+	doc.open_function("open_door")
+	_check(doc.graph.edges.size() == wires, "redo puts it back in the body")
+
+	# Pure and back: the execution wires go, the blocks stay; undo brings them back.
+	_check(doc.set_function_pure("open_door", true), "the function becomes pure")
+	_check(doc.graph.find_node(delay).size() > 0 and not doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == 1 and edge["to"] == delay and edge["to_port"] == 0), "Entry lost Then and its wire; Delay stayed")
+	block = doc.root.find_node(call)
+	_check(doc.root.ports(block, true).size() == 1 and not doc.root.edges.any(func(edge: Dictionary) -> bool: return edge["to"] == call and edge["from"] == 1), "the call lost In and its wire")
+	_check(doc.root.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == call and edge["from_port"] == 0 and edge["to"] == reader and edge["to_port"] == 1), "its output's wire followed it to port 0")
+	doc.undo()
+	_check(not doc.root.functions[0]["pure"] and doc.root.edges.any(func(edge: Dictionary) -> bool: return edge["to"] == call and edge["from"] == 1), "undo makes it impure with its wires")
+
+	# A pin renamed keeps its wires and values; one removed takes them away.
+	_check(doc.rename_function_pin("open_door", true, "seconds", "wait") and is_equal_approx(float(doc.root.find_node(call)["params"]["wait"]), 0.05), "renamed, the call's value follows")
+	_check(doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["from"] == 1 and edge["from_port"] == 1 and edge["to"] == delay), "and the body's wire")
+	_check(not doc.delete_function("open_door") and doc.last_error.contains("1 calls"), "a function with calls isn't deleted")
+
+	# A pure function: half of its input.
+	doc.open_function("")
+	var half := doc.create_function(true, "door_speed")
+	doc.add_function_pin(half, true)
+	doc.add_function_pin(half, false)
+	doc.open_function(half)
+	_check(doc.graph.edges.is_empty() and doc.graph.ports(doc.graph.find_node(1), false).size() == 1, "a pure body: Entry has no Then, nothing is wired")
+	var divide := doc.insert_block(XREBlueprintGraph.make_operator(0, "divide", Vector2.ZERO), Vector2(200, 100))
+	doc.set_parameter(divide, "b", 2.0)
+	_check(doc.connect_blocks(1, 0, divide, 0) and doc.connect_blocks(divide, 0, 2, 0), "input into A, Result into Return: %s" % doc.last_error)
+	var signature: Dictionary = doc.root.functions[1]
+	_check(signature["inputs"][0] == {"key": "a", "type": TYPE_FLOAT} and signature["outputs"][0] == {"key": "result", "type": TYPE_FLOAT}, "typed by A's number, named after the ports: %s" % [signature])
+	doc.open_function("")
+	var speed := doc.insert_block(XREBlueprintGraph.make_node(0, "set_variable", Vector2.ZERO), Vector2(900, 100), {"from": reader, "from_port": 0})
+	doc.set_parameter(speed, "variable", "speed")
+	var read := doc.add_function_call(half, Vector2(700, 300))
+	doc.set_parameter(read, "a", 3.0)
+	_check(doc.connect_blocks(read, 0, speed, 1) and doc.root.ports(doc.root.find_node(read), true).size() == 1, "a pure call: its input, its output, no execution: %s" % doc.last_error)
+
+	# Saved and opened again.
+	var path := "user://test_functions.tres"
+	_check(ResourceSaver.save(doc.root, path) == OK, "the graph is saved")
+	var loaded := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as XREBlueprintGraph
+	_check(loaded != null and loaded.functions.size() == 2 and loaded.functions[0]["inputs"][0]["key"] == "wait" and loaded.validate().is_empty(), "a saved graph keeps its functions: %s" % [loaded.validate() if loaded != null else PackedStringArray()])
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+	# The generated code: the caller waits for the function's Delay; the pure one halves.
+	var source := XREBlueprintCompiler.compile(doc.root)
+	_check((source["errors"] as PackedStringArray).is_empty(), "functions build: %s" % [source["errors"]])
+	var code: String = source["code"]
+	_check(code.contains("func _bp_fn_open_door(parent: XREBlueprintRun, entered: int, a0: Variant) -> Array:") and code.contains("await _bp_fn_open_door(run, entered, a0)") and code.contains("func _bp_f0_execute("), "a function compiles to _bp_fn_ and its body's steps")
+	var scene := Node.new()
+	scene.set_script(_script(doc.root))
+	root.add_child(scene)
+	await _wait_until(func() -> bool: return scene.get("_bp_var_result") == true)
+	_check(scene.get("_bp_var_opened") == true and scene.get("_bp_var_result") == true and is_equal_approx(float(scene.get("_bp_var_speed")), 1.5), "the call waited for its body, got its output; the pure one gave 1.5: %s %s" % [scene.get("_bp_var_result"), scene.get("_bp_var_speed")])
+	_check((scene.get("_bp_runs") as Array).is_empty(), "the run ended")
+	scene.queue_free()
+	await process_frame
+
+	# Too deep: a function that calls itself forever is an error of the event, not a crash.
+	doc = XREBlueprintDocument.new()
+	var forever := doc.create_function(false, "forever")
+	doc.open_function(forever)
+	doc.disconnect_blocks(1, 0, 2, 0)
+	_check(doc.add_function_call(forever, Vector2(200, 100), {"from": 1, "from_port": 0}) > 0, "a function calls itself: %s" % doc.last_error)
+	doc.open_function("")
+	doc.add_function_call(forever, Vector2(300, 100), {"from": 1, "from_port": 0})
+	scene = Node.new()
+	scene.set_script(_script(doc.root))
+	var errors: Array[String] = []
+	scene.connect("blueprint_error", func(_id: int, message: String) -> void: errors.append(message))
+	root.add_child(scene)
+	await _wait_until(func() -> bool: return not errors.is_empty())
+	_check(errors.size() == 1 and errors[0].contains("deeper than 64"), "calls nest at most 64 deep: %s" % [errors])
+	scene.queue_free()
+	await process_frame
+
+	# A pure function reading itself, and a pin without a type, don't build.
+	doc = XREBlueprintDocument.new()
+	var loop := doc.create_function(true, "loop")
+	doc.add_function_pin(loop, false)
+	doc.open_function(loop)
+	var again := doc.add_function_call(loop, Vector2(200, 100))
+	_check(doc.connect_blocks(again, 0, 2, 0), "a pure function's output reads its own call: %s" % doc.last_error)
+	doc.open_function("")
+	doc.add_function_pin(doc.create_function(), true)
+	var problems := "\n".join(XREBlueprintCompiler.compile(doc.root)["errors"] as PackedStringArray)
+	_check(problems.contains("Pure function loop reads itself") and problems.contains("function_1: input_1 has no type"), "both are build errors: %s" % problems)
+	_check(doc.delete_function("function_1") and doc.root.function_index("function_1") < 0, "a function without calls is deleted")
+
+	# Ways in and out: a pin wired to an input of execution is another In, one
+	# from an output of execution another Then; the call goes on from the way the Return left.
+	doc = XREBlueprintDocument.new()
+	for flag: String in ["a", "b", "c"]: doc.add_variable(flag, false)
+	doc.add_variable("log", "")
+	var route := doc.create_function(false, "route")
+	doc.add_function_pin(route, true)
+	doc.add_function_pin(route, false)
+	doc.open_function(route)
+	var note := doc.insert_block(XREBlueprintGraph.make_node(0, "set_variable", Vector2.ZERO), Vector2(250, 300))
+	doc.set_parameter(note, "variable", "log")
+	doc.set_parameter(note, "value", "second")
+	_check(doc.connect_blocks(1, 1, note, 0) and doc.connect_blocks(note, 0, 2, 1), "input_1 goes into Set's In, Set's Then into output_1: %s" % doc.last_error)
+	var pins: Dictionary = doc.root.functions[0]
+	_check(pins["inputs"][0] == {"key": "in", "exec": true} and pins["outputs"][0] == {"key": "then", "exec": true}, "both are of execution now: %s %s" % [pins["inputs"], pins["outputs"]])
+	doc.open_function("")
+	var order := doc.insert_block(XREBlueprintGraph.make_node(0, "sequence", Vector2.ZERO), Vector2(200, 100), {"from": 1, "from_port": 0})
+	var first_call := doc.add_function_call(route, Vector2(400, 0), {"from": order, "from_port": 0})
+	var second_call := doc.add_function_call(route, Vector2(400, 300))
+	var ports := doc.root.ports(doc.root.find_node(second_call), true)
+	_check(ports.size() == 2 and ports[1][1] == XREBlueprintGraph.EXEC and doc.root.ports(doc.root.find_node(second_call), false)[1][0] == "then", "the call has In and in, Then and then")
+	doc.connect_blocks(order, 1, second_call, 1)
+	var setters: Array[int] = []
+	for flag: String in ["a", "b", "c"]:
+		var setter := doc.insert_block(XREBlueprintGraph.make_node(0, "set_variable", Vector2.ZERO), Vector2(700, setters.size() * 200))
+		doc.set_parameter(setter, "variable", flag)
+		doc.set_parameter(setter, "value", true)
+		setters.append(setter)
+	doc.connect_blocks(first_call, 0, setters[0], 0)
+	doc.connect_blocks(second_call, 1, setters[1], 0)
+	doc.connect_blocks(second_call, 0, setters[2], 0)
+	scene = Node.new()
+	scene.set_script(_script(doc.root))
+	root.add_child(scene)
+	await _wait_until(func() -> bool: return scene.get("_bp_var_b") == true)
+	_check(scene.get("_bp_var_a") == true and scene.get("_bp_var_b") == true and scene.get("_bp_var_c") == false and scene.get("_bp_var_log") == "second",
+			"In went Then, in went through Set to then: %s %s %s %s" % [scene.get("_bp_var_a"), scene.get("_bp_var_b"), scene.get("_bp_var_c"), scene.get("_bp_var_log")])
+	scene.queue_free()
+	await process_frame
+	_check(doc.set_function_pure(route, true) and not XREBlueprintUserFunctions.is_typed(doc.root.functions[0]["inputs"][0]), "made pure, its pins of execution have no type again")
