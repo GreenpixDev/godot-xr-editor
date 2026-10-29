@@ -76,6 +76,9 @@ const CUBOID_DEPTH := 0.012
 const ROW_HEIGHT := 0.045
 const PORT_RADIUS := 0.010
 const PORT_DEPTH := 0.001
+## How far a collection port's grid stands out of the port (D-143): past a lit
+## wire's tube, 2.2 mm and as much grown, so that the wire runs under it.
+const GRID_LIFT := 0.005
 const PORT_SIZE := Vector3(PORT_RADIUS * 2.0, PORT_RADIUS * 2.0, PORT_DEPTH * 2.0)
 const PORT_HIT_MARGIN := 0.006
 ## How far a sphere port's center stands out of the card's face, in its radii.
@@ -97,6 +100,15 @@ const HIT_DOT_OFFSET := 0.012
 ## (sea green), text, the vectors, object, color.
 # The built-in compound values (D-139): vectors blue, whole vectors green, boxes teal, a rotation violet, transforms orange.
 const COLORS: Array[Color] = [Color("eeeeee"), Color("63c6ea"), Color("e8879b"), Color("b4e05a"), Color("7be5b3"), Color("e5b57b"), Color("89adff"), Color("89adff"), Color("b991eb"), Color("f2d878"), Color("89adff"), Color("9fd36a"), Color("9fd36a"), Color("6fc3c8"), Color("6fc3c8"), Color("c38bf0"), Color("f0a35e"), Color("f0a35e"), Color("f0a35e"), Color("6fc3c8")]
+
+
+## The colour of port category [param type] ([constant COLORS]): a
+## collection's is its element's, a dictionary's its value's (D-141).
+static func type_color(type: int) -> Color:
+	var element := XREBlueprintCollections.element_of(type)
+	return COLORS[element] if element >= 0 and element < COLORS.size() else COLORS[XREBlueprintGraph.VALUE]
+
+
 ## Dark saturated faces: events, properties/motion, flow, values, audio, animation.
 const CARD_PALETTE: Array[Color] = [Color("174479"), Color("155947"), Color("553478"), Color("323e73"), Color("785016"), Color("743351")]
 ## Faces of the native blocks; a call's face follows its function ([method card_group]).
@@ -239,6 +251,10 @@ const PURE_FALLBACK_SIZE := 38
 const MARGIN := deg_to_rad(5.0)
 ## A card's wires that run across the view less than this, as a sum of lengths 1, leave its mirror to its part (D-132).
 const MIN_FLOW := 0.25
+## A rack (D-143): the gap from its port to it, its row of a puck, its padding.
+const RACK_TAIL := 0.02
+const RACK_ROW := 0.022
+const RACK_PAD := 0.006
 ## How fast a graph or a part turns to its new front: the gap left after a second, as a share.
 const TURN_RATE := 12.0
 ## A turn of a held card about the vertical goes in steps of 15° (D-115).
@@ -342,6 +358,10 @@ class Card:
 	var hidden_chip: Node3D
 	var hidden_chip_point: Vector3
 	var hidden_chip_size: Vector2
+	## Its rack (Collection literal Rack, D-143): where its list stands and its
+	## plus under it, in the card's space; an empty rect without one.
+	var rack_rect := AABB()
+	var rack_plus_point: Vector3
 	var inputs: Array[Vector3] = []
 	var outputs: Array[Vector3] = []
 	var input_types: Array[int] = []
@@ -388,6 +408,8 @@ class Card:
 	## The level way its wires run through it, in the canvas's space (D-132): a
 	## sum of one length from each input's far end and one to each output's.
 	var flow := Vector3.ZERO
+	## Whether a wire runs through it at all: one without reads in order (D-142).
+	var wired := false
 
 ## A part of the graph (D-115): its cards of one orientation wired together,
 ## or every card while the graph turns as a whole. It turns about its centre.
@@ -494,6 +516,9 @@ var _hit_pin_plus := false
 var _hit_pin_mark := -1
 ## Whether the last ray hit a Break's or a Make's chip of hidden fields (D-139).
 var _hit_hidden_chip := false
+var _hit_rack := false
+var _hit_rack_plus := false
+var _rack_card := -1
 var _eye_mesh: ArrayMesh
 var _pin_distance := -1.0
 var _pin_plus_right := -1
@@ -526,6 +551,12 @@ var _class_icon: Callable
 var _shrink := XREFeatureSettings.OPERATORS
 var _heading := XREFeatureSettings.OPERATION
 var _port_shapes := false
+## How a collection's ports, lists and wires show (D-143): Collection port,
+## Collection literal, Collection wire; grids built once per category.
+var _collection_port := XREFeatureSettings.GRID
+var _collection_literal := XREFeatureSettings.MAKE
+var _collection_wire := false
+var _grids: Dictionary[int, ArrayMesh] = {}
 var _composite := XREFeatureSettings.WHOLE
 var _hit_swap := false
 var _faces_user := false
@@ -668,6 +699,7 @@ void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 	_preview = create_scene_wire(Color("ffda82"))
 	_preview.visible = false
 	_boxes = XREBlueprintBoxes.new(_trash_mesh, _trash_material, material(TRASH_COLOR, true))
+	_boxes.collection_port = collection_visual
 	add_child(_boxes)
 	_knot_mesh = SphereMesh.new()
 	_knot_mesh.radius = KNOT_RADIUS
@@ -814,12 +846,108 @@ func get_port_shapes() -> bool:
 ## [param spherical] — the sphere's centre is then [constant SPHERE_LIFT] radii
 ## out of the face, which the caller sets.
 func _port_visual(type: int, color: Color, spherical: bool) -> MeshInstance3D:
+	if XREBlueprintCollections.is_collection(type): return collection_visual(type)
 	# An archetype's execution is an arrow whatever Port shapes says (D-106), as the mockup's.
 	if _port_shapes or (type == XREBlueprintGraph.EXEC and _style == XREFeatureSettings.ARCHETYPES): return XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type, PORT_RADIUS, PORT_DEPTH * 2.0), material(color, true))
 	if spherical: return XRERig.create_vr_mesh(_sphere_mesh, wire_material(color))
 	var disc := XRERig.create_vr_mesh(_port_mesh, material(color, true))
 	disc.rotation.x = PI * 0.5
 	return disc
+
+
+## Switches how collections show to [param port] (Collection port), [param
+## literal] (Collection literal) and [param double] (Collection wire, D-143).
+## Takes effect on the next [method rebuild]; false if nothing changed.
+func set_collection_modes(port: StringName, literal: StringName, double: bool) -> bool:
+	if [port, literal, double] == [_collection_port, _collection_literal, _collection_wire]: return false
+	_collection_port = port
+	_collection_literal = literal
+	_collection_wire = double
+	return true
+
+
+## The collection modes: [Collection port, Collection literal, Collection wire].
+func get_collection_modes() -> Array:
+	return [_collection_port, _collection_literal, _collection_wire]
+
+
+## A port of collection [param category] as Collection port says (D-143): Grid,
+## a dark square of three by three cells in its element's colour — a
+## dictionary's keys' column and its values' —; Stack, the element's port
+## three times, the two behind it dimmer, up and right, deeper — a
+## dictionary's key's port and its value's side by side. Built on rebuilds.
+func collection_visual(category: int) -> MeshInstance3D:
+	var element := XREBlueprintCollections.element_of(category)
+	var key := XREBlueprintCollections.key_of(category)
+	var dictionary := XREBlueprintCollections.is_dictionary(category)
+	if _collection_port == XREFeatureSettings.GRID:
+		if not _grids.has(category): _grids[category] = _grid_mesh(type_color(key) if dictionary else type_color(element), type_color(element), dictionary)
+		var grid := MeshInstance3D.new()
+		grid.mesh = _grids[category]
+		grid.layers = XRERig.VR_LAYER
+		grid.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		grid.material_override = _grid_material()
+		return grid
+	var front := _stack_disc(element if not dictionary else key, type_color(key) if dictionary else type_color(element), 1.0)
+	if dictionary:
+		front.position.x = -PORT_RADIUS * 0.55
+		var value := _stack_disc(element, type_color(element), 1.0)
+		value.position = Vector3(PORT_RADIUS * 1.1, 0, 0.0004)
+		front.add_child(value)
+		return front
+	for step: int in [1, 2]:
+		var back := _stack_disc(element, type_color(element).darkened(0.3 * step), 1.0)
+		back.position = Vector3(PORT_RADIUS * 0.3 * step, PORT_RADIUS * 0.3 * step, -PORT_DEPTH * 1.5 * step)
+		front.add_child(back)
+	return front
+
+
+## One port of a stack (D-143): the element's shape with Port shapes on, else a disc.
+func _stack_disc(element: int, color: Color, size: float) -> MeshInstance3D:
+	var disc: MeshInstance3D
+	if _port_shapes: disc = XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(element, PORT_RADIUS * size, PORT_DEPTH * 2.0), material(color, true))
+	else:
+		disc = XRERig.create_vr_mesh(_port_mesh, material(color, true))
+		disc.rotation.x = PI * 0.5
+	return disc
+
+
+## The grid of a collection's port (D-143), its cells' colours in its vertices:
+## nine cells on nothing, [constant GRID_LIFT] out of the face so that a wire
+## ending in the port, lit or not, runs under them — a dictionary's two
+## columns, [param left] its keys' and [param right] its values'.
+static func _grid_mesh(left: Color, right: Color, dictionary: bool) -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var r := PORT_RADIUS
+	for row: int in 3:
+		for column: int in 3:
+			if dictionary and column == 1: continue
+			var x := -1.015 * r + column * 0.708 * r
+			var width := 0.585 * r
+			if dictionary:
+				x = -1.015 * r if column == 0 else 0.185 * r
+				width = 0.83 * r
+			_grid_quad(surface, Rect2(x, -1.015 * r + row * 0.708 * r, width, 0.585 * r), GRID_LIFT, left if dictionary and column == 0 else right)
+	return surface.commit()
+
+
+static func _grid_quad(surface: SurfaceTool, rect: Rect2, z: float, color: Color) -> void:
+	var corners := [Vector3(rect.position.x, rect.position.y, z), Vector3(rect.end.x, rect.position.y, z), Vector3(rect.end.x, rect.end.y, z), Vector3(rect.position.x, rect.end.y, z)]
+	for index: int in [0, 1, 2, 0, 2, 3]:
+		surface.set_color(color)
+		surface.set_normal(Vector3.BACK)
+		surface.add_vertex(corners[index])
+
+
+## The unlit material of the grids, in their vertices' colours over the scene dimmer.
+func _grid_material() -> StandardMaterial3D:
+	var result := material(Color.WHITE, true)
+	result.vertex_color_use_as_albedo = true
+	# The cells' colours are the types' own, in sRGB as the other ports' are.
+	result.vertex_color_is_srgb = true
+	result.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return result
 
 
 ## Switches what archetypes' headers say by default to [param heading], a value of
@@ -1247,7 +1375,8 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			card.copy.add_child(XRERig.create_vr_mesh(_copy_mesh, _copy_material))
 			if archetype: card.copy.visible = false
 		_add_rows(card, graph, block, inputs, outputs, layout)
-		_add_pin_buttons(card, block, archetype, outputs, graph)
+		_add_pin_buttons(card, block, archetype, inputs, outputs, graph)
+		_add_rack(card, block, graph)
 		if not chip.is_empty() and _value_mode != XREFeatureSettings.WINDOW: _add_chip(card, block, chip, group)
 		if archetype and can_head(block) and not card.bead: _add_swap(card, block)
 		if card.bead or card.tag: pass
@@ -1287,17 +1416,20 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 				if _linked_inputs.has(Vector2i(wire.to.id, wire.to_port)): wire.link = _link_socket(wire.to, wire.to_port, -1)
 				inline.append(wire)
 			continue
-		_add_wire(wire, COLORS[wire.from.output_types[wire.from_port]], edge)
+		_add_wire(wire, type_color(wire.from.output_types[wire.from_port]), edge, wire.from.output_types[wire.from_port])
 		_wires.append(wire)
 	_build_boxes(graph)
 	for wire: Wire in inline:
 		if not _boxes.has_box(wire.variable): continue
 		# In its variable's color, as a wire from an output is in its source's: the
 		# port it goes into may take any value, as an operator's does (D-065).
-		var color := COLORS[XREBlueprintGraph.port_type(XREBlueprintGraph.variable_type(graph.find_variable(wire.variable)))]
+		var category := XREBlueprintGraph.variable_category(graph.find_variable(wire.variable))
+		var color := type_color(category)
 		# A component is a number (D-105).
-		if wire.component >= 0: color = COLORS[XREBlueprintGraph.NUMBER]
-		_add_wire(wire, color, graph.edges[wire.edge])
+		if wire.component >= 0:
+			color = type_color(XREBlueprintGraph.NUMBER)
+			category = XREBlueprintGraph.NUMBER
+		_add_wire(wire, color, graph.edges[wire.edge], category)
 		# Drawn at all, the wire a link hides is faint (D-074).
 		if wire.link != null: set_wire_seen(wire, &"link", LINK_SEEN)
 		_wires.append(wire)
@@ -1328,7 +1460,7 @@ func _add_head(card: Card, block: Dictionary, group: int, outputs: Array, in_por
 	var front := card.face + CARD_THICKNESS * 0.5
 	var row := card.height * 0.5 - HEAD_HEIGHT * 0.5
 	var pure := group == XREBlueprintIcons.Group.PURE
-	var tint := COLORS[_pure_type(block, outputs)] if pure and _pure_type(block, outputs) >= 0 else Color.WHITE
+	var tint := type_color(_pure_type(block, outputs)) if pure and _pure_type(block, outputs) >= 0 else Color.WHITE
 	if not pure:
 		# Its top corners as the card's (D-109).
 		var corners := _corners(block)
@@ -1528,7 +1660,7 @@ func _add_icon(card: Card, part: String, texture: Texture2D, tint: Color, size: 
 
 ## An archetype's frame in the color of port type [param type], made once (D-099).
 func _type_frame(type: int) -> Material:
-	if not _type_frames.has(type): _type_frames[type] = material(COLORS[type], true)
+	if not _type_frames.has(type): _type_frames[type] = material(type_color(type), true)
 	return _type_frames[type]
 
 
@@ -1566,7 +1698,7 @@ func _bead_layout(block: Dictionary, inputs: Array, layout: Array) -> void:
 
 ## A tag's face of port type [param type]'s colour, made once (D-106).
 func _tag_face(type: int) -> ShaderMaterial:
-	if not _tag_faces.has(type): _tag_faces[type] = _face(_card_shader, XREBlueprintIcons.BODY.lerp(COLORS[type], TAG_TINT))
+	if not _tag_faces.has(type): _tag_faces[type] = _face(_card_shader, XREBlueprintIcons.BODY.lerp(type_color(type), TAG_TINT))
 	return _tag_faces[type]
 
 
@@ -1578,14 +1710,14 @@ func _add_tag(card: Card, block: Dictionary, outputs: Array) -> void:
 	card.frame.set_meta(&"painted", true)
 	card.node.add_child(card.frame)
 	var type := int((outputs[0] as Array)[1]) if not outputs.is_empty() else XREBlueprintGraph.VALUE
-	var dot := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type if _port_shapes else XREBlueprintGraph.NUMBER, PORT_RADIUS, PORT_DEPTH * 2.0), material(COLORS[type], true))
+	var dot := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type if _port_shapes else XREBlueprintGraph.NUMBER, PORT_RADIUS, PORT_DEPTH * 2.0), material(type_color(type), true))
 	dot.scale = Vector3.ONE * 0.55
 	dot.position = Vector3(-card.width * 0.5 + 0.017, 0, front + 0.0004)
 	card.node.add_child(dot)
 	var named := str((block["params"] as Dictionary).get("variable", ""))
 	var text := label(named if not named.is_empty() else "variable", 21)
 	text.name = "Title"
-	text.modulate = COLORS[type].lerp(Color.WHITE, 0.5)
+	text.modulate = type_color(type).lerp(Color.WHITE, 0.5)
 	text.position = Vector3(-card.width * 0.5 + 0.03 + text_width(text.text, 21) * 0.5, 0, front + 0.0006)
 	card.node.add_child(text)
 
@@ -1598,7 +1730,7 @@ func _add_bead(card: Card, block: Dictionary, group: int, outputs: Array) -> voi
 	card.frame.set_meta(&"painted", true)
 	card.node.add_child(card.frame)
 	var pure := group == XREBlueprintIcons.Group.PURE
-	var tint := COLORS[_pure_type(block, outputs)] if pure and _pure_type(block, outputs) >= 0 else Color.WHITE
+	var tint := type_color(_pure_type(block, outputs)) if pure and _pure_type(block, outputs) >= 0 else Color.WHITE
 	var radius := card.width * 0.5
 	var icon: Variant = XREBlueprintIcons.icon_of(block, _class_icon)
 	var center := Vector3(0, 0, front + 0.0004)
@@ -1664,7 +1796,7 @@ func _add_rims(card: Card, block: Dictionary, outputs: Array) -> void:
 	card.frame.set_meta(&"painted", true)
 	card.node.add_child(card.frame)
 	if XREBlueprintGraph.is_operator(block) or outputs.is_empty(): return
-	var color := COLORS[int((outputs[0] as Array)[1])]
+	var color := type_color(int((outputs[0] as Array)[1]))
 	var rim := XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, INNER_INSET, INNER_RIM, front), material(Color(color, INNER_SEEN), true))
 	rim.name = "Rim"
 	card.node.add_child(rim)
@@ -1676,7 +1808,7 @@ func _add_sign_symbol(card: Card, block: Dictionary, inputs: Array, outputs: Arr
 	var text := XREBlueprintGraph.symbol(block) if XREBlueprintGraph.is_operator(block) else XREBlueprintShapes.word_of(block, inputs, outputs)
 	var size := SYMBOL_SIZE if text.length() == 1 else SIGN_WORD_SIZE if text.length() <= 3 else SIGN_LONG_SIZE
 	var symbol := label(text, size)
-	symbol.modulate = COLORS[card.output_types[0]] if not card.output_types.is_empty() else Color.WHITE
+	symbol.modulate = type_color(card.output_types[0]) if not card.output_types.is_empty() else Color.WHITE
 	symbol.position = Vector3(0.006 if card.shape == XREBlueprintShapes.Shape.OVAL else 0.0, 0, card.bounds.end.z + 0.0008)
 	symbol.name = "Symbol"
 	card.node.add_child(symbol)
@@ -1694,8 +1826,10 @@ static func split_variable(graph: XREBlueprintGraph, breaker: Dictionary) -> Str
 
 ## Whether the drawer of components of [param variable]'s box is shut (D-108):
 ## shut unless its editor-only vr_collapsed is false (D-114), open while a
-## hidden Break wires its components.
+## hidden Break wires its components. A collection's elements show until its
+## vr_collapsed is true (D-143): folded, they are their count.
 static func drawer_shut(graph: XREBlueprintGraph, variable: Dictionary) -> bool:
+	if XREBlueprintCollections.is_collection(XREBlueprintGraph.variable_category(variable)): return variable.get("vr_collapsed") == true
 	if not bool(variable.get("vr_collapsed", true)): return false
 	var name := str(variable.get("name", ""))
 	for block: Dictionary in graph.nodes:
@@ -1742,9 +1876,14 @@ func _add_symbol(card: Card, block: Dictionary) -> void:
 
 ## Gives [param wire] its tube in [param color] and the bends that
 ## [param entry] — its edge, or a link's block — keeps under [member Wire.stored].
-func _add_wire(wire: Wire, color: Color, entry: Dictionary) -> void:
+func _add_wire(wire: Wire, color: Color, entry: Dictionary, category: int = -1) -> void:
 	wire.color = color
 	wire.mesh = create_scene_wire(color)
+	# Collection wire On (D-143): a collection's wire is two strands, a dark or its values' core in its colour.
+	if _collection_wire and XREBlueprintCollections.is_collection(category):
+		var core := type_color(category) if XREBlueprintCollections.is_dictionary(category) else Color("0d1017")
+		var outer := type_color(XREBlueprintCollections.key_of(category)) if XREBlueprintCollections.is_dictionary(category) else color
+		wire.mesh.material_override = strand_material(outer, core)
 	wire.normal = wire.mesh.material_override
 	# An execution wire is white: thicker alone, it hardly shows under the ray, so it takes the focus's gold (D-132).
 	wire.lit = wire_material(XREBlueprintFocus.FRAME if color.s < 0.1 else color, LIT_WIRE_GROW)
@@ -1806,6 +1945,14 @@ func light_wire(wire: Wire, shown: Material) -> void:
 func set_wire_seen(wire: Wire, layer: StringName, seen: float) -> void:
 	for piece: XREGraphWire in wire.pieces: XREBlueprintFade.set_layer(piece, layer, seen)
 	for knot: MeshInstance3D in wire.knots: XREBlueprintFade.set_layer(knot, layer, seen)
+
+
+## Puts a scene link [param wire] in focus [param state] as its card is
+## ([method focus_state]), its arrowheads darker or lit as its tubes (D-115).
+func set_link_focus(wire: Wire, state: int) -> void:
+	if wire.focus == state: return
+	wire.focus = state
+	_lay_arrows()
 
 
 ## Draws every tube and knot of [param wire] over the rest of the graph, or as before (D-075).
@@ -1883,7 +2030,8 @@ static func is_split_break(block: Dictionary) -> bool:
 ## block's own; a call's by its library category or by its target's class —
 ## audio players amber, animation players berry — and @GlobalScope's as values.
 static func card_group(block: Dictionary) -> int:
-	if block.get("kind") != "call": return CARD_GROUPS.get(block.get("kind"), 3)
+	# A new variable's row in the menu has no block (D-078): no kind.
+	if block.get("kind") != "call": return CARD_GROUPS.get(str(block.get("kind", "")), 3)
 	var function: Dictionary = block["function"]
 	if function["scope"] == "global": return 3
 	if CATEGORY_GROUPS.has(str(function.get("category", ""))): return CATEGORY_GROUPS[str(function["category"])]
@@ -2310,13 +2458,18 @@ func _mirror_part(part: Part) -> void:
 ## inputs' wires, from it to the far end of each of its outputs' — a wire's
 ## nearest bend where it bends, a variable's box for a wire from one.
 func _sum_flows() -> void:
-	for card: Card in _cards: card.flow = Vector3.ZERO
+	for card: Card in _cards:
+		card.flow = Vector3.ZERO
+		card.wired = false
 	for wire: Wire in _wires:
 		if wire.to == null: continue
 		var bends := wire.knots.size()
 		var start: Vector3 = wire.bends[bends - 1] if bends > 0 else wire.from.node.position if wire.from != null else _boxes.box_point(wire.variable)
 		wire.to.flow += _level(wire.to.node.position - start)
-		if wire.from != null: wire.from.flow += _level((wire.bends[0] if bends > 0 else wire.to.node.position) - wire.from.node.position)
+		wire.to.wired = true
+		if wire.from != null:
+			wire.from.flow += _level((wire.bends[0] if bends > 0 else wire.to.node.position) - wire.from.node.position)
+			wire.from.wired = true
 
 
 ## [param offset] along the floor, of length 1; zero if it is upright.
@@ -2328,9 +2481,10 @@ static func _level(offset: Vector3) -> Vector3:
 ## Whether [param card], turned to [param local_head], lays out as a mirror's
 ## (Card mirror, D-132): its wires run to the head's left, past 95° from its
 ## right, until back under 85°; a card whose wires don't run across the view
-## goes with its part ([method _mirror_part], D-115).
+## goes with its part ([method _mirror_part], D-115). A card without a wire,
+## a new one, reads in order: nothing tells which way it runs (D-142).
 func _flow_mirrored(card: Card, local_head: Vector3) -> bool:
-	if card.part >= _parts.size() or not _card_mirror or _turn_mode != XREFeatureSettings.FIXED: return false
+	if card.part >= _parts.size() or not _card_mirror or _turn_mode != XREFeatureSettings.FIXED or not card.wired: return false
 	var right := Vector3.UP.cross(_level(local_head - card.node.position))
 	var flow := Vector3(card.flow.x, 0.0, card.flow.z)
 	if right.is_zero_approx() or flow.length() < MIN_FLOW: return _parts[card.part].mirrored
@@ -2904,7 +3058,7 @@ static func _make_pin_mark_mesh() -> ArrayMesh:
 ## × by each of them, inside the card, while it has more than the fewest. In
 ## archetypes the plus shows with the trash, a × while the ray is on its pin
 ## or on itself ([method _show_pins]); a classic card shows its plus always.
-func _add_pin_buttons(card: Card, block: Dictionary, archetype: bool, outputs: Array, graph: XREBlueprintGraph) -> void:
+func _add_pin_buttons(card: Card, block: Dictionary, archetype: bool, inputs: Array, outputs: Array, graph: XREBlueprintGraph) -> void:
 	var pins := XREBlueprintGraph.variable_pins(block)
 	if pins.is_empty():
 		if block.get("kind") in ["break", "make"]: _add_field_buttons(card, block, graph)
@@ -2928,16 +3082,20 @@ func _add_pin_buttons(card: Card, block: Dictionary, archetype: bool, outputs: A
 	card.pin_shifts.clear()
 	for index: int in count:
 		var mark: Node3D = null
-		# Right of an input's port; left of an output's name, which stands left of its port.
+		# Right of an input's port, or of its name if it has one (a Make block's, D-143); left of an output's name, which stands left of its port.
 		var shift := PIN_MARK_SHIFT
-		if not card.pin_input:
+		if card.pin_input:
+			var label_text := str((inputs[index] as Array)[0]) if index < inputs.size() and not card.compact else ""
+			if not label_text.is_empty(): shift = 0.022 + text_width(label_text, 18) + PIN_MARK_SHIFT * 0.6
+		else:
 			var name := str((outputs[index] as Array)[0]) if index < outputs.size() else ""
 			shift = -(0.022 + text_width(name, 18) + PIN_MARK_SHIFT * 0.6)
 			# Left of a Switch case's puck, which stands for its name (D-140); its port is on the edge.
 			if block["kind"] == "switch" and _value_mode != XREFeatureSettings.WINDOW:
 				var case := XREBlueprintGraph.case_key(index)
 				shift = -(CASE_INSET + XREBlueprintTokens.width(XREBlueprintTokens.shown((block["params"] as Dictionary).get(case), case, "")) + PIN_MARK_SHIFT * 0.6)
-		if count > XREBlueprintGraph.MIN_PINS:
+		# A Make block keeps one element or pair; a pair's × stands on its Key alone (D-143).
+		if count > int(pins.get("min", XREBlueprintGraph.MIN_PINS)) and (not pins.get("pair", false) or index % 2 == 0):
 			mark = Node3D.new()
 			mark.name = "PinMark%d" % index
 			mark.add_child(XRERig.create_vr_mesh(_pin_mark_mesh, _pin_mark_material))
@@ -2946,6 +3104,62 @@ func _add_pin_buttons(card: Card, block: Dictionary, archetype: bool, outputs: A
 		card.pin_marks.append(mark)
 		card.pin_shifts.append(shift)
 	_place_pin_marks(card)
+
+
+## The rack in the collection input of a loop or a method without a wire
+## (Collection literal Rack, D-143): left of its port, its tail in it, a dark
+## piece rimmed in the element's colour holding the list's pucks one under
+## another — a dictionary's key over its value —, a plus under them.
+func _add_rack(card: Card, block: Dictionary, graph: XREBlueprintGraph) -> void:
+	card.rack_rect = AABB()
+	if _collection_literal != XREFeatureSettings.RACK or not block.get("kind") in ["for_each", "for_each_pair", "collection"]: return
+	var port := graph.input_port(block, "collection")
+	var params: Dictionary = block["params"]
+	if port < 0 or port >= card.inputs.size() or graph.source_category(block, port) >= 0 or params.has(XREBlueprintGraph.SCENE_TARGETS): return
+	var category := graph.collection_type(block)
+	var color := type_color(XREBlueprintCollections.key_of(category) if XREBlueprintCollections.is_dictionary(category) else category)
+	var items: Array = []
+	var value: Variant = params.get("collection")
+	if value is Array: items = (value as Array).duplicate()
+	elif value is Dictionary:
+		for key: Variant in value as Dictionary:
+			items.append(key)
+			items.append((value as Dictionary)[key])
+	var widest := 0.03
+	for item: Variant in items: widest = maxf(widest, XREBlueprintTokens.width(XREBlueprintTokens.text(item, "")) * 0.85)
+	var width := widest + RACK_PAD * 2.0
+	var height := items.size() * RACK_ROW + RACK_ROW + RACK_PAD
+	var at := card.inputs[port]
+	var right := at.x - RACK_TAIL
+	var z := card.face + CARD_THICKNESS * 0.5 + 0.002
+	var top := at.y + RACK_ROW * 0.5 + RACK_PAD * 0.5
+	var outline := XREBlueprintShapes.rounded_rect(Vector2(width, height), Vector4.ONE * 0.005)
+	var center := Vector3(right - width * 0.5, top - height * 0.5, z)
+	var piece := XRERig.create_vr_mesh(XREBlueprintShapes.body(outline, 0.002), material(XREBlueprintIcons.BODY, true))
+	piece.position = center
+	card.node.add_child(piece)
+	var rim := XRERig.create_vr_mesh(XREBlueprintShapes.ring(outline, 0.0, 0.0014, 0.0012), material(color, true))
+	rim.position = center
+	card.node.add_child(rim)
+	var tail_mesh := BoxMesh.new()
+	tail_mesh.size = Vector3(at.x - right, 0.004, 0.002)
+	var tail := XRERig.create_vr_mesh(tail_mesh, material(color, true))
+	tail.position = Vector3((at.x + right) * 0.5, at.y, z)
+	card.node.add_child(tail)
+	for index: int in items.size():
+		var text := XREBlueprintTokens.text(items[index], "")
+		var token := make_token(items[index], "", XREBlueprintTokens.width(text), false, false, false, -1, text)
+		token.scale = Vector3.ONE * 0.85
+		token.position = Vector3(center.x, at.y - index * RACK_ROW, z + 0.002)
+		card.node.add_child(token)
+	card.rack_plus_point = Vector3(center.x, at.y - items.size() * RACK_ROW, z + 0.002)
+	for size: Vector3 in [Vector3(0.012, 0.003, 0.002), Vector3(0.003, 0.012, 0.002)]:
+		var bar := BoxMesh.new()
+		bar.size = size
+		var mesh := XRERig.create_vr_mesh(bar, material(Color.WHITE, true))
+		mesh.position = card.rack_plus_point
+		card.node.add_child(mesh)
+	card.rack_rect = AABB(Vector3(right - width, top - height, z - 0.006), Vector3(width, height, 0.014))
 
 
 ## A Break's or a Make's eye by each field without a wire, which hides it,
@@ -3014,6 +3228,15 @@ static func _make_eye_mesh() -> ArrayMesh:
 ## Whether the last ray hit the chip of a Break's or a Make's hidden fields (D-139).
 func get_hit_hidden_chip() -> bool:
 	return _hit_hidden_chip
+
+
+## Whether the last ray hit a rack's list, or the plus under it (D-143).
+func get_hit_rack() -> bool:
+	return _hit_rack and _rack_card == _hit_id
+
+
+func get_hit_rack_plus() -> bool:
+	return _hit_rack_plus and _rack_card == _hit_id
 
 
 ## Puts each × of [param card] by its pin as it stands now (D-137).
@@ -3124,6 +3347,9 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 	_hit_pin_plus = false
 	_hit_pin_mark = -1
 	_hit_hidden_chip = false
+	_hit_rack = false
+	_hit_rack_plus = false
+	_rack_card = -1
 	_hit_pin_row = -1
 	_pin_row_card = -1
 	_pin_distance = -1.0
@@ -3238,6 +3464,22 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 				_hit_pin_plus = false
 				_hit_pin_mark = -1
 				_hit_hidden_chip = true
+		# A rack's plus, else its list (D-143), beside the card.
+		if card.rack_rect.has_volume():
+			var plus_box := AABB(card.rack_plus_point - Vector3(0.008, 0.008, 0.006), Vector3(0.016, 0.016, 0.012))
+			var plus_hit := _box_distance(card_origin, card_direction, plus_box, nearest)
+			var rack_hit := _box_distance(card_origin, card_direction, card.rack_rect, nearest) if plus_hit < 0 else -1.0
+			if plus_hit >= 0 or rack_hit >= 0:
+				nearest = plus_hit if plus_hit >= 0 else rack_hit
+				_hit_id = card.id
+				_hit_port = -1
+				_hit_plus = false
+				_hit_delete = false
+				_hit_swap = false
+				_hit_copy = false
+				_rack_card = card.id
+				_hit_rack_plus = plus_hit >= 0
+				_hit_rack = plus_hit < 0
 		for index: int in card.inputs.size():
 			var center := card.inputs[index]
 			var hit := _port_distance(card_origin, card_direction, center, card.ports[index].scale, nearest)
@@ -3554,8 +3796,8 @@ func get_hit_color() -> Variant:
 	if _hit_socket >= 0 and _hit_socket < card.sockets.size():
 		var socket := card.sockets[_hit_socket]
 		if socket.value is Color: return socket.value
-		return MEMBER_COLOR if socket.kind == MEMBER else COLORS[socket.type]
-	if _hit_port >= 0: return COLORS[card.input_types[_hit_port] if _hit_input else card.output_types[_hit_port]]
+		return MEMBER_COLOR if socket.kind == MEMBER else type_color(socket.type)
+	if _hit_port >= 0: return type_color(card.input_types[_hit_port] if _hit_input else card.output_types[_hit_port])
 	if _hit_plus: return Color.WHITE
 	if _hit_delete: return (_trash_material as BaseMaterial3D).albedo_color
 	if _hit_copy: return COPY_COLOR
@@ -4291,11 +4533,21 @@ func update_scene_wire(link: Wire, id: int, port: int, end: Vector3) -> void:
 	_lay(link, port_position(id, port, true), port_direction(id, true), end, Vector3.ZERO, _front(_find_card(id)))
 
 
+## A wire of an array of scene objects (D-143), in the canvas's space: the trunk
+## from input [param port] of block [param id] to the fork at [param fork] with
+## [param from] negative, or a branch from the fork to an object at [param end].
+func update_branch_wire(link: Wire, id: int, port: int, fork: Vector3, end: Vector3, branch: bool) -> void:
+	if not branch:
+		_lay(link, port_position(id, port, true), port_direction(id, true), fork, Vector3.ZERO, _front(_find_card(id)))
+		return
+	_lay(link, fork, Vector3.ZERO, end, Vector3.ZERO, _front(_find_card(id)))
+
+
 ## [param shown] is the type whose color it has, if not its own: an operator's
 ## input of any value wired is in the color of what comes in (D-065).
 func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1, shown: int = -1) -> Label3D:
 	var point := _row_point(card, row if row >= 0 else index, input)
-	var color := COLORS[shown if shown >= 0 else spec[1]]
+	var color := type_color(shown if shown >= 0 else spec[1])
 	var type: int = shown if shown >= 0 else spec[1]
 	var spherical := _port_display == XREFeatureSettings.SPHERE and not _port_shapes and not (type == XREBlueprintGraph.EXEC and _style == XREFeatureSettings.ARCHETYPES)
 	# An archetype card's execution ports stand on its edges, half out (D-106).
@@ -4328,6 +4580,7 @@ func _add_port(card: Card, spec: Array, index: int, input: bool, row: int = -1, 
 ## A port on a node's edge (Pins On the edge, D-115): an arrowhead along the flow
 ## for execution, else a ball, shaded by the view angle as wires are.
 func _edge_visual(type: int, color: Color) -> MeshInstance3D:
+	if XREBlueprintCollections.is_collection(type): return collection_visual(type)
 	if type != XREBlueprintGraph.EXEC: return XRERig.create_vr_mesh(_sphere_mesh, wire_material(color))
 	if _edge_arrow == null:
 		_edge_arrow = CylinderMesh.new()
@@ -4415,6 +4668,9 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 			# Its token's type too, not wired (D-107): a 1.0 makes a float's port, not any value's.
 			var operand := graph.operand_type(block, spec[2]) if card.compact and spec[1] == XREBlueprintGraph.VALUE and spec.size() > 2 else TYPE_NIL
 			var shown := XREBlueprintGraph.port_type(operand) if operand != TYPE_NIL else -1
+			# A Make block's pin takes any value; it is in the colour of the elements its collection is of (D-143).
+			if block["kind"] in ["make_array", "make_dictionary"] and spec[1] == XREBlueprintGraph.VALUE and spec.size() > 2:
+				shown = graph.items_category(block, str(spec[2]).left(str(spec[2]).rfind("_") + 1))
 			var text := _add_port(card, spec, index, true, row, shown)
 			# In on an archetype's header has no name: it is the header's edge (D-101).
 			if entry.has("head"): text.text = ""
@@ -4535,7 +4791,7 @@ func _name_outside(label_node: Label3D, text: String) -> void:
 func _add_virtual(card: Card, kind: int, key: String, title: String, type: int, row: int, input: bool) -> Label3D:
 	var point := _row_point(card, row, input)
 	if type == XREBlueprintGraph.EXEC and card.headed: point.x = card.width * (-0.5 if input else 0.5)
-	var mesh := _port_visual(type, COLORS[type], false)
+	var mesh := _port_visual(type, type_color(type), false)
 	mesh.position = point
 	card.node.add_child(mesh)
 	var socket := Socket.new()
@@ -4637,11 +4893,11 @@ func _add_adapter(card: Card, block: Dictionary, point: Vector3, link: bool = fa
 	neck.bottom_radius = 0.0045
 	neck.height = PLUG_GAP + PORT_RADIUS
 	neck.radial_segments = 12
-	var neck_mesh := XRERig.create_vr_mesh(neck, _token_shaded(COLORS[XREBlueprintGraph.OBJECT]))
+	var neck_mesh := XRERig.create_vr_mesh(neck, _token_shaded(type_color(XREBlueprintGraph.OBJECT)))
 	neck_mesh.rotation.z = PI * 0.5
 	neck_mesh.position = Vector3((edge + pin_x) * 0.5, 0, depth)
 	plug.add_child(neck_mesh)
-	var pin := _port_visual(XREBlueprintGraph.OBJECT, COLORS[XREBlueprintGraph.OBJECT], _port_display == XREFeatureSettings.SPHERE)
+	var pin := _port_visual(XREBlueprintGraph.OBJECT, type_color(XREBlueprintGraph.OBJECT), _port_display == XREFeatureSettings.SPHERE)
 	pin.position = Vector3(pin_x, 0, depth)
 	plug.add_child(pin)
 	plug.set_meta(&"pin", pin)
@@ -4743,7 +4999,7 @@ static func _make_link_head(type: int, text: String = "") -> Node3D:
 		_ring_fill.radial_segments = 20
 	var head := Node3D.new()
 	head.name = "LinkHead"
-	var ring := XRERig.create_vr_mesh(_ring_mesh, _token_shaded(COLORS[type]))
+	var ring := XRERig.create_vr_mesh(_ring_mesh, _token_shaded(type_color(type)))
 	ring.rotation.x = PI * 0.5
 	head.add_child(ring)
 	var fill := XRERig.create_vr_mesh(_ring_fill, _token_material(TOKEN_FACE))
@@ -4974,7 +5230,7 @@ func _add_token(card: Card, key: String, value: Variant, port: int, row: int, af
 static func make_token(value: Variant, key: String, width: float, plug: bool, square: bool, faded: bool, type: int = -1, shown: String = "") -> Node3D:
 	var token := Node3D.new()
 	token.name = "Token"
-	var border := COLORS[type if type >= 0 else XREBlueprintTokens.color_type(value, key)]
+	var border := type_color(type if type >= 0 else XREBlueprintTokens.color_type(value, key))
 	var alpha := FADED if faded else 1.0
 	var height := 0.026 if plug else XREBlueprintTokens.HEIGHT
 	var depth := PLUG_DEPTH if plug else PUCK_DEPTH
@@ -5125,7 +5381,7 @@ func _build_boxes(graph: XREBlueprintGraph) -> void:
 			link.writes = block["kind"] == "set_variable"
 			# A link in the socket hides its wire, faint while drawn (D-074).
 			link.link = _link_socket(card, -1, VARIABLE)
-			_add_wire(link, COLORS[card.sockets[index].type], block)
+			_add_wire(link, type_color(card.sockets[index].type), block)
 			if link.link != null: set_wire_seen(link, &"link", LINK_SEEN)
 			_variable_links.append(link)
 
@@ -5206,6 +5462,36 @@ void fragment() {
 	result.render_priority = Material.RENDER_PRIORITY_MAX
 	result.set_shader_parameter(&"tint", color)
 	result.set_shader_parameter(&"grow", grow)
+	return result
+
+
+static var _strand_shader: Shader
+
+
+## A collection's wire of two strands (D-143): [param outer] where the tube
+## turns away, [param core] in its middle facing the head, a little thicker.
+static func strand_material(outer: Color, core: Color) -> ShaderMaterial:
+	if _strand_shader == null:
+		_strand_shader = Shader.new()
+		_strand_shader.code = """
+shader_type spatial;
+render_mode unshaded, depth_draw_always, shadows_disabled, fog_disabled;
+uniform vec4 tint : source_color = vec4(1.0);
+uniform vec4 core : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform float grow = 0.0;
+void vertex() { VERTEX += NORMAL * grow; }
+void fragment() {
+	float facing = clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
+	ALBEDO = facing > 0.82 ? core.rgb : tint.rgb * mix(0.45, 1.0, sqrt(facing));
+	ALPHA = 1.0;
+}
+"""
+	var result := ShaderMaterial.new()
+	result.shader = _strand_shader
+	result.render_priority = Material.RENDER_PRIORITY_MAX
+	result.set_shader_parameter(&"tint", outer)
+	result.set_shader_parameter(&"core", core)
+	result.set_shader_parameter(&"grow", LIT_WIRE_GROW * 0.6)
 	return result
 
 

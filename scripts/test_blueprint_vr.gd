@@ -33,7 +33,7 @@ const PARAMETER_SETTINGS: Array[StringName] = [XREFeatureSettings.VALUE_INPUT, X
 		XREFeatureSettings.NODE_VOLUME, XREFeatureSettings.NODE_BACK, XREFeatureSettings.PIN_PLACE, XREFeatureSettings.CARD_MIRROR, XREFeatureSettings.SIGN_PORTS,
 		XREFeatureSettings.GRAPH_TURN, XREFeatureSettings.GRAPH_PARTS, XREFeatureSettings.EXEC_ARROWS, XREFeatureSettings.DATA_ARROWS, XREFeatureSettings.ARROW_STYLE,
 		XREFeatureSettings.SELECT_ADD, XREFeatureSettings.OBJECT_COPY, XREFeatureSettings.SELECTION_COUNTER, XREFeatureSettings.SELECT_AREA,
-		XREFeatureSettings.WIRE_DRAW]
+		XREFeatureSettings.WIRE_DRAW, XREFeatureSettings.COLLECTION_PORT, XREFeatureSettings.COLLECTION_LITERAL, XREFeatureSettings.COLLECTION_WIRE, XREFeatureSettings.SCENE_COLLECTION]
 ## The values the checks start from: the defaults before D-076, D-089, D-097, D-114, D-131 and D-133 made the
 ## author's picks the defaults. Each check switches to the variant it covers.
 const BASELINE: Dictionary[StringName, StringName] = {
@@ -63,6 +63,9 @@ const BASELINE: Dictionary[StringName, StringName] = {
 	XREFeatureSettings.SELECTION_COUNTER: XREFeatureSettings.OFF, XREFeatureSettings.SELECT_AREA: XREFeatureSettings.OFF,
 	# A wire is drawn by clicks, as the checks before D-135 expect.
 	XREFeatureSettings.WIRE_DRAW: XREFeatureSettings.CLICK,
+	# Collections (D-143): their first values.
+	XREFeatureSettings.COLLECTION_PORT: XREFeatureSettings.GRID, XREFeatureSettings.COLLECTION_LITERAL: XREFeatureSettings.MAKE,
+	XREFeatureSettings.COLLECTION_WIRE: XREFeatureSettings.OFF, XREFeatureSettings.SCENE_COLLECTION: XREFeatureSettings.OFF,
 }
 
 
@@ -353,6 +356,8 @@ func _run() -> void:
 	await _test_d125()
 	await _test_d135()
 	await _test_d137()
+	await _test_d142()
+	await _test_d143()
 	await _test_parameters_in_graph()
 	await _test_token_input()
 	await _test_target_modes()
@@ -1224,6 +1229,13 @@ func _click_on(surface: XREPanelSurface, pixel: Vector2) -> void:
 func _card(id: int) -> XREBlueprintCanvas.Card:
 	for card: XREBlueprintCanvas.Card in _service.canvas.get("_cards") as Array:
 		if card.id == id: return card
+	return null
+
+
+## The box of variable [param variable] as built now, or null.
+func _box(variable: String) -> XREBlueprintBoxes.Box:
+	for box: XREBlueprintBoxes.Box in (_service.canvas.get("_boxes") as XREBlueprintBoxes).get("_boxes") as Array:
+		if box.name == variable: return box
 	return null
 
 
@@ -2770,6 +2782,147 @@ func _test_d135() -> void:
 	features.set_value(XREFeatureSettings.WIRE_DRAW, BASELINE[XREFeatureSettings.WIRE_DRAW])
 	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	_aim(Vector3(-50, 0, 0))
+	await _frames()
+
+
+## D-143: collections in the headset, each variant — Collection port Grid and
+## Stack, Collection wire, Collection literal Rack and its plus, Array from
+## scene with its numbered branches —, a collection variable's box and the
+## keyboard staying over a wire's menu.
+func _test_d143() -> void:
+	var graph := _service.blueprint.graph
+	var canvas := _service.canvas
+	var features := _document.features
+	var history := _service.blueprint.history.get_version()
+	for pair: Array in [[XREFeatureSettings.COLLECTION_PORT, XREFeatureSettings.GRID], [XREFeatureSettings.COLLECTION_LITERAL, XREFeatureSettings.MAKE],
+			[XREFeatureSettings.COLLECTION_WIRE, XREFeatureSettings.OFF], [XREFeatureSettings.SCENE_COLLECTION, XREFeatureSettings.OFF]]:
+		_check(XREFeatureSettings.get_default(pair[0] as StringName) == pair[1], "%s is %s by default" % pair)
+	# As the mockup draws them: archetypes, variables in boxes; the settings as they were come back at the end.
+	var touched: Array[StringName] = [XREFeatureSettings.COLLECTION_PORT, XREFeatureSettings.COLLECTION_LITERAL, XREFeatureSettings.COLLECTION_WIRE, XREFeatureSettings.SCENE_COLLECTION, XREFeatureSettings.NODE_STYLE, XREFeatureSettings.VARIABLE_INPUT]
+	var was: Array[StringName] = []
+	for key: StringName in touched: was.append(features.get_value(key))
+	features.set_value(XREFeatureSettings.NODE_STYLE, XREFeatureSettings.ARCHETYPES)
+	features.set_value(XREFeatureSettings.VARIABLE_INPUT, XREFeatureSettings.BOXES)
+	_service.blueprint.add_variable("scores", [1, 2, 5] as Array[int])
+	_service.call("_add_from_menu", {"id": "test:loop", "title": "For Each", "target": null, "block": XREBlueprintGraph.make_node(0, "for_each", Vector2.ZERO)})
+	await _frames()
+	var loop := int((graph.nodes.back() as Dictionary)["id"])
+	var getter := XREBlueprintGraph.make_node(0, "get_variable", Vector2.ZERO)
+	getter["params"]["variable"] = "scores"
+	var scores := _service.blueprint.insert_block(getter, Vector2.ZERO)
+	_service.blueprint.connect_blocks(scores, 0, loop, 1)
+	await _frames()
+	var port := _card(loop).ports[1] as MeshInstance3D
+	_check(port.mesh is ArrayMesh and port.get_child_count() == 0, "Grid: the Array port is one grid of cells")
+	features.set_value(XREFeatureSettings.COLLECTION_PORT, XREFeatureSettings.STACK)
+	features.set_value(XREFeatureSettings.COLLECTION_WIRE, XREFeatureSettings.ON)
+	await _frames()
+	port = _card(loop).ports[1] as MeshInstance3D
+	_check(port.get_child_count() == 2, "Stack: the Array port is three ports, one behind another")
+	var strands := false
+	for wire: XREBlueprintCanvas.Wire in canvas.get("_wires") as Array:
+		if wire.to != null and wire.to.id == loop and wire.normal is ShaderMaterial and (wire.normal as ShaderMaterial).get_shader_parameter(&"core") != null: strands = true
+	_check(strands, "Collection wire: the array's wire has two strands")
+	# Rack: a Pick Random without a wire holds its list beside its port; its plus adds one.
+	features.set_value(XREFeatureSettings.COLLECTION_LITERAL, XREFeatureSettings.RACK)
+	_service.call("_add_from_menu", {"id": "test:pick", "title": "Pick Random", "target": null, "block": XREBlueprintGraph.make_collection(0, "array_pick_random", Vector2.ZERO)})
+	await _frames()
+	var pick := int((graph.nodes.back() as Dictionary)["id"])
+	# Apart from the loop, so that nothing covers its rack.
+	canvas.preview_move(pick, canvas.get_block_position(loop) + Vector3(0.7, 0.4, 0.2))
+	canvas.commit_moves(_service.blueprint, [pick] as Array[int])
+	await _frames()
+	_check(_card(pick).rack_rect.has_volume(), "Rack: an unwired Array has a rack")
+	var card := _card(pick)
+	await _click_from(card.node.to_global(card.rack_plus_point), card.node.global_basis.z.normalized())
+	_check((graph.find_node(pick)["params"] as Dictionary).get("collection") == [0] and _service.blueprint.last_error.is_empty(), "the rack's plus adds an element: %s" % [(graph.find_node(pick)["params"] as Dictionary).get("collection")])
+	# The plus rebuilt the cards.
+	card = _card(pick)
+	await _click_from(card.node.to_global(card.rack_rect.get_center()), card.node.global_basis.z.normalized())
+	_check((_service.get("_keyboard") as XREPanelSurface).is_visible_in_tree(), "the trigger on the rack types its list on the keyboard")
+	_service.call("_collection_typed", "[3, 4]")
+	_check((graph.find_node(pick)["params"] as Dictionary).get("collection") == [3, 4], "the list typed is the rack's")
+	_service.call("_close_inputs")
+	# A collection variable's box: its type in full, its elements, folded to a count.
+	var boxes := canvas.get("_boxes") as XREBlueprintBoxes
+	var box: XREBlueprintBoxes.Box = null
+	for each: XREBlueprintBoxes.Box in boxes.get("_boxes") as Array:
+		if each.name == "scores": box = each
+	_check(box != null and box.category == XREBlueprintCollections.array_of(XREBlueprintGraph.INTEGER) and not box.collapsed, "the box of scores is an Array[int], open")
+	# D-144: its start value as a Make block's pins — a puck an element, a plus, a × over the puck under the ray.
+	_check(Array(box.item_refs) == ["0", "1", "2"] and box.plus != null and box.mark != null, "each element is a puck of its own, a plus after them: %s" % [box.item_refs])
+	var front := box.node.global_basis.z.normalized()
+	await _click_from(box.node.global_transform * box.plus_point, front)
+	_check(graph.find_variable("scores")["value"] == [1, 2, 5, 5] and graph.find_variable("scores")["value"] is Array[int], "the plus adds a copy of the last: %s" % [graph.find_variable("scores")["value"]])
+	box = _box("scores")
+	await _click_from(box.node.global_transform * box.item_points[1], front)
+	_check(not (_service.get("_token_edit") as Dictionary).is_empty() and str((_service.get("_token_edit") as Dictionary)["box"]) == "scores#1", "a click on a puck types that element: %s" % [_service.get("_token_edit")])
+	_service.call("_token_text_submitted", "7")
+	_check(graph.find_variable("scores")["value"] == [1, 7, 5, 5], "only that element changes: %s" % [graph.find_variable("scores")["value"]])
+	_service.call("_close_inputs")
+	box = _box("scores")
+	_aim_from(box.node.global_transform * box.item_points[0], front)
+	await _frames()
+	# The typed value rebuilt the boxes meanwhile.
+	box = _box("scores")
+	_check(box.mark.visible and box.mark_item == 0, "the × shows over the puck under the ray")
+	await _click_from(box.node.global_transform * box.mark.position, front)
+	_check(graph.find_variable("scores")["value"] == [7, 5, 5], "the × takes that element away: %s" % [graph.find_variable("scores")["value"]])
+	_check(XREBlueprintBoxes.with_item({"open": 1, "closed": 2}, "1k", "open", XREBlueprintCollections.dictionary_of(XREBlueprintGraph.TEXT, XREBlueprintGraph.INTEGER)) == null
+			and (XREBlueprintBoxes.with_item({"open": 1, "closed": 2}, "0k", "shut", XREBlueprintCollections.dictionary_of(XREBlueprintGraph.TEXT, XREBlueprintGraph.INTEGER)) as Dictionary).keys() == ["shut", "closed"],
+			"a key is renamed in its place, and not to another pair's")
+	_service.call("_switch_drawer", "scores")
+	await _frames()
+	_check(graph.find_variable("scores").get("vr_collapsed") == true, "its chevron folds it")
+	# Array from scene: a wire from the Array let go on the selected objects.
+	features.set_value(XREFeatureSettings.SCENE_COLLECTION, XREFeatureSettings.ON)
+	_service.call("_add_from_menu", {"id": "test:objects", "title": "For Each", "target": null, "block": XREBlueprintGraph.make_node(0, "for_each", Vector2.ZERO)})
+	await _frames()
+	var objects := int((graph.nodes.back() as Dictionary)["id"])
+	var scene := _document.get_scene_root()
+	var nodes: Array[Node] = []
+	for child: Node in scene.get_children():
+		if child is MeshInstance3D and nodes.size() < 2: nodes.append(child)
+	_document.select(nodes, XREDocument.Source.TOOL)
+	await _frames()
+	_service.set("_pending_id", objects)
+	_service.set("_pending_port", 1)
+	_service.set("_pending_input", true)
+	_check(bool(_service.call("_pending_scene_target")), "an Array port's wire goes to the scene with Array from scene on")
+	_check(_service.connect_scene_target(objects, nodes[1]), "let go on a selected object: %s" % _service.blueprint.last_error)
+	var paths: Array = (graph.find_node(objects)["params"] as Dictionary).get(XREBlueprintGraph.SCENE_TARGETS, [])
+	_check(paths.size() == 2, "the array holds the two selected objects, in their order: %s" % [paths])
+	await _frames()
+	var branches := 0
+	for wire: Variant in _service.get("_target_wires") as Array:
+		if int((wire as Object).get("id")) == objects and int((wire as Object).get("element")) >= 0: branches += 1
+	_check(branches == 2, "a numbered branch to each")
+	_check(_service.blueprint.remove_scene_target(objects, 0) and (graph.find_node(objects)["params"][XREBlueprintGraph.SCENE_TARGETS] as Array).size() == 1, "a branch's object goes out of the array")
+	_document.select([], XREDocument.Source.TOOL)
+	for index: int in touched.size():
+		features.set_value(touched[index], was[index])
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
+	_aim(Vector3(-50, 0, 0))
+	await _frames()
+
+
+## D-142: a collection's block without its collection wired leaves the
+## headset's edits alone — the trash, a wire held off a port —, which fill the
+## sockets they empty: its collection takes no token.
+func _test_d142() -> void:
+	var graph := _service.blueprint.graph
+	var history := _service.blueprint.history.get_version()
+	_service.call("_add_from_menu", {"id": "test:keys", "title": "Keys", "target": null, "block": XREBlueprintGraph.make_collection(0, "dictionary_keys", Vector2.ZERO)})
+	await _frames()
+	var keys := int((graph.nodes.back() as Dictionary)["id"])
+	_service.add_block("print")
+	await _frames()
+	var printer := int((graph.nodes.back() as Dictionary)["id"])
+	_check(graph.find_node(keys).get("kind") == "collection" and not (graph.find_node(keys)["params"] as Dictionary).has("collection"), "Keys stands unwired, its collection empty")
+	_service.delete_block(printer)
+	await _frames()
+	_check(graph.find_node(printer).is_empty() and _service.blueprint.last_error.is_empty(), "the trash still deletes a block: %s" % _service.blueprint.last_error)
+	while _service.blueprint.history.get_version() > history: _service.blueprint.undo()
 	await _frames()
 
 

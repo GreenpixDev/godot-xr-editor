@@ -43,7 +43,7 @@
 - **Delete** удаляет объект, как X (одна запись undo). **Rename** открывает клавиатуру с именем объекта; Done переименовывает, × или trigger мимо клавиатуры оставляет имя. **Blueprint** открывает граф объекта или создаёт его, как кнопка ярлыка.
 - Пока шорткат или его клавиатура открыты, обе руки — его: другой рукой ничего не взять и не выделить.
 
-**Ручная проверка** (окно: `py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn`; в окне trigger — ЛКМ, лаунчер — Tab, A — E).
+**Ручная проверка** (окно: `py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn`; в окне trigger — ЛКМ, лаунчер — Tab, A — E).
 1. Tab → Settings → Editor → Objects: Object shortcut = On (по умолчанию). Выделить куб ЛКМ: ярлыка над ним нет.
 2. Снова зажать ЛКМ на кубе: сцена потемнела, перед вами три кнопки с подписями и имя куба. Объекты между вами и шорткатом его не закрывают.
 3. Не отпуская ЛКМ, повести взгляд на Rename: кнопка выросла и посинела. Отпустить: открылась клавиатура с именем куба. Набрать имя, Done: куб переименован (в 2D-дереве сцены — тоже), затемнение ушло. A (E): имя прежнее.
@@ -99,7 +99,7 @@ Trigger по иконке открывает окно вкладки перед 
 
 Первое нажатие красит кнопку и спрашивает, второе в течение 3 с сбрасывает. Сброс — одна операция и один шаг отмены.
 
-**Ручная проверка** (окно: `py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn`; в окне trigger — ЛКМ, лаунчер — Tab, правый стик — стрелки, A (отмена) — E, Q — сменить руку; активная рука — правая).
+**Ручная проверка** (окно: `py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn`; в окне trigger — ЛКМ, лаунчер — Tab, правый стик — стрелки, A (отмена) — E, Q — сменить руку; активная рука — правая).
 1. Tab → Settings. Окно шире прежнего. Слева Global, Editor, Controls, над строками ряд Cards, View, Values… Его правый край затенён, под рядом полоска. Строки разделены линиями. Внизу, за линией, «Point at a setting» и «Its explanation shows here.»
 2. Навести луч на строку Node display: внизу её пояснение.
 3. Зажать ЛКМ на ряду подразделов и повести мышь влево. Ряд едет за лучом, Blocks виден, слева появилось затенение, подраздел не переключился. Отпустить. Луч на ряду, стрелки ← и →: ряд сдвигается, вид не поворачивается.
@@ -204,7 +204,7 @@ py scripts/xr_editor.py --runtime sim res://benchmarks/play_check.tscn
 - **Выделение** — шаг только с настройкой Undo selection = On (по умолчанию с D-089).
 - Пока зажат trigger или grip, A и B не действуют. Правка сцены или графа на столе (или Ctrl+Z там) стирает из истории шлема шаги той же истории: отмена в шлеме продолжилась бы не с того места.
 
-**Ручная проверка** (окно: `py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn`; в окне A — E, B — B, X — X, лаунчер — Tab, trigger — ЛКМ, grip — ПКМ).
+**Ручная проверка** (окно: `py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn`; в окне A — E, B — B, X — X, лаунчер — Tab, trigger — ЛКМ, grip — ПКМ).
 1. Перенести куб, нажать A: куб на месте. B: снова перенесён. На столе в History тот же шаг «XR: Transform …» сделан, отменён и сделан снова.
 2. Вытащить куб из Objects, нажать X: куб удалён. A: вернулся. A: исчез (отменено добавление). B, B: снова добавлен и удалён.
 3. Лаунчер → Scene: окно открылось, лаунчер скрылся. A: окно закрылось. A ещё раз: отменилось то, что было до лаунчера (лаунчер сам не появился).
@@ -269,7 +269,7 @@ py scripts/xr_editor.py res://benchmarks/play_check.tscn
 ## Ручная проверка Playtest (D-082)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В шлеме — X или левая Menu (по раскладке), trigger. В окне без шлема — Tab, ЛКМ.

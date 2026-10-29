@@ -54,6 +54,10 @@ const BASIS := 16
 const TRANSFORM2D := 17
 const TRANSFORM3D := 18
 const PLANE := 19
+## Collections (D-141): an array's category is ARRAY plus its element's, a
+## dictionary's DICTIONARY plus its key's × 32 plus its value's ([XREBlueprintCollections]).
+const ARRAY := 256
+const DICTIONARY := 1024
 ## Variant types of the port categories that have one, by category.
 const CATEGORY_TYPES: Dictionary[int, int] = {BOOLEAN: TYPE_BOOL, INTEGER: TYPE_INT, NUMBER: TYPE_FLOAT, TEXT: TYPE_STRING, VECTOR2: TYPE_VECTOR2,
 		VECTOR3: TYPE_VECTOR3, OBJECT: TYPE_OBJECT, COLOR: TYPE_COLOR, VECTOR4: TYPE_VECTOR4, VECTOR2I: TYPE_VECTOR2I, VECTOR3I: TYPE_VECTOR3I,
@@ -83,6 +87,15 @@ const BLOCKS := {
 	"break": {"title": "Break", "in": [["Target", VALUE, ""]], "out": [], "params": {}},
 	"make": {"title": "Make", "in": [], "out": [["Result", VALUE, ""]], "params": {}},
 	"set_variable": {"title": "Set Variable", "in": [["In", EXEC, ""], ["Value", VALUE, "value"]], "out": [["Then", EXEC, ""]], "params": {"variable": "", "value": false}},
+	# Collections (D-141): literals of an element a pin, "count" of them, or of a
+	# key and value pair, "pairs"; a loop over one; a method of Array or
+	# Dictionary ([XREBlueprintCollections]), its ports by the collection wired in.
+	"make_array": {"title": "Make Array", "in": [], "out": [["Array", ARRAY + VALUE, ""]], "params": {"count": 2, "item_0": 0, "item_1": 0}},
+	"make_dictionary": {"title": "Make Dictionary", "in": [], "out": [["Dictionary", DICTIONARY + VALUE * 32 + VALUE, ""]], "params": {"pairs": 1, "key_0": "key_0", "value_0": 0}},
+	# Break, an execution input, ends the loop and goes on with Completed (D-143).
+	"for_each": {"title": "For Each", "in": [["In", EXEC, ""], ["Array", ARRAY + VALUE, "collection"], ["Break", EXEC, ""]], "out": [["Loop Body", EXEC, ""], ["Element", VALUE, ""], ["Index", INTEGER, ""], ["Completed", EXEC, ""]], "params": {}},
+	"for_each_pair": {"title": "For Each Pair", "in": [["In", EXEC, ""], ["Dictionary", DICTIONARY + VALUE * 32 + VALUE, "collection"], ["Break", EXEC, ""]], "out": [["Loop Body", EXEC, ""], ["Key", VALUE, ""], ["Value", VALUE, ""], ["Completed", EXEC, ""]], "params": {}},
+	"collection": {"title": "Collection", "in": [], "out": [], "params": {"method": "array_append"}},
 }
 ## Shortcuts that are a configured block of another kind (D-051): On Ready is
 ## On Signal of the host's ready, Boolean a Value, the rest call a function
@@ -179,13 +192,25 @@ static func variable_type(variable: Dictionary) -> int:
 	return int(variable.get("type", TYPE_NIL))
 
 
+## The port category of a graph variable: of its type, a collection's with its
+## elements' (D-141), which always keeps a start value.
+static func variable_category(variable: Dictionary) -> int:
+	if variable.has("value"): return XREBlueprintCollections.category_of(variable["value"])
+	return port_type(int(variable.get("type", TYPE_NIL)))
+
+
 ## Keys of the inputs of [param block] whose literal may be taken out, leaving
 ## an empty socket that the build reports (D-054): the values of its ports.
 func socket_keys(block: Dictionary) -> Array[String]:
 	var keys: Array[String] = []
+	var collection: bool = block.get("kind") in COLLECTION_KINDS
+	var method: Dictionary = XREBlueprintCollections.METHODS.get(str((block.get("params", {}) as Dictionary).get("method", "")), {})
 	for spec: Array in ports(block, true):
 		var key: String = spec[2] if spec.size() > 2 else ""
-		if not key.is_empty() and key != "target": keys.append(key)
+		if key.is_empty() or key == "target": continue
+		# A collection block's collection, another collection, an object take only a wire, and Get's Default may stay empty (D-141).
+		if collection and (key in ["collection", "other"] or key in method.get("optional", []) or not variant_type(spec[1]) in [TYPE_NIL] + XREBlueprintSchema.LITERAL_TYPES): continue
+		keys.append(key)
 	return keys
 
 
@@ -221,6 +246,9 @@ static func title(block: Dictionary) -> String:
 				"string": return "Switch on String"
 				"enum": return "Switch on " + str(params.get("enum", "Enum")).get_slice(".", 1)
 			return "Switch on Int"
+		"collection":
+			var method := str(params.get("method", ""))
+			return str((XREBlueprintCollections.METHODS[method] as Dictionary)["title"]) if XREBlueprintCollections.METHODS.has(method) else "Collection"
 	return str(BLOCKS[kind]["title"]) if BLOCKS.has(kind) else kind
 
 
@@ -323,6 +351,7 @@ func ports(block: Dictionary, input: bool) -> Array:
 		if not function is Dictionary or not (function as Dictionary).get("args") is Array: return []
 		return (XREBlueprintFunctions.ports(function, int(block.get("property_type", TYPE_NIL)))[0 if input else 1] as Array).duplicate(true)
 	if kind == "operator": return _operator_ports(block, input)
+	if kind in COLLECTION_KINDS: return _collection_ports(block, input)
 	var result: Array = (BLOCKS[kind]["in" if input else "out"] as Array).duplicate(true)
 	var params: Dictionary = block["params"]
 	if kind == "sequence" and not input:
@@ -345,8 +374,131 @@ func ports(block: Dictionary, input: bool) -> Array:
 	if kind in ["get_variable", "set_variable"]:
 		var variable := find_variable(params["variable"])
 		if not variable.is_empty() and ((input and kind == "set_variable") or (not input and kind == "get_variable")):
-			result[1 if input else 0][1] = port_type(variable_type(variable))
+			result[1 if input else 0][1] = variable_category(variable)
 	return result
+
+
+## The blocks of collections (D-141).
+const COLLECTION_KINDS: Array[String] = ["make_array", "make_dictionary", "for_each", "for_each_pair", "collection"]
+
+
+## A collection block's ports (D-141): Make Array's element a pin, keyed
+## item_0…, and the array of their type ([method items_category]); Make
+## Dictionary's key and value a pair of pins; a loop's and a method's
+## collection input, of the collection wired in ([method collection_type]),
+## and the rest by it — a loop's element, a method's arguments and result as
+## their roles say ([constant XREBlueprintCollections.METHODS]).
+func _collection_ports(block: Dictionary, input: bool) -> Array:
+	var kind: String = block["kind"]
+	var result: Array = []
+	match kind:
+		"make_array":
+			if not input: return [["Array", XREBlueprintCollections.array_of(items_category(block, "item_")), ""]]
+			for index: int in collection_count(block): result.append(["[%d]" % index, VALUE, "item_%d" % index])
+			return result
+		"make_dictionary":
+			if not input: return [["Dictionary", XREBlueprintCollections.dictionary_of(items_category(block, "key_"), items_category(block, "value_")), ""]]
+			for index: int in collection_count(block):
+				result.append(["Key %d" % index, VALUE, "key_%d" % index])
+				result.append(["Value %d" % index, VALUE, "value_%d" % index])
+			return result
+	var category := collection_type(block)
+	if kind in ["for_each", "for_each_pair"]:
+		result = (BLOCKS[kind]["in" if input else "out"] as Array).duplicate(true)
+		if input: result[1][1] = category
+		elif kind == "for_each": result[1][1] = XREBlueprintCollections.element_of(category)
+		else:
+			result[1][1] = XREBlueprintCollections.key_of(category)
+			result[2][1] = XREBlueprintCollections.element_of(category)
+		return result
+	var info: Dictionary = XREBlueprintCollections.METHODS.get(str((block["params"] as Dictionary).get("method", "")), {})
+	if info.is_empty(): return result
+	if not info["pure"]: result.append(["In" if input else "Then", EXEC, ""])
+	if input:
+		result.append(["Array" if info["on"] == "array" else "Dictionary", category, "collection"])
+		for argument: Array in info["args"]: result.append([argument[0], XREBlueprintCollections.role_category(argument[1], category), argument[2]])
+	elif not (info["result"] as Array).is_empty():
+		result.append([info["result"][0], XREBlueprintCollections.role_category(info["result"][1], category), ""])
+	return result
+
+
+## How many elements Make Array has, or pairs Make Dictionary, from none — an
+## empty collection, of the type in [constant MADE_TYPE] — to eight (D-141, D-144).
+static func collection_count(block: Dictionary) -> int:
+	var count: Variant = (block.get("params", {}) as Dictionary).get("count" if block.get("kind") == "make_array" else "pairs", 1)
+	return clampi(count, 0, MAX_PINS) if count is int else 1
+
+
+## Whether a loop or a method block works on a dictionary, not an array (D-141).
+static func on_dictionary(block: Dictionary) -> bool:
+	if block.get("kind") in ["make_dictionary", "for_each_pair"]: return true
+	var method := str((block.get("params", {}) as Dictionary).get("method", ""))
+	return block.get("kind") == "collection" and XREBlueprintCollections.METHODS.has(method) and XREBlueprintCollections.METHODS[method]["on"] == "dictionary"
+
+
+## The collection a loop or a method block works on (D-141): of the wire into
+## its collection input; without one, of its rack's literal or, an array of the
+## selected objects', of objects (D-143); untyped without either.
+func collection_type(block: Dictionary) -> int:
+	var dictionary := on_dictionary(block)
+	var untyped := XREBlueprintCollections.dictionary_of(VALUE, VALUE) if dictionary else XREBlueprintCollections.array_of(VALUE)
+	var category := source_category(block, 0 if is_pure(block) else 1)
+	var params: Dictionary = block.get("params", {})
+	if category < 0 and params.has("collection"): category = XREBlueprintCollections.category_of(params["collection"])
+	if category < 0 and params.has(SCENE_TARGETS) and not dictionary: category = XREBlueprintCollections.array_of(OBJECT)
+	if dictionary and XREBlueprintCollections.is_dictionary(category) or not dictionary and XREBlueprintCollections.is_array(category): return category
+	return untyped
+
+
+## The parameter of a loop's or a method's array of scene objects (D-143):
+## their paths from the host, in the order they were selected.
+const SCENE_TARGETS := "targets"
+## The parameter of a Make block with no elements left (D-144): the category of
+## the collection it made, so that it stays of its type and a new element is of it.
+const MADE_TYPE := "type"
+
+
+## Whether the collection input of [param block] holds a value of its own — its
+## rack's literal or the selected objects (D-143) — instead of a wire.
+static func holds_collection(block: Dictionary) -> bool:
+	var params: Dictionary = block.get("params", {})
+	return params.has("collection") or params.has(SCENE_TARGETS)
+
+
+## The category of the output wired into input [param port] of [param block], -1 without a wire.
+func source_category(block: Dictionary, port: int) -> int:
+	for edge: Dictionary in edges:
+		if edge.get("to") != block.get("id") or edge.get("to_port") != port or not edge.get("from_port") is int: continue
+		var source := find_node(int(edge.get("from", -1)))
+		if source.is_empty() or _resolving > 64: return VALUE
+		_resolving += 1
+		var outputs := ports(source, false)
+		_resolving -= 1
+		var index: int = edge["from_port"]
+		return outputs[index][1] if index >= 0 and index < outputs.size() else VALUE
+	return -1
+
+
+## The elements' category of Make Array, or the keys' or values' of Make
+## Dictionary by [param prefix] (D-141), as Operator's (D-065): of what is wired
+## or set in each, an integer a number beside a number; any value when they differ.
+func items_category(block: Dictionary, prefix: String) -> int:
+	var params: Dictionary = block.get("params", {})
+	var found := -1
+	for index: int in collection_count(block):
+		var port := index if block.get("kind") == "make_array" else index * 2 + (0 if prefix == "key_" else 1)
+		var category := source_category(block, port)
+		if category < 0 and params.has(prefix + str(index)): category = port_type(typeof(params[prefix + str(index)]))
+		if category < 0: continue
+		if XREBlueprintCollections.is_collection(category) or category == VALUE: return VALUE
+		if found < 0 or found == category: found = category
+		elif [found, category].has(INTEGER) and [found, category].has(NUMBER): found = NUMBER
+		else: return VALUE
+	if found >= 0: return found
+	# None (D-144): of the type the block kept when its last element went.
+	var made: Variant = params.get(MADE_TYPE)
+	if not made is int or not XREBlueprintCollections.is_collection(made): return VALUE
+	return XREBlueprintCollections.key_of(made) if prefix == "key_" else XREBlueprintCollections.element_of(made)
 
 
 ## An operator's ports (D-065): A and B, or A alone, or from A to H for a
@@ -423,10 +575,18 @@ static func enum_constants(path: String) -> Dictionary:
 
 ## The pins of [param block] that are added and removed (D-136, D-138):
 ## [code]{"input": side, "count": n, "can_add": bool}[/code] — a variadic
-## operator's inputs, a Sequence's outputs, a Switch's cases before Default —,
-## empty for a block whose pins are fixed. They are the first of their side.
+## operator's inputs, a Sequence's outputs, a Switch's cases before Default,
+## Make Array's elements and Make Dictionary's pairs (D-141), whose two pins
+## go together ([code]"pair": true[/code]) —, empty for a block whose pins are
+## fixed. They are the first of their side; [code]"min"[/code] of them stay.
 static func variable_pins(block: Dictionary) -> Dictionary:
 	match str(block.get("kind", "")):
+		"make_array":
+			var count := collection_count(block)
+			return {"input": true, "count": count, "can_add": count < MAX_PINS, "min": 0}
+		"make_dictionary":
+			var pairs := collection_count(block)
+			return {"input": true, "count": pairs * 2, "can_add": pairs < MAX_PINS, "min": 0, "pair": true}
 		"operator":
 			if not XREBlueprintOperators.is_variadic(operator_of(block)): return {}
 			var count := operand_count(block)
@@ -708,6 +868,9 @@ static func symbol(block: Dictionary) -> String:
 static func is_unused(block: Dictionary, key: String) -> bool:
 	if block.get("kind") == "switch" and key.begins_with("case_") and key.trim_prefix("case_").is_valid_int():
 		return int(key.trim_prefix("case_")) >= pin_count(block)
+	if block.get("kind") in ["make_array", "make_dictionary"]:
+		var index := key.get_slice("_", 1)
+		return key.get_slice("_", 0) in ["item", "key", "value"] and index.is_valid_int() and int(index) >= collection_count(block)
 	if block.get("kind") != "operator": return false
 	var index := XREBlueprintOperators.OPERAND_KEYS.find(key)
 	return index >= 0 and index >= operand_count(block)
@@ -779,6 +942,54 @@ func operand_types(block: Dictionary, key: String, types: Array) -> Array[int]:
 	return result
 
 
+## A new wire types the literals of collection blocks (D-141), as one into an
+## operand does (D-065): into an element of Make Array, the other elements'; into
+## a key or a value of Make Dictionary, the other keys' or values'; into a
+## method's collection, the literals of its elements, keys and values. A literal
+## of a type only a wire brings, an object, is taken out: its socket is empty.
+## [param before] are the edges before the edit; true if a literal changed.
+func adopt_collections(before: Array) -> bool:
+	var changed := false
+	for edge: Dictionary in edges:
+		if before.has(edge) or not edge.get("to") is int or not edge.get("to_port") is int: continue
+		var block := find_node(edge["to"])
+		if not block.get("kind") in COLLECTION_KINDS or not block.get("params") is Dictionary: continue
+		var params: Dictionary = block["params"]
+		var port: int = edge["to_port"]
+		# A wire into a collection input takes the place of its rack's list or its objects (D-143).
+		if port == input_port(block, "collection") and holds_collection(block):
+			params.erase("collection")
+			params.erase(SCENE_TARGETS)
+			changed = true
+		match str(block["kind"]):
+			"make_array", "make_dictionary":
+				var wired := source_category(block, port)
+				if XREBlueprintCollections.is_collection(wired) or wired in [-1, VALUE]: continue
+				var prefix := "item_" if block["kind"] == "make_array" else ("key_" if port % 2 == 0 else "value_")
+				for index: int in collection_count(block):
+					var other := index if block["kind"] == "make_array" else index * 2 + port % 2
+					if other != port and source_category(block, other) < 0 and _adopt_literal(params, prefix + str(index), wired): changed = true
+			"collection":
+				var info: Dictionary = XREBlueprintCollections.METHODS.get(str(params.get("method", "")), {})
+				if info.is_empty() or port != (0 if is_pure(block) else 1): continue
+				var category := collection_type(block)
+				for argument: Array in info["args"]:
+					if str(argument[1]) in ["element", "key", "value"] and source_category(block, input_port(block, str(argument[2]))) < 0:
+						if _adopt_literal(params, str(argument[2]), XREBlueprintCollections.role_category(str(argument[1]), category)): changed = true
+	return changed
+
+
+## Gives literal [param key] of [param params] the type of [param category]
+## ([method adopt_collections]): converted, or taken out for a type no literal
+## has; left alone for any value. True if it changed.
+static func _adopt_literal(params: Dictionary, key: String, category: int) -> bool:
+	var type := variant_type(category)
+	if type == TYPE_NIL or not params.has(key) or typeof(params[key]) == type: return false
+	if type in XREBlueprintSchema.LITERAL_TYPES: params[key] = convert_literal(params[key], type)
+	else: params.erase(key)
+	return true
+
+
 ## [param value] as a literal of Variant type [param type]: a number keeps its
 ## value, as a whole number or a real, and fills a vector; anything else is the
 ## type's default. Null for a type no literal has.
@@ -794,6 +1005,8 @@ static func convert_literal(value: Variant, type: int) -> Variant:
 
 ## The Variant type of values of port category [param category]; TYPE_NIL for any value.
 static func variant_type(category: int) -> int:
+	if XREBlueprintCollections.is_array(category): return TYPE_ARRAY
+	if XREBlueprintCollections.is_dictionary(category): return TYPE_DICTIONARY
 	return CATEGORY_TYPES.get(category, TYPE_NIL)
 
 
@@ -809,17 +1022,32 @@ func input_port(block: Dictionary, key: String) -> int:
 	return -1
 
 
-## Maps Godot's Variant type to a graph port category.
+## The element category of each of the engine's packed arrays (D-143): their ports are typed arrays.
+const PACKED_ELEMENTS: Dictionary[int, int] = {TYPE_PACKED_BYTE_ARRAY: INTEGER, TYPE_PACKED_INT32_ARRAY: INTEGER, TYPE_PACKED_INT64_ARRAY: INTEGER,
+		TYPE_PACKED_FLOAT32_ARRAY: NUMBER, TYPE_PACKED_FLOAT64_ARRAY: NUMBER, TYPE_PACKED_STRING_ARRAY: TEXT, TYPE_PACKED_VECTOR2_ARRAY: VECTOR2,
+		TYPE_PACKED_VECTOR3_ARRAY: VECTOR3, TYPE_PACKED_COLOR_ARRAY: COLOR, TYPE_PACKED_VECTOR4_ARRAY: VECTOR4}
+
+
+## Maps Godot's Variant type to a graph port category; an array or a
+## dictionary whose elements it doesn't say is an untyped one (D-141).
 static func port_type(type: int) -> int:
 	if type == TYPE_STRING_NAME: return TEXT
+	if type == TYPE_ARRAY: return ARRAY + VALUE
+	if PACKED_ELEMENTS.has(type): return ARRAY + PACKED_ELEMENTS[type]
+	if type == TYPE_DICTIONARY: return DICTIONARY + VALUE * XREBlueprintCollections.SPAN + VALUE
 	for category: int in CATEGORY_TYPES:
 		if CATEGORY_TYPES[category] == type: return category
 	return VALUE
 
 
-## Allowed data conversions; execution can only connect to execution.
+## Allowed data conversions; execution can only connect to execution. A typed
+## collection goes into an untyped one of its kind, not the other way, and
+## never into one of other elements nor into a single value's port (D-141).
 static func ports_compatible(from: int, to: int) -> bool:
-	return from == to or (to == VALUE and from != EXEC) or (from == INTEGER and to == NUMBER)
+	if from == to or (to == VALUE and from != EXEC) or (from == INTEGER and to == NUMBER): return true
+	if XREBlueprintCollections.is_untyped(to):
+		return XREBlueprintCollections.is_array(to) and XREBlueprintCollections.is_array(from) or XREBlueprintCollections.is_dictionary(to) and XREBlueprintCollections.is_dictionary(from)
+	return false
 
 
 ## Index of the optional runtime Target input; object-valued data inputs are separate.
@@ -845,7 +1073,10 @@ static func has_target(block: Dictionary) -> bool:
 ## Whether a block computes data on demand, without execution ports.
 static func is_pure(block: Dictionary) -> bool:
 	match block.get("kind"):
-		"value", "get_property", "equals", "operator", "get_variable", "break", "make": return true
+		"value", "get_property", "equals", "operator", "get_variable", "break", "make", "make_array", "make_dictionary": return true
+		"collection":
+			var method := str((block.get("params", {}) as Dictionary).get("method", ""))
+			return XREBlueprintCollections.METHODS.has(method) and bool(XREBlueprintCollections.METHODS[method]["pure"])
 		"call":
 			var function: Variant = block.get("function")
 			return function is Dictionary and bool((function as Dictionary).get("pure", false))
@@ -884,6 +1115,11 @@ static func make_operator(id: int, op: String, position: Vector2) -> Dictionary:
 	return {"id": id, "kind": "operator", "position": position, "params": XREBlueprintOperators.default_params(op)}
 
 
+## Creates a block of method [param method] of Array or Dictionary ([XREBlueprintCollections], D-141).
+static func make_collection(id: int, method: String, position: Vector2) -> Dictionary:
+	return {"id": id, "kind": "collection", "position": position, "params": XREBlueprintCollections.default_params(method)}
+
+
 ## Creates a call block of function [param signature] ([XREBlueprintFunctions]).
 static func make_call(id: int, signature: Dictionary, position: Vector2) -> Dictionary:
 	return {"id": id, "kind": "call", "position": position, "function": signature.duplicate(true), "params": XREBlueprintFunctions.default_params(signature)}
@@ -903,6 +1139,8 @@ static func is_literal(value: Variant) -> bool:
 		TYPE_COLOR:
 			var color := value as Color
 			return is_finite(color.r) and is_finite(color.g) and is_finite(color.b) and is_finite(color.a)
+		TYPE_ARRAY, TYPE_DICTIONARY:
+			return XREBlueprintCollections.is_value(value)
 	return false
 
 
@@ -979,6 +1217,7 @@ func validate() -> PackedStringArray:
 		if kind == "operator": errors.append_array(_validate_operands(block))
 		if kind in ["sequence", "switch"]: errors.append_array(_validate_pins(block))
 		if kind in ["break", "make"]: errors.append_array(_validate_struct(block))
+		if kind in COLLECTION_KINDS: errors.append_array(_validate_collection(block))
 		if block.has("property_type") and (not block["property_type"] is int or block["property_type"] < TYPE_NIL or block["property_type"] >= TYPE_MAX):
 			errors.append("Block #%s: invalid property type." % id)
 		if not block.get("arguments", []) is Array:
@@ -1078,6 +1317,62 @@ static func _validate_struct(block: Dictionary) -> PackedStringArray:
 	var params: Dictionary = block["params"]
 	for key: String in params:
 		if not is_literal(params[key]): errors.append("Block #%s: invalid %s." % [block["id"], key])
+	return errors
+
+
+## Make Array's count of elements and Make Dictionary's of pairs, from one to
+## eight, and their literals, none past the count; a method block's method and
+## the literals of its arguments (D-141).
+static func _validate_collection(block: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var params: Dictionary = block["params"]
+	if block["kind"] == "collection":
+		var method := str(params.get("method", ""))
+		if not XREBlueprintCollections.METHODS.has(method):
+			errors.append("Block #%s: unknown method %s." % [block["id"], method])
+			return errors
+		var keys: Array[String] = ["method", "collection", SCENE_TARGETS]
+		for argument: Array in XREBlueprintCollections.METHODS[method]["args"]: keys.append(str(argument[2]))
+		for key: String in params:
+			if not key in keys: errors.append("Block #%s: %s takes no %s." % [block["id"], method, key])
+			elif key != "method" and not is_literal(params[key]): errors.append("Block #%s: invalid %s." % [block["id"], key])
+		errors.append_array(_validate_held(block))
+		return errors
+	if block["kind"] in ["for_each", "for_each_pair"]:
+		for key: String in params:
+			if not key in ["collection", SCENE_TARGETS]: errors.append("Block #%s: a loop takes no %s." % [block["id"], key])
+		errors.append_array(_validate_held(block))
+		return errors
+	var key := "count" if block["kind"] == "make_array" else "pairs"
+	if not params.get(key) is int or int(params[key]) < 0 or int(params[key]) > MAX_PINS:
+		errors.append("Block #%s: invalid number of %s." % [block["id"], "elements" if key == "count" else "pairs"])
+		return errors
+	for name: String in params:
+		if name == key: continue
+		if name == MADE_TYPE:
+			var made: Variant = params[name]
+			if not made is int or not XREBlueprintCollections.is_collection(made) or XREBlueprintCollections.is_dictionary(made) != (key == "pairs"):
+				errors.append("Block #%s: invalid %s." % [block["id"], name])
+			continue
+		if is_unused(block, name) or not name.get_slice("_", 0) in ["item", "key", "value"]: errors.append("Block #%s: %s is past its %s." % [block["id"], name, "elements" if key == "count" else "pairs"])
+		elif not is_literal(params[name]): errors.append("Block #%s: invalid %s." % [block["id"], name])
+	return errors
+
+
+## A loop's or a method's own collection (D-143): a rack's literal of its kind,
+## or the paths of scene objects for an array, never both.
+static func _validate_held(block: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var params: Dictionary = block["params"]
+	var dictionary := on_dictionary(block)
+	if params.has("collection"):
+		var category := XREBlueprintCollections.category_of(params["collection"])
+		if not is_literal(params["collection"]) or (XREBlueprintCollections.is_dictionary(category) != dictionary) or not XREBlueprintCollections.is_collection(category):
+			errors.append("Block #%s: invalid collection." % block["id"])
+	if params.has(SCENE_TARGETS):
+		var paths: Variant = params[SCENE_TARGETS]
+		if dictionary or params.has("collection") or not paths is Array or (paths as Array).get_typed_builtin() != TYPE_STRING:
+			errors.append("Block #%s: invalid scene objects." % block["id"])
 	return errors
 
 

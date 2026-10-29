@@ -61,6 +61,8 @@ class Box:
 	var name := ""
 	var node: Node3D
 	var type := TYPE_NIL
+	## Its port category: a collection's with its elements' (D-143).
+	var category := XREBlueprintGraph.VALUE
 	var value: Variant
 	var used := false
 	var trash: Node3D
@@ -88,11 +90,44 @@ class Box:
 	var look := -1
 	## How much it is grown under a ray, kept as it turns.
 	var size := 1.0
+	## A collection's elements' pucks (D-144): what names each in a reference
+	## ([method item_ref]), where it is and how big, its puck and its text.
+	var item_refs: Array[String] = []
+	var item_points: Array[Vector3] = []
+	var item_sizes: Array[Vector3] = []
+	var item_nodes: Array[Node3D] = []
+	var item_texts: Array[Label3D] = []
+	## The plus after them and the × over the puck under a ray, on its element, or -1.
+	var plus: Node3D
+	var plus_point := Vector3.ZERO
+	var mark: Node3D
+	var mark_item := -1
 
+## A collection variable's elements under its lid (D-143, D-144), each a puck
+## of its own, as a Make block's pins: so many a row, at most so many, or pairs
+## a row each; the gap between pucks and around a pair's arrow, a row; the
+## plus after them, which adds one, and the × over the puck under the ray,
+## which takes it away.
+const ROW_ITEMS := 4
+const MAX_ITEMS := 12
+const MAX_PAIRS := 6
+const ITEM_GAP := XREBlueprintCanvas.PIN_MARK_SIZE + 0.002
+const ARROW_GAP := 0.014
+const PAIR_ROW := 0.022
+const PLUS_SIZE := 0.014
+const MARK_SIZE := XREBlueprintCanvas.PIN_MARK_SIZE
+## An element's puck, the plus after the elements and the × over a puck (D-144).
+const ITEM := 5
+const ITEM_PLUS := 6
+const ITEM_MARK := 7
+## The port of a collection's output (D-143): [method XREBlueprintCanvas.collection_visual] of its category.
+var collection_port: Callable
 var _boxes: Array[Box] = []
 var _hit := -1
 var _hit_part := BODY
 var _hit_component := -1
+var _hit_item := -1
+var _mark_mesh: Mesh
 var _split := false
 var _archetype := false
 ## Whether a box's dot and output are shaped by its type (Port shapes, D-104), or circles.
@@ -136,7 +171,6 @@ func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], styl
 		var key := str(variable["name"])
 		_add_box(key, variable.get("value"), XREBlueprintGraph.variable_type(variable), places.get(key, Vector3.ZERO), style, used.has(key), XREBlueprintTokens.variable_expression(variable), XREBlueprintCanvas.drawer_shut(graph, variable))
 
-
 ## Moves the boxes to their points of [param places] (canvas space, by
 ## variable), when only the graph's placement changed; creates nothing.
 func place(places: Dictionary[String, Vector3]) -> void:
@@ -176,6 +210,7 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 	box.value = value
 	box.used = used
 	box.type = type
+	box.category = XREBlueprintCollections.category_of(value) if value != null else XREBlueprintGraph.port_type(type)
 	box.node = Node3D.new()
 	box.node.name = "Box_" + variable
 	box.node.position = point
@@ -187,7 +222,7 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 		return
 	var shape := BoxMesh.new()
 	shape.size = BOX_SIZE
-	var color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)]
+	var color := XREBlueprintCanvas.type_color(box.category)
 	color.a = BOX_ALPHA
 	box.node.add_child(XRERig.create_vr_mesh(shape, XREBlueprintCanvas.material(color, true)))
 	var front := BOX_SIZE.z * 0.5 + 0.001
@@ -235,14 +270,26 @@ func _add_box(variable: String, value: Variant, type: int, point: Vector3, style
 
 ## An archetypes' box (D-106): see [constant CARD_HEIGHT].
 func _add_card(box: Box, style: StringName, expression: String) -> void:
-	var color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)]
+	var color := XREBlueprintCanvas.type_color(box.category)
 	var shown := XREBlueprintTokens.shown(box.value, "", expression) if box.value != null else "empty"
 	var value_width := XREBlueprintTokens.width(shown) * 0.85
 	var short := type_string(box.type).to_lower() if box.type in [TYPE_BOOL, TYPE_INT, TYPE_FLOAT] else type_string(box.type)
-	var name_width := XREBlueprintCanvas.text_width(box.name, 18) + XREBlueprintCanvas.text_width(short, 14) + 0.012
+	# A collection (D-143): its type in full, its first elements or pairs under the lid, a pair a row.
+	var collection := XREBlueprintCollections.is_collection(box.category)
+	var rows := 1
+	var layout: Array[Dictionary] = []
+	if collection:
+		short = XREBlueprintCollections.hint(box.category)
+		layout = _item_layout(box)
+		value_width = 0.03
+		for entry: Dictionary in layout:
+			value_width = maxf(value_width, float(entry["x"]) + float(entry["width"]))
+			rows = maxi(rows, int(entry["row"]) + 1)
+	var height := CARD_HEIGHT + PAIR_ROW * (rows - 1)
+	var name_width := XREBlueprintCanvas.text_width(box.name, 18) + XREBlueprintCanvas.text_width(short, 14) + 0.012 + (0.02 if collection else 0.0)
 	var width := maxf(maxf(name_width + 0.05, value_width + 0.05), 0.12)
-	box.extent = Vector3(width, CARD_HEIGHT, 0.008)
-	var outline := XREBlueprintShapes.rounded_rect(Vector2(width, CARD_HEIGHT), Vector4.ONE * CARD_CORNER)
+	box.extent = Vector3(width, height, 0.008)
+	var outline := XREBlueprintShapes.rounded_rect(Vector2(width, height), Vector4.ONE * CARD_CORNER)
 	var behind := XRERig.create_vr_mesh(XREBlueprintShapes.body(outline, 0.002), under_material(Color(color, BEHIND_SEEN)))
 	behind.position = Vector3(BEHIND, BEHIND, -0.004)
 	box.node.add_child(behind)
@@ -253,7 +300,7 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 	var front := box.extent.z * 0.5
 	var lid := XREBlueprintShapes.rounded_rect(Vector2(width, LID_HEIGHT), Vector4(CARD_CORNER, CARD_CORNER, 0, 0))
 	var lid_mesh := XRERig.create_vr_mesh(XREBlueprintShapes.body(lid, 0.001), under_material(XREBlueprintIcons.BODY.lerp(color, LID_TINT)))
-	lid_mesh.position = Vector3(0, CARD_HEIGHT * 0.5 - LID_HEIGHT * 0.5, front + 0.0004)
+	lid_mesh.position = Vector3(0, height * 0.5 - LID_HEIGHT * 0.5, front + 0.0004)
 	box.node.add_child(lid_mesh)
 	# The rim, and a line of it under the lid, as a headed card's (D-110, D-114):
 	# in front of the lid, whose face is 0.9 mm out and hid them at 0.8 mm.
@@ -261,9 +308,9 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 	rim.begin(Mesh.PRIMITIVE_TRIANGLES)
 	rim.append_from(XREBlueprintShapes.ring(outline, 0.0, 0.0017, front + 0.0011), 0, Transform3D.IDENTITY)
 	var line := XREBlueprintShapes.rounded_rect(Vector2(width - 0.0034, 0.0017), Vector4.ZERO)
-	rim.append_from(XREBlueprintShapes.body(line, 0.0001), 0, Transform3D(Basis.IDENTITY, Vector3(0, CARD_HEIGHT * 0.5 - LID_HEIGHT, front + 0.0011)))
+	rim.append_from(XREBlueprintShapes.body(line, 0.0001), 0, Transform3D(Basis.IDENTITY, Vector3(0, height * 0.5 - LID_HEIGHT, front + 0.0011)))
 	box.node.add_child(XRERig.create_vr_mesh(rim.commit(), XREBlueprintCanvas.material(color, true)))
-	var lid_y := CARD_HEIGHT * 0.5 - LID_HEIGHT * 0.5
+	var lid_y := height * 0.5 - LID_HEIGHT * 0.5
 	var dot := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(_port_shape(box), XREBlueprintCanvas.PORT_RADIUS, XREBlueprintCanvas.PORT_DEPTH * 2.0), XREBlueprintCanvas.material(color, true))
 	dot.scale = Vector3.ONE * 0.5
 	dot.position = Vector3(-width * 0.5 + 0.015, lid_y, front + 0.0012)
@@ -277,9 +324,13 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 	kind.modulate = Color(1, 1, 1, 0.55)
 	kind.position = Vector3(left + XREBlueprintCanvas.text_width(box.name, 18) + 0.006 + XREBlueprintCanvas.text_width(short, 14) * 0.5, lid_y, front + 0.0014)
 	box.node.add_child(kind)
-	var value_y := -CARD_HEIGHT * 0.5 + (CARD_HEIGHT - LID_HEIGHT) * 0.5
+	var value_y := -height * 0.5 + (height - LID_HEIGHT) * 0.5
 	box.token_point = Vector3(width * 0.5 - 0.015 - value_width * 0.5, value_y, front + 0.001)
-	if box.value == null:
+	if collection:
+		# Its elements on the left under the lid, each its own puck (D-144); folded, its count types the list (D-143).
+		box.token_size = Vector3.ZERO
+		_add_items(box, layout, -width * 0.5 + 0.012, value_y + PAIR_ROW * (rows - 1) * 0.5, front + 0.001)
+	elif box.value == null:
 		var slot := BoxMesh.new()
 		slot.size = Vector3(XREBlueprintTokens.width("0.0"), XREBlueprintTokens.HEIGHT, 0.002)
 		var mesh := XRERig.create_vr_mesh(slot, XREBlueprintCanvas.material(Color(1, 1, 1, 0.5), true))
@@ -300,12 +351,13 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 		box.token_size = Vector3(value_width, XREBlueprintTokens.HEIGHT, 0.012)
 	# Read on the right edge, written from the top (D-106).
 	box.read_point = Vector3(width * 0.5, 0, front + 0.002)
-	box.write_point = Vector3(0, CARD_HEIGHT * 0.5, front)
-	var read := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(_port_shape(box), XREBlueprintCanvas.PORT_RADIUS, XREBlueprintCanvas.PORT_DEPTH * 2.0), XREBlueprintCanvas.material(color, true))
+	box.write_point = Vector3(0, height * 0.5, front)
+	# A collection's is its grid or stack, as its cards' ports are (D-143).
+	var read: MeshInstance3D = collection_port.call(box.category) if collection and collection_port.is_valid() else XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(_port_shape(box), XREBlueprintCanvas.PORT_RADIUS, XREBlueprintCanvas.PORT_DEPTH * 2.0), XREBlueprintCanvas.material(color, true))
 	read.position = box.read_point
 	box.node.add_child(read)
 	# The trash, as an archetype's: over the right corner, while the ray is on the box.
-	box.trash_point = Vector3(width * 0.5 - 0.023, CARD_HEIGHT * 0.5 + XREBlueprintCanvas.TRASH_RISE, front + 0.002)
+	box.trash_point = Vector3(width * 0.5 - 0.023, height * 0.5 + XREBlueprintCanvas.TRASH_RISE, front + 0.002)
 	box.trash = Node3D.new()
 	box.trash.position = box.trash_point
 	var trash := XRERig.create_vr_mesh(_trash_mesh, _archetype_trash if _archetype_trash != null else _trash_material)
@@ -315,8 +367,197 @@ func _add_card(box: Box, style: StringName, expression: String) -> void:
 	box.trash.visible = false
 	box.node.add_child(box.trash)
 	if _split and COMPONENTS.has(box.type):
-		_add_drawer_switch(box, Vector3(width * 0.5 - 0.016, CARD_HEIGHT * 0.5 - LID_HEIGHT * 0.5, front + 0.0016))
+		_add_drawer_switch(box, Vector3(width * 0.5 - 0.016, height * 0.5 - LID_HEIGHT * 0.5, front + 0.0016))
 		if not box.collapsed: _add_drawer(box)
+	# A collection's chevron folds its elements to their count, as a drawer of components (D-114, D-143).
+	elif collection: _add_drawer_switch(box, Vector3(width * 0.5 - 0.016, height * 0.5 - LID_HEIGHT * 0.5, front + 0.0016))
+
+
+## How [param box]'s elements lie under its lid (D-143, D-144), from its left
+## and its first row: entries of [code]kind[/code] "item" (a puck, its
+## [code]value[/code] and its [code]ref[/code], [method item_ref]), "arrow"
+## between a pair's key and value, "plus" after the last, which adds one,
+## "more" past the last shown, or "count" folded or empty; each with its
+## [code]x[/code], [code]row[/code] and [code]width[/code]. An array's pucks
+## go [constant ROW_ITEMS] a row, a dictionary's pairs a row each.
+func _item_layout(box: Box) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var count := (box.value as Array).size() if box.value is Array else (box.value as Dictionary).size() if box.value is Dictionary else 0
+	if box.collapsed or box.value == null or count == 0:
+		var text := _count_text(box)
+		result.append({"kind": "count", "x": 0.0, "row": 0, "width": XREBlueprintCanvas.text_width(text, 16)})
+		# An empty one takes its first element by its plus.
+		if not box.collapsed and box.value != null: result.append({"kind": "plus", "x": XREBlueprintCanvas.text_width(text, 16) + ITEM_GAP * 0.5, "row": 0, "width": PLUS_SIZE})
+		return result
+	var x := 0.0
+	var row := 0
+	if box.value is Dictionary:
+		var pairs := box.value as Dictionary
+		var keys := pairs.keys()
+		for index: int in mini(keys.size(), MAX_PAIRS):
+			row = index
+			x = _lay_item(result, keys[index], "%dk" % index, 0.0, row)
+			result.append({"kind": "arrow", "x": x, "row": row, "width": ARROW_GAP})
+			x = _lay_item(result, pairs[keys[index]], "%dv" % index, x + ARROW_GAP, row)
+		result.append({"kind": "more" if keys.size() > MAX_PAIRS else "plus", "x": x + ITEM_GAP, "row": row, "width": XREBlueprintTokens.width("…") if keys.size() > MAX_PAIRS else PLUS_SIZE})
+		return result
+	var items := box.value as Array
+	for index: int in mini(items.size(), MAX_ITEMS):
+		if index > 0 and index % ROW_ITEMS == 0:
+			row += 1
+			x = 0.0
+		x = _lay_item(result, items[index], str(index), x, row) + ITEM_GAP
+	if items.size() > MAX_ITEMS:
+		result.append({"kind": "more", "x": x, "row": row, "width": XREBlueprintTokens.width("…")})
+		return result
+	if items.size() % ROW_ITEMS == 0:
+		row += 1
+		x = 0.0
+	result.append({"kind": "plus", "x": x, "row": row, "width": PLUS_SIZE})
+	return result
+
+
+## A puck of [param value] for [method _item_layout] at [param x] of [param row]; where it ends.
+static func _lay_item(layout: Array[Dictionary], value: Variant, ref: String, x: float, row: int) -> float:
+	var width := XREBlueprintTokens.width(XREBlueprintTokens.text(value, "")) * 0.85
+	layout.append({"kind": "item", "value": value, "ref": ref, "x": x, "row": row, "width": width})
+	return x + width
+
+
+## "3 items", "1 item", "2 pairs": a folded collection, or an empty one.
+static func _count_text(box: Box) -> String:
+	var count := (box.value as Array).size() if box.value is Array else (box.value as Dictionary).size() if box.value is Dictionary else 0
+	var noun := "pair" if box.value is Dictionary else "item"
+	return "%d %s%s" % [count, noun, "" if count == 1 else "s"]
+
+
+## Puts [param box]'s elements under its lid as [param layout] lays them
+## ([method _item_layout]) from [param left], the first row at [param top]:
+## pucks shown as they are, not taken; the × over them hidden till a ray is on one.
+func _add_items(box: Box, layout: Array[Dictionary], left: float, top: float, z: float) -> void:
+	for entry: Dictionary in layout:
+		var width := float(entry["width"])
+		var point := Vector3(left + float(entry["x"]) + width * 0.5, top - int(entry["row"]) * PAIR_ROW, z)
+		match str(entry["kind"]):
+			"item":
+				var value: Variant = entry["value"]
+				var text := XREBlueprintTokens.text(value, "")
+				var token := XREBlueprintCanvas.make_token(value, "", width / 0.85, false, false, false, -1, text)
+				token.scale = Vector3.ONE * 0.85
+				token.position = point
+				box.node.add_child(token)
+				box.item_refs.append(str(entry["ref"]))
+				box.item_points.append(point)
+				box.item_sizes.append(Vector3(width, XREBlueprintTokens.HEIGHT * 0.85, 0.012))
+				box.item_nodes.append(token)
+				box.item_texts.append(token.get_meta(&"text") as Label3D)
+			"arrow":
+				var arrow := XREBlueprintCanvas.label("→", 16)
+				arrow.position = point
+				box.node.add_child(arrow)
+			"plus":
+				box.plus_point = point
+				box.plus = Node3D.new()
+				box.plus.name = "ItemPlus"
+				box.plus.position = point
+				for size: Vector3 in [Vector3(PLUS_SIZE * 0.8, 0.0025, 0.0015), Vector3(0.0025, PLUS_SIZE * 0.8, 0.0015)]:
+					var bar := BoxMesh.new()
+					bar.size = size
+					box.plus.add_child(XRERig.create_vr_mesh(bar, XREBlueprintCanvas.material(Color(0.78, 0.8, 0.85), true)))
+				box.node.add_child(box.plus)
+			_:
+				# Folded, empty or past the last shown: the trigger on it types the list (D-143).
+				box.token_text = XREBlueprintCanvas.label(_count_text(box) if entry["kind"] == "count" else "…", 16)
+				box.token_text.modulate = Color(1, 1, 1, 0.7)
+				box.token_text.position = point
+				box.node.add_child(box.token_text)
+				box.token_point = point
+				box.token_size = Vector3(width, XREBlueprintTokens.HEIGHT, 0.012)
+	if box.item_refs.is_empty(): return
+	# The same × as a Make block's pin's (D-137).
+	box.mark = Node3D.new()
+	box.mark.name = "ItemMark"
+	if _mark_mesh == null: _mark_mesh = XREBlueprintCanvas._make_pin_mark_mesh()
+	box.mark.add_child(XRERig.create_vr_mesh(_mark_mesh, XREBlueprintCanvas.material(XREBlueprintCanvas.PIN_MARK_COLOR, true)))
+	box.mark.visible = false
+	box.node.add_child(box.mark)
+
+
+## Where the × of element [param item]'s puck stands: in the gap right of it,
+## as a pin's right of its name — of a pair, right of its value, as it takes the pair.
+static func _mark_point(box: Box, item: int) -> Vector3:
+	if box.item_refs[item].ends_with("k") and item + 1 < box.item_points.size(): item += 1
+	return box.item_points[item] + Vector3(box.item_sizes[item].x * 0.5 + ITEM_GAP * 0.5, 0, 0.003)
+
+
+## The reference to the element [param suffix] of [param variable]'s start
+## value (D-144), which [method box_value], [method preview_value] and
+## [method token_transform] take as a box's name: an array's index, a
+## dictionary's pair's index with "k" for its key or "v" for its value.
+static func item_ref(variable: String, suffix: String) -> String:
+	return "%s#%s" % [variable, suffix]
+
+
+## The element of collection [param value] that [param suffix] names ([method item_ref]); null for none.
+static func item_value(value: Variant, suffix: String) -> Variant:
+	var index := suffix.trim_suffix("k").trim_suffix("v").to_int()
+	if value is Array: return (value as Array)[index] if index >= 0 and index < (value as Array).size() else null
+	if not value is Dictionary: return null
+	var keys := (value as Dictionary).keys()
+	if index < 0 or index >= keys.size(): return null
+	return keys[index] if suffix.ends_with("k") else (value as Dictionary)[keys[index]]
+
+
+## [param value], a collection of [param category], with the element
+## [param suffix] names set to [param item], in its place; null if it can't
+## take it: of another type, or a key another pair has.
+static func with_item(value: Variant, suffix: String, item: Variant, category: int) -> Variant:
+	var index := suffix.trim_suffix("k").trim_suffix("v").to_int()
+	var result: Variant = null
+	if value is Array:
+		var items: Array = []
+		items.assign(value as Array)
+		if index < 0 or index >= items.size(): return null
+		items[index] = item
+		result = items
+	elif value is Dictionary:
+		var source := value as Dictionary
+		var keys := source.keys()
+		if index < 0 or index >= keys.size(): return null
+		var key_side := suffix.ends_with("k")
+		if key_side and item != keys[index] and source.has(item): return null
+		var pairs := {}
+		for at: int in keys.size():
+			if at != index: pairs[keys[at]] = source[keys[at]]
+			elif key_side: pairs[item] = source[keys[at]]
+			else: pairs[keys[at]] = item
+		result = pairs
+	else: return null
+	return result if XREBlueprintCollections.is_untyped(category) else XREBlueprintCollections.typed(result, category)
+
+
+## [param value], a collection of [param category], without the element
+## [param suffix] names — a dictionary's whole pair —; null for none.
+static func without_item(value: Variant, suffix: String, category: int) -> Variant:
+	var index := suffix.trim_suffix("k").trim_suffix("v").to_int()
+	var result: Variant = null
+	if value is Array:
+		var items: Array = []
+		items.assign(value as Array)
+		if index < 0 or index >= items.size(): return null
+		items.remove_at(index)
+		result = items
+	elif value is Dictionary:
+		var source := value as Dictionary
+		var keys := source.keys()
+		if index < 0 or index >= keys.size(): return null
+		var pairs := {}
+		for at: int in keys.size():
+			if at != index: pairs[keys[at]] = source[keys[at]]
+		result = pairs
+	else: return null
+	if XREBlueprintCollections.is_untyped(category): return result
+	return XREBlueprintCollections.typed(result, category) if not (result is Array and (result as Array).is_empty() or result is Dictionary and (result as Dictionary).is_empty()) else XREBlueprintCollections.empty(category)
 
 
 ## The type whose port shape [param box]'s dot and output take: its own with
@@ -343,7 +584,7 @@ func _add_drawer_switch(box: Box, point: Vector3) -> void:
 ## component's name in its axis's colour and its output on the right edge.
 func _add_drawer(box: Box) -> void:
 	var names: Array = COMPONENTS[box.type]
-	var color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)]
+	var color := XREBlueprintCanvas.type_color(box.category)
 	var height := names.size() * DRAWER_ROW + 0.012
 	var outline := XREBlueprintShapes.rounded_rect(Vector2(box.extent.x - 0.01, height), Vector4(0, 0, 0.012, 0.012))
 	var top := -CARD_HEIGHT * 0.5 + 0.007
@@ -356,7 +597,7 @@ func _add_drawer(box: Box) -> void:
 	var front := box.extent.z * 0.5
 	for index: int in names.size():
 		var point := Vector3(box.extent.x * 0.5, top - 0.007 - DRAWER_ROW * (index + 0.5), front)
-		var port := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(XREBlueprintGraph.NUMBER, COMPONENT_RADIUS, 0.002), XREBlueprintCanvas.material(XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER], true))
+		var port := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(XREBlueprintGraph.NUMBER, COMPONENT_RADIUS, 0.002), XREBlueprintCanvas.material(XREBlueprintCanvas.type_color(XREBlueprintGraph.NUMBER), true))
 		port.position = point
 		box.node.add_child(port)
 		var text := XREBlueprintCanvas.label(str(names[index]), 16)
@@ -395,7 +636,7 @@ func _add_components(box: Box) -> void:
 	disc.bottom_radius = COMPONENT_RADIUS
 	disc.height = 0.002
 	disc.radial_segments = 16
-	var color := XREBlueprintCanvas.COLORS[XREBlueprintGraph.NUMBER]
+	var color := XREBlueprintCanvas.type_color(XREBlueprintGraph.NUMBER)
 	for index: int in names.size():
 		var point := Vector3(BOX_SIZE.x * 0.5 + COMPONENT_OUT, (names.size() - 1) * COMPONENT_STEP * 0.5 - index * COMPONENT_STEP, BOX_SIZE.z * 0.5)
 		var port := XRERig.create_vr_mesh(disc, XREBlueprintCanvas.material(color, true))
@@ -426,6 +667,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 	_hit = -1
 	_hit_part = BODY
 	_hit_component = -1
+	_hit_item = -1
 	var nearest := maximum
 	for index: int in _boxes.size():
 		var box := _boxes[index]
@@ -476,12 +718,51 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		_hit = index
 		_hit_part = BODY
 		var trash := XREBlueprintCanvas._box_distance(local_origin, local_direction, AABB(box.trash_point - Vector3(0.012, 0.014, 0.006), Vector3(0.024, 0.028, 0.012)), INF)
-		var token := XREBlueprintCanvas._box_distance(local_origin, local_direction, AABB(box.token_point - box.token_size * 0.5 - Vector3(0.003, 0.003, 0.003), box.token_size + Vector3(0.006, 0.006, 0.006)), INF)
+		var token := XREBlueprintCanvas._box_distance(local_origin, local_direction, AABB(box.token_point - box.token_size * 0.5 - Vector3(0.003, 0.003, 0.003), box.token_size + Vector3(0.006, 0.006, 0.006)), INF) if box.token_size != Vector3.ZERO else -1.0
 		if trash >= 0 and trash <= nearest + box.extent.z and not _archetype:
 			_hit_part = TRASH
+		elif _hit_items(box, local_origin, local_direction, nearest + box.extent.z): pass
 		elif token >= 0 and token <= nearest + box.extent.z:
 			_hit_part = TOKEN
+	if _hit < 0 or not _hit_part in [ITEM, ITEM_MARK]: _hit_item = -1
 	return nearest if _hit >= 0 else -1.0
+
+
+## Whether the ray in [param box]'s space hits, no farther than [param reach],
+## the × over a puck, the plus or an element's puck (D-144), in that order: kept as the hit part.
+func _hit_items(box: Box, origin: Vector3, direction: Vector3, reach: float) -> bool:
+	if box.mark != null and box.mark.visible and box.mark_item >= 0:
+		var at := XREBlueprintCanvas._box_distance(origin, direction, AABB(box.mark.position - Vector3(0.007, 0.007, 0.006), Vector3(0.014, 0.014, 0.012)), INF)
+		if at >= 0 and at <= reach:
+			_hit_part = ITEM_MARK
+			_hit_item = box.mark_item
+			return true
+	if box.plus != null:
+		var at := XREBlueprintCanvas._box_distance(origin, direction, AABB(box.plus_point - Vector3(0.009, 0.009, 0.006), Vector3(0.018, 0.018, 0.012)), INF)
+		if at >= 0 and at <= reach:
+			_hit_part = ITEM_PLUS
+			return true
+	for item: int in box.item_points.size():
+		var size := box.item_sizes[item] + Vector3(0.003, 0.003, 0.0)
+		var at := XREBlueprintCanvas._box_distance(origin, direction, AABB(box.item_points[item] - size * 0.5, size), INF)
+		if at < 0 or at > reach: continue
+		_hit_part = ITEM
+		_hit_item = item
+		return true
+	return false
+
+
+## The reference to the element whose puck or × the last ray hit ([method item_ref]); empty for none.
+func get_hit_item() -> String:
+	if _hit < 0 or _hit_item < 0 or not _hit_part in [ITEM, ITEM_MARK]: return ""
+	var box := _boxes[_hit]
+	return item_ref(box.name, box.item_refs[_hit_item]) if _hit_item < box.item_refs.size() else ""
+
+
+## The component's output or the element's puck or × the last ray hit, for [method hover]; -1 for none.
+func get_hit_slot() -> int:
+	if _hit_part == COMPONENT: return _hit_component
+	return _hit_item if _hit_part in [ITEM, ITEM_MARK] else -1
 
 
 ## The color of the box part the last ray hit, for the pipette (D-065): its
@@ -490,7 +771,7 @@ func get_hit_color() -> Variant:
 	if _hit < 0: return null
 	var box := _boxes[_hit]
 	if _hit_part == TOKEN and box.value is Color: return box.value
-	return XREBlueprintCanvas.COLORS[XREBlueprintGraph.port_type(box.type)]
+	return XREBlueprintCanvas.type_color(box.category)
 
 
 ## The variable of the box the last ray hit, empty for none.
@@ -523,10 +804,11 @@ func get_hit_part() -> int:
 
 ## Grows the part under the [param right] hand's ray, or the other's, as a
 ## card's trash grows; -1 for none; a component's output by [param component],
-## as a card's port grows (D-109). Each hand keeps its own, so that an idle
+## as a card's port grows (D-109), or an element's puck, which shows the × over
+## it ([method get_hit_slot], D-144). Each hand keeps its own, so that an idle
 ## ray can't take the other's away.
 func hover(index: int, part: int, right: bool, component: int = -1) -> void:
-	var key := Vector3i(index, part, component if part == COMPONENT else -1) if index >= 0 else Vector3i(-1, -1, -1)
+	var key := Vector3i(index, part, component if part in [COMPONENT, ITEM, ITEM_MARK] else -1) if index >= 0 else Vector3i(-1, -1, -1)
 	if key == (_hover_right if right else _hover_left): return
 	if right: _hover_right = key
 	else: _hover_left = key
@@ -543,6 +825,16 @@ func hover(index: int, part: int, right: bool, component: int = -1) -> void:
 		for output: int in item.component_ports.size():
 			var lit := (_hover_right.x == box and _hover_right.y == COMPONENT and _hover_right.z == output) or (_hover_left.x == box and _hover_left.y == COMPONENT and _hover_left.z == output)
 			item.component_ports[output].scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if lit else 1.0)
+		# An element's puck grows under a ray and shows the × over it, which stays while the ray is on the × (D-144).
+		var on := _hover_right.z if _hover_right.x == box and _hover_right.y in [ITEM, ITEM_MARK] else _hover_left.z if _hover_left.x == box and _hover_left.y in [ITEM, ITEM_MARK] else -1
+		for element: int in item.item_nodes.size():
+			item.item_nodes[element].scale = Vector3.ONE * (0.85 * XREBlueprintCanvas.SOCKET_HOVER if element == on and ITEM in [right_part, left_part] else 0.85)
+		if item.plus != null: item.plus.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if ITEM_PLUS in [right_part, left_part] else 1.0)
+		if item.mark != null:
+			item.mark_item = on if on >= 0 and on < item.item_points.size() else -1
+			item.mark.visible = item.mark_item >= 0
+			if item.mark.visible: item.mark.position = _mark_point(item, item.mark_item)
+			item.mark.scale = Vector3.ONE * (XREBlueprintCanvas.HOVER_SCALE if ITEM_MARK in [right_part, left_part] else 1.0)
 
 
 ## How many boxes there are.
@@ -630,23 +922,38 @@ func has_box(variable: String) -> bool:
 	return false
 
 
-## The value the box of [param variable] shows.
+## The value the box of [param variable] shows, or an element of it by its reference ([method item_ref]).
 func box_value(variable: String) -> Variant:
+	var name := variable.get_slice("#", 0)
 	for box: Box in _boxes:
-		if box.name == variable: return box.value
+		if box.name != name: continue
+		return box.value if not variable.contains("#") else item_value(box.value, variable.get_slice("#", 1))
 	return null
 
 
-## Shows [param value] on the box of [param variable] while it is turned,
-## without editing the graph; as [param shown] says if given (D-063).
+## Shows [param value] on the box of [param variable], or on an element's puck
+## by its reference, while it is turned, without editing the graph; as
+## [param shown] says if given (D-063).
 func preview_value(variable: String, value: Variant, shown: String = "") -> void:
+	var name := variable.get_slice("#", 0)
 	for box: Box in _boxes:
-		if box.name == variable and box.token_text != null:
-			box.token_text.text = ("= " if box.token == null else "") + (shown if not shown.is_empty() else XREBlueprintTokens.text(value, ""))
+		if box.name != name: continue
+		var text := shown if not shown.is_empty() else XREBlueprintTokens.text(value, "")
+		if variable.contains("#"):
+			var item := box.item_refs.find(variable.get_slice("#", 1))
+			if item >= 0 and box.item_texts[item] != null: box.item_texts[item].text = text
+		elif box.token_text != null: box.token_text.text = ("= " if box.token == null else "") + text
 
 
-## The global transform of the token of [param variable]'s box, for a hand that takes it.
+## The global transform of the token of [param variable]'s box, or of an
+## element's puck by its reference, for a hand that takes it or a widget over it.
 func token_transform(variable: String) -> Transform3D:
+	var name := variable.get_slice("#", 0)
 	for box: Box in _boxes:
-		if box.name == variable: return box.node.global_transform * Transform3D(Basis.IDENTITY, box.token_point)
+		if box.name != name: continue
+		var point := box.token_point
+		if variable.contains("#"):
+			var item := box.item_refs.find(variable.get_slice("#", 1))
+			if item >= 0: point = box.item_points[item]
+		return box.node.global_transform * Transform3D(Basis.IDENTITY, point)
 	return global_transform

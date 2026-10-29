@@ -111,6 +111,15 @@ func setup(value: XREBlueprintDocument, parameters_only: bool = false) -> void:
 	for type: int in range(2, PORT_COLORS.size()):
 		canvas.add_valid_connection_type(type, XREBlueprintGraph.VALUE)
 	canvas.add_valid_connection_type(XREBlueprintGraph.INTEGER, XREBlueprintGraph.NUMBER)
+	# A collection goes into any value and into an untyped one of its kind (D-141).
+	var untyped_array := XREBlueprintCollections.array_of(XREBlueprintGraph.VALUE)
+	var untyped_dictionary := XREBlueprintCollections.dictionary_of(XREBlueprintGraph.VALUE, XREBlueprintGraph.VALUE)
+	for element: int in range(XREBlueprintGraph.VALUE, PORT_COLORS.size()):
+		canvas.add_valid_connection_type(XREBlueprintCollections.array_of(element), XREBlueprintGraph.VALUE)
+		canvas.add_valid_connection_type(XREBlueprintCollections.array_of(element), untyped_array)
+		for key: int in range(XREBlueprintGraph.VALUE, PORT_COLORS.size()):
+			canvas.add_valid_connection_type(XREBlueprintCollections.dictionary_of(key, element), XREBlueprintGraph.VALUE)
+			canvas.add_valid_connection_type(XREBlueprintCollections.dictionary_of(key, element), untyped_dictionary)
 	canvas.show_arrange_button = false
 	tabs.add_child(canvas)
 	canvas.connection_request.connect(_connect_blocks)
@@ -406,6 +415,16 @@ func _refresh() -> void:
 			var row := HBoxContainer.new()
 			row.mouse_filter = Control.MOUSE_FILTER_PASS
 			node.add_child(row)
+			# Make Array's elements and Make Dictionary's pairs, by their key (D-141): × on the left.
+			var removable := 0 if pins.is_empty() or not pins["input"] else int(pins["count"])
+			if slot < removable and removable > int(pins.get("min", XREBlueprintGraph.MIN_PINS)) and (not pins.get("pair", false) or slot % 2 == 0):
+				var remove := _button(row, "×", _set_call_option.bind(document.remove_pin.bind(id, slot)))
+				remove.name = "RemovePin%d" % slot
+				remove.flat = true
+				remove.tooltip_text = "Remove %s and its wire" % inputs[slot][0] if not pins.get("pair", false) else "Remove this pair and its wires"
+				remove.modulate.a = 0.0
+				row.mouse_entered.connect(func() -> void: remove.modulate.a = 1.0)
+				row.mouse_exited.connect(func() -> void: remove.modulate.a = 0.0)
 			var left := _label(row, inputs[slot][0] if slot < inputs.size() else "")
 			left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			if not pins.is_empty() and not pins["input"] and slot < int(pins["count"]) and int(pins["count"]) > XREBlueprintGraph.MIN_PINS:
@@ -420,13 +439,13 @@ func _refresh() -> void:
 			var left_type: int = inputs[slot][1] if slot < inputs.size() else 0
 			var right_type: int = outputs[slot][1] if slot < outputs.size() else 0
 			row.tooltip_text = "%s → %s" % [_port_name(left_type), _port_name(right_type)]
-			node.set_slot(slot, slot < inputs.size(), left_type, PORT_COLORS[left_type], slot < outputs.size(), right_type, PORT_COLORS[right_type])
+			node.set_slot(slot, slot < inputs.size(), left_type, port_color(left_type), slot < outputs.size(), right_type, port_color(right_type))
 		if not pins.is_empty() and pins["can_add"]:
 			var add := _button(node, "+ pin", _set_call_option.bind(document.add_pin.bind(id)))
 			add.name = "AddPin"
 			add.flat = true
-			add.size_flags_horizontal = Control.SIZE_SHRINK_END
-			add.tooltip_text = "Add an output"
+			add.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN if pins["input"] else Control.SIZE_SHRINK_END
+			add.tooltip_text = ("Add a pair" if pins.get("pair", false) else "Add an input") if pins["input"] else "Add an output"
 		var summary := _label(node, _summary(block))
 		summary.modulate = Color("adbac9")
 		summary.custom_minimum_size.x = 160
@@ -495,7 +514,7 @@ func _fill_operator(node: GraphNode, block: Dictionary, inputs: Array, outputs: 
 		var right_type: int = outputs[0][1]
 		# Wired, an input of any value is in the color of what comes in; its type still takes any wire.
 		var shown := XREBlueprintGraph.port_type(document.graph.operand_type(block, key)) if left_type == XREBlueprintGraph.VALUE and wired.has(slot) else left_type
-		node.set_slot(slot, true, left_type, PORT_COLORS[shown], slot == 0, right_type, PORT_COLORS[right_type])
+		node.set_slot(slot, true, left_type, port_color(shown), slot == 0, right_type, port_color(right_type))
 	if variadic and inputs.size() < XREBlueprintOperators.MAX_OPERANDS:
 		var add := _button(node, "+ pin", _set_call_option.bind(document.add_operand.bind(id)))
 		add.name = "AddPin"
@@ -520,7 +539,14 @@ func _summary(block: Dictionary) -> String:
 
 
 func _port_name(type: int) -> String:
-	return ["Execution", "Variant", "bool", "int", "float", "String", "Vector2", "Vector3", "Object", "Color", "Vector4", "Vector2i", "Vector3i", "Rect2", "AABB", "Quaternion", "Basis", "Transform2D", "Transform3D", "Plane"][type]
+	return XREBlueprintCollections.hint(type)
+
+
+## The colour of a port of [param category]: a collection's is its element's,
+## a dictionary's its value's, as in Unreal (D-141).
+static func port_color(category: int) -> Color:
+	var element := XREBlueprintCollections.element_of(category)
+	return PORT_COLORS[element] if element >= 0 and element < PORT_COLORS.size() else PORT_COLORS[XREBlueprintGraph.VALUE]
 
 
 func _select_block(node: Node) -> void:
@@ -562,7 +588,7 @@ func _refresh_details() -> void:
 		_call_details(block)
 	for key: String in (params if block["kind"] != "call" else {}):
 		# The counts of pins change by the pins (D-136, D-138); what a Switch is on is its kind.
-		if key in ["operands", "outputs", "cases", "on", "enum"] or not _shows(block, key) or XREBlueprintGraph.is_unused(block, key): continue
+		if key in ["operands", "outputs", "cases", "on", "enum", "count", "pairs", "method", XREBlueprintGraph.MADE_TYPE] or not _shows(block, key) or XREBlueprintGraph.is_unused(block, key): continue
 		_label(_details, key.capitalize())
 		if block["kind"] == "switch" and params.get("on") == "enum" and (key == "selection" or key.begins_with("case_")):
 			# An enumeration's case and selection are its constants' names (D-138).
@@ -588,7 +614,9 @@ func _refresh_details() -> void:
 			_options(block["id"], key, names, params[key])
 		elif key in ["property", "signal", "animation"] and document.target_node(block["id"]) != null:
 			_scene_options(block, key)
-		elif (key == "value" or key in XREBlueprintOperators.OPERAND_KEYS) and block["kind"] != "boolean" and not block["kind"] == "set_variable":
+		elif (key == "value" or key in XREBlueprintOperators.OPERAND_KEYS) and block["kind"] != "boolean" and not block["kind"] == "set_variable" \
+				or block["kind"] in XREBlueprintGraph.COLLECTION_KINDS and key != "index" and not params[key] is Array and not params[key] is Dictionary:
+			# An element of a collection, as an operand, may be of any type until a wire says it (D-141).
 			_literal_editor(block["id"], key, params[key])
 		else:
 			_parameter_editor(block["id"], key, params[key])
@@ -862,6 +890,21 @@ func _parameter_editor(id: int, key: String, value: Variant, parent: VBoxContain
 			color.color = value
 			container.add_child(color)
 			color.color_changed.connect(func(chosen: Color) -> void: _set_parameter(id, key, chosen))
+		TYPE_ARRAY, TYPE_DICTIONARY:
+			# A collection as text, [1, 2, 5] or {"open": 1}, read back as its own type (D-141).
+			var category := XREBlueprintCollections.category_of(value)
+			var field := LineEdit.new()
+			field.text = XREBlueprintCollections.text_of(value)
+			field.placeholder_text = "[1, 2]" if value is Array else "{\"key\": 1}"
+			field.tooltip_text = XREBlueprintCollections.hint(category)
+			field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			container.add_child(field)
+			var apply := func() -> void:
+				var parsed: Variant = XREBlueprintCollections.parse(field.text, category)
+				if parsed == null: show_status("Enter a %s, as %s." % [XREBlueprintCollections.hint(category), field.placeholder_text], true)
+				elif parsed != value: _set_parameter(id, key, parsed)
+			field.text_submitted.connect(func(_text: String) -> void: apply.call())
+			field.focus_exited.connect(apply)
 		_:
 			var field := LineEdit.new()
 			field.text = str(value)
@@ -1047,7 +1090,7 @@ func _show_variables() -> void:
 	error.modulate = Color("ffaaaa")
 	for variable: Dictionary in document.graph.variables:
 		var type := XREBlueprintGraph.variable_type(variable)
-		_label(fields, "%s: %s" % [variable["name"], type_string(type)])
+		_label(fields, "%s: %s" % [variable["name"], XREBlueprintCollections.hint(XREBlueprintGraph.variable_category(variable))])
 		if variable.has("value"): _parameter_editor(-1, variable["name"], variable["value"], fields)
 		else: _button(fields, "Set a start value", func() -> void:
 			if document.perform(document.set_variable.bind(variable["name"], XREBlueprintSchema.default_value(type)), operation_source): _show_variables.call_deferred())
@@ -1058,12 +1101,18 @@ func _show_variables() -> void:
 	var name := LineEdit.new()
 	name.placeholder_text = "has_key"
 	fields.add_child(name)
+	# A single value, or an array or a dictionary of them, empty at first (D-141).
+	var starts: Array = []
+	for value: int in XREBlueprintSchema.LITERAL_TYPES: starts.append(XREBlueprintSchema.default_value(value))
+	for element: int in XREBlueprintCollections.element_categories(): starts.append(XREBlueprintCollections.empty(XREBlueprintCollections.array_of(element)))
+	for key: int in [XREBlueprintGraph.TEXT, XREBlueprintGraph.INTEGER]:
+		for element: int in XREBlueprintCollections.element_categories(): starts.append(XREBlueprintCollections.empty(XREBlueprintCollections.dictionary_of(key, element)))
 	var type := OptionButton.new()
-	for value: int in XREBlueprintSchema.LITERAL_TYPES: type.add_item(type_string(value))
+	for value: Variant in starts: type.add_item(XREBlueprintCollections.hint(XREBlueprintCollections.category_of(value)))
 	fields.add_child(type)
 	_button(fields, "Add variable", func() -> void:
 		if not document.graph.find_variable(name.text).is_empty(): error.text = "A variable with this name already exists."
-		elif document.perform(document.set_variable.bind(name.text, XREBlueprintSchema.default_value(XREBlueprintSchema.LITERAL_TYPES[type.selected])), operation_source): _show_variables.call_deferred()
+		elif document.perform(document.set_variable.bind(name.text, starts[type.selected]), operation_source): _show_variables.call_deferred()
 		else: error.text = document.last_error)
 	if _parameters_only: _bind_text_inputs(fields)
 	_variables_dialog.popup_centered()

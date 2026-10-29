@@ -368,6 +368,25 @@ const COPY_BLUEPRINT := &"copy_blueprint"
 const SHARED := &"shared"
 const OWN := &"own"
 
+## How a port of an array or a dictionary shows it is one (D-143): a grid of
+## three by three cells in its element's colour — a dictionary's key's and
+## value's columns —, or the element's port three times, one behind the other.
+const COLLECTION_PORT := &"collection_port"
+const GRID := &"grid"
+const STACK := &"stack"
+## How a list of values is put into a collection's port and a collection
+## variable's start value without a keyboard (D-143): a Make Array block with an
+## input each, or a rack, a piece in the port holding its pucks.
+const COLLECTION_LITERAL := &"collection_literal"
+const MAKE := &"make"
+const RACK := &"rack"
+## Whether a collection's wire has two strands, its element's colour around a
+## dark core — a dictionary's key's around its value's —, to tell it from far (D-143).
+const COLLECTION_WIRE := &"collection_wire"
+## Whether a wire from a port of an array of objects let go on a selected object
+## makes the array of the selected objects, in the order they were selected (D-143).
+const SCENE_COLLECTION := &"scene_collection"
+
 ## Every setting by key: its section, its subsection in the Editor section
 ## (a key of [constant GROUPS]), the values of other settings it acts with
 ## (optional), title, values (the first is the default; the defaults are the
@@ -761,6 +780,38 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [OFF, ON],
 		"labels": ["Off", "On"],
 		"hint": "On: a copy of blocks keeps the data wires coming into them from blocks not copied. Off: those inputs get default tokens. Execution wires stay with the originals either way.",
+	},
+	COLLECTION_PORT: {
+		"category": Category.EDITOR,
+		"group": &"cards",
+		"title": "Collection port",
+		"values": [GRID, STACK],
+		"labels": ["Grid", "Stack"],
+		"hint": "How a port of an array or a dictionary shows it: Grid, three by three cells in its element's colour (a dictionary: its keys' and values' columns); Stack, the element's port three times, one behind the other.",
+	},
+	COLLECTION_LITERAL: {
+		"category": Category.EDITOR,
+		"group": &"values",
+		"title": "Collection literal",
+		"values": [MAKE, RACK],
+		"labels": ["Make block", "Rack"],
+		"hint": "How a list is typed in: Make block, a Make Array card with an input for each element; Rack, a piece in the collection's port that holds its values, + adds one, the trigger on it types the list.",
+	},
+	COLLECTION_WIRE: {
+		"category": Category.EDITOR,
+		"group": &"wires",
+		"title": "Collection wire",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: a wire of an array or a dictionary has two strands, its element's colour around a dark core (a dictionary: its keys' around its values'), to tell it from a single value's from far.",
+	},
+	SCENE_COLLECTION: {
+		"category": Category.EDITOR,
+		"group": &"objects",
+		"title": "Array from scene",
+		"values": [OFF, ON],
+		"labels": ["Off", "On"],
+		"hint": "On: a wire from a port of an array of objects let go on a selected object makes the array of the selected objects, numbered in the order they were selected. The ray on a branch and the delete button takes its object out; another wire from the port to an object adds it at the end.",
 	},
 	SELECT_AREA: {
 		"category": Category.EDITOR,

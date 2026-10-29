@@ -59,6 +59,9 @@ func _bp_target(path: String, run: XREBlueprintRun, block_id: int) -> Node:
 
 
 func _bp_accepts(expected: int, actual: int) -> bool:
+	# An engine's packed array is an array of its elements (D-143).
+	if expected == TYPE_ARRAY and actual >= TYPE_PACKED_BYTE_ARRAY and actual <= TYPE_PACKED_VECTOR4_ARRAY:
+		return true
 	return expected == TYPE_NIL or expected == actual or (expected == TYPE_FLOAT and actual == TYPE_INT) or (expected in [TYPE_STRING, TYPE_STRING_NAME] and actual in [TYPE_STRING, TYPE_STRING_NAME])
 
 
@@ -120,9 +123,18 @@ func _bp_sequence(run: XREBlueprintRun, block_id: int, targets: Array) -> int:
 
 
 # The next output of the innermost Sequence once a chain ends, an empty one passed over; -1 when none waits.
+# A loop's frame (D-141) goes on with its next element, then with its Completed.
 func _bp_sequence_next(run: XREBlueprintRun) -> int:
 	while not run.stack.is_empty():
 		var frame: Array = run.stack.back()
+		if frame.size() > 3:
+			frame[1] += 1
+			if frame[1] < (frame[2] as Array).size():
+				return frame[3]
+			run.stack.pop_back()
+			if frame[4] >= 0:
+				return frame[4]
+			continue
 		var targets: Array = frame[2]
 		if frame[1] >= targets.size():
 			run.stack.pop_back()
@@ -132,6 +144,116 @@ func _bp_sequence_next(run: XREBlueprintRun) -> int:
 		if target >= 0:
 			return target
 	return -1
+
+
+# A For Each (D-141): its body for the first element now, the next once the body's chain ended, then Completed.
+# It goes over a copy, so the body may change the collection; a dictionary's frame keeps it for its values.
+# Coming back into a loop whose frame waits starts it over, as a Sequence does.
+func _bp_loop(run: XREBlueprintRun, block_id: int, items: Array, body: int, completed: int, source: Variant = null) -> int:
+	for index: int in range(run.stack.size() - 1, -1, -1):
+		if run.stack[index][0] == block_id:
+			run.stack.resize(index)
+			break
+	if items.is_empty() or body < 0:
+		return completed
+	if run.stack.size() >= 64:
+		_bp_error(run, block_id, "Loops and Sequences nest deeper than 64.")
+		return -1
+	run.stack.append([block_id, 0, items.duplicate(), body, completed, source])
+	return body
+
+
+# A loop's Break (D-143): its frame and those inside it go; Completed runs next.
+func _bp_loop_break(run: XREBlueprintRun, block_id: int, completed: int) -> int:
+	for index: int in range(run.stack.size() - 1, -1, -1):
+		if run.stack[index][0] == block_id and run.stack[index].size() > 3:
+			run.stack.resize(index)
+			return completed
+	_bp_error(run, block_id, "Break outside its loop.")
+	return -1
+
+
+# An array, or a packed array of the engine as one (D-143).
+func _bp_array(value: Variant) -> Array:
+	return value if value is Array else Array(value)
+
+
+# The scene objects selected for an array (D-143), by their paths from the host; one missing is the block's error.
+func _bp_targets(paths: Array, run: XREBlueprintRun, block_id: int) -> Array[Node]:
+	var nodes: Array[Node] = []
+	for path: Variant in paths:
+		var node := _bp_target(str(path), run, block_id)
+		if node == null:
+			return nodes
+		nodes.append(node)
+	return nodes
+
+
+# What a loop gives now (D-141): an array's element and index, a dictionary's key and value.
+func _bp_each(run: XREBlueprintRun, block_id: int, port: int) -> Variant:
+	for index: int in range(run.stack.size() - 1, -1, -1):
+		var frame: Array = run.stack[index]
+		if frame[0] != block_id or frame.size() <= 3:
+			continue
+		var item: Variant = (frame[2] as Array)[frame[1]]
+		if port == 1:
+			return item
+		if frame[5] is Dictionary:
+			return (frame[5] as Dictionary).get(item)
+		return frame[1]
+	_bp_error(run, block_id, "The loop's element is read outside its body.")
+	return null
+
+
+# Whether [param index] is an index of [param items], one past the last too if [param end]; an error if not.
+func _bp_index(items: Array, index: Variant, end: bool, run: XREBlueprintRun, block_id: int) -> bool:
+	if index is int and int(index) >= 0 and int(index) < items.size() + (1 if end else 0):
+		return true
+	_bp_error(run, block_id, "Index %s is out of 0…%d." % [index, items.size() - (0 if end else 1)])
+	return false
+
+
+func _bp_at(items: Array, index: Variant, run: XREBlueprintRun, block_id: int) -> Variant:
+	return items[int(index)] if _bp_index(items, index, false, run, block_id) else null
+
+
+func _bp_set_at(items: Array, index: Variant, value: Variant, run: XREBlueprintRun, block_id: int) -> void:
+	if _bp_index(items, index, false, run, block_id):
+		items[int(index)] = value
+
+
+func _bp_insert(items: Array, index: Variant, value: Variant, run: XREBlueprintRun, block_id: int) -> void:
+	if _bp_index(items, index, true, run, block_id):
+		items.insert(int(index), value)
+
+
+func _bp_remove_at(items: Array, index: Variant, run: XREBlueprintRun, block_id: int) -> void:
+	if _bp_index(items, index, false, run, block_id):
+		items.remove_at(int(index))
+
+
+func _bp_pick(items: Array, run: XREBlueprintRun, block_id: int) -> Variant:
+	if items.is_empty():
+		_bp_error(run, block_id, "Pick Random from an empty array.")
+		return null
+	return items.pick_random()
+
+
+# A dictionary's value of a key it has; a key it hasn't is the block's error (Get without Default, D-141).
+func _bp_get(items: Dictionary, key: Variant, run: XREBlueprintRun, block_id: int) -> Variant:
+	if not items.has(key):
+		_bp_error(run, block_id, "No key %s." % [key])
+		return null
+	return items[key]
+
+
+# A dictionary's keys and values as arrays of their types.
+func _bp_keys(items: Dictionary) -> Array:
+	return Array(items.keys(), items.get_typed_key_builtin(), items.get_typed_key_class_name(), items.get_typed_key_script())
+
+
+func _bp_values(items: Dictionary) -> Array:
+	return Array(items.values(), items.get_typed_value_builtin(), items.get_typed_value_class_name(), items.get_typed_value_script())
 
 
 # What a Break takes apart (D-139): nothing, a value of another type or an object of another class is its error.

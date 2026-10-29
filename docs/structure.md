@@ -62,7 +62,7 @@ scripts/shot_blueprint_vr.gd      снимки графа с головы в о�
 scripts/xr_extensions.py   расширения OpenXR-рантайма без шлема и без Godot
 scripts/xr_editor.py       запуск редактора: сам выбирает рантайм со шлемом (SteamVR, Meta) или запуск без VR
 scripts/quest.py           автономный шлем по USB (adb): копирует проект, открывает редактор в VR, показывает и пишет лог
-.run/XR Editor.run.xml     конфигурация запуска Rider: scripts/xr_editor.py --fallback sim (без шлема — VR-вид в окне)
+.run/XR Editor.run.xml     конфигурация запуска Rider: scripts/xr_editor.py --fallback sim --mirror --hide-ui (без шлема — VR-вид в окне)
 .run/XR Editor Mirror.run.xml  то же с --mirror: со шлемом его вид ещё и в окне на столе (D-118)
 scripts/build_gdextension.sh  сборка нативной части: Windows (MSVC) или android (NDK); CMake и Ninja из Visual Studio
 docs/                      план и дневник решений (на русском)

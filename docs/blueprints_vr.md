@@ -290,7 +290,7 @@ py scripts/xr_editor.py res://benchmarks/play_check.tscn
 Ручная проверка — в шлеме или в окне, если рантайм шлема не видит (как конфигурация Rider «XR Editor»). Запуск:
 
 ```powershell
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне (D-057): мышь — взгляд и луч в перекрестие, ЛКМ — trigger, ПКМ — grip, E — A (Delete), Tab — лаунчер, R / F — рука вдоль луча; «повести рукой» — повести мышью.
@@ -321,7 +321,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 Ручная проверка — в шлеме или в окне, если рантайм шлема не видит:
 
 ```powershell
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне: мышь — взгляд и луч в перекрестие, ЛКМ — trigger, ПКМ — grip, Tab — лаунчер.
@@ -341,7 +341,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Палитра блоков поверх всего (D-086)
 
 ```powershell
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне: мышь — взгляд и луч, ЛКМ — trigger, ПКМ — grip.
@@ -358,7 +358,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Поправки после проверки GreenCube и BlueCube; меню провода и Auto link (D-090, D-091)
 
 ```powershell
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне: мышь — взгляд и луч, ЛКМ — trigger, ПКМ — grip, X — удаление, WASD — полёт, F12 — снимок.
@@ -401,7 +401,7 @@ godot --path . --editor --xr-mode off --log-file logs/shots.log res://benchmarks
 Запуск окна:
 
 ```powershell
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне: мышь — взгляд и луч, ЛКМ — trigger, ПКМ — grip, Tab — лаунчер, E — A (отмена).
@@ -434,7 +434,7 @@ godot --path . --editor --xr-mode off --log-file logs/shots.log res://benchmarks
 ## Архетипы узлов (D-099)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне без шлема: мышь — взгляд и луч, ЛКМ — trigger, ПКМ — grip, X — удалить, E — отменить (A), Tab — лаунчер.
@@ -452,7 +452,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Знаки операторов и мат. функций (D-100)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне без шлема: мышь — взгляд и луч, ЛКМ — trigger, ПКМ — grip, X — удалить, Tab — лаунчер.
@@ -469,7 +469,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Карточка архетипа и заголовок (D-101)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне без шлема: мышь — взгляд и луч, ЛКМ — trigger, E — отменить (A), Tab — лаунчер.
@@ -486,7 +486,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Один Set (D-102)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне без шлема: мышь — взгляд и луч, ЛКМ — trigger, E — отменить (A), Tab — лаунчер.
@@ -502,7 +502,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Бусины (D-103)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне без шлема: мышь — взгляд и луч, ЛКМ — trigger, X — удалить, Tab — лаунчер.
@@ -518,7 +518,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Форма порта по типу (D-104)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне без шлема: мышь — взгляд и луч, ЛКМ — trigger, Tab — лаунчер.
@@ -532,7 +532,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Составные значения (D-105)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 В окне без шлема: мышь — взгляд и луч, ЛКМ — trigger, X — удалить, E — отменить (A), Tab — лаунчер.
@@ -548,7 +548,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Детали макета (D-106)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 1. Node style = Archetypes. У события policy — узкий тёмный чип со значком и словом; ЛКМ по нему переключает parallel → ignore → restart без веера (D-107), E (A) возвращает.
@@ -566,7 +566,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 Макет — https://claude.ai/artifact/3dwnAhjKV5NeTkKpxbdzyL. Запуск (шлем, если его видит рантайм, иначе VR-вид в окне):
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 Открыть граф BlueCube или любой граф с 6–10 карточками и знаками. Все настройки — Settings → Editor: узлы и пины в Cards, поворот графа в View, стрелки в Wires. В окне: WASD — полёт, мышь — взгляд, ЛКМ — trigger, ПКМ — grip, Ctrl+колесо — поворот запястья, стрелки ←/→ — правый стик.
@@ -587,7 +587,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 Входы добавляются и убираются и в шлеме (D-137), и во вкладке Blueprints на столе (D-136).
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 1. На столе во вкладке Blueprints добавить Add, Multiply, AND, Min и Append (меню Math и Logic). Ожидается: под входами каждого — «+ pin»; у Subtract его нет.
@@ -605,7 +605,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Sequence и Switch (D-138)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 1. Войти в VR, открыть граф куба, Tab — лаунчер, меню блоков, группа Flow. Ожидается: Sequence, Switch on Int, Switch on String.
@@ -621,7 +621,7 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 ## Break и Make (D-139)
 
 ```bash
-py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
 ```
 
 1. Меню блоков, раздел «Break & Make» (группа Math). Ожидается: Break, Make и готовые Break/Make Vector3, Color, Transform3D, XREDemoStats.
@@ -635,3 +635,44 @@ py scripts/xr_editor.py --fallback sim res://benchmarks/play_check.tscn
 9. Make XREDemoStats → Break XREDemoStats, hp → Print. Play. Ожидается: в выводе hp, введённый в Make.
 
 Прислать лог и снимки (F12) Break с глазом и фишкой скрытых.
+
+## Коллекции в шлеме (D-141, D-143)
+
+```bash
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
+```
+
+В окне: мышь — взгляд и луч, ЛКМ — trigger, ПКМ — grip, E — A (удаление), Tab — лаунчер.
+
+1. Открыть граф куба. Tab, меню блоков, группа Flow: добавить For Each. Ожидается: голова серая (Flow), значок петли, слева порт Array — тёмный квадрат с сеткой 3 × 3, ниже вход Break.
+2. С порта Array потянуть провод (ЛКМ держать) и отпустить в пустоте. Ожидается: в меню есть «New Array[int] variable» и другие типы. Выбрать, ввести имя `scores`. Ожидается: карточка `scores Array[int]`, справа выход-сетка, провод в For Each.
+3. ЛКМ по пустому месту под крышкой `scores`. Ожидается: клавиатура со строкой `[]`. Набрать `[1, 2, 5]`, Done. Ожидается: шайбы 1, 2, 5. ЛКМ по шеврону — «3 items», ещё раз — шайбы.
+4. Найти поле поиска меню блоков (с провода, отпущенного в пустоте, Search), набрать букву на клавиатуре. Ожидается: окно меню остаётся.
+5. Settings → Cards → Collection port = Stack. Ожидается: порт Array — три кружка один за другим. Wires → Collection wire = On: провод из `scores` с тёмной жилой посередине.
+6. Values → Collection literal = Rack. Добавить Pick Random (группа Variables). Ожидается: слева от его порта Array рейка с «+». ЛКМ по «+» — шайба 0; ЛКМ по рейке — клавиатура, `[3, 4]`, Done — шайбы 3 и 4.
+7. Objects → Array from scene = On. Выделить два куба (мультивыделение D-120), потянуть провод из Array второго For Each и отпустить на выделенном кубе. Ожидается: ствол до развилки, ветки к кубам, над ними 0 и 1. Луч на ветку, E — куб убран из массива.
+8. Make Array: ЛКМ по «+» под левым углом — третий вход; у Make Dictionary × только у строки Key.
+
+Прислать лог `logs/editor_<runtime>_<time>.log` и снимки (F12) For Each с сеткой, рейки и веток к кубам.
+
+## Коллекции после проверки автора (D-144)
+
+```bash
+py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_check.tscn
+```
+
+В окне: мышь — взгляд и луч, ЛКМ — trigger, ПКМ — grip, E — A (удаление), Tab — лаунчер.
+
+1. For Each с проводом из переменной `scores`. Ожидается: сетка порта Array без тёмной подложки, провод уходит под сетку, сетка видна целиком и при подсвеченном проводе.
+2. Make Array и Make Dictionary без наведения. Ожидается: входы `[0]`, `[1]`, `Key 0`, `Value 0` цвета их шайб (int — салатовый, String — песочный), не голубые.
+3. Settings → Wires: стрелки на проводах включены. Навести луч на одну карточку. Ожидается: стрелки на проводах вне фокуса, в том числе на фиолетовых проводах Target к объектам, гаснут вместе с проводами.
+4. Луч на вход `[1]` Make Array. Ожидается: × справа от подписи `[1]`, подпись его не закрывает. ЛКМ по × — вход убран.
+5. Убирать × элементы Make Array до последнего. Ожидается: последний тоже убирается, остаётся карточка с выходом `Array[int]` и «+»; «+» возвращает вход `[0]` с шайбой 0.
+6. Карточка `scores` (`[1, 2, 5]`). Ожидается: три шайбы и «+» после них.
+   - ЛКМ по «+» — четвёртая шайба 5.
+   - ЛКМ по шайбе 2 — клавиатура с цифрами, набрать 7, Done — только эта шайба стала 7. Удержание ЛКМ на шайбе и поворот — диск, как у шайбы скалярной переменной.
+   - Луч на шайбу — над её правым краем ×; ЛКМ по × — шайба убрана. Луч на шайбу и E — тоже.
+   - У словаря `lamps`: шайба ключа правится так же; ключ, который уже есть, не принимается (сообщение). × убирает пару целиком.
+   - Свёрнутая шевроном карточка — «3 items», ЛКМ по ним — клавиатура со всем списком.
+
+Прислать лог `logs/editor_<runtime>_<time>.log` и снимки (F12) карточек `scores`, Make Array и For Each с проводом.
