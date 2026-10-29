@@ -11,8 +11,8 @@ extends XREPanelSurface
 ## ([method show_graph]) it holds the graph's name and round buttons: add a
 ## block, delete the Blueprint, close the graph; with a function's body
 ## shown, back first and the function's name in place of the object's: it
-## then stands over the body's Entry (D-144), and its trash deletes the
-## function, not the Blueprint (D-145). Delete asks once more: the
+## then stands over the body's Entry (D-148), and its trash deletes the
+## function, not the Blueprint (D-149). Delete asks once more: the
 ## first click arms it, red, for [constant ARM_USEC]. A message
 ## ([method show_message]) shows over the pill for [constant MESSAGE_USEC].
 ## [XREBlueprints] places it each frame ([method place], [method float_at]).
@@ -30,7 +30,7 @@ signal back_pressed
 
 ## The pill, in interface pixels, each [constant PIXEL_SIZE] meters: 23 × 4 cm.
 const SIZE := Vector2(360.0, 64.0)
-## How much wider the pill is with a function's body shown: ‹ and the function's name fit (D-144).
+## How much wider the pill is with a function's body shown: ‹ and the function's name fit (D-148).
 const BODY_EXTRA := 130.0
 const PIXEL_SIZE := 0.00065
 const BUTTON_SIZE := 44.0

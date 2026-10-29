@@ -154,6 +154,8 @@ func sections(context: Dictionary) -> Array[Dictionary]:
 	if chip in [NATIVE, ALL]:
 		result.append(_section("Native", _native_actions(graph, host, context.get("one_set", false)), context))
 		result.append(_section("Break & Make", _bind(_struct_actions(), host, false, graph), context))
+		for on: String in ["array", "dictionary"]:
+			result.append(_section(on.capitalize(), _bind(_collection_actions(on), host, false, graph), context))
 		result.append(_section("Variables", _variable_actions(graph, host, context), context))
 		for title: String in ["Math", "Comparison", "Logic"]:
 			result.append(_section(title, _operator_actions(title, graph, host), context))
@@ -212,7 +214,9 @@ static func task_of(action: Dictionary) -> String:
 	if id == "native:equals": return "Logic"
 	if id.begins_with("operator:"):
 		return "Arithmetic" if XREBlueprintOperators.group_of(id.trim_prefix("operator:")) in [XREBlueprintOperators.MATH, XREBlueprintOperators.TEXT] else "Logic"
-	if id in ["native:branch", "preset:delay", "native:sequence"] or id.begins_with("native:switch_"): return "Flow"
+	if id in ["native:branch", "preset:delay", "native:sequence", "native:for_each", "native:for_each_pair"] or id.begins_with("native:switch_"): return "Flow"
+	# Lists and their methods, by the variables they are kept in (D-141).
+	if id in ["native:make_array", "native:make_dictionary"] or id.begins_with("collection:"): return "Variables"
 	if id.begins_with("struct:"): return "Math"
 	if id == "preset:print": return "Utility"
 	if id == "preset:tween": return "Move"
@@ -710,6 +714,26 @@ func _struct_actions() -> Array[Dictionary]:
 	return actions
 
 
+## The blocks of section Array or Dictionary, by [param on] (D-141): the Make
+## block, the loop, then the methods ([constant XREBlueprintCollections.METHODS]),
+## each untyped until a collection is wired in.
+func _collection_actions(on: String) -> Array[Dictionary]:
+	var array := on == "array"
+	var actions: Array[Dictionary] = []
+	for entry: Array in [["make_array" if array else "make_dictionary", "list literal new" if array else "map table literal new", "pure"],
+			["for_each" if array else "for_each_pair", "loop repeat each every iterate", "native"]]:
+		var block := XREBlueprintGraph.make_node(0, entry[0], Vector2.ZERO)
+		actions.append({"id": "native:" + entry[0], "title": XREBlueprintGraph.title(block), "subtitle": "native · " + on, "kind": entry[2],
+				"keywords": "%s %s" % [on, entry[1]], "category": on.capitalize(), "block": block, "target": null, "disabled": ""})
+	for method: String in XREBlueprintCollections.METHODS:
+		var info: Dictionary = XREBlueprintCollections.METHODS[method]
+		if info["on"] != on: continue
+		actions.append({"id": "collection:" + method, "title": info["title"], "subtitle": "%s.%s" % ["Array" if array else "Dictionary", method.trim_prefix(on + "_")],
+				"kind": "pure" if info["pure"] else "native", "keywords": "%s %s" % [on, info["keywords"]], "category": on.capitalize(),
+				"block": XREBlueprintGraph.make_collection(0, method, Vector2.ZERO), "target": null, "disabled": ""})
+	return actions
+
+
 ## Branch, Value, properties and events; with [param one_set] Set Property is
 ## Set, which writes a variable too, by the wire of its Target (D-102).
 func _native_actions(graph: XREBlueprintGraph, host: Node, one_set: bool = false) -> Array[Dictionary]:
@@ -771,5 +795,20 @@ func _variable_actions(graph: XREBlueprintGraph, host: Node, context: Dictionary
 		result.append({"id": "variable:new:" + type, "title": "New %s variable" % type, "subtitle": "variable: " + type, "kind": "variable",
 				"keywords": "variable new add create", "category": "Variables", "block": {}, "variable": value, "target": null,
 				"inputs": [], "outputs": [XREBlueprintGraph.port_type(typeof(value))], "disabled": ""})
+	# From a wire of a collection, a new one of its type, empty (D-141); of an
+	# untyped one, one of each element's type — a dictionary's keys String.
+	var category := int(pin.get("type", XREBlueprintGraph.VALUE))
+	var categories: Array[int] = []
+	if XREBlueprintCollections.is_untyped(category):
+		for element: int in XREBlueprintCollections.element_categories():
+			categories.append(XREBlueprintCollections.array_of(element) if XREBlueprintCollections.is_array(category) else XREBlueprintCollections.dictionary_of(XREBlueprintGraph.TEXT, element))
+	elif XREBlueprintCollections.is_collection(category): categories.append(category)
+	for each: int in categories if context.get("new_variables", false) else []:
+		var empty: Variant = XREBlueprintCollections.empty(each)
+		if not XREBlueprintCollections.is_value(empty): continue
+		var hint := XREBlueprintCollections.hint(each)
+		result.append({"id": "variable:new:" + hint, "title": "New %s variable" % hint, "subtitle": "variable: " + hint, "kind": "variable",
+				"keywords": "variable new add create array dictionary list", "category": "Variables", "block": {}, "variable": empty, "target": null,
+				"inputs": [], "outputs": [each], "disabled": ""})
 	result.append_array(_bind(actions, host, false, graph))
 	return result

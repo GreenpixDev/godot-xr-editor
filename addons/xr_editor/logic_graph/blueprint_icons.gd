@@ -74,6 +74,21 @@ const GLYPHS: Dictionary[StringName, String] = {
 	&"return": '<path d="M6 0H-3M0 -3.5L-3.5 0L0 3.5M-6 -5.5V5.5" {S}/>',
 	# A call's body waits (docs/blueprint_functions.md): an hourglass on its header.
 	&"waits": '<path d="M-4 -5.5H4M-4 5.5H4M-3 -5.5C-3 -1 3 1 3 5.5M3 -5.5C3 -1 -3 1 -3 5.5" {S}/>',
+	# Collections (D-143): an array's brackets, a dictionary's braces, and what a method does to one.
+	&"list": '<path d="M-3 -6H-5.5V6H-3M3 -6H5.5V6H3" {S}/>',
+	&"map": '<path d="M-2.5 -6C-5 -6 -4 -1 -6 0C-4 1 -5 6 -2.5 6M2.5 -6C5 -6 4 -1 6 0C4 1 5 6 2.5 6" {S}/>',
+	&"add": '<path d="M0 -5V5M-5 0H5" {S}/>',
+	&"contains": '<path d="M5 -4.5H0A4.5 4.5 0 0 0 0 4.5H5M-4.5 0H5" {S}/>',
+	&"count": '<path d="M-2 -5.5L-3.5 5.5M2.5 -5.5L1 5.5M-5.5 -2H5.5M-5.5 2H5.5" {S}/>',
+	&"sort": '<path d="M-5 -4H5M-5 0H2M-5 4H-1" {S}/>',
+}
+## Glyphs of the methods of Array and Dictionary (D-143), by method.
+const METHODS: Dictionary[String, StringName] = {
+	"array_get": &"get", "array_size": &"count", "array_is_empty": &"count", "array_contains": &"contains", "array_find": &"contains",
+	"array_pick_random": &"random", "array_set": &"set", "array_append": &"add", "array_insert": &"add", "array_add_unique": &"add",
+	"array_remove": &"free", "array_remove_at": &"free", "array_clear": &"free", "array_sort": &"sort", "array_shuffle": &"random",
+	"dictionary_get": &"get", "dictionary_has": &"contains", "dictionary_keys": &"list", "dictionary_values": &"list", "dictionary_size": &"count",
+	"dictionary_set": &"set", "dictionary_remove": &"free", "dictionary_clear": &"free", "dictionary_merge": &"add",
 }
 ## Glyphs drawn in their own colors, never tinted.
 const COLORED: Array[StringName] = [&"color", &"dial", &"dice"]
@@ -109,6 +124,7 @@ const KINDS: Dictionary[String, StringName] = {
 	"get_property": &"get", "get_variable": &"get", "branch": &"flow",
 	"sequence": &"flow", "switch": &"flow", "break": &"break", "make": &"make",
 	"entry": &"entry", "return": &"return",
+	"make_array": &"list", "make_dictionary": &"map", "for_each": &"loop", "for_each_pair": &"loop",
 }
 
 
@@ -124,7 +140,7 @@ static func group_of(block: Dictionary, inputs: Array, outputs: Array) -> Group:
 	for spec: Array in inputs + outputs:
 		if int(spec[1]) == XREBlueprintGraph.EXEC: executes = true
 	if not executes: return Group.PURE
-	if kind in ["branch", "sequence", "switch"] or (kind == "call" and _category(block) == "Flow"): return Group.FLOW
+	if kind in ["branch", "sequence", "switch", "for_each", "for_each_pair"] or (kind == "call" and _category(block) == "Flow"): return Group.FLOW
 	if XREBlueprintUserFunctions.is_call(block): return Group.MINE
 	return Group.FUNCTION
 
@@ -136,6 +152,7 @@ static func icon_of(block: Dictionary, class_icon: Callable) -> Variant:
 	var kind := str(block.get("kind", ""))
 	if kind == "signal":
 		return &"ready" if str((block.get("params", {}) as Dictionary).get("signal", "")) == "ready" else &"event"
+	if kind == "collection": return METHODS.get(str((block.get("params", {}) as Dictionary).get("method", "")))
 	if kind != "call": return KINDS.get(kind)
 	var function: Dictionary = block.get("function", {})
 	var tagged := str(function.get("icon", ""))

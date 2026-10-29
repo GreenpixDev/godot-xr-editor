@@ -109,6 +109,7 @@ func _run() -> void:
 	await _test_sequence_switch()
 	_test_break_make()
 	await _test_functions()
+	await _test_collections()
 	print("test_blueprints: %d of %d checks failed" % [_failures, _checks])
 	quit(1 if _failures > 0 else 0)
 
@@ -282,9 +283,9 @@ func _test_wire_bends() -> void:
 func _test_all_blocks_compile() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.variables.append({"name": "flag", "value": false})
-	# Break and Make take their type from a wire (D-139), Entry and Return belong to a
-	# function's body: their own tests build them.
-	var kinds: Array = XREBlueprintGraph.BLOCKS.keys().filter(func(kind: String) -> bool: return not kind in ["call", "break", "make", "entry", "return"])
+	# Break and Make take their type from a wire (D-139), loops and methods their collection (D-141),
+	# Entry and Return belong to a function's body: their own tests build them.
+	var kinds: Array = XREBlueprintGraph.BLOCKS.keys().filter(func(kind: String) -> bool: return not kind in ["call", "break", "make", "for_each", "for_each_pair", "collection", "entry", "return"])
 	kinds.append_array(XREBlueprintGraph.PRESETS.keys())
 	for kind: String in kinds:
 		_block(graph, kind, {"variable": "flag"} if kind in ["get_variable", "set_variable"] else {})
@@ -1454,6 +1455,266 @@ func _test_break_make() -> void:
 	_check(errors.contains("wire its Target"), "an untyped Break says how to type it")
 
 
+func _collection(graph: XREBlueprintGraph, method: String, params: Dictionary = {}) -> int:
+	var id := graph.nodes.size() + 1
+	var block := XREBlueprintGraph.make_collection(id, method, Vector2(id * 200, 80))
+	(block["params"] as Dictionary).merge(params, true)
+	graph.nodes.append(block)
+	return id
+
+
+## Arrays and dictionaries (D-141): their categories and which wires they take,
+## Make Array's and Make Dictionary's pins and the literals a wire types, the
+## build's errors, the menu, the variables, the generated code and a run of For
+## Each whose body waits, For Each Pair, a method on a dictionary and an error.
+func _test_collections() -> void:
+	var ints := XREBlueprintCollections.array_of(XREBlueprintGraph.INTEGER)
+	var any_array := XREBlueprintCollections.array_of(XREBlueprintGraph.VALUE)
+	var colors := XREBlueprintCollections.dictionary_of(XREBlueprintGraph.TEXT, XREBlueprintGraph.COLOR)
+	_check(XREBlueprintGraph.ports_compatible(ints, any_array) and not XREBlueprintGraph.ports_compatible(any_array, ints) and XREBlueprintGraph.ports_compatible(ints, XREBlueprintGraph.VALUE),
+			"Array[int] goes into an untyped array and any value, an untyped one not into Array[int]")
+	_check(not XREBlueprintGraph.ports_compatible(ints, XREBlueprintCollections.array_of(XREBlueprintGraph.NUMBER)) and not XREBlueprintGraph.ports_compatible(XREBlueprintGraph.INTEGER, ints)
+			and not XREBlueprintGraph.ports_compatible(colors, any_array), "no Array[int] into Array[float], no int into Array[int], no dictionary into an array")
+	_check(XREBlueprintCollections.hint(colors) == "Dictionary[String, Color]" and XREBlueprintCollections.key_of(colors) == XREBlueprintGraph.TEXT and XREBlueprintCollections.element_of(colors) == XREBlueprintGraph.COLOR,
+			"a dictionary's category keeps its key and value")
+	_check(XREBlueprintGraph.port_type(TYPE_ARRAY) == any_array and XREBlueprintCollections.category_of([] as Array[int]) == ints, "an engine's Array is an untyped array; Array[int] is typed")
+	var parsed: Variant = XREBlueprintCollections.parse("[1, 2, 5]", ints)
+	_check(parsed is Array and (parsed as Array).is_typed() and parsed == [1, 2, 5] and XREBlueprintCollections.parse("[1, \"a\"]", ints) == null and XREBlueprintCollections.parse("[[1]]", any_array) == null,
+			"a list's text is read as Array[int]; another element or a nested list is refused")
+	_check(XREBlueprintCollections.text_of(parsed) == "[1, 2, 5]", "and written back: %s" % XREBlueprintCollections.text_of(parsed))
+
+	# Make Array's pins: a copy of the last literal, a wire typing the others, a pin removed with its wire moving up.
+	var doc := XREBlueprintDocument.new()
+	var make := doc.insert_block(XREBlueprintGraph.make_node(0, "make_array", Vector2.ZERO), Vector2.ZERO)
+	_check(doc.graph.ports(doc.graph.find_node(make), false)[0][1] == ints and doc.add_pin(make), "Make Array of 0, 0 gives Array[int] and takes a third element")
+	var block := doc.graph.find_node(make)
+	_check(block["params"]["count"] == 3 and block["params"]["item_2"] == 0 and doc.graph.ports(block, true)[2][0] == "[2]", "its third element is [2], 0: %s" % [block["params"]])
+	var number := doc.insert_block(XREBlueprintGraph.make_node(0, "value", Vector2.ZERO), Vector2(-300, 0))
+	_check(doc.connect_blocks(number, 0, make, 2), "a float is wired into [2]: %s" % doc.last_error)
+	block = doc.graph.find_node(make)
+	_check(block["params"]["item_0"] is float and doc.graph.ports(block, false)[0][1] == XREBlueprintCollections.array_of(XREBlueprintGraph.NUMBER), "the other literals are floats now, the array Array[float]: %s" % [block["params"]])
+	_check(doc.remove_pin(make, 0), "[0] is removed")
+	block = doc.graph.find_node(make)
+	_check(block["params"]["count"] == 2 and not (block["params"] as Dictionary).has("item_2") and doc.graph.edges.any(func(edge: Dictionary) -> bool: return edge["to"] == make and edge["to_port"] == 1),
+			"[2]'s wire moved up to [1]: %s" % [doc.graph.edges])
+	doc.remove_pin(make, 0)
+	# D-144: the last one goes too; the empty array stays an Array[float], and a new element is a float.
+	_check(doc.remove_pin(make, 0), "the last element is removed: %s" % doc.last_error)
+	block = doc.graph.find_node(make)
+	var float_array := XREBlueprintCollections.array_of(XREBlueprintGraph.NUMBER)
+	_check(block["params"]["count"] == 0 and (block["params"] as Dictionary).get(XREBlueprintGraph.MADE_TYPE) == float_array and doc.graph.ports(block, false)[0][1] == float_array
+			and doc.graph.ports(block, true).is_empty() and doc.graph.validate().is_empty(), "an empty Make Array keeps its type: %s %s" % [block["params"], doc.graph.validate()])
+	_check(XREBlueprintCompiler._make_collection(doc.graph, block).contains("var value: Array[float] = []"), "and gives an empty Array[float]: %s" % XREBlueprintCompiler._make_collection(doc.graph, block))
+	_check(not doc.remove_pin(make, 0) and doc.add_pin(make), "nothing more to remove; the plus adds one")
+	block = doc.graph.find_node(make)
+	_check(block["params"]["item_0"] is float and not (block["params"] as Dictionary).has(XREBlueprintGraph.MADE_TYPE), "of the type kept, which goes: %s" % [block["params"]])
+	var table := doc.insert_block(XREBlueprintGraph.make_node(0, "make_dictionary", Vector2.ZERO), Vector2(0, 300))
+	doc.add_pin(table)
+	block = doc.graph.find_node(table)
+	_check(block["params"]["pairs"] == 2 and block["params"]["key_1"] == "key_1" and block["params"]["value_1"] == 0 and doc.graph.ports(block, true).size() == 4
+			and XREBlueprintGraph.variable_pins(block)["pair"], "Make Dictionary takes a pair with a new key: %s" % [block["params"]])
+	_check(doc.remove_pin(table, 3) and doc.graph.find_node(table)["params"]["pairs"] == 1, "× of a pair's value removes the pair")
+
+	# A collection wired into a method types its element's literal; a String array's Append adds "".
+	doc.add_variable("words", [] as Array[String])
+	var words := doc.insert_block(XREBlueprintGraph.make_node(0, "get_variable", Vector2.ZERO), Vector2(0, 600))
+	doc.set_parameter(words, "variable", "words")
+	var append := doc.insert_block(XREBlueprintGraph.make_collection(0, "array_append", Vector2.ZERO), Vector2(300, 600))
+	_check(doc.graph.find_node(append)["params"]["value"] == 0 and doc.connect_blocks(words, 0, append, 1), "Words is wired into Append: %s" % doc.last_error)
+	_check(doc.graph.find_node(append)["params"]["value"] == "" and doc.graph.ports(doc.graph.find_node(append), true)[2][1] == XREBlueprintGraph.TEXT, "its Value is a String now")
+	_check(not doc.connect_blocks(number, 0, append, 2), "a float doesn't go into a String's Value")
+
+	# A collection, an object and Get's Default take no token: the headset fills no socket of them (D-142).
+	var graph := XREBlueprintGraph.new()
+	var lookup_block := XREBlueprintGraph.make_collection(1, "dictionary_get", Vector2.ZERO)
+	var merge_block := XREBlueprintGraph.make_collection(2, "dictionary_merge", Vector2.ZERO)
+	graph.nodes = [lookup_block, merge_block]
+	_check(graph.socket_keys(lookup_block) == ["key"] and graph.socket_keys(merge_block).is_empty(),
+			"Get's sockets are Key alone, Merge's none: %s %s" % [graph.socket_keys(lookup_block), graph.socket_keys(merge_block)])
+
+	# Validation and the build's errors.
+	graph = XREBlueprintGraph.new()
+	_block(graph, "make_array", {"count": 9})
+	_block(graph, "make_array", {"count": 1})
+	_collection(graph, "array_append", {"other": 1})
+	var errors := "\n".join(graph.validate())
+	_check(errors.contains("#1: invalid number of elements") and errors.contains("#2: item_1 is past its elements") and errors.contains("#3: array_append takes no other"), "collection blocks are checked: %s" % errors)
+	graph = XREBlueprintGraph.new()
+	var ready := _block(graph, "ready")
+	var fresh := _block(graph, "make_array")
+	var push := _collection(graph, "array_append")
+	var loop := _block(graph, "for_each")
+	_wire(graph, ready, push)
+	_wire(graph, fresh, push, 0, 1)
+	_wire(graph, push, loop)
+	errors = "\n".join(XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray)
+	_check(errors.contains("Block #%d: wire Array." % loop), "a loop without its array is a build error: %s" % errors)
+	_wire(graph, fresh, loop, 0, 1)
+	errors = "\n".join(XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray)
+	_check(errors.contains("Block #%d changes a new array — wire a variable." % push) and not errors.contains("#%d changes" % loop), "Append into a Make Array is, a loop over one isn't: %s" % errors)
+
+	# The menu: Array and Dictionary, and a new variable of a typed array's wire.
+	graph = XREBlueprintGraph.new()
+	var sections := XREBlueprintActions.shared().sections({"chip": XREBlueprintActions.NATIVE, "graph": graph})
+	var titles: Dictionary[String, Array] = {}
+	for section: Dictionary in sections: titles[section["title"]] = (section["actions"] as Array).map(func(action: Dictionary) -> String: return action["title"])
+	var array_titles: Array = titles.get("Array", [])
+	var dictionary_titles: Array = titles.get("Dictionary", [])
+	_check(array_titles.has("For Each") and array_titles.has("Append") and dictionary_titles.has("For Each Pair") and dictionary_titles.has("Make Dictionary"),
+			"the menu has Array and Dictionary: %s %s" % [array_titles, dictionary_titles])
+	_check(XREBlueprintActions.task_of({"id": "native:for_each"}) == "Flow" and XREBlueprintActions.task_of({"id": "collection:array_append"}) == "Variables", "For Each is Flow, Append Variables")
+	var offered := XREBlueprintActions.flatten(XREBlueprintActions.shared().sections({"chip": XREBlueprintActions.NATIVE, "graph": graph, "new_variables": true, "pin": {"type": ints, "output": false}}))
+	_check(offered.any(func(action: Dictionary) -> bool: return action["title"] == "New Array[int] variable" and (action["variable"] as Array).is_typed()) \
+			and not offered.any(func(action: Dictionary) -> bool: return action["title"] == "New int variable"), "an Array[int] input offers a new Array[int] variable, not an int one")
+
+	# A run: For Each over doors waits for its body's Delay, then For Each Pair, then Get on the dictionary.
+	graph = XREBlueprintGraph.new()
+	graph.variables.append_array([{"name": "doors", "value": [1, 2, 3] as Array[int]}, {"name": "seen", "value": [] as Array[int]}, {"name": "indexes", "value": [] as Array[int]},
+			{"name": "names", "value": [] as Array[String]}, {"name": "lamps", "value": {"a": 1, "b": 2} as Dictionary[String, int]}, {"name": "picked", "value": 0}, {"name": "done", "value": false}])
+	ready = _block(graph, "ready")
+	loop = _block(graph, "for_each")
+	var doors := _block(graph, "get_variable", {"variable": "doors"})
+	push = _collection(graph, "array_append")
+	var seen := _block(graph, "get_variable", {"variable": "seen"})
+	var delay := graph.nodes.size() + 1
+	var wait := XREBlueprintGraph.make_node(delay, "delay", Vector2.ZERO)
+	wait["params"]["seconds"] = 0.05
+	graph.nodes.append(wait)
+	var pair := _block(graph, "for_each_pair")
+	var lamps := _block(graph, "get_variable", {"variable": "lamps"})
+	var name := _collection(graph, "array_append")
+	var names := _block(graph, "get_variable", {"variable": "names"})
+	var pick := _block(graph, "set_variable", {"variable": "picked", "value": 0})
+	var lookup := _collection(graph, "dictionary_get", {"key": "b"})
+	var done := _block(graph, "set_variable", {"variable": "done", "value": true})
+	var index := _collection(graph, "array_append")
+	var indexes := _block(graph, "get_variable", {"variable": "indexes"})
+	_wire(graph, ready, loop)
+	_wire(graph, doors, loop, 0, 1)
+	_wire(graph, loop, push, 0, 0)
+	_wire(graph, seen, push, 0, 1)
+	_wire(graph, loop, push, 1, 2)
+	_wire(graph, push, delay)
+	_wire(graph, delay, index)
+	_wire(graph, indexes, index, 0, 1)
+	_wire(graph, loop, index, 2, 2)
+	_wire(graph, loop, pair, 3, 0)
+	_wire(graph, lamps, pair, 0, 1)
+	_wire(graph, pair, name, 0, 0)
+	_wire(graph, names, name, 0, 1)
+	_wire(graph, pair, name, 1, 2)
+	_wire(graph, pair, pick, 3, 0)
+	_wire(graph, lamps, lookup, 0, 0)
+	_wire(graph, lookup, pick, 0, 1)
+	_wire(graph, pick, done)
+	_check(graph.validate().is_empty(), "the loops' graph is valid: %s" % graph.validate())
+	_check(graph.ports(graph.find_node(loop), false)[1][1] == XREBlueprintGraph.INTEGER and graph.ports(graph.find_node(pair), false)[1][1] == XREBlueprintGraph.TEXT
+			and graph.ports(graph.find_node(lookup), false)[0][1] == XREBlueprintGraph.INTEGER, "Element is an int, Key a String, Get's Value an int, by the wires")
+	var source := XREBlueprintCompiler.compile(graph)["code"] as String
+	_check(source.contains("var _bp_var_doors: Array[int] = [1, 2, 3]") and source.contains("\titems.append(a0)\n") and source.contains("return _bp_loop(run, %d, _bp_array(value), %d, %d)" % [loop, push, pair])
+			and source.contains("_bp_get(items, a0, run, %d)" % lookup), "collections compile readably")
+	var scene := Node.new()
+	scene.set_script(_script(graph))
+	var problems: Array[String] = []
+	scene.connect(&"blueprint_error", func(_id: int, message: String) -> void: problems.append(message))
+	root.add_child(scene)
+	await process_frame
+	_check(scene.get("_bp_var_seen") == [1] and scene.get("_bp_var_indexes") == [], "the body's Delay holds the loop at the first door: %s" % [scene.get("_bp_var_seen")])
+	await _wait_until(func() -> bool: return scene.get("_bp_var_done") == true)
+	_check(scene.get("_bp_var_seen") == [1, 2, 3] and scene.get("_bp_var_indexes") == [0, 1, 2], "each door in turn, its index read after the Delay: %s %s" % [scene.get("_bp_var_seen"), scene.get("_bp_var_indexes")])
+	_check(scene.get("_bp_var_names") == ["a", "b"] and scene.get("_bp_var_picked") == 2, "For Each Pair gave the keys, Get b gave 2")
+	_check(problems.is_empty() and (scene.get("_bp_runs") as Array).is_empty(), "no errors, the run ended: %s" % [problems])
+	# Get past the end and a key a dictionary hasn't, without Default, are the block's errors.
+	_check(scene.call("_bp_at", [1] as Array[int], 3, null, 7) == null and scene.call("_bp_get", {"a": 1}, "z", null, 8) == null and problems.size() == 2 and problems[0].contains("out of"),
+			"an index out of range and a missing key are errors: %s" % [problems])
+	scene.queue_free()
+	await process_frame
+	# Make Array of an int and a float gives Array[float]; Make Dictionary a typed one; Size reads either.
+	graph = XREBlueprintGraph.new()
+	graph.variables.append({"name": "kept", "value": [] as Array[float]})
+	var floats := _block(graph, "make_array", {"item_0": 1, "item_1": 2.5})
+	var colored := _block(graph, "make_dictionary", {"key_0": "open", "value_0": Color.GREEN})
+	var size := _collection(graph, "array_size")
+	_wire(graph, floats, size, 0, 0)
+	ready = _block(graph, "ready")
+	var keep := _block(graph, "set_variable", {"variable": "kept", "value": [] as Array[float]})
+	_wire(graph, ready, keep)
+	_wire(graph, floats, keep, 0, 1)
+	source = XREBlueprintCompiler.compile(graph)["code"] as String
+	_check(source.contains("var value: Array[float] = [1.0, 2.5]") and source.contains("var value: Dictionary[String, Color] = {\"open\": Color(0, 1, 0, 1)}") and source.contains("_bp_var_kept.assign(_bp_array(value))"), "Make blocks compile to typed literals")
+	var instance := Node.new()
+	instance.set_script(_script(graph))
+	root.add_child(instance)
+	var made: Variant = instance.call("_bp_value%d" % floats)
+	var table_made: Variant = instance.call("_bp_value%d" % colored)
+	_check(made is Array and (made as Array).get_typed_builtin() == TYPE_FLOAT and made == [1.0, 2.5] and instance.call("_bp_value%d" % size) == 2, "Make Array gives Array[float] [1.0, 2.5] of size 2")
+	_check(table_made is Dictionary and (table_made as Dictionary).get_typed_value_builtin() == TYPE_COLOR and (table_made as Dictionary)["open"] == Color.GREEN, "Make Dictionary gives Dictionary[String, Color]")
+	_check(instance.get("_bp_var_kept") == [1.0, 2.5], "Set takes Make Array's elements: %s" % [instance.get("_bp_var_kept")])
+	instance.queue_free()
+	await process_frame
+	await _test_collections_d143()
+
+
+## D-143: a loop over its rack's list ending at Break, an array of scene
+## objects by their paths, a packed array's port, a wire taking a rack's place,
+## a method's own list changed is a build error.
+func _test_collections_d143() -> void:
+	_check(XREBlueprintGraph.port_type(TYPE_PACKED_INT32_ARRAY) == XREBlueprintCollections.array_of(XREBlueprintGraph.INTEGER) and XREBlueprintGraph.port_type(TYPE_PACKED_STRING_ARRAY) == XREBlueprintCollections.array_of(XREBlueprintGraph.TEXT),
+			"an engine's packed arrays are typed arrays")
+	_check(XREBlueprintCollections.parse_any("[1, 2.5]", XREBlueprintCollections.array_of(XREBlueprintGraph.VALUE)) == [1.0, 2.5] and XREBlueprintCollections.parse_any("[1, \"a\"]", XREBlueprintCollections.array_of(XREBlueprintGraph.VALUE)) == null,
+			"an untyped rack's list takes its elements' type")
+	_check(XREBlueprintCollections.appended(null, XREBlueprintCollections.array_of(XREBlueprintGraph.VALUE)) == [0] and XREBlueprintCollections.appended([3] as Array[int], XREBlueprintCollections.array_of(XREBlueprintGraph.INTEGER)) == [3, 3],
+			"a rack's plus adds a copy of the last, or 0")
+	var graph := XREBlueprintGraph.new()
+	graph.variables.append_array([{"name": "seen", "value": [] as Array[int]}, {"name": "done", "value": false}])
+	var ready := _block(graph, "ready")
+	var loop := _block(graph, "for_each", {"collection": [4, 5, 6] as Array[int]})
+	var push := _collection(graph, "array_append")
+	var seen := _block(graph, "get_variable", {"variable": "seen"})
+	var stop := _block(graph, "branch")
+	var five := _block(graph, "equals", {"b": 5})
+	var done := _block(graph, "set_variable", {"variable": "done", "value": true})
+	var count := _collection(graph, "array_size", {XREBlueprintGraph.SCENE_TARGETS: ["A", "B"] as Array[String]})
+	_wire(graph, ready, loop)
+	_wire(graph, loop, push, 0, 0)
+	_wire(graph, seen, push, 0, 1)
+	_wire(graph, loop, push, 1, 2)
+	_wire(graph, push, stop)
+	_wire(graph, loop, five, 1, 0)
+	_wire(graph, five, stop, 0, 1)
+	_wire(graph, stop, loop, 0, 2)
+	_wire(graph, loop, done, 3, 0)
+	_check(graph.validate().is_empty() and graph.ports(graph.find_node(loop), false)[1][1] == XREBlueprintGraph.INTEGER, "a loop over its rack's Array[int] gives ints: %s" % graph.validate())
+	var source := XREBlueprintCompiler.compile(graph)["code"] as String
+	_check(source.contains("var value: Variant = [4, 5, 6]") and source.contains("_bp_targets([\"A\", \"B\"], run, %d)" % count) and source.contains("%d: block_id = _bp_loop_break(run, %d, %d)" % [XREBlueprintCompiler.BREAK + loop, loop, done]),
+			"a rack's list, the objects and Break compile readably")
+	var scene := Node.new()
+	for name: String in ["A", "B"]:
+		var child := Node.new()
+		child.name = name
+		scene.add_child(child)
+	scene.set_script(_script(graph))
+	root.add_child(scene)
+	await _wait_until(func() -> bool: return scene.get("_bp_var_done") == true)
+	_check(scene.get("_bp_var_seen") == [4, 5], "Break at 5 ended the loop and ran Completed: %s" % [scene.get("_bp_var_seen")])
+	_check(scene.call("_bp_value%d" % count) == 2, "the array of the scene's A and B has two objects")
+	_check((scene.get("_bp_runs") as Array).is_empty(), "the run ended")
+	scene.queue_free()
+	await process_frame
+	# A method's own list, changed, is a new array; a wire takes a rack's place.
+	graph = XREBlueprintGraph.new()
+	ready = _block(graph, "ready")
+	push = _collection(graph, "array_append", {"collection": [1] as Array[int]})
+	_wire(graph, ready, push)
+	_check("\n".join(XREBlueprintCompiler.compile(graph)["errors"] as PackedStringArray).contains("Block #%d changes a new array" % push), "Append to a rack's list is a build error")
+	var doc := XREBlueprintDocument.new()
+	doc.add_variable("kept", [] as Array[int])
+	var held := doc.insert_block(XREBlueprintGraph.make_collection(0, "array_size", Vector2.ZERO), Vector2.ZERO)
+	doc.set_parameter(held, "collection", [7, 8] as Array[int])
+	var kept := doc.insert_block(XREBlueprintGraph.make_node(0, "get_variable", Vector2.ZERO), Vector2(-300, 0))
+	_check(doc.connect_blocks(kept, 0, held, 0) and not (doc.graph.find_node(held)["params"] as Dictionary).has("collection"), "a wire into Size takes its rack's place")
+
+
 func _operator(graph: XREBlueprintGraph, op: String, params: Dictionary = {}) -> int:
 	var id := graph.nodes.size() + 1
 	var block := XREBlueprintGraph.make_operator(id, op, Vector2(id * 200, 80))
@@ -1845,6 +2106,37 @@ func _test_functions() -> void:
 	await _wait_until(func() -> bool: return scene.get("_bp_var_result") == true)
 	_check(scene.get("_bp_var_opened") == true and scene.get("_bp_var_result") == true and is_equal_approx(float(scene.get("_bp_var_speed")), 1.5), "the call waited for its body, got its output; the pure one gave 1.5: %s %s" % [scene.get("_bp_var_result"), scene.get("_bp_var_speed")])
 	_check((scene.get("_bp_runs") as Array).is_empty(), "the run ended")
+	scene.queue_free()
+	await process_frame
+
+	# A loop in a body (D-141 in D-145): For Each runs its body per element, Break at 5 runs Completed, then Return.
+	doc = XREBlueprintDocument.new()
+	doc.add_variable("last", 0)
+	doc.add_variable("done", false)
+	var walk := doc.create_function(false, "walk")
+	doc.open_function(walk)
+	var each := doc.insert_block(XREBlueprintGraph.make_node(0, "for_each", Vector2.ZERO), Vector2(200, 100))
+	doc.set_parameter(each, "collection", [4, 5, 6] as Array[int])
+	var keep := doc.insert_block(XREBlueprintGraph.make_node(0, "set_variable", Vector2.ZERO), Vector2(400, 100))
+	doc.set_parameter(keep, "variable", "last")
+	var stop := doc.insert_block(XREBlueprintGraph.make_node(0, "branch", Vector2.ZERO), Vector2(600, 100))
+	var five := doc.insert_block(XREBlueprintGraph.make_node(0, "equals", Vector2.ZERO), Vector2(400, 300))
+	doc.set_parameter(five, "b", 5)
+	doc.disconnect_blocks(1, 0, 2, 0)
+	var wired := doc.connect_blocks(1, 0, each, 0) and doc.connect_blocks(each, 0, keep, 0) and doc.connect_blocks(each, 1, keep, 1) and doc.connect_blocks(keep, 0, stop, 0) 			and doc.connect_blocks(each, 1, five, 0) and doc.connect_blocks(five, 0, stop, 1) and doc.connect_blocks(stop, 0, each, 2) and doc.connect_blocks(each, 3, 2, 0)
+	_check(wired, "a body with For Each and its Break: %s" % doc.last_error)
+	doc.open_function("")
+	var walked := doc.add_function_call(walk, Vector2(300, 100), {"from": 1, "from_port": 0})
+	var finished := doc.insert_block(XREBlueprintGraph.make_node(0, "set_variable", Vector2.ZERO), Vector2(600, 100), {"from": walked, "from_port": 0})
+	doc.set_parameter(finished, "variable", "done")
+	doc.set_parameter(finished, "value", true)
+	source = XREBlueprintCompiler.compile(doc.root)
+	_check((source["errors"] as PackedStringArray).is_empty() and (source["code"] as String).contains("_bp_loop_break(run, %d" % each), "a loop in a body builds, Break in the body's steps: %s" % [source["errors"]])
+	scene = Node.new()
+	scene.set_script(_script(doc.root))
+	root.add_child(scene)
+	await _wait_until(func() -> bool: return scene.get("_bp_var_done") == true)
+	_check(scene.get("_bp_var_last") == 5 and scene.get("_bp_var_done") == true, "the body's loop broke at 5 and the call went on: %s %s" % [scene.get("_bp_var_last"), scene.get("_bp_var_done")])
 	scene.queue_free()
 	await process_frame
 

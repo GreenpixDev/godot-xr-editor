@@ -466,7 +466,58 @@ func add_pin(id: int) -> bool:
 				entry["params"]["cases"] = count + 1
 				entry["params"][XREBlueprintGraph.case_key(count)] = value
 			return reshape_pins(id, grow, {}, "Add Pin")
+		"make_array":
+			# A copy of the last element's literal, of the elements' type (D-141).
+			var count := XREBlueprintGraph.collection_count(block)
+			var literal: Variant = _new_item(block, "item_", count)
+			var grow := func(entry: Dictionary) -> void:
+				entry["params"]["count"] = count + 1
+				(entry["params"] as Dictionary).erase(XREBlueprintGraph.MADE_TYPE)
+				if literal != null: entry["params"]["item_%d" % count] = literal
+			return reshape_pins(id, grow, {}, "Add Element")
+		"make_dictionary":
+			# A key no pair has, of the keys' type, and the last value's literal.
+			var pairs := XREBlueprintGraph.collection_count(block)
+			var key: Variant = _new_key(block, pairs)
+			var value: Variant = _new_item(block, "value_", pairs)
+			var grow := func(entry: Dictionary) -> void:
+				entry["params"]["pairs"] = pairs + 1
+				(entry["params"] as Dictionary).erase(XREBlueprintGraph.MADE_TYPE)
+				if key != null: entry["params"]["key_%d" % pairs] = key
+				if value != null: entry["params"]["value_%d" % pairs] = value
+			return reshape_pins(id, grow, {}, "Add Element")
 	return false
+
+
+## The literal a new element of Make Array or value of Make Dictionary takes
+## (D-141): the last one's, else a value of the type of those wired in; null
+## for a type only a wire brings.
+func _new_item(block: Dictionary, prefix: String, count: int) -> Variant:
+	var params: Dictionary = block["params"]
+	if params.has(prefix + str(count - 1)): return params[prefix + str(count - 1)]
+	var type := XREBlueprintGraph.variant_type(graph.items_category(block, prefix))
+	if type == TYPE_NIL: return 0
+	return XREBlueprintSchema.default_value(type) if type in XREBlueprintSchema.LITERAL_TYPES else null
+
+
+## A key of Make Dictionary's keys' type that no pair has (D-141): key_2 for
+## text, the largest number + 1, else the type's default.
+func _new_key(block: Dictionary, pairs: int) -> Variant:
+	var params: Dictionary = block["params"]
+	var used: Array = []
+	for index: int in pairs: used.append(params.get("key_%d" % index))
+	var type := XREBlueprintGraph.variant_type(graph.items_category(block, "key_"))
+	match type:
+		TYPE_STRING, TYPE_NIL:
+			var index := pairs
+			while used.has("key_%d" % index): index += 1
+			return "key_%d" % index
+		TYPE_INT:
+			var largest := -1
+			for value: Variant in used:
+				if value is int: largest = maxi(largest, value)
+			return largest + 1
+	return XREBlueprintSchema.default_value(type) if type in XREBlueprintSchema.LITERAL_TYPES else null
 
 
 ## Removes pin [param port] — of its side, as [method XREBlueprintGraph.variable_pins]
@@ -478,12 +529,36 @@ func remove_pin(id: int, port: int) -> bool:
 	if pins.is_empty(): return _fail("This block's pins are fixed.")
 	var count: int = pins["count"]
 	if port < 0 or port >= count: return _fail("The block has no such pin.")
-	if count <= int(pins["fewest"]): return _fail("A block keeps at least %d pins." % pins["fewest"])
+	var fewest: int = pins.get("min", XREBlueprintGraph.MIN_PINS)
+	if count <= fewest: return _fail("A block keeps at least %d pins." % fewest)
 	match str(block["kind"]):
 		"entry", "return":
 			var input: bool = block["kind"] == "entry"
 			var key := str((graph.function_signature["inputs" if input else "outputs"] as Array)[port]["key"])
 			return remove_function_pin(opened, input, key)
+		"make_array", "make_dictionary":
+			# An element, or a pair with both its pins (D-141); those after it move up.
+			var pair: bool = block["kind"] == "make_dictionary"
+			var index := port / 2 if pair else port
+			var total := XREBlueprintGraph.collection_count(block)
+			var prefixes: Array[String] = ["item_"]
+			if pair: prefixes.assign(["key_", "value_"])
+			var renames := {}
+			for prefix: String in prefixes:
+				renames[prefix + str(index)] = ""
+				for after: int in range(index + 1, total): renames[prefix + str(after)] = prefix + str(after - 1)
+			# The last one gone, the block keeps the type it made: an empty Array[int] stays one (D-144).
+			var made: int = graph.ports(block, false)[0][1]
+			var shrink := func(entry: Dictionary) -> void:
+				var params: Dictionary = entry["params"]
+				if total == 1: params[XREBlueprintGraph.MADE_TYPE] = made
+				for prefix: String in prefixes:
+					for after: int in range(index, total - 1):
+						if params.has(prefix + str(after + 1)): params[prefix + str(after)] = params[prefix + str(after + 1)]
+						else: params.erase(prefix + str(after))
+					params.erase(prefix + str(total - 1))
+				params["pairs" if pair else "count"] = total - 1
+			return reshape_pins(id, shrink, renames, "Remove Element")
 		"operator": return remove_operand(id, XREBlueprintOperators.OPERAND_KEYS[port])
 		"sequence":
 			var renames := {"#Then %d" % port: ""}
@@ -500,6 +575,67 @@ func remove_pin(id: int, port: int) -> bool:
 				params["cases"] = count - 1
 			return reshape_pins(id, shrink, renames, "Remove Pin")
 	return false
+
+
+## Makes the array that loop or method block [param id] works on of the scene
+## objects [param nodes], in their order (D-143): their paths from the host
+## in place of the wire into its Array, or of its rack's list. One edit.
+func wire_selection(id: int, nodes: Array[Node]) -> bool:
+	var host := get_host()
+	var block := graph.find_node(id)
+	if host == null or block.is_empty() or not block.get("kind") in ["for_each", "collection"] or XREBlueprintGraph.on_dictionary(block): return _fail("Only an array's input takes the selected objects.")
+	var paths: Array[String] = []
+	for node: Node in nodes:
+		if is_instance_valid(node) and not paths.has(str(host.get_path_to(node))): paths.append(str(host.get_path_to(node)))
+	if paths.is_empty(): return _fail("Select the objects first.")
+	var port := graph.input_port(block, "collection")
+	var state := graph.snapshot()
+	state["edges"] = (state["edges"] as Array).filter(func(edge: Dictionary) -> bool: return not (edge["to"] == id and edge["to_port"] == port))
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] != id: continue
+		(entry["params"] as Dictionary).erase("collection")
+		entry["params"][XREBlueprintGraph.SCENE_TARGETS] = paths
+	return commit("Wire Selection", state)
+
+
+## Adds scene object [param node] at the end of the array of selected objects of block [param id] (D-143).
+func add_scene_target(id: int, node: Node) -> bool:
+	var block := graph.find_node(id)
+	var paths: Array[String] = []
+	paths.assign((block.get("params", {}) as Dictionary).get(XREBlueprintGraph.SCENE_TARGETS, []))
+	var host := get_host()
+	if host == null or not is_instance_valid(node): return _fail("The object is missing.")
+	if paths.has(str(host.get_path_to(node))): return _fail("The object is in the array already.")
+	paths.append(str(host.get_path_to(node)))
+	var state := graph.snapshot()
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] == id: entry["params"][XREBlueprintGraph.SCENE_TARGETS] = paths
+	return commit("Add Element", state)
+
+
+## Takes object [param index] out of the array of selected objects of block
+## [param id] (D-143); the last one out leaves the input to a wire again.
+func remove_scene_target(id: int, index: int) -> bool:
+	var block := graph.find_node(id)
+	var paths: Array[String] = []
+	paths.assign((block.get("params", {}) as Dictionary).get(XREBlueprintGraph.SCENE_TARGETS, []))
+	if index < 0 or index >= paths.size(): return _fail("The array has no such object.")
+	paths.remove_at(index)
+	var state := graph.snapshot()
+	for entry: Dictionary in state["nodes"]:
+		if entry["id"] != id: continue
+		if paths.is_empty(): (entry["params"] as Dictionary).erase(XREBlueprintGraph.SCENE_TARGETS)
+		else: entry["params"][XREBlueprintGraph.SCENE_TARGETS] = paths
+	return commit("Remove Element", state)
+
+
+## The scene objects of the array of selected objects of block [param id] (D-143), in order; a missing one is null.
+func scene_targets(id: int) -> Array[Node]:
+	var nodes: Array[Node] = []
+	var host := get_host()
+	for path: Variant in (graph.find_node(id).get("params", {}) as Dictionary).get(XREBlueprintGraph.SCENE_TARGETS, []):
+		nodes.append(host.get_node_or_null(NodePath(str(path))) if host != null else null)
+	return nodes
 
 
 ## Hides or shows field [param name] of Break or Make [param id] (D-139): a
@@ -662,6 +798,8 @@ func commit(title: String, state: Dictionary) -> bool:
 	if candidate.adopt_structs(graph.edges): adopted = true
 	# A wire from an enumeration's constant into a Switch's Selection makes it a Switch on it (D-138).
 	if candidate.adopt_enums(graph.edges): adopted = true
+	# A wire into a collection block types its literals (D-141).
+	if candidate.adopt_collections(graph.edges): adopted = true
 	if adopted: state = candidate.snapshot()
 	if opened.is_empty():
 		if state == graph.snapshot():
@@ -1316,10 +1454,15 @@ func add_variable(name: String, value: Variant, fields: Dictionary = {}) -> bool
 
 ## Takes the start value out of variable [param name], keeping its type
 ## (D-054): the box is empty, and the build reports it until a value is back.
+## A collection keeps its elements' type in its value: it is emptied instead (D-141).
 func clear_variable_value(name: String) -> bool:
 	var state := graph.snapshot()
 	for variable: Dictionary in state["variables"]:
 		if variable["name"] == name and variable.has("value"):
+			var category := XREBlueprintCollections.category_of(variable["value"])
+			if XREBlueprintCollections.is_collection(category):
+				variable["value"] = XREBlueprintCollections.empty(category)
+				continue
 			variable["type"] = typeof(variable["value"])
 			variable.erase("value")
 	return commit("Take Token Out", state)

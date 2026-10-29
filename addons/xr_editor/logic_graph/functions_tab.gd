@@ -1,7 +1,7 @@
 @tool
 class_name XREBlueprintFunctionsTab
 extends XREBlueprintFormTab
-## The Functions window (D-144): the plates of the graph's own functions
+## The Functions window (D-148): the plates of the graph's own functions
 ## ([member XREBlueprints.plates]). See-through as Tokens is, drawn over the
 ## scene and the cards so that neither hides it, moved by its Control Bar. It
 ## opens with the graph; a body opened from a call brings it under the body's
@@ -44,7 +44,7 @@ func setup(service: XREBlueprints) -> void:
 
 
 ## A plate more or less: the window grows or shrinks downward, its top where it
-## was, so that a body's Entry over it stays clear of it (D-144).
+## was, so that a body's Entry over it stays clear of it (D-148).
 func _resize() -> void:
 	var window := get_viewport().get_parent() as XREPanelWindow if is_inside_tree() else null
 	if window == null or window.pin != XREPanelWindow.Pin.WINDOW:

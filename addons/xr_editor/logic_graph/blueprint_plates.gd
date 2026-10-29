@@ -1,7 +1,7 @@
 @tool
 class_name XREBlueprintPlates
 extends ScrollContainer
-## The graph's own functions as plates in the Functions window (D-144,
+## The graph's own functions as plates in the Functions window (D-148,
 ## docs/blueprint_functions.md): every function of the file, called or not. A
 ## plate shows ƒ, the function's name, its signature and, in its corner, how
 ## many calls it has; under the ray its trash too. Last, a dashed plate with +ƒ

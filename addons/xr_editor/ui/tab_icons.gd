@@ -43,7 +43,7 @@ stroke-linecap="round"/>"""],
 	&"tokens": ["#4fd0e8", "#1f8fb5", """<g fill="none" stroke="#fff" stroke-width="8"><rect x="22" y="30" width="38" height="24" rx="12"/>
 <rect x="68" y="30" width="38" height="24" rx="12"/><rect x="22" y="74" width="38" height="24" rx="12"/></g>
 <rect x="68" y="74" width="38" height="24" rx="12" fill="#fff"/>"""],
-	# The graph's own functions (D-144): ƒ.
+	# The graph's own functions (D-148): ƒ.
 	&"functions": ["#4fd0e8", "#1f8fb5", """<path d="M86 32Q74 22 64 34L52 96Q48 108 34 102M44 60H82" fill="none" stroke="#fff"
 stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>"""],
 	&"settings": ["#9aa3b2", "#5c6472","""<g fill="none" stroke="#fff" stroke-linecap="round">

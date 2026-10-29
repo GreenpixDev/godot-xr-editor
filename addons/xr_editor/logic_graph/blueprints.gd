@@ -126,7 +126,7 @@ const LINK_MENU_HINT := "click: a wire again  ·  grip: move"
 ## How long the cards that keep a variable from being deleted flash, in seconds (D-079).
 const FLASH_TIME := 1.5
 ## How far above the Functions window's top the Entry of a body opened from it
-## stands, in meters; how far under a body's Entry the window comes (D-144).
+## stands, in meters; how far under a body's Entry the window comes (D-148).
 const FUNCTIONS_LIFT := 0.12
 const FUNCTIONS_GAP := 0.06
 ## What of the graph is open for the user, bits of [method _open_inputs]: each
@@ -337,6 +337,10 @@ class TargetWire:
 	var bounds := AABB()
 	## The wire leaves an event's Source socket, not a port.
 	var source := false
+	## Of an array of selected objects (D-143): the trunk from the port to the
+	## fork, -2, or the branch to the object of this index, with its number.
+	var element := -1
+	var badge: Label3D
 	## A ray is on its petal this frame: it grows.
 	var hot := false
 	## A ray is on its Target port, its adapter or its Source this frame: it thickens (D-061).
@@ -391,7 +395,7 @@ var _drag_distance := 0.6
 var _ghost: Node3D
 ## The ready tokens of the Tokens window ([XREBlueprintTokensTab], D-052).
 var token_tray: XREBlueprintTokenTray
-## The plates of the graph's own functions in the Functions window ([XREBlueprintFunctionsTab], D-144).
+## The plates of the graph's own functions in the Functions window ([XREBlueprintFunctionsTab], D-148).
 var plates: XREBlueprintPlates
 ## The members of a scene object a wire picks, and the white outline of that object (D-052).
 var _petals: XREBlueprintPetals
@@ -424,10 +428,10 @@ var _offered_at: Variant = null
 var _open_at: Variant = null
 ## The view a body is shown from when back comes to it ([method go_back]), null for none.
 var _open_view: Variant = null
-## Where back goes (D-144): the graph or the bodies a call's open button was
+## Where back goes (D-148): the graph or the bodies a call's open button was
 ## pressed in, the last nearest, each with its view; empty in the file's graph.
 var _trail: Array[Dictionary] = []
-## The Entry of the body shown, which the badge stands over (D-144); -1 in the file's graph.
+## The Entry of the body shown, which the badge stands over (D-148); -1 in the file's graph.
 var _entry_id := -1
 ## A wire from a petal of the selected object (Create from scene) and the hand that draws it.
 var _member_link: Dictionary = {}
@@ -536,6 +540,10 @@ var _rebuild_queued := false
 var _picker: XREPicker
 var _keyboard: XREVirtualKeyboard
 var _keyboard_target: WeakRef
+## The list the keyboard types (D-143): its field, and what it goes into —
+## [code]{"variable": name}[/code] or [code]{"id": block}[/code] — with its "category".
+var _collection_field: LineEdit
+var _collection_edit := {}
 ## The rig-locked windows of the graph, which move by their corner handles (docs/vr_ui.md, D-040).
 var _windows: Array[XREPanelSurface] = []
 ## The object a new graph was opened for by selecting it, not yet saved (D-063).
@@ -576,6 +584,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	canvas.set_shrink(document.features.get_value(XREFeatureSettings.NODE_SHRINK))
 	canvas.set_heading(document.features.get_value(XREFeatureSettings.NODE_HEADING))
 	canvas.set_port_shapes(document.features.get_value(XREFeatureSettings.PORT_SHAPES) == XREFeatureSettings.ON)
+	_set_collection_modes(document.features)
 	canvas.set_composite(document.features.get_value(XREFeatureSettings.COMPOSITE_VALUES))
 	canvas.set_class_icons(document.get_class_icon)
 	canvas.set_plus_shown(document.features.get_value(XREFeatureSettings.CARD_PLUS) == XREFeatureSettings.SHOWN)
@@ -624,6 +633,11 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	# Over the block palette (D-086) too, whose search it types.
 	_keyboard.set_top_sorting(XREPanelSurface.OVER_FOCUS_SORTING + 1.0)
 	_keyboard.applied.connect(_apply_keyboard)
+	# A list typed on the keyboard, [1, 2, 5], into a rack or a collection variable (D-143).
+	_collection_field = LineEdit.new()
+	_collection_field.visible = false
+	_collection_field.text_submitted.connect(_collection_typed)
+	_forms_home.add_child(_collection_field)
 	_floating_ui.add_child(_keyboard)
 	_build_block_menu(theme)
 	_update_palette_mode()
@@ -755,7 +769,7 @@ func _process(delta: float) -> void:
 	var head := _rig.camera.global_position
 	var up := _rig.global_basis.y.normalized()
 	if _workspace.visible and _entry_id >= 0 and canvas.has_block(_entry_id):
-		# A body's badge stands over its Entry, at hand where the body is (D-144).
+		# A body's badge stands over its Entry, at hand where the body is (D-148).
 		var entry := canvas.get_block_transform(_entry_id).origin + Vector3.UP * canvas.get_block_size(_entry_id).y * 0.5
 		var top := canvas.to_global(entry)
 		_badge.place(top, head, up, maxf(top.distance_to(head) / BADGE_DISTANCE, 1.0))
@@ -807,7 +821,7 @@ func _process(delta: float) -> void:
 	# The rays over an input in use (D-061), over what Front draws over everything (D-075) and over
 	# the block palette, drawn over everything too (D-086): with no card in focus, as from the badge's
 	# plus, it hid the ray on it (D-090) — opened by the graph, or from the launcher's Add block.
-	# The Functions window, open with the graph, puts them over it only while a ray is on it (D-144).
+	# The Functions window, open with the graph, puts them over it only while a ray is on it (D-148).
 	var rays_on_top := _focused or canvas.is_front_focused() or is_block_palette_shown() or _on_top_frame == Engine.get_process_frames() 			or (is_instance_valid(panels) and panels.has_window_on_top(XREBlueprintFunctionsTab))
 	if rays_on_top != _rays_on_top:
 		_rays_on_top = rays_on_top
@@ -1629,8 +1643,9 @@ func _request_menu_at(point: Vector3) -> void:
 	_request_window(XREBlueprintPaletteTab, Transform3D(XREPanels.facing(at, head, _rig.global_basis.y), at))
 
 
+## A pin's type in the menu's title: exec, int, Array[int] (D-141).
 static func _type_name(type: int) -> String:
-	return ["exec", "Variant", "bool", "int", "float", "String", "Vector2", "Vector3", "Object", "Color"][type]
+	return "exec" if type == XREBlueprintGraph.EXEC else XREBlueprintCollections.hint(type)
 
 
 ## The window that shows the block menu, or null while it is closed.
@@ -2377,7 +2392,7 @@ func switch_heading(id: int) -> void:
 ## The body stands where it was opened from: centered on [param at], the
 ## call's or the plate's place in the canvas's space, null for the graph's center.
 ## [param enter], from a call: back ([method go_back]) comes to the graph shown
-## now, and the Functions window comes under the body's Entry (D-144).
+## now, and the Functions window comes under the body's Entry (D-148).
 func open_function(name: String, at: Variant = null, enter: bool = false) -> void:
 	cancel_connection()
 	var from := blueprint.opened
@@ -2394,7 +2409,7 @@ func open_function(name: String, at: Variant = null, enter: bool = false) -> voi
 		_plates_under_entry()
 
 
-## The badge's trash (D-145): in a body, the badge is the function's, and so is
+## The badge's trash (D-149): in a body, the badge is the function's, and so is
 ## the trash — it deletes the function and goes back where it was entered from;
 ## a function with calls stays, and back its calls flash where they are, as
 ## from its plate. In the file's graph it deletes the Blueprint.
@@ -2423,7 +2438,7 @@ func _find_entry() -> void:
 		if block["kind"] == "entry": _entry_id = block["id"]
 
 
-## ‹ on the badge (D-144): back to the graph or the body whose call opened the
+## ‹ on the badge (D-148): back to the graph or the body whose call opened the
 ## one shown, as it was shown; with none, the file's graph.
 func go_back() -> void:
 	while not _trail.is_empty():
@@ -2833,7 +2848,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	# windows, which covered them and took the ray, they take it first.
 	var fan_first := _workspace.visible and is_focused() and (_choice.is_open() or (_petals.is_open() and (_petal_block >= 0 or _petal_dynamic)))
 	if fan_first and _point_at_petals(pointer, origin, direction, 5.0, delta): return
-	# The Functions window is drawn over everything, and its grip takes a call out before the panels move it (D-144).
+	# The Functions window is drawn over everything, and its grip takes a call out before the panels move it (D-148).
 	if _workspace.visible and not (pointer.surface != null and pointer.surface.is_pressed()) and _take_from_plates(pointer, origin, direction): return
 	# A window of the panels drawn over everything, as the block palette (D-086), is the
 	# panels' from the next frame, however near the cards in front of it; the keyboard, over it, stays.
@@ -2888,8 +2903,9 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 		return
 	if surface != null:
 		canvas.hover_actions(-1, false, false, hand == _rig.right_hand)
-		# A click on one of the graph's windows lets a wire go, as on the panels' (D-058).
-		if hand.trigger_pressed and has_wire(hand) and surface != _menu_window():
+		# A click on one of the graph's windows lets a wire go, as on the panels' (D-058);
+		# not on the keyboard, which may be typing the search of the wire's menu.
+		if hand.trigger_pressed and has_wire(hand) and surface != _menu_window() and surface != _keyboard:
 			if _dropped_menu_open(): _cancel_dropped_wire()
 			else: cancel_connection()
 		if _pending_hand == hand: _preview_connection(origin + direction * maxf(distance, 0.01))
@@ -2924,6 +2940,7 @@ func _update_pointer(pointer: Pointer, delta: float) -> void:
 	if _workspace.visible and _point_at_button(pointer, origin, direction, canvas_hit): return
 	if _workspace.visible and not fan_first and _point_at_petals(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0, delta): return
 	if _workspace.visible and _point_at_stem(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0): return
+	if _workspace.visible and _point_at_branch(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0): return
 	if _workspace.visible and _point_at_link_wire(pointer, origin, direction, canvas_hit if canvas_hit >= 0 else 5.0, canvas_hit >= 0 and canvas.get_hit_wire() >= 0): return
 	if _workspace.visible:
 		var hit := canvas_hit
@@ -3213,7 +3230,7 @@ func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance:
 	if hand.grip_pressed and touch_block(hand) >= 0: return true
 	for pointer: Pointer in _pointers:
 		if pointer.hand == hand and (pointer.carried != null or not pointer.pull.is_empty() or not pointer.token_key.is_empty() or not pointer.token_box.is_empty()): return true
-	# The grip on a plate of the Functions window takes a call out, not the window (D-144).
+	# The grip on a plate of the Functions window takes a call out, not the window (D-148).
 	if _workspace.visible and hand.grip_pressed and not _plate_under(origin, direction).is_empty(): return true
 	if on_top: return false
 	for pointer: Pointer in _pointers:
@@ -3244,7 +3261,7 @@ func _selection_changed() -> void:
 ## The badge (D-085): in the scene, over the one selected object, with its
 ## Blueprint button; in the graph, over the graph's object, with the graph's
 ## buttons, drawn over everything — or over the graph, if no object has it;
-## with a function's body shown, over its Entry, named as the function (D-144).
+## with a function's body shown, over its Entry, named as the function (D-148).
 ## With the object's shortcut on, the scene has no badge: the shortcut's
 ## Blueprint takes its place (D-088).
 func _update_badge() -> void:
@@ -3385,6 +3402,7 @@ func _feature_changed(key: StringName) -> void:
 	elif key == XREFeatureSettings.NODE_SHRINK: switched = canvas.set_shrink(value)
 	elif key == XREFeatureSettings.NODE_HEADING: switched = canvas.set_heading(value)
 	elif key == XREFeatureSettings.PORT_SHAPES: switched = canvas.set_port_shapes(value == XREFeatureSettings.ON)
+	elif key in [XREFeatureSettings.COLLECTION_PORT, XREFeatureSettings.COLLECTION_LITERAL, XREFeatureSettings.COLLECTION_WIRE]: switched = _set_collection_modes(_document.features)
 	elif key == XREFeatureSettings.COMPOSITE_VALUES: switched = canvas.set_composite(value)
 	elif key == XREFeatureSettings.PORT_DISPLAY: switched = canvas.set_port_display(value)
 	elif key == XREFeatureSettings.CARD_PLUS: switched = canvas.set_plus_shown(value == XREFeatureSettings.SHOWN)
@@ -3413,6 +3431,13 @@ func _set_node_modes(features: XREFeatureSettings) -> bool:
 	return canvas.set_node_modes(features.get_value(XREFeatureSettings.NODE_FACING), features.get_value(XREFeatureSettings.NODE_VOLUME) == XREFeatureSettings.SOLID,
 			features.get_value(XREFeatureSettings.NODE_BACK) == XREFeatureSettings.LABELLED, features.get_value(XREFeatureSettings.PIN_PLACE),
 			features.get_value(XREFeatureSettings.CARD_MIRROR) == XREFeatureSettings.ON)
+
+
+## Gives the canvas Collection port, Collection literal and Collection wire of
+## [param features] (D-143); true if they changed.
+func _set_collection_modes(features: XREFeatureSettings) -> bool:
+	return canvas.set_collection_modes(features.get_value(XREFeatureSettings.COLLECTION_PORT), features.get_value(XREFeatureSettings.COLLECTION_LITERAL),
+			features.get_value(XREFeatureSettings.COLLECTION_WIRE) == XREFeatureSettings.ON)
 
 
 ## Gives the canvas Execution arrows, Data arrows and Arrow style of [param features] (D-115).
@@ -3796,6 +3821,48 @@ func _show_keyboard(field: LineEdit, at: Variant = null, components: int = 0, le
 	_keyboard.global_transform = Transform3D(upright * Basis(Vector3.RIGHT, -XREVirtualKeyboard.TILT), point)
 
 
+## Opens the keyboard under [param at] (global) on the list of [param target]
+## (D-143): a collection variable's start value, [code]{"variable": name}[/code],
+## or a rack's, [code]{"id": block}[/code]; Done puts it back typed.
+func _edit_collection(target: Dictionary, at: Vector3) -> void:
+	var value: Variant = null
+	var category := XREBlueprintGraph.VALUE
+	if target.has("variable"):
+		var found := blueprint.graph.find_variable(str(target["variable"]))
+		value = found.get("value")
+		category = XREBlueprintGraph.variable_category(found)
+	else:
+		var block := blueprint.graph.find_node(int(target["id"]))
+		value = (block.get("params", {}) as Dictionary).get("collection")
+		category = blueprint.graph.collection_type(block)
+	_collection_edit = target.duplicate()
+	_collection_edit["category"] = category
+	_collection_field.text = XREBlueprintCollections.text_of(value) if value != null else ("{}" if XREBlueprintCollections.is_dictionary(category) else "[]")
+	_show_keyboard(_collection_field, at)
+	_message("Type the list as %s, then Done." % ("{\"key\": 1}" if XREBlueprintCollections.is_dictionary(category) else "[1, 2, 3]"))
+
+
+## The list typed on the keyboard ([method _edit_collection]), as one edit of the graph.
+func _collection_typed(text: String) -> void:
+	if _collection_edit.is_empty(): return
+	var value: Variant = XREBlueprintCollections.parse_any(text, int(_collection_edit["category"]))
+	if value == null:
+		_message("Not a list of %s: %s" % [XREBlueprintCollections.hint(int(_collection_edit["category"])), text])
+		return
+	var done := false
+	if _collection_edit.has("variable"): done = blueprint.perform(blueprint.set_variable.bind(str(_collection_edit["variable"]), value), &"vr_graph")
+	else: done = blueprint.perform(blueprint.set_parameter.bind(int(_collection_edit["id"]), "collection", value), &"vr_graph")
+	if not done: _message(blueprint.last_error)
+	_collection_edit = {}
+
+
+## The plus of a rack (D-143): one more element, a copy of the last, as one edit.
+func _add_rack_item(id: int) -> void:
+	var block := blueprint.graph.find_node(id)
+	var value: Variant = XREBlueprintCollections.appended((block["params"] as Dictionary).get("collection"), blueprint.graph.collection_type(block))
+	if not blueprint.perform(blueprint.set_parameter.bind(id, "collection", value), &"vr_graph"): _message(blueprint.last_error)
+
+
 func _apply_keyboard(text: String) -> void:
 	var field := _keyboard_target.get_ref() as LineEdit if _keyboard_target != null else null
 	if not is_instance_valid(field): return
@@ -3844,6 +3911,7 @@ func _set_ui_overlay(enabled: bool) -> void:
 func _rebuild_target_wires() -> void:
 	for wire: TargetWire in _target_wires:
 		canvas.remove_scene_link(wire.canvas_wire)
+		if wire.badge != null: wire.badge.queue_free()
 		if wire.label != null:
 			wire.label.queue_free()
 			wire.stem.queue_free()
@@ -3869,7 +3937,7 @@ func _rebuild_target_wires() -> void:
 		wire.source = source
 		# The wire ends where its member was picked on the object (D-052), else at the object's origin.
 		if block.get("vr_anchor") is Vector3 and anchor == target: wire.point = block["vr_anchor"]
-		wire.canvas_wire = canvas.add_scene_link(block, XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
+		wire.canvas_wire = canvas.add_scene_link(block, XREBlueprintCanvas.type_color(XREBlueprintGraph.OBJECT))
 		wire.mesh = wire.canvas_wire.mesh
 		wire.normal = wire.canvas_wire.normal
 		wire.lit_material = wire.canvas_wire.lit
@@ -3892,7 +3960,7 @@ func _rebuild_target_wires() -> void:
 			stick.bottom_radius = 0.0022
 			stick.height = 1.0
 			stick.radial_segments = 8
-			var tube := XREBlueprintCanvas.wire_material(XREBlueprintCanvas.COLORS[XREBlueprintGraph.OBJECT])
+			var tube := XREBlueprintCanvas.wire_material(XREBlueprintCanvas.type_color(XREBlueprintGraph.OBJECT))
 			wire.stem = XRERig.create_vr_mesh(stick, tube)
 			wire.stem.top_level = true
 			add_child(wire.stem)
@@ -3909,8 +3977,113 @@ func _rebuild_target_wires() -> void:
 			wire.offset = Vector3(0.0, 0.03 + below * (XREBlueprintPetals.PILL_HEIGHT + 0.014), 0.0)
 			wire.bounds = XREPicker.get_local_bounds(anchor)
 		_target_wires.append(wire)
+	_add_array_wires()
 	_update_target_wires()
 	_fill_link_heads()
+
+
+## The wires of each array of selected objects (D-143): a trunk from its
+## block's Array port to a fork, a branch from it to each object in the
+## scene, the object's number in the array over it.
+func _add_array_wires() -> void:
+	for block: Dictionary in blueprint.graph.nodes:
+		if not (block["params"] as Dictionary).has(XREBlueprintGraph.SCENE_TARGETS): continue
+		var id: int = block["id"]
+		var port := blueprint.graph.input_port(block, "collection")
+		if port < 0 or blueprint.graph.source_category(block, port) >= 0: continue
+		var objects := blueprint.scene_targets(id)
+		var trunk := false
+		for index: int in objects.size():
+			var target := objects[index]
+			var anchor := _anchor(target) if is_instance_valid(target) else null
+			if anchor == null: continue
+			for element: int in ([-2, index] if not trunk else [index]):
+				var wire := TargetWire.new()
+				wire.id = id
+				wire.port = port
+				wire.target = target
+				wire.anchor = anchor
+				wire.element = element
+				wire.bounds = XREPicker.get_local_bounds(anchor)
+				# Without the block's bends, which are its Target's: one per branch would share them.
+				wire.canvas_wire = canvas.add_scene_link({"id": id}, XREBlueprintCanvas.type_color(XREBlueprintGraph.OBJECT))
+				wire.mesh = wire.canvas_wire.mesh
+				wire.normal = wire.canvas_wire.normal
+				wire.lit_material = wire.canvas_wire.lit
+				if element >= 0:
+					wire.badge = XRERig.create_vr_label(48, 0.0007)
+					wire.badge.text = str(element)
+					wire.badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+					wire.badge.modulate = XREBlueprintCanvas.type_color(XREBlueprintGraph.OBJECT).lerp(Color.WHITE, 0.5)
+					wire.badge.top_level = true
+					add_child(wire.badge)
+				_target_wires.append(wire)
+			trunk = true
+
+
+## Lays the wires of an array of selected objects ([method _add_array_wires]):
+## the fork two thirds of the way from the port to the middle of its objects.
+func _lay_array_wire(wire: TargetWire) -> void:
+	var middle := Vector3.ZERO
+	var count := 0
+	for other: TargetWire in _target_wires:
+		if other.id != wire.id or other.element < 0 or not is_instance_valid(other.anchor): continue
+		middle += other.anchor.global_transform * other.bounds.get_center()
+		count += 1
+	if count == 0: return
+	var port := canvas.port_position(wire.id, wire.port, true)
+	var fork := port.lerp(canvas.to_local(middle / count), 0.66)
+	var top := wire.anchor.global_transform * (wire.bounds.get_center() + Vector3.UP * wire.bounds.size.y * 0.5)
+	canvas.update_branch_wire(wire.canvas_wire, wire.id, wire.port, fork, canvas.to_local(top), wire.element >= 0)
+	if wire.badge != null:
+		wire.badge.visible = wire.mesh.visible
+		wire.badge.global_position = top + Vector3.UP * 0.06
+
+
+## The ray on a branch of an array of selected objects (D-143): it thickens;
+## the delete button takes its object out of the array. False with none on the ray.
+func _point_at_branch(pointer: Pointer, origin: Vector3, direction: Vector3, limit: float) -> bool:
+	for wire: TargetWire in _target_wires:
+		if wire.element < 0 or not wire.mesh.visible: continue
+		var hit := canvas.intersect_wire(wire.canvas_wire, origin, direction, limit)
+		if hit < 0.0: continue
+		var hand := pointer.hand
+		hand.claim(self)
+		hand.show_ray(hit, true)
+		wire.hot = true
+		pointer.focus = wire.id
+		if _deletes_now():
+			_consume_delete()
+			if blueprint.perform(blueprint.remove_scene_target.bind(wire.id, wire.element), &"vr_graph"): _message("%s is out of the array." % wire.target.name)
+			else: _message(blueprint.last_error)
+		return true
+	return false
+
+
+## Whether input [param port] of [param block] takes an array of scene objects
+## (Array from scene, D-143): a loop's or an array method's Array, of objects or untyped.
+func _scene_array_port(block: Dictionary, port: int) -> bool:
+	if _document.features.get_value(XREFeatureSettings.SCENE_COLLECTION) != XREFeatureSettings.ON: return false
+	if not block.get("kind") in ["for_each", "collection"] or XREBlueprintGraph.on_dictionary(block): return false
+	if port < 0 or port != blueprint.graph.input_port(block, "collection"): return false
+	return XREBlueprintCollections.element_of(blueprint.graph.collection_type(block)) in [XREBlueprintGraph.VALUE, XREBlueprintGraph.OBJECT]
+
+
+## A wire from an Array let go on [param target] (D-143): the selected objects
+## in their order if it is one of them, else it is added at the end of the array.
+func _connect_scene_array(id: int, target: Node) -> bool:
+	var selection := _document.get_selection()
+	var one: Array[Node] = [target]
+	var held: bool = (blueprint.graph.find_node(id)["params"] as Dictionary).has(XREBlueprintGraph.SCENE_TARGETS)
+	var success := false
+	if selection.has(target): success = blueprint.perform(blueprint.wire_selection.bind(id, selection), &"vr_graph")
+	elif held: success = blueprint.perform(blueprint.add_scene_target.bind(id, target), &"vr_graph")
+	else: success = blueprint.perform(blueprint.wire_selection.bind(id, one), &"vr_graph")
+	if success:
+		cancel_connection()
+		_message("The array holds %d objects." % ((blueprint.graph.find_node(id)["params"] as Dictionary)[XREBlueprintGraph.SCENE_TARGETS] as Array).size())
+	else: _message(blueprint.last_error)
+	return success
 
 
 func _update_target_wires() -> void:
@@ -3929,6 +4102,7 @@ func _update_target_wires() -> void:
 		# thicker on its port (D-061) and under a ray on the wire itself (D-081), every tube and knot of it.
 		var state := canvas.focus_state(wire.id)
 		var paint := canvas.focus_paint(state)
+		canvas.set_link_focus(wire.canvas_wire, state)
 		canvas.light_wire(wire.canvas_wire, XREBlueprintFocus.variant(wire.lit_material if wire.lit or wire.hot or canvas.is_edge_lit(wire.canvas_wire.edge) else wire.normal, paint))
 		canvas.raise_wire(wire.canvas_wire, paint == XREBlueprintFocus.TOP)
 		var seen := canvas.focus_seen(state)
@@ -3940,6 +4114,9 @@ func _update_target_wires() -> void:
 				for part: Node3D in [wire.label, wire.stem, wire.dot]:
 					XREBlueprintFocus.paint(part, paint)
 					XREBlueprintFade.set_seen(part, &"focus", seen)
+		if wire.element != -1:
+			_lay_array_wire(wire)
+			continue
 		var end := wire.anchor.global_transform * wire.point
 		if wire.label != null:
 			# The wire ends at the member's petal; the petal hangs on its stem from the
@@ -3980,12 +4157,14 @@ func _scene_link_block() -> int:
 func _pending_scene_target() -> bool:
 	if _pending_id < 0 or not _pending_input: return false
 	var block := blueprint.graph.find_node(_pending_id)
-	return not block.is_empty() and XREBlueprintGraph.target_port(block) == _pending_port
+	return not block.is_empty() and (XREBlueprintGraph.target_port(block) == _pending_port or _scene_array_port(block, _pending_port))
 
 
 ## A scene endpoint uses the existing target validation, relative path, history and telemetry.
 func connect_scene_target(id: int, target: Node) -> bool:
 	var block := blueprint.graph.find_node(id)
+	# A wire from an array's port: the selected objects, or one more (D-143).
+	if id == _pending_id and _scene_array_port(block, _pending_port): return _connect_scene_array(id, target)
 	if block.is_empty() or XREBlueprintGraph.target_port(block) < 0:
 		_message("Choose a block with a Target port.")
 		return false
@@ -4222,7 +4401,9 @@ func _point_at_card(pointer: Pointer, origin: Vector3, direction: Vector3, hit: 
 		elif not link.is_empty(): _carry_link(pointer, _link_value(link, canvas.get_hit_link_value()), link)
 		else: _start_hold(pointer, canvas, id, origin + direction * hit)
 	elif hand.trigger_pressed:
-		if canvas.get_hit_plus(): _show_block_palette(id)
+		if canvas.get_hit_rack_plus(): _add_rack_item(id)
+		elif canvas.get_hit_rack(): _edit_collection({"id": id}, origin + direction * hit)
+		elif canvas.get_hit_plus(): _show_block_palette(id)
 		elif canvas.get_hit_delete(): delete_block(id)
 		elif canvas.get_hit_copy(): _start_copy(id, hand, origin + direction * hit)
 		elif canvas.get_hit_open():
@@ -4732,6 +4913,16 @@ func _end_turn(pointer: Pointer, commit: bool) -> void:
 ## Sets the start value of variable [param name] from its box, keeping its
 ## type; [param expression] as for a token ([method _set_token]).
 func _set_box(box: String, value: Variant, _title: String, expression: String = "") -> bool:
+	# An element of a collection's start value (D-144): the collection with it in its place.
+	if box.contains("#"):
+		var found := blueprint.graph.find_variable(box.get_slice("#", 0))
+		if found.is_empty(): return false
+		var category := XREBlueprintGraph.variable_category(found)
+		var changed: Variant = XREBlueprintBoxes.with_item(found.get("value"), box.get_slice("#", 1), value, category)
+		if changed == null:
+			_message("Not an element of %s, or a key it has already: %s" % [XREBlueprintCollections.hint(category), XREBlueprintTokens.text(value, "")])
+			return false
+		return _set_collection(str(found["name"]), changed)
 	var variable := blueprint.graph.find_variable(box)
 	var type := XREBlueprintGraph.variable_type(variable)
 	if variable.is_empty() or not XREBlueprintSchema.accepts(type, typeof(value)): return false
@@ -4746,6 +4937,30 @@ func _set_box(box: String, value: Variant, _title: String, expression: String = 
 	var success: bool = blueprint.perform(blueprint.commit.bind("Set Variable Default", state), &"vr_graph")
 	if not success: _message(blueprint.last_error)
 	return success
+
+
+## Sets collection variable [param name]'s start value to [param value], as one edit (D-144).
+func _set_collection(name: String, value: Variant) -> bool:
+	var success: bool = blueprint.perform(blueprint.set_variable.bind(name, value), &"vr_graph")
+	if not success: _message(blueprint.last_error)
+	return success
+
+
+## The plus after a collection variable's pucks (D-144): one more element, a
+## copy of the last — a pair with a key it hasn't —, as a Make block's plus.
+func _add_box_item(name: String) -> void:
+	var found := blueprint.graph.find_variable(name)
+	if found.is_empty(): return
+	_set_collection(name, XREBlueprintCollections.appended(found.get("value"), XREBlueprintGraph.variable_category(found)))
+
+
+## The × over an element's puck, or the delete button on it (D-144): the
+## element goes — a dictionary's whole pair —, those after it move up.
+func _remove_box_item(ref: String) -> void:
+	var found := blueprint.graph.find_variable(ref.get_slice("#", 0))
+	if found.is_empty() or not ref.contains("#"): return
+	var changed: Variant = XREBlueprintBoxes.without_item(found.get("value"), ref.get_slice("#", 1), XREBlueprintGraph.variable_category(found))
+	if changed != null: _set_collection(str(found["name"]), changed)
 
 
 ## The keyboard for an exact value of a token (D-052).
@@ -5683,14 +5898,16 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 	hand.claim(self)
 	hand.show_ray(hit, true)
 	canvas.hover_actions(-1, false, false, hand == _rig.right_hand, -1, false, -1, true)
-	boxes.hover(boxes.get_hit_index(), boxes.get_hit_part(), hand == _rig.right_hand, boxes.get_hit_component())
+	boxes.hover(boxes.get_hit_index(), boxes.get_hit_part(), hand == _rig.right_hand, boxes.get_hit_slot())
 	var variable := boxes.get_hit_name()
 	var part := boxes.get_hit_part()
 	pointer.focus_box = variable
 	if _link_kind == XREBlueprintCanvas.VARIABLE and _link_hand == hand: _show_box_link(canvas.to_local(origin + direction * hit))
 	if _deletes_now() and not variable.is_empty():
 		_consume_delete()
-		_remove_box(variable)
+		# On an element's puck, the element goes, not the variable (D-144).
+		if part in [XREBlueprintBoxes.ITEM, XREBlueprintBoxes.ITEM_MARK]: _remove_box_item(boxes.get_hit_item())
+		else: _remove_box(variable)
 		return
 	if hand.grip_pressed:
 		_start_hold(pointer, canvas, -1, origin + direction * hit, false, variable)
@@ -5698,8 +5915,15 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 	if not hand.trigger_pressed: return
 	match part:
 		XREBlueprintBoxes.TRASH: _remove_box(variable)
+		# A collection's element, as a token of its own (D-144): turned, typed, toggled or picked.
+		XREBlueprintBoxes.ITEM: _start_turn(pointer, -1, "", boxes.get_hit_item(), origin + direction * hit)
+		XREBlueprintBoxes.ITEM_PLUS: _add_box_item(variable)
+		XREBlueprintBoxes.ITEM_MARK: _remove_box_item(boxes.get_hit_item())
 		XREBlueprintBoxes.TOKEN:
-			if _value_mode() == XREFeatureSettings.WINDOW:
+			# A collection folded or past its last puck: its list on the keyboard (D-143).
+			if XREBlueprintCollections.is_collection(XREBlueprintGraph.variable_category(blueprint.graph.find_variable(variable))):
+				_edit_collection({"variable": variable}, origin + direction * hit)
+			elif _value_mode() == XREFeatureSettings.WINDOW:
 				parameters.show_variables()
 				_show_parameters()
 			else: _start_turn(pointer, -1, "", variable, origin + direction * hit)
@@ -5726,14 +5950,14 @@ func _point_at_box(pointer: Pointer, origin: Vector3, direction: Vector3, hit: f
 				_message("Press trigger on the Variable of a Get or Set Variable.")
 
 
-## The window that shows the functions' plates, or null while it is closed (D-144).
+## The window that shows the functions' plates, or null while it is closed (D-148).
 func _plates_window() -> XREPanelSurface:
 	if not XREBlueprintFunctionsTab in _open_windows or not plates.is_inside_tree(): return null
 	return plates.get_viewport().get_parent() as XREPanelSurface
 
 
 ## The grip on a function's plate in the Functions window takes a call of it
-## out into the graph shown, held as a card is (D-144). The trigger is the
+## out into the graph shown, held as a card is (D-148). The trigger is the
 ## panels': a plate is a button ([method _open_from_plates]).
 func _take_from_plates(pointer: Pointer, origin: Vector3, direction: Vector3) -> bool:
 	if not pointer.hand.grip_pressed: return false
@@ -5771,7 +5995,7 @@ func _create_from_plates() -> void:
 	create_function(false, _over_plates())
 
 
-## Opens the Functions window with the graph (D-144): beside where the graph's
+## Opens the Functions window with the graph (D-148): beside where the graph's
 ## toolbar was, right of it; a window open already stays where it is.
 func _open_plates() -> void:
 	if XREBlueprintFunctionsTab in _open_windows: return
@@ -5780,7 +6004,7 @@ func _open_plates() -> void:
 
 
 ## Brings the Functions window under the Entry of the body shown, as a body
-## opened from a call is shown in the call's place (D-144).
+## opened from a call is shown in the call's place (D-148).
 func _plates_under_entry() -> void:
 	if _entry_id < 0 or not canvas.has_block(_entry_id): return
 	var window := _plates_window()
@@ -5900,9 +6124,14 @@ func _switch_drawer(variable: String) -> void:
 				_message("%s's components are wired: unwire them to shut its drawer." % variable)
 				return
 	var state := blueprint.graph.snapshot()
+	# A collection's elements show by default and fold to their count (D-143).
+	var collection := XREBlueprintCollections.is_collection(XREBlueprintGraph.variable_category(found))
 	for entry: Dictionary in state["variables"]:
 		if entry["name"] != variable: continue
-		if shutting: entry.erase("vr_collapsed")
+		if collection:
+			if shutting: entry["vr_collapsed"] = true
+			else: entry.erase("vr_collapsed")
+		elif shutting: entry.erase("vr_collapsed")
 		else: entry["vr_collapsed"] = false
 	if not blueprint.perform(blueprint.commit.bind("Shut Drawer" if shutting else "Open Drawer", state), &"vr_graph"): _message(blueprint.last_error)
 
@@ -6646,7 +6875,7 @@ func _link_wire_hit(origin: Vector3, direction: Vector3, limit: float) -> float:
 		_wire_ref = canvas.get_wire_ref()
 		_wire_point = canvas.get_wire_point()
 	for wire: TargetWire in _target_wires:
-		if wire.link or not wire.mesh.visible: continue
+		if wire.link or not wire.mesh.visible or wire.element != -1: continue
 		var hit := canvas.intersect_wire(wire.canvas_wire, origin, direction, nearest if nearest >= 0.0 else limit)
 		if hit < 0.0: continue
 		nearest = hit

@@ -32,7 +32,7 @@ addons/blueprints/         отдельный аддон Blueprints 2D (D-021): 
                            С D-051: сигнатуры вызовов (XREBlueprintFunctions), глобальные функции (XREBlueprintGlobals), библиотека (XREBlueprintLibrary),
                            токен запуска (XREBlueprintRun), база действий (XREBlueprintActions) и меню добавления (XREBlueprintActionMenu);
                            операторы блока Operator — типы и вычисление (XREBlueprintOperators, D-065)
-addons/xr_editor/logic_graph/ пространственные карточки и XR-адаптер общего документа Blueprints (D-025); окна Параметры, меню Add block, Tokens и Functions — вкладки окон панелей (XREBlueprintFormTab, D-044, D-051, D-144);
+addons/xr_editor/logic_graph/ пространственные карточки и XR-адаптер общего документа Blueprints (D-025); окна Параметры, меню Add block, Tokens и Functions — вкладки окон панелей (XREBlueprintFormTab, D-044, D-051, D-148);
                            параметры в графе (D-052): фишки (XREBlueprintTokens, XREBlueprintTokenTray, XREBlueprintValuePanel), лепестки членов (XREBlueprintPetals), ящики переменных в графе (XREBlueprintBoxes, D-078); окно Vector с 3D-стрелками (XREBlueprintVectorTab, XREBlueprintVectorPanel, D-061);
                            окно Color — 2D-пикер или глобус цветов (XREBlueprintColorTab, XREBlueprintColorPanel, D-064), пипетка — цвет материала (XREBlueprintColorSampler);
                            ярлык объекта с пунктиром к нему: Blueprint в сцене, «+», корзина и × в графе (XREBlueprintBadge, D-085)
@@ -59,10 +59,12 @@ scripts/test_blueprints.gd        тесты графа, сохранения, u
 scripts/test_blueprint_editor.gd  тест Blueprints внутри редактора: граф, назначение скрипта и история сцены (для check.sh)
 scripts/test_blueprint_vr.gd      тест VR-графа в headless-редакторе с фейковыми контроллерами (для check.sh)
 scripts/shot_blueprint_vr.gd      снимки графа с головы в обычном редакторе с GPU, без XR (D-056): build/shots/*.png
+scripts/hooks/gd_check.py  хук Claude Code после правки `.gd`: `godot --check-only` по файлу, ошибки разбора и типов сразу в ответ (подключён в .claude/settings.json)
+.claude/skills/merge-master/  навык `/merge-master`: слияние ветки в master с перенумерацией D-NNN, проверкой и уборкой
 scripts/xr_extensions.py   расширения OpenXR-рантайма без шлема и без Godot
 scripts/xr_editor.py       запуск редактора: сам выбирает рантайм со шлемом (SteamVR, Meta) или запуск без VR
 scripts/quest.py           автономный шлем по USB (adb): копирует проект, открывает редактор в VR, показывает и пишет лог
-.run/XR Editor.run.xml     конфигурация запуска Rider: scripts/xr_editor.py --fallback sim (без шлема — VR-вид в окне)
+.run/XR Editor.run.xml     конфигурация запуска Rider: scripts/xr_editor.py --fallback sim --mirror --hide-ui (без шлема — VR-вид в окне)
 .run/XR Editor Mirror.run.xml  то же с --mirror: со шлемом его вид ещё и в окне на столе (D-118)
 scripts/build_gdextension.sh  сборка нативной части: Windows (MSVC) или android (NDK); CMake и Ninja из Visual Studio
 docs/                      план и дневник решений (на русском)

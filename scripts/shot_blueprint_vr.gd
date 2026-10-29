@@ -189,7 +189,7 @@ func _shot_pins() -> void:
 
 
 ## The graph's own functions (docs/blueprint_functions.md): a call under the
-## ray with its open button, the Functions window (D-144), then the body —
+## ray with its open button, the Functions window (D-148), then the body —
 ## Entry and Return, under the ray with their plus, the badge over the Entry,
 ## the window under it — and the pure Entry.
 func _shot_functions() -> void:
@@ -200,7 +200,7 @@ func _shot_functions() -> void:
 	# Deep in VR, as a card moved by hand is.
 	var call := blueprint.add_function_call(name, Vector2(-600, 700), {}, 0.4)
 	await _frames(6)
-	var card := _card(call)
+	var card := _card_of(call)
 	if card == null: return
 	var face := card.node.global_transform
 	var front := face.basis.z.normalized()
@@ -227,8 +227,8 @@ func _shot_functions() -> void:
 	# Farther back: the badge over the Entry, the window under it.
 	_look(canvas.to_global(place + Vector3(0.1, -0.1, 1.1)), canvas.to_global(place + Vector3(0.1, -0.12, 0.0)))
 	await _shot("51_fn_badge_window")
-	var entry := _card(1)
-	var ending := _card(2)
+	var entry := _card_of(1)
+	var ending := _card_of(2)
 	if entry == null or ending == null: return
 	var middle := (entry.node.global_position + ending.node.global_position) * 0.5
 	_look(middle + front * 0.6, middle)
@@ -241,7 +241,7 @@ func _shot_functions() -> void:
 	await _shot("44_fn_return_focus")
 	_service.set_function_pure(true)
 	await _frames(10)
-	entry = _card(1)
+	entry = _card_of(1)
 	if entry != null:
 		_aim(entry.node.global_position, front)
 		_look(entry.node.global_position + front * 0.35, entry.node.global_position)
@@ -269,10 +269,225 @@ func _shot_functions() -> void:
 	await _frames(6)
 
 
-func _card(id: int) -> XREBlueprintCanvas.Card:
+## Trigger down and up on the right hand.
+func _click() -> void:
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+	_right.set_input(&"trigger", 1.0)
+	await _frames()
+	_right.set_input(&"trigger", 0.0)
+	await _frames()
+
+
+func _card_of(id: int) -> XREBlueprintCanvas.Card:
 	for each: XREBlueprintCanvas.Card in _service.canvas.get("_cards") as Array:
 		if each.id == id: return each
 	return null
+
+
+## A probe with the saved settings: new blocks from the menu as they appear,
+## the trash under the ray, and the trigger held on a wired input.
+func _shot_probe(head: Vector3, host: Node3D) -> void:
+	var blocks: Array[Dictionary] = [XREBlueprintGraph.make_node(0, "print", Vector2.ZERO), XREBlueprintGraph.make_node(0, "make_array", Vector2.ZERO)]
+	var added: Array[int] = []
+	for index: int in blocks.size():
+		_service.call("_add_from_menu", {"id": "shot:probe_%d" % index, "title": XREBlueprintGraph.title(blocks[index]), "target": null, "block": blocks[index]})
+		await _frames(6)
+		added.append(int(_service.blueprint.graph.nodes.back()["id"]))
+	# An array variable and a dictionary one, as the menu's New Array[int] variable adds them (D-141).
+	var at := _service.canvas.get_block_position(added[0]) + Vector3(0, -0.3, 0)
+	_service.call("_add_new_variable", {"value": [1, 2, 3] as Array[int], "at": at, "wire": {}}, "doors")
+	_service.call("_add_new_variable", {"value": {"open": Color.GREEN} as Dictionary[String, Color], "at": at + Vector3(0.4, 0, 0), "wire": {}}, "lamps")
+	await _frames(6)
+	print("shot_blueprint_vr: variables %s, last error '%s'" % [_service.blueprint.graph.variables.map(func(variable: Dictionary) -> String: return str(variable["name"])), _service.blueprint.last_error])
+	_look(_service.canvas.to_global(at) + _service.canvas.global_basis.z * 0.6, _service.canvas.to_global(at))
+	await _shot("40_probe_variables")
+	_look(head, host.global_position)
+	await _shot("40_probe_overview")
+	for id: int in added:
+		var card := _card_of(id)
+		var face := card.node.global_transform
+		var front := face.basis.z.normalized()
+		print("shot_blueprint_vr: card %d basis x %s z %s, mirrored %s, canvas z %s" % [id, face.basis.x, face.basis.z, card.node.scale, _service.canvas.global_basis.z])
+		_look(face.origin + front * 0.35, face.origin)
+		_aim(face.origin, front)
+		await _shot("40_probe_card_%d" % id)
+		var trash := card.node.to_global(card.trash_point)
+		_aim(trash, front)
+		await _frames()
+		print("shot_blueprint_vr: trash of %d visible %s at %s" % [id, card.trash.visible if card.trash != null else null, trash])
+		var distance := _service.canvas.intersect_ray(trash + front * 0.4, -front, 2.0)
+		print("shot_blueprint_vr: canvas ray %s: id %d delete %s port %d socket %d pin_row %d wire %d trash scale %s" % [distance, _service.canvas.get_hit_id(), _service.canvas.get_hit_delete(),
+				_service.canvas.get_hit_port(), _service.canvas.get_hit_socket(), _service.canvas.get_hit_pin_row(), _service.canvas.get_hit_wire(), card.trash.scale])
+		await _shot("40_probe_trash_%d" % id)
+		await _click()
+		print("shot_blueprint_vr: after the trash click block %d is %s, last error '%s'" % [id, "gone" if _service.blueprint.graph.find_node(id).is_empty() else "still there", _service.blueprint.last_error])
+		if not _service.blueprint.graph.find_node(id).is_empty():
+			_service.delete_block(id)
+			print("shot_blueprint_vr: delete_block(%d) directly: %s, last error '%s'" % [id, "gone" if _service.blueprint.graph.find_node(id).is_empty() else "still there", _service.blueprint.last_error])
+		await _frames(6)
+	# The trigger held on an input with a wire.
+	var graph := _service.blueprint.graph
+	for edge: Dictionary in graph.edges:
+		var card := _card_of(int(edge["to"]))
+		if card == null: continue
+		var port := _service.canvas.to_global(_service.canvas.port_position(int(edge["to"]), int(edge["to_port"]), true))
+		var front := card.node.global_basis.z.normalized()
+		_look(port + front * 0.4, port)
+		_aim(port, front)
+		await _frames()
+		await _shot("40_probe_port")
+		var edges := graph.edges.size()
+		_right.set_input(&"trigger", 1.0)
+		await _frames(4)
+		print("shot_blueprint_vr: held on wired input %s of %d: pending %d, edges %d -> %d" % [edge["to_port"], edge["to"], int(_service.get("_pending_id")), edges, graph.edges.size()])
+		await _shot("40_probe_port_held")
+		_right.set_input(&"trigger", 0.0)
+		await _frames(4)
+		print("shot_blueprint_vr: let go: pending %d, edges %d" % [int(_service.get("_pending_id")), graph.edges.size()])
+		break
+
+
+## The keyboard typing the block menu's search: the menu opened by a card's
+## plus, then by a wire let go in empty space; a click on a key each time.
+func _shot_keyboard() -> void:
+	var graph := _service.blueprint.graph
+	var keyboard := _service.get("_keyboard") as XREPanelSurface
+	for from_wire: bool in [false, true]:
+		var id: int = graph.nodes[0]["id"]
+		if from_wire:
+			var edge: Dictionary = graph.edges[0]
+			var card := _card_of(int(edge["from"]))
+			var front := card.node.global_basis.z.normalized()
+			var port := _service.canvas.to_global(_service.canvas.port_position(int(edge["from"]), int(edge["from_port"]), false))
+			_aim(port, front)
+			await _frames()
+			_right.set_input(&"trigger", 1.0)
+			await _frames(4)
+			_aim(port + front * 0.25 + Vector3.UP * 0.3, front)
+			await _frames(4)
+			_right.set_input(&"trigger", 0.0)
+			await _frames(6)
+		else:
+			_service.call("_show_block_palette", id)
+			await _frames(6)
+		# Search… on the ring opens the window where it was (D-094).
+		if not _service.is_block_palette_shown():
+			_service.call("_choose_offered", {"list": true})
+			await _frames(6)
+		var window := _service.call("_menu_window") as XREPanelSurface
+		print("shot_blueprint_vr: keyboard, from a wire %s: menu shown %s, pending %d" % [from_wire, _service.is_block_palette_shown(), int(_service.get("_pending_id"))])
+		if window == null: continue
+		var head := window.global_position + window.global_basis.z.normalized() * 0.7
+		_look(head, window.global_position)
+		_service.block_menu.text_edit_requested.emit(_service.block_menu.search)
+		await _frames(6)
+		print("shot_blueprint_vr: keyboard shown %s, menu shown %s" % [keyboard.is_visible_in_tree(), _service.is_block_palette_shown()])
+		await _shot("41_keyboard_%s_open" % from_wire)
+		var key := keyboard.pixel_to_global(keyboard.size_px * Vector2(0.3, 0.5))
+		var origin := key + keyboard.global_basis.z.normalized() * 0.3
+		_right.set_pose(&"aim", _rig.global_transform.affine_inverse() * Transform3D(Basis.looking_at(key - origin), origin), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		await _click()
+		await _frames(4)
+		print("shot_blueprint_vr: after a key: keyboard shown %s, menu shown %s, pending %d" % [keyboard.is_visible_in_tree(), _service.is_block_palette_shown(), int(_service.get("_pending_id"))])
+		await _shot("41_keyboard_%s_typed" % from_wire)
+		_service.call("_close_inputs")
+		_service.close_block_palette()
+		_service.cancel_connection()
+		_aim(Vector3(-50, 0, 0), Vector3.BACK)
+		await _frames(6)
+
+
+## Collections (D-143) with the mockup's views: a For Each over an array
+## variable and Make blocks with grid ports, a dictionary variable, a rack, an
+## array of the three cubes; then Stack, Rack and Collection wire. Settings
+## change in memory only; the graph's edits are undone by the caller.
+func _shot_collections(head: Vector3, host: Node3D) -> void:
+	var features := _document.features
+	var saved_path := features.path
+	features.path = ""
+	var keys: Array[StringName] = [XREFeatureSettings.COLLECTION_PORT, XREFeatureSettings.COLLECTION_LITERAL, XREFeatureSettings.COLLECTION_WIRE, XREFeatureSettings.SCENE_COLLECTION]
+	var before: Array[StringName] = []
+	for key: StringName in keys: before.append(features.get_value(key))
+	var doc := _service.blueprint
+	var at := _service.canvas.get_block_position(int(doc.graph.nodes[0]["id"])) + Vector3(0.0, 0.5, 0.15)
+	_service.call("_add_new_variable", {"value": [1, 2, 5] as Array[int], "at": at, "wire": {}}, "scores")
+	_service.call("_add_new_variable", {"value": {"open": Color.GREEN, "closed": Color.RED} as Dictionary[String, Color], "at": at + Vector3(0.45, 0, 0), "wire": {}}, "lamps")
+	var ids: Array[int] = []
+	for block: Dictionary in [XREBlueprintGraph.make_node(0, "for_each", Vector2.ZERO), XREBlueprintGraph.make_node(0, "make_array", Vector2.ZERO),
+			XREBlueprintGraph.make_node(0, "make_dictionary", Vector2.ZERO), XREBlueprintGraph.make_collection(0, "array_pick_random", Vector2.ZERO),
+			XREBlueprintGraph.make_collection(0, "dictionary_get", Vector2.ZERO), XREBlueprintGraph.make_node(0, "for_each", Vector2.ZERO)]:
+		_service.call("_add_from_menu", {"id": "shot:collections", "title": XREBlueprintGraph.title(block), "target": null, "block": block})
+		await _frames(4)
+		ids.append(int(doc.graph.nodes.back()["id"]))
+	for index: int in ids.size(): _service.canvas.preview_move(ids[index], at + Vector3(0.32 * (index % 3), -0.3 - 0.3 * (index / 3), 0))
+	_service.canvas.commit_moves(doc, ids)
+	var getter := XREBlueprintGraph.make_node(0, "get_variable", Vector2.ZERO)
+	getter["params"]["variable"] = "scores"
+	var scores := doc.insert_block(getter, Vector2.ZERO)
+	doc.connect_blocks(scores, 0, ids[0], 1)
+	getter["params"]["variable"] = "lamps"
+	var lamps := doc.insert_block(getter, Vector2.ZERO)
+	doc.connect_blocks(lamps, 0, ids[4], 0)
+	doc.set_parameter(ids[3], "collection", [1, 2, 5] as Array[int])
+	var cubes: Array[Node] = []
+	for name: String in ["RedCube", "GreenCube", "BlueCube"]: cubes.append(_document.get_scene_root().get_node(name))
+	doc.wire_selection(ids[5], cubes)
+	await _frames(8)
+	var middle := _service.canvas.to_global(at + Vector3(0.32, -0.45, 0))
+	var front := _service.canvas.global_basis.z.normalized()
+	for variant: Array in [["50_collections_grid", XREFeatureSettings.GRID, XREFeatureSettings.MAKE, XREFeatureSettings.OFF],
+			["51_collections_stack_rack_wire", XREFeatureSettings.STACK, XREFeatureSettings.RACK, XREFeatureSettings.ON]]:
+		features.set_value(XREFeatureSettings.COLLECTION_PORT, variant[1])
+		features.set_value(XREFeatureSettings.COLLECTION_LITERAL, variant[2])
+		features.set_value(XREFeatureSettings.COLLECTION_WIRE, variant[3])
+		await _frames(8)
+		_look(middle + front * 1.1, middle)
+		await _shot(variant[0])
+		for index: int in [0, 1, 3, 4]:
+			var card := _card_of(ids[index])
+			if card == null: continue
+			var face := card.node.global_transform
+			_look(face.origin + face.basis.z.normalized() * 0.4 - face.basis.x.normalized() * 0.05, face.origin)
+			await _shot("%s_card_%d" % [variant[0], index])
+	# D-144: the ray on Make Array's [1], its × right of its name; on a puck of scores, the × over it.
+	features.set_value(XREFeatureSettings.COLLECTION_PORT, XREFeatureSettings.GRID)
+	await _frames(8)
+	var make_card := _card_of(ids[1])
+	if make_card != null:
+		var pin := make_card.node.to_global(make_card.inputs[1])
+		var normal := make_card.node.global_basis.z.normalized()
+		_aim(pin, normal)
+		_look(pin + normal * 0.35 + make_card.node.global_basis.x.normalized() * 0.05, pin)
+		await _frames(4)
+		await _shot("52_make_pin_mark")
+	for box: XREBlueprintBoxes.Box in _service.canvas.get_boxes().get("_boxes") as Array:
+		if box.name != "scores" or box.item_points.is_empty(): continue
+		# The head first: the box turns to it (D-090), then the ray at its puck as it stands.
+		var puck := box.node.global_transform * box.item_points[0]
+		_look(puck + box.node.global_basis.z.normalized() * 0.3 + box.node.global_basis.x.normalized() * 0.04, puck)
+		await _frames(4)
+		_aim(box.node.global_transform * box.item_points[0], box.node.global_basis.z.normalized())
+		await _frames(4)
+		await _shot("53_box_item_mark")
+	# The rack's plus under the ray, then a click (Rack is on from the last variant).
+	features.set_value(XREFeatureSettings.COLLECTION_PORT, XREFeatureSettings.STACK)
+	var rack_card := _card_of(ids[3])
+	if rack_card != null:
+		var plus := rack_card.node.to_global(rack_card.rack_plus_point)
+		var normal := rack_card.node.global_basis.z.normalized()
+		_aim(plus, normal)
+		await _frames(3)
+		print("shot_blueprint_vr: rack %s, ray on the plus: id %d plus %s rack %s" % [rack_card.rack_rect, _service.canvas.get_hit_id(), _service.canvas.get_hit_rack_plus(), _service.canvas.get_hit_rack()])
+		await _click()
+		print("shot_blueprint_vr: after the plus: %s, error '%s'" % [(doc.graph.find_node(ids[3])["params"] as Dictionary).get("collection"), doc.last_error])
+		_aim(Vector3(-50, 0, 0), Vector3.BACK)
+	features.set_value(XREFeatureSettings.SCENE_COLLECTION, XREFeatureSettings.ON)
+	_look(head, host.global_position)
+	await _frames(6)
+	await _shot("52_collections_scene_array")
+	for index: int in keys.size(): features.set_value(keys[index], before[index])
+	features.path = saved_path
 
 
 func _run() -> void:
@@ -333,9 +548,13 @@ func _run() -> void:
 	var start := _service.blueprint.history.get_version()
 	# XRE_SHOT_ONLY=pins shoots only the cards whose pins change (D-140).
 	# XRE_SHOT_ONLY=functions shoots only the graph's own functions (docs/blueprint_functions.md).
-	if OS.get_environment("XRE_SHOT_ONLY") in ["pins", "functions"]:
-		if OS.get_environment("XRE_SHOT_ONLY") == "pins": await _shot_pins()
-		else: await _shot_functions()
+	if OS.get_environment("XRE_SHOT_ONLY") in ["pins", "probe", "keyboard", "collections", "functions"]:
+		match OS.get_environment("XRE_SHOT_ONLY"):
+			"pins": await _shot_pins()
+			"probe": await _shot_probe(head, host)
+			"keyboard": await _shot_keyboard()
+			"collections": await _shot_collections(head, host)
+			"functions": await _shot_functions()
 		while _service.blueprint.history.get_version() > start: _service.blueprint.undo()
 		await _frames()
 		print("shot_blueprint_vr: done, graph back to version %d" % _service.blueprint.history.get_version())

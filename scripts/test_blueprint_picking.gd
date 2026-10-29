@@ -114,7 +114,8 @@ func _test_node_variants(graph: XREBlueprintGraph) -> void:
 	_canvas.face_user(Vector3.FORWARD.rotated(Vector3.UP, deg_to_rad(-92.0)) * 2.0)
 	_check(not card.mirrored, "at 92° it is not mirrored yet")
 	_canvas.face_user(behind)
-	_check(card.mirrored and _canvas.port_direction(1, false).x > 0.99, "behind, mirrored: its output still leaves towards the graph's right")
+	# Without a wire nothing says which way it runs: a new card reads in order (D-142).
+	_check(not card.mirrored and _canvas.port_direction(1, false).x < -0.99, "behind, a card without a wire is not mirrored: its output leaves to the head's right")
 	_canvas.face_user(front)
 	_check(not card.mirrored, "in front again, it is not")
 	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
@@ -130,6 +131,8 @@ func _test_off_centre() -> void:
 	(setter["params"] as Dictionary).merge({"target": "Lamp", "property": "light_energy"}, true)
 	setter["vr_heading"] = "member"
 	far.nodes = [XREBlueprintGraph.make_operator(1, "add", Vector2.ZERO), setter]
+	# A loop back into itself: a wire that runs nowhere across the view leaves its mirror to its part (D-132, D-142).
+	far.edges = [{"from": 2, "from_port": 0, "to": 2, "to_port": 0}]
 	far.upgrade()
 	var style := _canvas.get_style()
 	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
