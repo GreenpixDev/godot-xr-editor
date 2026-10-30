@@ -33,8 +33,8 @@ const RECENT_COUNT := 5
 ## The menu's groups by task (D-093, D-095), in the order of their chips: what
 ## a block is for, not where it comes from in code. The general groups first,
 ## then the groups of the context object, which only its own blocks fill.
-const TASKS: Array[String] = ["Events", "Variables", "Arithmetic", "Logic", "Math", "Flow", "Utility", "Move", "Look", "Sound", "Object"]
-const GENERAL_TASKS: Array[String] = ["Events", "Variables", "Arithmetic", "Logic", "Math", "Flow", "Utility"]
+const TASKS: Array[String] = ["Events", "Variables", "Array", "Dictionary", "Arithmetic", "Logic", "Math", "Flow", "Utility", "Move", "Look", "Sound", "Object"]
+const GENERAL_TASKS: Array[String] = ["Events", "Variables", "Array", "Dictionary", "Arithmetic", "Logic", "Math", "Flow", "Utility"]
 const OBJECT_TASKS: Array[String] = ["Move", "Look", "Sound", "Object"]
 ## Words of a member's name that put it in Move or in Look; the rest of an
 ## object's members are Object.
@@ -215,8 +215,9 @@ static func task_of(action: Dictionary) -> String:
 	if id.begins_with("operator:"):
 		return "Arithmetic" if XREBlueprintOperators.group_of(id.trim_prefix("operator:")) in [XREBlueprintOperators.MATH, XREBlueprintOperators.TEXT] else "Logic"
 	if id in ["native:branch", "preset:delay", "native:sequence", "native:for_each", "native:for_each_pair"] or id.begins_with("native:switch_"): return "Flow"
-	# Lists and their methods, by the variables they are kept in (D-141).
-	if id in ["native:make_array", "native:make_dictionary"] or id.begins_with("collection:"): return "Variables"
+	# Lists and their methods, each in its own group (D-141).
+	if id == "native:make_array" or id.begins_with("collection:array_"): return "Array"
+	if id == "native:make_dictionary" or id.begins_with("collection:dictionary_"): return "Dictionary"
 	if id.begins_with("struct:"): return "Math"
 	if id == "preset:print": return "Utility"
 	if id == "preset:tween": return "Move"

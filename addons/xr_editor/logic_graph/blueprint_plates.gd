@@ -147,7 +147,9 @@ func _add_plate(owner: XREBlueprintGraph, entry: Dictionary, lit: bool) -> void:
 	plate.button.add_child(plate.trash)
 	# The trash shows under the ray, as a card's does.
 	plate.button.mouse_entered.connect(func() -> void: plate.trash.visible = true)
-	plate.button.mouse_exited.connect(func() -> void: plate.trash.visible = false)
+	# The trash is the plate's child: the ray on it is off the plate for the plate, but not for the trash.
+	plate.button.mouse_exited.connect(func() -> void: plate.trash.visible = plate.button.get_global_rect().has_point(plate.button.get_global_mouse_position()))
+	plate.trash.mouse_exited.connect(func() -> void: plate.trash.visible = plate.button.get_global_rect().has_point(plate.button.get_global_mouse_position()))
 	_plates.append(plate)
 
 

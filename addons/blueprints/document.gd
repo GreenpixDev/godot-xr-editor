@@ -893,15 +893,25 @@ func _show(name: String) -> void:
 
 ## Adds a function to the file's graph, pure or not, named
 ## [param name] or function_1… (docs/blueprint_functions.md): its body has
-## only its Entry and Return. One edit; returns its name, empty if refused.
-func create_function(pure: bool = false, name: String = "") -> String:
+## only its Entry and Return, turned [param yaw] radians, the Return left of the Entry with [param leftward]. One edit; returns its name, empty if refused.
+func create_function(pure: bool = false, name: String = "", yaw: float = 0.0, leftward: bool = false) -> String:
 	var names := XREBlueprintUserFunctions.names(root.functions)
 	if name.is_empty(): name = XREBlueprintUserFunctions.free_name("function_", names)
 	if not XREBlueprintUserFunctions.valid_name(name) or names.has(name):
 		_fail("A function needs a free name that is an identifier.")
 		return ""
 	var state := root.snapshot()
-	(state["functions"] as Array).append(XREBlueprintUserFunctions.make(name, pure))
+	var entry := XREBlueprintUserFunctions.make(name, pure)
+	# Its Entry and Return face the way the graph's cards do, [param yaw] about the vertical.
+	if not is_zero_approx(yaw):
+		for block: Dictionary in entry["nodes"] as Array: block["vr_rotation"] = Vector3(0, yaw, 0)
+	# Seen from behind or from the side, the graph's right is the viewer's left: the Return stands on the viewer's right.
+	if leftward:
+		var nodes: Array = entry["nodes"]
+		var first: Vector2 = nodes[0]["position"]
+		nodes[0]["position"] = nodes[1]["position"]
+		nodes[1]["position"] = first
+	(state["functions"] as Array).append(entry)
 	return name if _commit_functions("Create Function", state) else ""
 
 

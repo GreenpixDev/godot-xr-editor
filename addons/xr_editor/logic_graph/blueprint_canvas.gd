@@ -1214,6 +1214,8 @@ func get_parameter_modes() -> Array[StringName]:
 
 ## Initializes the view's center once on open, keeping it fixed during edits.
 func center_graph(graph: XREBlueprintGraph) -> void:
+	# Another graph's parts keep nothing of the last one's turn or mirror.
+	_parts = []
 	_offset = Vector2.ZERO
 	_depth = 0.0
 	if graph.vr_placed: _offset = graph.vr_center
@@ -1664,13 +1666,9 @@ func _ring_untyped(card: Card, block: Dictionary) -> void:
 		var port := index + offset + (card.inputs.size() if kind == "entry" else 0)
 		if port >= card.ports.size() or card.ports[port] == null: continue
 		var mesh := card.ports[port]
+		# A real hole in the port itself, so that it grows, hides and moves with the port.
+		mesh.mesh = XREBlueprintShapes.ring(XREBlueprintShapes.circle(PORT_RADIUS), 0.0, PORT_RADIUS * 0.4, PORT_DEPTH * 2.0)
 		mesh.material_override = material(PIN_MARK_COLOR, true)
-		var middle := XRERig.create_vr_mesh(_sphere_mesh, material(XREBlueprintIcons.BODY, true))
-		middle.name = "Untyped"
-		middle.scale = Vector3.ONE * 0.6
-		# Just in front of the port's middle: its grey stays a rim around it.
-		middle.position = mesh.position + Vector3(0, 0, PORT_RADIUS * 0.8)
-		card.node.add_child(middle)
 
 
 ## The box of an Entry's pure switch, its word and pill, around [member Card.pure_point].
@@ -2671,6 +2669,8 @@ static func _level(offset: Vector3) -> Vector3:
 ## goes with its part ([method _mirror_part], D-115). A card without a wire,
 ## a new one, reads in order: nothing tells which way it runs (D-142).
 func _flow_mirrored(card: Card, local_head: Vector3) -> bool:
+	# A function's body reads as it is laid out, from the side or from behind too: its Entry and Return run along the view there.
+	if not _function.is_empty(): return false
 	if card.part >= _parts.size() or not _card_mirror or _turn_mode != XREFeatureSettings.FIXED or not card.wired: return false
 	var right := Vector3.UP.cross(_level(local_head - card.node.position))
 	var flow := Vector3(card.flow.x, 0.0, card.flow.z)
@@ -2783,6 +2783,18 @@ func turn_to_head(block: Dictionary, point: Vector3) -> void:
 	var yaw := wrapf(snappedf(_yaw_to(to_local(_head_position), point), YAW_STEP), -PI, PI)
 	if is_zero_approx(yaw): block.erase("vr_rotation")
 	else: block["vr_rotation"] = Vector3(0, yaw, 0)
+
+
+## The yaw a new card at [param point] takes, as [method turn_to_head] gives it: 0 where cards all face the head.
+func head_yaw(point: Vector3) -> float:
+	if _facing == XREFeatureSettings.ON or not _faces_user: return 0.0
+	return wrapf(snappedf(_yaw_to(to_local(_head_position), point), YAW_STEP), -PI, PI)
+
+
+## Whether the graph's x runs to the viewer's left at [param point], seen from the last head.
+func runs_leftward(point: Vector3) -> bool:
+	if not _faces_user: return false
+	return Vector3.UP.cross(_level(to_local(_head_position) - point)).x < 0.0
 
 
 ## Current card pose in workspace coordinates, including a grip preview.

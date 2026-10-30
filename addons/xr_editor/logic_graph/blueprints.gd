@@ -822,7 +822,7 @@ func _process(delta: float) -> void:
 	# the block palette, drawn over everything too (D-086): with no card in focus, as from the badge's
 	# plus, it hid the ray on it (D-090) — opened by the graph, or from the launcher's Add block.
 	# The Functions window, open with the graph, puts them over it only while a ray is on it (D-148).
-	var rays_on_top := _focused or canvas.is_front_focused() or is_block_palette_shown() or _on_top_frame == Engine.get_process_frames() 			or (is_instance_valid(panels) and panels.has_window_on_top(XREBlueprintFunctionsTab))
+	var rays_on_top := _focused or canvas.is_front_focused() or is_block_palette_shown() or _on_top_frame == Engine.get_process_frames() 			or (is_instance_valid(panels) and panels.has_window_on_top(XREBlueprintFunctionsTab)) or _ray_over_plates()
 	if rays_on_top != _rays_on_top:
 		_rays_on_top = rays_on_top
 		for hand: XREHand in [_rig.left_hand, _rig.right_hand]: hand.set_on_top(rays_on_top)
@@ -1422,6 +1422,8 @@ func add_block(kind: String) -> void:
 	_menu_wire = {}
 	_menu_at_point = false
 	_add_from_menu({"id": "kind:" + kind, "title": XREBlueprintGraph.title(block), "block": block, "target": null})
+	# Added from code, not picked from a menu (which leaves the selection as it was): the caller works on it.
+	if not blueprint.graph.nodes.is_empty(): select_block(int(blueprint.graph.nodes.back()["id"]), false)
 
 
 ## Opens the block menu from the Blueprints tab or the launcher (D-051): no
@@ -1470,7 +1472,6 @@ func _add_from_menu(action: Dictionary, point: Variant = null) -> void:
 		_menu_wire = {}
 		var port := _box_input(id, box)
 		if port >= 0: _wire_box_to_port(box, id, port)
-	select_block(id, false)
 	_message("Added %s." % action["title"])
 	# Pinned to a hand, the menu stays for the next block.
 	_dismiss_window(XREBlueprintPaletteTab, false)
@@ -1842,7 +1843,6 @@ func _place_copy(action: Dictionary, point: Vector3, beside: bool) -> void:
 	if id < 0:
 		_message(blueprint.last_error)
 		return
-	select_block(id, false)
 	_message("Copied %s." % action["title"])
 
 
@@ -3106,15 +3106,15 @@ func _hold_window(pointer: Pointer, window: XREPanelSurface, corner: int, by_tri
 	pointer.window_before = pointer.held.global_transform
 
 
-## Selects block [param block], taken by [param pointer]'s hand, and the other
-## selected blocks it carries (D-122): a selected block keeps the selection,
-## one the other hand's grip adds joins it, any other replaces it.
+## Takes the other selected blocks along with block [param block], taken by
+## [param pointer]'s hand (D-122): a selected block carries the selection, one
+## the other hand's grip adds joins it, any other is moved alone and is not
+## selected by the grip.
 func _hold_group(pointer: Pointer, block: int) -> void:
-	if not _selected_blocks.has(block):
-		if _adds_blocks(pointer): toggle_block(block)
-		else: select_block(block)
+	if not _selected_blocks.has(block) and _adds_blocks(pointer): toggle_block(block)
 	pointer.group.clear()
 	pointer.group_starts.clear()
+	if not _selected_blocks.has(block): return
 	for id: int in _selected_blocks:
 		if id == block or not canvas.has_block(id): continue
 		pointer.group.append(id)
@@ -5985,6 +5985,31 @@ func _over_plates() -> Variant:
 	return canvas.to_local(window.global_position + up * (window.size_m.y * 0.5 + FUNCTIONS_LIFT))
 
 
+## Whether a ray, or a part of it, is seen through the Functions window: drawn over
+## everything with no depth test, the window covers what is under it on the screen, in
+## front of it or behind, unless the ray is drawn over everything too.
+func _ray_over_plates() -> bool:
+	var window := _plates_window()
+	if window == null or not window.is_visible_in_tree(): return false
+	var to_local := window.global_transform.affine_inverse()
+	var eye := to_local * _rig.camera.global_position
+	var half := window.size_m * 0.5
+	for hand: XREHand in [_rig.left_hand, _rig.right_hand]:
+		if not hand.is_ray_shown(): continue
+		var start := hand.get_ray_origin()
+		var end := hand.get_ray_end()
+		for step: int in 6:
+			var point := to_local * start.lerp(end, step / 5.0)
+			var along := eye.z - point.z
+			if is_zero_approx(along): continue
+			# Where the line of sight to the point crosses the window's plane, ahead of the eye.
+			var reach := eye.z / along
+			if reach <= 0.0: continue
+			var cross := eye + (point - eye) * reach
+			if absf(cross.x) <= half.x and absf(cross.y) <= half.y: return true
+	return false
+
+
 ## The trigger on a plate shows its function's body over the window.
 func _open_from_plates(name: String) -> void:
 	open_function(name, _over_plates())
@@ -6031,7 +6056,7 @@ func _take_call(pointer: Pointer, name: String, point: Vector3) -> void:
 ## A new function of the graph, its body shown at once, centered on [param at]
 ## (docs/blueprint_functions.md).
 func create_function(pure: bool = false, at: Variant = null) -> void:
-	var name: String = blueprint.perform(blueprint.create_function.bind(pure), &"vr_graph")
+	var name: String = blueprint.perform(blueprint.create_function.bind(pure, "", canvas.head_yaw(at if at is Vector3 else Vector3.ZERO), canvas.runs_leftward(at if at is Vector3 else Vector3.ZERO)), &"vr_graph")
 	if name.is_empty():
 		_message(blueprint.last_error)
 		return
@@ -6042,7 +6067,7 @@ func create_function(pure: bool = false, at: Variant = null) -> void:
 ## the ring was, wired to the wire the ring was opened from as any block from it
 ## is; then its body, on the call's place.
 func _create_from_menu(pure: bool, at: Vector3) -> void:
-	var name: String = blueprint.perform(blueprint.create_function.bind(pure), &"vr_panel")
+	var name: String = blueprint.perform(blueprint.create_function.bind(pure, "", canvas.head_yaw(canvas.to_local(at)), canvas.runs_leftward(canvas.to_local(at))), &"vr_panel")
 	if name.is_empty():
 		_message(blueprint.last_error)
 		return
@@ -6628,7 +6653,6 @@ func _create_member_block(kind: String) -> void:
 	if id < 0:
 		_message(blueprint.last_error)
 		return
-	select_block(id, false)
 	_message("Added %s for %s." % [XREBlueprintGraph.title(blueprint.graph.find_node(id)), item["text"]])
 
 

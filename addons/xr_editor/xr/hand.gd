@@ -191,6 +191,11 @@ func get_ray_end() -> Vector3:
 	return _ray.global_transform * Vector3(0.0, 0.0, -0.5)
 
 
+## Where the ray starts, in global space. Meaningful while [method is_ray_shown].
+func get_ray_origin() -> Vector3:
+	return _ray.global_transform * Vector3(0.0, 0.0, 0.5)
+
+
 ## The material the ray is drawn with now: the hand's color, or white on a hit.
 func get_ray_material() -> Material:
 	return _ray.material_override

@@ -31,8 +31,8 @@ const TICK := 0.01
 ## without an object (D-096), at the top under the middle of the arc of the
 ## object's other groups (D-097), then the general ones, as
 ## [constant XREBlueprintActions.GENERAL_TASKS] names them, and last, between
-## Variables and Object, the graph's own functions (docs/blueprint_functions.md).
-const ORDER: Array[String] = ["Object", "Arithmetic", "Logic", "Math", "Flow", "Utility", "Events", "Variables", "Functions"]
+## Dictionary and Object, the graph's own functions (docs/blueprint_functions.md).
+const ORDER: Array[String] = ["Object", "Arithmetic", "Logic", "Math", "Flow", "Utility", "Events", "Variables", "Array", "Dictionary", "Functions"]
 ## The arc of the object's other groups — Move, Look, Sound (D-095, D-096):
 ## its radii, in meters, and the angle of one group on it.
 const BAND_IN := 0.152
@@ -42,7 +42,7 @@ const BAND_STEP := 0.33
 const LIFT := 0.03
 const MAX_TILT := 1.2
 ## The faces of the cards each group adds, in [constant XREBlueprintCanvas.CARD_PALETTE]: its stripe's color; Utility and Object gray.
-const GROUP_CARDS: Dictionary[String, int] = {"Events": 0, "Move": 1, "Look": 1, "Flow": 2, "Arithmetic": 3, "Logic": 3, "Math": 3, "Variables": 3, "Sound": 4}
+const GROUP_CARDS: Dictionary[String, int] = {"Events": 0, "Move": 1, "Look": 1, "Flow": 2, "Arithmetic": 3, "Logic": 3, "Math": 3, "Variables": 3, "Array": 3, "Dictionary": 3, "Sound": 4}
 ## The light edges of the card faces, by [constant XREBlueprintCanvas.CARD_PALETTE]; the Object group's own gray.
 const CARD_EDGES: Array[Color] = [Color("89adff"), Color("7be5b3"), Color("c9a8f2"), Color("a9b4f5"), Color("e5b57b"), Color("e8879b")]
 const OBJECT_EDGE := Color("c8cdd8")

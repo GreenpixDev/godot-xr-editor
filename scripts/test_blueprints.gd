@@ -1562,7 +1562,7 @@ func _test_collections() -> void:
 	var dictionary_titles: Array = titles.get("Dictionary", [])
 	_check(array_titles.has("For Each") and array_titles.has("Append") and dictionary_titles.has("For Each Pair") and dictionary_titles.has("Make Dictionary"),
 			"the menu has Array and Dictionary: %s %s" % [array_titles, dictionary_titles])
-	_check(XREBlueprintActions.task_of({"id": "native:for_each"}) == "Flow" and XREBlueprintActions.task_of({"id": "collection:array_append"}) == "Variables", "For Each is Flow, Append Variables")
+	_check(XREBlueprintActions.task_of({"id": "native:for_each"}) == "Flow" and XREBlueprintActions.task_of({"id": "collection:array_append"}) == "Array" and XREBlueprintActions.task_of({"id": "collection:dictionary_get"}) == "Dictionary", "For Each is Flow, Append is Array, a dictionary method Dictionary")
 	var offered := XREBlueprintActions.flatten(XREBlueprintActions.shared().sections({"chip": XREBlueprintActions.NATIVE, "graph": graph, "new_variables": true, "pin": {"type": ints, "output": false}}))
 	_check(offered.any(func(action: Dictionary) -> bool: return action["title"] == "New Array[int] variable" and (action["variable"] as Array).is_typed()) \
 			and not offered.any(func(action: Dictionary) -> bool: return action["title"] == "New int variable"), "an Array[int] input offers a new Array[int] variable, not an int one")
