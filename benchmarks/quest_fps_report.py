@@ -48,7 +48,7 @@ START = re.compile(r"Start proc (\d+):" + re.escape(PACKAGE) + r":GodotXRGame/")
 LAUNCH = re.compile(r"Launch intent .* with parameters \[(.*)\]")
 STATE = re.compile(r"PostSessionStateChange:\[pid: (\d+)\] XR_SESSION_STATE_(\w+) -> XR_SESSION_STATE_(\w+)")
 VRAPI_FIELD = re.compile(r"([A-Za-z0-9%&/]+)=([^,]+)")
-STATUS = re.compile(r"XR Editor: (\d+) fps, (\d+) frame\(s\) late, slowest ([\d.]+) ms, session (\w+)")
+STATUS = re.compile(r"XR Editor: (\d+) fps, (\d+) frame\(s\) late, slowest ([\d.]+) ms, (?:process [\d.]+ ms mean [\d.]+ ms longest, \d+ draw calls, )?session (\w+)")
 MEMORY = re.compile(r"App memory usage: PSS=(\d+) MiB")
 
 

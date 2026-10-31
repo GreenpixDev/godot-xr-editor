@@ -177,6 +177,10 @@ const FLASH_FRAME := Color("ff6b7a")
 const TOKEN_SORTING := 0.01
 ## Pixel size of the cards' labels, for measuring their text.
 const LABEL_PIXEL := 0.0007
+## The head moves this far, in meters, from where the cards last faced it before they face it again.
+## The headset's head never rests, and facing every card and relaying every wire each frame costs a
+## standalone headset the better part of a frame (the sway of a standing user is a fraction of this).
+const HEAD_STEP := 0.005
 ## Bent wires (D-081): a knot's radius; how near the ray must pass a wire or a
 ## knot to take it; how far out of a port the wire's direction at the first
 ## or the last bend is measured from.
@@ -2444,7 +2448,7 @@ func is_faded(id: int) -> bool:
 func face_user(head: Vector3, delta: float = 0.0) -> void:
 	_arrow_clock += delta
 	var turned := _turn_parts(head, delta)
-	if not turned and _faces_user and head.is_equal_approx(_head_position) and global_transform.is_equal_approx(_view_transform):
+	if not turned and _faces_user and head.distance_squared_to(_head_position) < HEAD_STEP * HEAD_STEP and global_transform.is_equal_approx(_view_transform):
 		if _runs_arrows(): _lay_arrows()
 		return
 	_faces_user = true

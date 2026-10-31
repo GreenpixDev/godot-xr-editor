@@ -702,6 +702,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 
 func _enter_tree() -> void:
 	print("XR Editor: Blueprints VR D-052 loaded from ", ProjectSettings.globalize_path("res://"))
+	if OS.get_cmdline_user_args().has(XREGraphLab.CLI_FLAG): add_child(XREGraphLab.new(self, _document))
 	_dimmer = create_dimmer()
 	_rig.camera.add_child(_dimmer)
 	_dimmer.hide()
@@ -765,7 +766,30 @@ func _exit_tree() -> void:
 	XREBlueprintDocument.release_editor_shared()
 
 
+## Microseconds spent in [method _process] and in the canvas's [method XREBlueprintCanvas.face_user] since [method take_process_times] last said.
+var _process_usec := 0
+var _face_usec := 0
+var _process_count := 0
+
+
+## Mean script time per frame, in ms, since the last call: the service's [method _process], then the canvas's facing the head within it; both 0 if no frame ran.
+func take_process_times() -> Vector2:
+	var frames := maxi(_process_count, 1)
+	var result := Vector2(_process_usec, _face_usec) / (frames * 1000.0)
+	_process_usec = 0
+	_face_usec = 0
+	_process_count = 0
+	return result
+
+
 func _process(delta: float) -> void:
+	var started := Time.get_ticks_usec()
+	_process_frame(delta)
+	_process_usec += Time.get_ticks_usec() - started
+	_process_count += 1
+
+
+func _process_frame(delta: float) -> void:
 	var head := _rig.camera.global_position
 	var up := _rig.global_basis.y.normalized()
 	if _workspace.visible and _entry_id >= 0 and canvas.has_block(_entry_id):
@@ -789,7 +813,9 @@ func _process(delta: float) -> void:
 		if marker.visual.visible: marker.visual.global_position = marker.anchor.global_position + _rig.global_basis.y * 0.22
 	if _workspace.visible:
 		canvas.set_turn_frozen(_holds_graph())
+		var facing_started := Time.get_ticks_usec()
 		canvas.face_user(_rig.camera.global_position, delta)
+		_face_usec += Time.get_ticks_usec() - facing_started
 	_delete_consumed = false
 	_close_on_click_away()
 	for wire: TargetWire in _target_wires:
@@ -1236,7 +1262,9 @@ func show_graph() -> void:
 	_selected = -1
 	_selected_blocks.clear()
 	canvas.center_graph(blueprint.graph)
+	var rebuild_start := Time.get_ticks_usec()
 	canvas.rebuild(blueprint.graph)
+	print("XR Editor: Blueprint graph shown, %d node(s), built in %.1f ms." % [blueprint.graph.nodes.size(), (Time.get_ticks_usec() - rebuild_start) / 1000.0])
 	var head := _rig.camera.global_position
 	var orientation := XREPanels.facing(head - _rig.camera.global_basis.z, head, Vector3.UP)
 	var ui_pose := Transform3D(orientation, head - orientation.z - Vector3.UP * 0.12)
@@ -1270,6 +1298,7 @@ func show_graph() -> void:
 
 ## Closes only the view, leaving source and scene assignments intact.
 func close_graph() -> void:
+	print("XR Editor: Blueprint graph closed.")
 	for pointer: Pointer in _pointers:
 		if pointer.held != null: _finish_hold(pointer, true)
 	_cancel_bends()

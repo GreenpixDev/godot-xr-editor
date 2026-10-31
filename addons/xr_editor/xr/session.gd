@@ -83,6 +83,10 @@ var _size_nudged := false
 ## [constant LATE_FRAME_RATIO] display frames, and the longest step, in seconds.
 var _late_frames := 0
 var _slowest_frame := 0.0
+## Script time of the frames since the last status line: the sum and the longest, in seconds, and the frame count.
+var _process_sum := 0.0
+var _process_max := 0.0
+var _process_frames := 0
 ## [constant _PIPELINE_MONITORS] at the last status line.
 var _pipeline_totals := PackedInt64Array([0, 0, 0, 0, 0])
 ## Fixed 60-second history of focused editor main-loop intervals.
@@ -193,6 +197,10 @@ func _process(delta: float) -> void:
 	# than a display frame is a frame the headset didn't get in time.
 	if delta > _slowest_frame:
 		_slowest_frame = delta
+	var process_time := Performance.get_monitor(Performance.TIME_PROCESS)
+	_process_sum += process_time
+	_process_max = maxf(_process_max, process_time)
+	_process_frames += 1
 	if delta * _xr.display_refresh_rate > LATE_FRAME_RATIO:
 		_late_frames += 1
 
@@ -590,11 +598,16 @@ func _log_status() -> void:
 		return
 	var state := _xr.get_session_state()
 	var controllers := XRServer.get_trackers(XRServer.TRACKER_CONTROLLER)
-	_log("%d fps, %d frame(s) late, slowest %.1f ms, session %s, display %.1f Hz, editor window focused %s, controller trackers %s, low-processor mode %s." % [
-		roundi(Engine.get_frames_per_second()), _late_frames, _slowest_frame * 1000.0, _STATE_NAMES[state],
+	_log("%d fps, %d frame(s) late, slowest %.1f ms, process %.1f ms mean %.1f ms longest, %d draw calls, session %s, display %.1f Hz, editor window focused %s, controller trackers %s, low-processor mode %s." % [
+		roundi(Engine.get_frames_per_second()), _late_frames, _slowest_frame * 1000.0,
+		_process_sum / maxi(_process_frames, 1) * 1000.0, _process_max * 1000.0,
+		roundi(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)), _STATE_NAMES[state],
 		_xr.display_refresh_rate, DisplayServer.window_is_focused(), controllers.keys(), OS.low_processor_usage_mode])
 	_late_frames = 0
 	_slowest_frame = 0.0
+	_process_sum = 0.0
+	_process_max = 0.0
+	_process_frames = 0
 	_log_pipeline_compilations()
 
 

@@ -188,6 +188,43 @@ func _shot_pins() -> void:
 		await _frames(3)
 
 
+## Mean script time of the next frames, in ms, printed with [param label].
+func _time_frames(label: String, count: int = 120) -> void:
+	var sum := 0.0
+	for frame: int in count:
+		await get_tree().process_frame
+		sum += Performance.get_monitor(Performance.TIME_PROCESS)
+	print("shot_blueprint_vr: %s: process %.2f ms mean over %d frames" % [label, sum / count * 1000.0, count])
+
+
+## XRE_SHOT_ONLY=stats: what the open graph costs to draw, as the headset's
+## renderer sees it (nodes by class, transparent surfaces, draw calls).
+func _stats() -> void:
+	await _frames(20)
+	await _time_frames("graph open")
+	var counts: Dictionary[String, int] = {}
+	var transparent := 0
+	var surfaces := 0
+	var stack: Array[Node] = [_service]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		counts[node.get_class()] = counts.get(node.get_class(), 0) + 1
+		for child: Node in node.get_children(): stack.push_back(child)
+		if node is GeometryInstance3D and (node as GeometryInstance3D).visible:
+			surfaces += 1
+			var material := (node as GeometryInstance3D).material_override
+			if node is MeshInstance3D and material == null: material = (node as MeshInstance3D).get_active_material(0)
+			if node is Label3D or (material is BaseMaterial3D and (material as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED): transparent += 1
+	print("shot_blueprint_vr: nodes by class: ", counts)
+	print("shot_blueprint_vr: visible geometry instances %d, transparent or text %d" % [surfaces, transparent])
+	_service.close_graph()
+	await _time_frames("graph closed")
+	print("shot_blueprint_vr: draw calls %d, objects %d, primitives %d" % [
+		_viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME),
+		_viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_OBJECTS_IN_FRAME),
+		_viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)])
+
+
 ## The graph's own functions (docs/blueprint_functions.md): a call under the
 ## ray with its open button, the Functions window (D-148), then the body —
 ## Entry and Return, under the ray with their plus, the badge over the Entry,
@@ -548,13 +585,14 @@ func _run() -> void:
 	var start := _service.blueprint.history.get_version()
 	# XRE_SHOT_ONLY=pins shoots only the cards whose pins change (D-140).
 	# XRE_SHOT_ONLY=functions shoots only the graph's own functions (docs/blueprint_functions.md).
-	if OS.get_environment("XRE_SHOT_ONLY") in ["pins", "probe", "keyboard", "collections", "functions"]:
+	if OS.get_environment("XRE_SHOT_ONLY") in ["pins", "probe", "keyboard", "collections", "functions", "stats"]:
 		match OS.get_environment("XRE_SHOT_ONLY"):
 			"pins": await _shot_pins()
 			"probe": await _shot_probe(head, host)
 			"keyboard": await _shot_keyboard()
 			"collections": await _shot_collections(head, host)
 			"functions": await _shot_functions()
+			"stats": await _stats()
 		while _service.blueprint.history.get_version() > start: _service.blueprint.undo()
 		await _frames()
 		print("shot_blueprint_vr: done, graph back to version %d" % _service.blueprint.history.get_version())
