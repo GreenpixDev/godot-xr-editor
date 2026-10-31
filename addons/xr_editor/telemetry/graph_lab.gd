@@ -1,13 +1,12 @@
 @tool
 class_name XREGraphLab
 extends Node
-## Finds what the open graph costs the headset's GPU and which settings buy it
-## back. Once the headset is on and the scene is loaded it measures, [constant STEP_SEC]
-## each and without being touched: the scene with the graph of [constant HOST] closed,
-## then the graph open under each antialiasing and a smaller render target, then closed
-## again. It opens and closes the graph itself and logs each step's name when it
-## starts; read the steps' App GPU ms (VrApi) around those lines. The antialiasing
-## and the render target are put back after the last step.
+## Measures what the open graph costs the headset. Once the headset is on and the
+## scene is loaded it runs, [constant STEP_SEC] each and without being touched: the
+## graph of [constant HOST] closed, open, closed again. It opens and closes the graph
+## itself, logs each step's name when it starts, and the graph's own script time
+## every [constant REPORT_SEC]; read the steps' frame rate and App GPU ms (VrApi)
+## around those lines with [code]benchmarks/quest_fps_report.py[/code].
 ## Start: [code]py scripts/quest.py --scene res://benchmarks/play_check.tscn -- --xre-graph-lab[/code].
 
 ## User argument (after [code]--[/code]) that runs the lab.
@@ -21,11 +20,7 @@ const REPORT_SEC := 5.0
 ## The scene node whose graph the steps open.
 const HOST := "BlueCube"
 ## Steps in order.
-const STEPS: Array[String] = [
-	"closed", "open_msaa_default", "open_msaa_2x", "open_msaa_off", "open_msaa_default", "open_scale_0.8", "open_msaa_off_scale_0.8", "closed",
-]
-## Scale of the render target in the scaled steps.
-const SCALE := 0.8
+const STEPS: Array[String] = ["closed", "open", "open_service_off", "open_service_off_canvas_off", "open_service_off_canvas_off_ui_off", "closed"]
 
 const _LOG_PREFIX := "XR Editor: "
 
@@ -33,9 +28,8 @@ var _service: XREBlueprints
 var _document: XREDocument
 var _step := -1
 var _left := WARMUP_SEC
-var _antialiasing: StringName
-var _scale := 1.0
 var _started := false
+var _stopped: Array[Node] = []
 var _report_left := REPORT_SEC
 
 
@@ -56,21 +50,13 @@ func _process(delta: float) -> void:
 	_left = STEP_SEC
 	if not _started:
 		_started = true
-		_antialiasing = _document.features.get_value(XREFeatureSettings.ANTIALIASING)
-		var xr := _interface()
-		if xr != null: _scale = xr.render_target_size_multiplier
 	_step += 1
 	if _step >= STEPS.size():
-		_restore()
 		print(_LOG_PREFIX, "graph lab: done.")
 		queue_free()
 		return
 	print(_LOG_PREFIX, "graph lab: ", STEPS[_step])
 	_apply(STEPS[_step])
-
-
-func _exit_tree() -> void:
-	if _started: _restore()
 
 
 ## The scene is loaded and, with a headset, the session has focus.
@@ -95,19 +81,33 @@ func _host() -> Node3D:
 
 
 func _apply(step: String) -> void:
+	_restore()
+	if step.contains("service_off"): _off(_service)
+	if step.contains("canvas_off"): _off(_service.canvas)
+	if step.contains("ui_off"):
+		_off(_service.get("_floating_ui") as Node3D)
+		_off(_service.get("_dimmer") as Node3D)
 	if step == "closed":
 		if _graph_open(): _service.close_graph()
 	elif not _graph_open():
 		_document.select([_host()], XREDocument.Source.TOOL)
 		_service.open_selected()
-	var scaled := step.contains("scale")
-	var xr := _interface()
-	if xr != null: xr.render_target_size_multiplier = _scale * SCALE if scaled else _scale
-	var value := XREFeatureSettings.OFF if step.contains("msaa_off") else (XREFeatureSettings.MSAA_2X if step.contains("msaa_2x") else _antialiasing)
-	_document.set_feature(XREFeatureSettings.ANTIALIASING, value, XREDocument.Source.TOOL)
+
+
+## Stops [param node] for the current step: its script, or its drawing.
+func _off(node: Node) -> void:
+	if node == null: return
+	if node is Node3D and node != _service:
+		(node as Node3D).visible = false
+		_stopped.append(node)
+	else:
+		node.set_process(false)
+		_stopped.append(node)
 
 
 func _restore() -> void:
-	var xr := _interface()
-	if xr != null: xr.render_target_size_multiplier = _scale
-	_document.set_feature(XREFeatureSettings.ANTIALIASING, _antialiasing, XREDocument.Source.TOOL)
+	for node: Node in _stopped:
+		if not is_instance_valid(node): continue
+		if node is Node3D and node != _service: (node as Node3D).visible = true
+		else: node.set_process(true)
+	_stopped.clear()

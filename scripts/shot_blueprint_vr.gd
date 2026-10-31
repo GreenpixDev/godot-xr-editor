@@ -216,6 +216,23 @@ func _stats() -> void:
 			if node is MeshInstance3D and material == null: material = (node as MeshInstance3D).get_active_material(0)
 			if node is Label3D or (material is BaseMaterial3D and (material as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED): transparent += 1
 	print("shot_blueprint_vr: nodes by class: ", counts)
+	var names: Dictionary[String, int] = {}
+	var all: Array[Node] = [_service.canvas]
+	while not all.is_empty():
+		var each: Node = all.pop_back()
+		for child: Node in each.get_children(): all.push_back(child)
+		if each is GeometryInstance3D and (each as GeometryInstance3D).is_visible_in_tree():
+			var key := each.get_class() + " " + String(each.name).rstrip("0123456789@")
+			names[key] = names.get(key, 0) + 1
+			if each is MeshInstance3D and (each as MeshInstance3D).mesh != null and key.contains("@MeshInstance3D"):
+				var mesh := (each as MeshInstance3D).mesh
+				var detail := "%s surfaces=%d verts=%d" % [mesh.get_class(), mesh.get_surface_count(), mesh.get_faces().size()]
+				names[detail] = names.get(detail, 0) + 1
+	print("shot_blueprint_vr: visible geometry by name: ", names)
+	var views: Array[Node] = _rig.find_children("*", "SubViewport", true, false)
+	for view: Node in views:
+		var sub := view as SubViewport
+		print("shot_blueprint_vr: subviewport %s size %s update %d in tree visible %s parent %s" % [sub.get_path(), sub.size, sub.render_target_update_mode, (sub.get_parent() as Node3D).is_visible_in_tree() if sub.get_parent() is Node3D else "n/a", sub.get_parent().name])
 	print("shot_blueprint_vr: visible geometry instances %d, transparent or text %d" % [surfaces, transparent])
 	_service.close_graph()
 	await _time_frames("graph closed")
