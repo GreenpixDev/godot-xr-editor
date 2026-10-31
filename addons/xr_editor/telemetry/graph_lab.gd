@@ -20,7 +20,7 @@ const REPORT_SEC := 5.0
 ## The scene node whose graph the steps open.
 const HOST := "BlueCube"
 ## Steps in order.
-const STEPS: Array[String] = ["closed", "open", "open_service_off", "open_service_off_canvas_off", "open_service_off_canvas_off_ui_off", "closed"]
+const STEPS: Array[String] = ["closed", "open", "open_service_off", "closed"]
 
 const _LOG_PREFIX := "XR Editor: "
 

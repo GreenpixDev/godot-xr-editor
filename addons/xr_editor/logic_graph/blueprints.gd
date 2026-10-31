@@ -26,6 +26,8 @@ const BODY_BOTTOM := 0.65
 ## Farther than this from the head, in meters, the badge over a selected
 ## object grows with the distance and so keeps its size in view (D-043).
 const BADGE_DISTANCE := 1.2
+## The head moves this far, in meters, before the badge is placed again.
+const BADGE_STEP := 0.005
 ## Where the badge of a graph without an object stands in the graph's window
 ## group: over the graph, where its toolbar was before D-085.
 const BADGE_FLOATING := Vector3(0.0, 0.42, 0.03)
@@ -767,6 +769,10 @@ func _exit_tree() -> void:
 
 
 ## Microseconds spent in [method _process] and in the canvas's [method XREBlueprintCanvas.face_user] since [method take_process_times] last said.
+var _badge_placed := false
+var _badge_top_seen := Vector3.ZERO
+var _badge_head_seen := Vector3.ZERO
+var _badge_up_seen := Vector3.UP
 var _process_usec := 0
 var _face_usec := 0
 var _process_count := 0
@@ -789,25 +795,39 @@ func _process(delta: float) -> void:
 	_process_count += 1
 
 
+## Stands the badge over [param top], unless the head and the spot are where they were when it last stood
+## there, within [constant BADGE_STEP]: the headset's head never rests, and placing it each frame costs a
+## standalone headset the better part of a millisecond.
+func _place_badge(top: Vector3, head: Vector3, up: Vector3) -> void:
+	if _badge_placed and top.is_equal_approx(_badge_top_seen) and up.is_equal_approx(_badge_up_seen) 			and head.distance_squared_to(_badge_head_seen) < BADGE_STEP * BADGE_STEP:
+		_badge.keep()
+		return
+	_badge_placed = true
+	_badge_top_seen = top
+	_badge_head_seen = head
+	_badge_up_seen = up
+	_badge.place(top, head, up, maxf(top.distance_to(head) / BADGE_DISTANCE, 1.0))
+
+
 func _process_frame(delta: float) -> void:
 	var head := _rig.camera.global_position
 	var up := _rig.global_basis.y.normalized()
 	if _workspace.visible and _entry_id >= 0 and canvas.has_block(_entry_id):
 		# A body's badge stands over its Entry, at hand where the body is (D-148).
 		var entry := canvas.get_block_transform(_entry_id).origin + Vector3.UP * canvas.get_block_size(_entry_id).y * 0.5
-		var top := canvas.to_global(entry)
-		_badge.place(top, head, up, maxf(top.distance_to(head) / BADGE_DISTANCE, 1.0))
+		_place_badge(canvas.to_global(entry), head, up)
 	elif is_instance_valid(_badge_anchor) and _badge_anchor.is_inside_tree():
 		# As light icons do (XREIcons), the badge keeps its size in view farther than
 		# BADGE_DISTANCE away, so that its text stays readable (D-043); nearer, it keeps its size.
-		var top := _badge_top()
-		_badge.place(top, head, up, maxf(top.distance_to(head) / BADGE_DISTANCE, 1.0))
+		_place_badge(_badge_top(), head, up)
 	elif _workspace.visible:
 		# A graph without an object in the scene: its badge stands over the graph (D-085).
 		var point := _floating_ui.global_transform * BADGE_FLOATING
 		_badge.float_at(Transform3D(XREPanels.facing(point, head, up), point))
+		_badge_placed = false
 	else:
 		_badge.set_shown(false)
+		_badge_placed = false
 	for marker: Marker in _markers:
 		marker.visual.visible = logic_mode and is_instance_valid(marker.host) and marker.host.is_inside_tree() and is_instance_valid(marker.anchor) and marker.anchor.is_inside_tree()
 		if marker.visual.visible: marker.visual.global_position = marker.anchor.global_position + _rig.global_basis.y * 0.22

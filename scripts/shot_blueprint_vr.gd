@@ -197,6 +197,23 @@ func _time_frames(label: String, count: int = 120) -> void:
 	print("shot_blueprint_vr: %s: process %.2f ms mean over %d frames" % [label, sum / count * 1000.0, count])
 
 
+func _dump(node: Node, depth: int) -> void:
+	var line := "  ".repeat(depth) + "%s [%s]" % [node.name, node.get_class()]
+	if node is MeshInstance3D:
+		var mesh := (node as MeshInstance3D).mesh
+		var material := (node as MeshInstance3D).material_override
+		if material == null and mesh != null and mesh.get_surface_count() > 0: material = mesh.surface_get_material(0)
+		line += " mesh=%s tris=%d vis=%s" % [mesh.get_class() if mesh != null else "-", mesh.get_faces().size() / 3 if mesh != null else 0, (node as Node3D).visible]
+		if material is BaseMaterial3D: line += " std alpha=%d prio=%d color=%s" % [(material as BaseMaterial3D).transparency, material.render_priority, (material as BaseMaterial3D).albedo_color]
+		elif material is ShaderMaterial: line += " shader prio=%d" % material.render_priority
+	elif node is Label3D:
+		line += " text='%s' vis=%s" % [(node as Label3D).text, (node as Node3D).visible]
+	elif node is Node3D:
+		line += " vis=%s" % (node as Node3D).visible
+	print("DUMP ", line)
+	for child: Node in node.get_children(): _dump(child, depth + 1)
+
+
 ## XRE_SHOT_ONLY=stats: what the open graph costs to draw, as the headset's
 ## renderer sees it (nodes by class, transparent surfaces, draw calls).
 func _stats() -> void:
@@ -228,7 +245,26 @@ func _stats() -> void:
 				var mesh := (each as MeshInstance3D).mesh
 				var detail := "%s surfaces=%d verts=%d" % [mesh.get_class(), mesh.get_surface_count(), mesh.get_faces().size()]
 				names[detail] = names.get(detail, 0) + 1
+	var drawn: Dictionary[String, int] = {}
+	var walk: Array[Node] = [_service.canvas]
+	while not walk.is_empty():
+		var each: Node = walk.pop_back()
+		for child: Node in each.get_children(): walk.push_back(child)
+		if not (each is GeometryInstance3D) or not (each as GeometryInstance3D).is_visible_in_tree(): continue
+		var kind := each.get_class()
+		if each is Label3D:
+			if (each as Label3D).text.is_empty(): continue
+			kind = "Label3D"
+		elif each is MeshInstance3D:
+			var m := (each as MeshInstance3D).mesh
+			kind = "Mesh " + (m.get_class() if m != null else "-") + (" shader" if (each as MeshInstance3D).material_override is ShaderMaterial or (m != null and m.get_surface_count() > 0 and m.surface_get_material(0) is ShaderMaterial) else "")
+		drawn[kind] = drawn.get(kind, 0) + 1
+	print("shot_blueprint_vr: drawn objects by kind: ", drawn)
 	print("shot_blueprint_vr: visible geometry by name: ", names)
+	if OS.has_environment("XRE_DUMP_CARD"):
+		var cards := _service.canvas.get("_cards") as Array
+		var card := cards[int(OS.get_environment("XRE_DUMP_CARD")) % cards.size()] as XREBlueprintCanvas.Card
+		_dump(card.node, 0)
 	var views: Array[Node] = _rig.find_children("*", "SubViewport", true, false)
 	for view: Node in views:
 		var sub := view as SubViewport

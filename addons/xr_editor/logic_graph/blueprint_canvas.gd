@@ -2449,7 +2449,8 @@ func face_user(head: Vector3, delta: float = 0.0) -> void:
 	_arrow_clock += delta
 	var turned := _turn_parts(head, delta)
 	if not turned and _faces_user and head.distance_squared_to(_head_position) < HEAD_STEP * HEAD_STEP and global_transform.is_equal_approx(_view_transform):
-		if _runs_arrows(): _lay_arrows()
+		# Every other frame: the arrows run at half the display rate, which the eye does not tell, for half the cost.
+		if _runs_arrows() and Engine.get_process_frames() % 2 == 0: _lay_arrows()
 		return
 	_faces_user = true
 	_head_position = head

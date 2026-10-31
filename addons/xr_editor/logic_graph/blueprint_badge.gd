@@ -285,6 +285,13 @@ func place(top: Vector3, head: Vector3, up: Vector3, grown: float) -> void:
 	_expire()
 
 
+## Keeps the pill where [method place] last put it: the same frame's bookkeeping, nothing moved.
+func keep() -> void:
+	_leader.visible = true
+	_dot.visible = true
+	_expire()
+
+
 ## Puts the pill at [param pose], without a leader: a graph with no object.
 func float_at(pose: Transform3D) -> void:
 	global_transform = pose
