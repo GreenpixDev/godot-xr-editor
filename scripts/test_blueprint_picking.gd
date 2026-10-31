@@ -850,6 +850,34 @@ static func delay_block(graph: XREBlueprintGraph) -> Dictionary:
 	return graph.find_node(3)
 
 
+## The graph lab's larger graph (D-151): its blocks and wires four times over, all on the canvas, the source untouched.
+func _test_lab_enlarged() -> void:
+	var graph := XREBlueprintGraph.new()
+	graph.nodes = [
+		{"id": 1, "kind": "value", "position": Vector2(0, 0), "params": {"value": 1.0}},
+		{"id": 2, "kind": "print", "position": Vector2(400, -300), "params": {}},
+	]
+	graph.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 1}]
+	graph.upgrade()
+	var big := XREGraphLab.enlarged(graph, 4)
+	_check(big.nodes.size() == 8 and big.edges.size() == 4 and graph.nodes.size() == 2 and graph.edges[0]["from"] == 1, "the larger graph has four copies, the source is untouched")
+	_canvas.center_graph(big)
+	_canvas.rebuild(big)
+	_check((_canvas.get("_cards") as Array).size() == 8 and (_canvas.get("_wires") as Array).size() == 4, "the canvas draws every copy's cards and wires")
+	var places: Dictionary[Vector2, bool] = {}
+	for node: Dictionary in big.nodes: places[node.position as Vector2] = true
+	_check(places.size() == 8, "the copies stand apart")
+	var kinds: Dictionary[String, int] = {}
+	var stack: Array[Node] = [_canvas]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		stack.append_array(node.get_children())
+		if node is GeometryInstance3D:
+			var kind := XREGraphLab.kind_of(node as GeometryInstance3D, _canvas)
+			kinds[kind] = kinds.get(kind, 0) + 1
+	_check(kinds.has("text_off") and kinds.has("wires_off") and (kinds.has("shader_off") or kinds.has("plain_off")), "the lab tells the canvas's kinds of object apart: %s" % kinds)
+
+
 ## D-044, D-045: a port under the ray thickens one of its wires, which the height of
 ## the hit on the port picks, the top of the port the wire going highest.
 func _test_port_wires() -> void:
@@ -976,6 +1004,7 @@ func _run() -> void:
 	_test_mockup_details()
 	_canvas.rebuild(graph)
 	_test_port_wires()
+	_test_lab_enlarged()
 	_canvas.queue_free()
 	await process_frame
 	await process_frame
