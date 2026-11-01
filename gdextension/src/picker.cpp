@@ -77,6 +77,14 @@ RID XREPicker::get_scenario() const {
 	return scenario;
 }
 
+void XREPicker::set_skipped_layers(uint32_t p_layers) {
+	skipped_layers = p_layers;
+}
+
+uint32_t XREPicker::get_skipped_layers() const {
+	return skipped_layers;
+}
+
 bool XREPicker::cast_segment(Node *p_scene_root, const Vector3 &p_from, const Vector3 &p_to) {
 	clear_hit();
 	ERR_FAIL_COND_V_MSG(!scenario.is_valid(), false, "XREPicker: set the scenario first.");
@@ -214,10 +222,17 @@ void XREPicker::set_hit(Node3D *p_node, const Vector3 &p_position, const Vector3
 
 bool XREPicker::is_candidate(GeometryInstance3D *p_geometry, Node *p_scene_root) const {
 	// The scenario also holds the VR layer, editor gizmos and the preview sun:
-	// only nodes of the edited scene count.
-	return p_geometry != nullptr && is_pickable_geometry(p_geometry) &&
-			(p_geometry == p_scene_root || p_scene_root->is_ancestor_of(p_geometry)) &&
-			p_geometry->is_visible_in_tree() && !is_locked(p_geometry);
+	// only nodes of the edited scene count. The open graph's hundreds of objects on
+	// the VR layer leave first, before their ancestors are walked (D-153).
+	if (p_geometry == nullptr) {
+		return false;
+	}
+	const uint32_t layers = p_geometry->get_layer_mask();
+	if ((layers & skipped_layers) != 0 && (layers & ~skipped_layers) == 0) {
+		return false;
+	}
+	return (p_geometry == p_scene_root || p_scene_root->is_ancestor_of(p_geometry)) &&
+			is_pickable_geometry(p_geometry) && p_geometry->is_visible_in_tree() && !is_locked(p_geometry);
 }
 
 bool XREPicker::intersect_segment(GeometryInstance3D *p_geometry, const Vector3 &p_from, const Vector3 &p_to, Vector3 &r_position, Vector3 &r_normal) const {
@@ -319,6 +334,9 @@ void XREPicker::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_scenario", "scenario"), &XREPicker::set_scenario);
 	ClassDB::bind_method(D_METHOD("get_scenario"), &XREPicker::get_scenario);
 	ADD_PROPERTY(PropertyInfo(Variant::RID, "scenario"), "set_scenario", "get_scenario");
+	ClassDB::bind_method(D_METHOD("set_skipped_layers", "layers"), &XREPicker::set_skipped_layers);
+	ClassDB::bind_method(D_METHOD("get_skipped_layers"), &XREPicker::get_skipped_layers);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "skipped_layers"), "set_skipped_layers", "get_skipped_layers");
 
 	ClassDB::bind_method(D_METHOD("cast_segment", "scene_root", "from", "to"), &XREPicker::cast_segment);
 	ClassDB::bind_method(D_METHOD("find_at_point", "scene_root", "point", "radius", "viewer"), &XREPicker::find_at_point);

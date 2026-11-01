@@ -94,6 +94,8 @@ var fps_history := XREFPSHistory.new()
 var _fps_previous_usec := 0
 ## The value of [constant XREFeatureSettings.ANTIALIASING] last set, which a simulator started later takes too.
 var _antialiasing := XREFeatureSettings.AUTO
+## The Output panel's toggle of errors while the session keeps it off (D-153).
+var _output_errors: Button
 
 
 func _enter_tree() -> void:
@@ -156,6 +158,7 @@ func _exit_tree() -> void:
 	_editor_window = null
 	if _xr == null:
 		return
+	_show_output_errors()
 	# The session keeps running without the plugin, so low-processor mode stays off.
 	_exit_vr_frame_loop(false)
 	stop_mirror()
@@ -453,7 +456,36 @@ func _on_session_begun() -> void:
 	_request_refresh_rate()
 	_enter_vr_frame_loop()
 	_check_output_collapse()
+	if XREStandalone.is_standalone(): _hide_output_errors()
 	_enable_foveation()
+
+
+## Takes errors off the Output panel for the session, by its Errors toggle: the panel nobody sees on a standalone
+## headset rewrites their collapsed line every frame (D-153, editor_log.cpp, _add_log_line). They still reach the log.
+func _hide_output_errors() -> void:
+	if _output_errors != null: return
+	var button := _output_errors_button()
+	if button == null or not button.button_pressed: return
+	_output_errors = button
+	button.button_pressed = false
+	_log("errors taken off the Output panel for the session.")
+
+
+## Gives the Output panel its errors back, if [method _hide_output_errors] took them.
+func _show_output_errors() -> void:
+	if _output_errors == null: return
+	if is_instance_valid(_output_errors): _output_errors.button_pressed = true
+	_output_errors = null
+
+
+## The Output panel's toggle of errors, found by its icon (its tooltip is translated), or null.
+func _output_errors_button() -> Button:
+	var icon := EditorInterface.get_editor_theme().get_icon(&"StatusError", &"EditorIcons")
+	for log_dock: Node in EditorInterface.get_base_control().find_children("*", "EditorLog", true, false):
+		for node: Node in log_dock.find_children("*", "Button", true, false):
+			var button := node as Button
+			if button.toggle_mode and button.icon == icon: return button
+	return null
 
 
 ## Godot 4.7.2 prints an OpenXR error every frame in the editor. Without
@@ -526,6 +558,7 @@ func _on_session_state(state_name: String) -> void:
 
 func _on_session_ended(reason: String) -> void:
 	_log("session %s." % reason)
+	_show_output_errors()
 	# Emitted while OpenXR handles the state change, before the next xrWaitFrame
 	# would run, so restoring low-processor mode here can't break a frame.
 	_exit_vr_frame_loop(true)

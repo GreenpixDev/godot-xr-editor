@@ -155,6 +155,8 @@ class HandState:
 	func _init(controller: XREHand) -> void:
 		hand = controller
 		picker = XREPicker.new()
+		# The rays of an open graph cross its hundreds of objects (D-153).
+		picker.skipped_layers = XRERig.VR_LAYER
 		outline = XREOutline.new(XREManipulator.HOVER_COLOR)
 
 
@@ -247,6 +249,8 @@ var _scale := 1.0
 var _hold_start_free: Transform3D
 var _hold_start_pivot: Vector3
 var _hold_start_scale := 1.0
+var _process_usec := 0
+var _times_frame := 0
 
 
 func _init(document: XREDocument, rig: XRERig, icons: XREIcons) -> void:
@@ -280,7 +284,22 @@ func _exit_tree() -> void:
 	_document.scene_changed.disconnect(_on_scene_changed)
 
 
+## Mean script time per frame of [method _process], hover queries included, in ms, since the last call; 0 if no frame ran.
+func take_process_time() -> float:
+	var frame := Engine.get_process_frames()
+	var result := _process_usec / (maxi(frame - _times_frame, 1) * 1000.0)
+	_process_usec = 0
+	_times_frame = frame
+	return result
+
+
 func _process(_delta: float) -> void:
+	var started := Time.get_ticks_usec()
+	_process_frame()
+	_process_usec += Time.get_ticks_usec() - started
+
+
+func _process_frame() -> void:
 	var root: Node = _root if is_instance_valid(_root) else null
 	var graph := graph_open.is_valid() and bool(graph_open.call())
 	# The graph opened under a hold, a stroke or a box: they end without changing anything.

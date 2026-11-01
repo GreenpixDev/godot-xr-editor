@@ -5,6 +5,8 @@ var _checks := 0
 var _failures := 0
 var _canvas: XREBlueprintCanvas
 
+const RayParity := preload("res://scripts/ray_parity.gd")
+
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -851,6 +853,111 @@ static func delay_block(graph: XREBlueprintGraph) -> Dictionary:
 
 
 ## The graph lab's larger graph (D-151): its blocks and wires four times over, all on the canvas, the source untouched.
+## With and without the cards' reach, every ray says the same, and again when repeated (D-153).
+func _check_ray_parity(after: String) -> void:
+	var difference: String = RayParity.first_difference(_canvas)
+	_check(difference.is_empty(), "the reach changes a ray after %s: %s" % [after, difference])
+
+
+## A card's reach (D-153): it holds what rays can hit beside the card, follows a layout that moves them, and rays past it leave the card alone.
+func _test_ray_reach() -> void:
+	var graph := XREBlueprintGraph.new()
+	graph.nodes = [XREBlueprintGraph.make_node(1, "ready", Vector2.ZERO), XREBlueprintGraph.make_node(2, "for_each", Vector2(0, 400)),
+			XREBlueprintGraph.make_operator(3, "add", Vector2(600, 0)), XREBlueprintGraph.make_node(4, "branch", Vector2(600, 400))]
+	graph.upgrade()
+	var literal: StringName = _canvas.get("_collection_literal")
+	_canvas.set("_collection_literal", XREFeatureSettings.RACK)
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.center_graph(graph)
+	_canvas.rebuild(graph)
+	_canvas.face_user(Vector3(0, 0, 3))
+	_check_ray_parity("a rack and a variadic operator")
+	var cards := _canvas.get("_cards") as Array
+	var operator_card := cards[2] as XREBlueprintCanvas.Card
+	_canvas.intersect_ray(operator_card.node.global_position + Vector3.BACK, Vector3.FORWARD, 5.0)
+	_check(operator_card.reach_known and operator_card.reach.encloses(operator_card.bounds) and operator_card.reach.size.length() < 2.0, "the reach holds the card's body and is no larger than its neighbourhood: %s" % operator_card.reach)
+	_check(operator_card.pin_plus != null and operator_card.reach.has_point(operator_card.pin_plus_point), "the plus under a variadic operator is in its reach")
+	var rack_card := cards[1] as XREBlueprintCanvas.Card
+	_check(rack_card.rack_rect.has_volume(), "the rack is on its card")
+	_canvas.intersect_ray(rack_card.node.global_position + Vector3.BACK, Vector3.FORWARD, 5.0)
+	_check(rack_card.reach.encloses(rack_card.rack_rect), "the rack beside a card is in its reach")
+	# A ray past the reach says nothing of the card.
+	var away := operator_card.node.global_position + Vector3(50, 50, 0)
+	_check(operator_card.reach.intersects_ray(operator_card.node.to_local(away), operator_card.node.global_basis.inverse() * Vector3.FORWARD) == null and _canvas.intersect_ray(away, Vector3.FORWARD, 5.0) < 0.0, "a ray far past the cards hits nothing")
+	# A layout that moves parts after the rebuild marks the reach stale.
+	_canvas.call("_flip_pins", operator_card)
+	_check(not operator_card.reach_known, "ports moved to the other face leave the reach to be measured again")
+	_canvas.call("_flip_pins", operator_card)
+	_canvas.intersect_ray(away, Vector3.FORWARD, 5.0)
+	_canvas.call("_place_pin_marks", operator_card)
+	_check(not operator_card.reach_known, "the marks moved leave the reach to be measured again")
+	_canvas.intersect_ray(away, Vector3.FORWARD, 5.0)
+	_canvas.call("_set_mirrored", operator_card, true)
+	_check(not operator_card.reach_known, "a mirrored card's reach is measured again")
+	_canvas.call("_set_mirrored", operator_card, false)
+	# A card moved or the canvas moved: the reach is in the card's space, nothing to measure again.
+	operator_card.node.position += Vector3(0.7, 0.2, 0)
+	var moved := operator_card.node.to_global(Vector3.ZERO)
+	_check(_canvas.intersect_ray(moved + operator_card.node.global_basis.z * 0.5, -operator_card.node.global_basis.z, 5.0) >= 0.0 and _canvas.get_hit_id() == operator_card.id, "a moved card takes the ray where it is now")
+	_check_ray_parity("a moved card")
+	var placed := _canvas.transform
+	_canvas.transform = Transform3D(Basis(Vector3.UP, 0.7), Vector3(1, 0, -1))
+	_check_ray_parity("a moved canvas")
+	_canvas.transform = placed
+	_canvas.set("_collection_literal", literal)
+	_canvas.set_style(XREFeatureSettings.CLASSIC)
+
+
+## face_user repeated in a frame (D-153): the same head changes nothing; the service's call after the panels' runs the
+## clock and lays the arrows once, without turning; an eased turn stays eased; the panels' call snaps it, as it did.
+func _test_repeated_facing() -> void:
+	var pair := XREBlueprintGraph.new()
+	pair.nodes = [{"id": 1, "kind": "value", "position": Vector2(0, 0), "params": {"value": 1.0}}, {"id": 2, "kind": "print", "position": Vector2(400, 0), "params": {}}]
+	pair.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 1}]
+	pair.upgrade()
+	_canvas.set_turn_modes(XREFeatureSettings.FLIP, false)
+	_canvas.center_graph(pair)
+	_canvas.rebuild(pair)
+	var head := Vector3(0, 0, 3)
+	_canvas.face_user(head)
+	var card := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var pose := card.node.transform
+	_canvas.face_user(head)
+	_canvas.face_user(head)
+	_check(card.node.transform.is_equal_approx(pose), "the same head again leaves the cards as they are")
+	var behind := Vector3(0, 0, -3)
+	_canvas.face_user(behind, 0.016)
+	var eased := _canvas.get_part_turn(1)
+	_check(absf(eased) > 0.0 and absf(eased) < PI * 0.5, "with a delta, a turn eases: %f" % eased)
+	var clock: float = _canvas.get("_arrow_clock")
+	_canvas.face_user(behind, 0.25, true)
+	_check(is_equal_approx(_canvas.get_part_turn(1), eased), "again in the frame, nothing turns")
+	_check(is_equal_approx(_canvas.get("_arrow_clock"), clock + 0.25), "again in the frame, the clock runs")
+	_canvas.face_user(behind)
+	_check(is_equal_approx(absf(_canvas.get_part_turn(1)), PI), "the panels' call, without a delta, turns at once")
+	_canvas.set_turn_modes(XREFeatureSettings.FIXED, false)
+	_canvas.rebuild(pair)
+	_canvas.face_user(head)
+	_canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.RUNNING, false)
+	while Engine.get_process_frames() % 2 != 0: await process_frame
+	var laid := _canvas.get_arrow_pose(0).origin
+	_canvas.set("_arrow_clock", clock + 0.5)
+	_canvas.face_user(head)
+	_check(_canvas.get_arrow_pose(0).origin.is_equal_approx(laid), "the panels' call doesn't lay the running arrows")
+	# The rebuild's facing above may have been this very frame.
+	_canvas.set("_viewed_frame", -1)
+	_canvas.face_user(head, 0.05, true)
+	var moved := _canvas.get_arrow_pose(0).origin
+	_check(not moved.is_equal_approx(laid), "the service's call lays them")
+	_canvas.set("_viewed_frame", Engine.get_process_frames())
+	_canvas.face_user(head, 0.05, true)
+	_check(_canvas.get_arrow_pose(0).origin.is_equal_approx(moved), "not over what the frame's first call laid with the wires")
+	while Engine.get_process_frames() % 2 == 0: await process_frame
+	_canvas.face_user(head, 0.05)
+	_check(_canvas.get_arrow_pose(0).origin.is_equal_approx(moved), "every other frame they rest")
+	_canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.OFF, false)
+
+
 func _test_lab_enlarged() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [
@@ -990,21 +1097,37 @@ func _run() -> void:
 	_canvas.preview_grab(1, contact, local_contact, head)
 	_check(card.node.to_global(local_contact).is_equal_approx(contact), "minimum horizontal reach cannot detach an off-center grab from the rod")
 	_test_cuboid(graph)
+	_check_ray_parity("_test_cuboid")
 	_test_node_variants(graph)
+	_check_ray_parity("_test_node_variants")
 	_test_graph_turn(graph)
+	_check_ray_parity("_test_graph_turn")
 	_test_off_centre()
+	_check_ray_parity("_test_off_centre")
 	_test_parts_and_wires()
+	_check_ray_parity("_test_parts_and_wires")
 	_test_flow_and_rim()
+	_check_ray_parity("_test_flow_and_rim")
 	_test_archetypes(graph)
+	_check_ray_parity("_test_archetypes")
 	_test_signs()
+	_check_ray_parity("_test_signs")
 	_test_growing_signs()
+	_check_ray_parity("_test_growing_signs")
 	_test_headings()
+	_check_ray_parity("_test_headings")
 	_test_beads()
+	_check_ray_parity("_test_beads")
 	_test_port_shapes()
+	_check_ray_parity("_test_port_shapes")
 	_test_mockup_details()
+	_check_ray_parity("_test_mockup_details")
 	_canvas.rebuild(graph)
 	_test_port_wires()
+	_check_ray_parity("_test_port_wires")
 	_test_lab_enlarged()
+	_test_ray_reach()
+	await _test_repeated_facing()
 	_canvas.queue_free()
 	await process_frame
 	await process_frame

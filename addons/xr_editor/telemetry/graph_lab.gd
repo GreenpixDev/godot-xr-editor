@@ -120,7 +120,9 @@ func _process(delta: float) -> void:
 	if _report_left <= 0.0 and _started:
 		_report_left = REPORT_SEC
 		var times := _service.take_process_times()
-		print(_LOG_PREFIX, "graph lab: graph scripts %.1f ms per frame, of them facing the head %.1f ms." % [times.x, times.y])
+		var manipulator := (_service.get("_rig") as Node).find_child("XREManipulator", false, false) as XREManipulator
+		# D-153: the panels' routing and the manipulator are outside the graph scripts, and the routing holds a frame's first facing while a hand is free.
+		print(_LOG_PREFIX, "graph lab: graph scripts %.2f ms per frame, of them facing the head %.2f ms; ray routing %.2f ms; manipulator %.2f ms." % [times.x, times.y, times.z, manipulator.take_process_time() if manipulator != null else 0.0])
 		_report_frames()
 	_left -= delta
 	if _left > 0.0: return

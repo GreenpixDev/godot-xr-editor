@@ -4,6 +4,7 @@ extends Node
 
 var _document: XREDocument
 var _service: XREBlueprints
+const RayParity := preload("res://scripts/ray_parity.gd")
 ## The panels, which open the graph's parameters window (D-044).
 var _panels: XREPanels
 var _rig: XRERig
@@ -570,7 +571,37 @@ func _test_node_display() -> void:
 	await _frames()
 	cards = _service.canvas.get("_cards") as Array
 	_check((cards[0] as XREBlueprintCanvas.Card).mesh.mesh is QuadMesh, "open cards are flat and turn to the head again")
+	await _test_pointer_once()
 	await _test_view_variants()
+
+
+## The panels ask takes_pointer for each hand before the service's frame (D-153): one facing of the cards for one head
+## in a frame, what it asks of them timed, and rays around a graph as it stands say the same with and without the reach.
+func _test_pointer_once() -> void:
+	var canvas := _service.canvas
+	var hand := _rig.right_hand
+	await _frames(2)
+	_service.take_process_times()
+	var head := _rig.camera.global_position
+	var origin := head + Vector3(5, 5, 5)
+	_service.takes_pointer(hand, origin, Vector3.UP, 5.0)
+	# Not facing the head now, the canvas would again if asked: no second call in the frame asks.
+	canvas.set("_faces_user", false)
+	_service.takes_pointer(hand, origin, Vector3.UP, 5.0)
+	_check(not canvas.get("_faces_user"), "the other hand's call in the frame doesn't face the cards again")
+	var camera_was := _rig.camera.global_position
+	_rig.camera.global_position = camera_was + Vector3(0, 0.3, 0)
+	_service.takes_pointer(hand, origin, Vector3.UP, 5.0)
+	_check(canvas.get("_faces_user"), "a head moved within the frame does")
+	_rig.camera.global_position = camera_was
+	var times := _service.take_process_times()
+	_check(times.z > 0.0, "the panels' calls are timed: %s" % times)
+	_check(_service.take_process_times() == Vector3.ZERO, "and said once")
+	await _frames(3)
+	times = _service.take_process_times()
+	_check(times.x > 0.0, "the service's frame is timed: %s" % times)
+	var difference: String = RayParity.first_difference(canvas)
+	_check(difference.is_empty(), "the reach changes a ray on the open graph: %s" % difference)
 
 
 ## Graph turn and wire arrows in the headset (D-115): seen from behind a
@@ -2599,6 +2630,8 @@ func _test_d137() -> void:
 	_check((graph.find_node(split)["hidden"] as Array).has("y"), "trigger on the eye hides y")
 	card = _card(split)
 	_check(card != null and card.hidden_chip != null and card.pin_marks.size() == 2, "a chip says one is hidden; x and z keep their eyes")
+	var chip_difference: String = RayParity.first_difference(_service.canvas)
+	_check(chip_difference.is_empty(), "the reach changes a ray on a chip and its eyes: %s" % chip_difference)
 	if card == null or card.hidden_chip == null:
 		_document.features.set_value(XREFeatureSettings.NODE_STYLE, saved_style)
 		return

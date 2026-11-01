@@ -768,23 +768,31 @@ func _exit_tree() -> void:
 	XREBlueprintDocument.release_editor_shared()
 
 
-## Microseconds spent in [method _process] and in the canvas's [method XREBlueprintCanvas.face_user] since [method take_process_times] last said.
 var _badge_placed := false
 var _badge_top_seen := Vector3.ZERO
 var _badge_head_seen := Vector3.ZERO
 var _badge_up_seen := Vector3.UP
+## Microseconds spent in [method _process], in the canvas's [method XREBlueprintCanvas.face_user] within it, and in
+## [method takes_pointer] since [method take_process_times] last said, and the frame it said in.
 var _process_usec := 0
 var _face_usec := 0
-var _process_count := 0
+var _pointer_usec := 0
+var _times_frame := 0
+## The frame and the head [method takes_pointer] last turned the cards to: the panels ask for each hand (D-153).
+var _faced_frame := -1
+var _faced_head := Vector3.INF
 
 
-## Mean script time per frame, in ms, since the last call: the service's [method _process], then the canvas's facing the head within it; both 0 if no frame ran.
-func take_process_times() -> Vector2:
-	var frames := maxi(_process_count, 1)
-	var result := Vector2(_process_usec, _face_usec) / (frames * 1000.0)
+## Mean script time per frame, in ms, since the last call: the service's [method _process], the canvas's facing the head
+## within it, and [method takes_pointer], run by the panels outside [method _process], which holds a frame's first facing
+## while a hand is free for them; all 0 if no frame ran.
+func take_process_times() -> Vector3:
+	var frame := Engine.get_process_frames()
+	var result := Vector3(_process_usec, _face_usec, _pointer_usec) / (maxi(frame - _times_frame, 1) * 1000.0)
 	_process_usec = 0
 	_face_usec = 0
-	_process_count = 0
+	_pointer_usec = 0
+	_times_frame = frame
 	return result
 
 
@@ -792,7 +800,6 @@ func _process(delta: float) -> void:
 	var started := Time.get_ticks_usec()
 	_process_frame(delta)
 	_process_usec += Time.get_ticks_usec() - started
-	_process_count += 1
 
 
 ## Stands the badge over [param top], unless the head and the spot are where they were when it last stood
@@ -832,9 +839,11 @@ func _process_frame(delta: float) -> void:
 		marker.visual.visible = logic_mode and is_instance_valid(marker.host) and marker.host.is_inside_tree() and is_instance_valid(marker.anchor) and marker.anchor.is_inside_tree()
 		if marker.visual.visible: marker.visual.global_position = marker.anchor.global_position + _rig.global_basis.y * 0.22
 	if _workspace.visible:
+		# The panels, earlier in the frame, turned the parts at once unless they were frozen then (D-153).
+		var settled := _faced_frame == Engine.get_process_frames() and _faced_head == head and not canvas.is_turn_frozen()
 		canvas.set_turn_frozen(_holds_graph())
 		var facing_started := Time.get_ticks_usec()
-		canvas.face_user(_rig.camera.global_position, delta)
+		canvas.face_user(head, delta, settled)
 		_face_usec += Time.get_ticks_usec() - facing_started
 	_delete_consumed = false
 	_close_on_click_away()
@@ -3272,7 +3281,21 @@ func touch_block(hand: XREHand) -> int:
 ## On a panel drawn over everything ([param on_top], D-086), only what is drawn
 ## over everything too, a touch and what the hand already does take the ray.
 func takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance: float, on_top: bool = false) -> bool:
-	if _workspace.visible: canvas.face_user(_rig.camera.global_position)
+	var started := Time.get_ticks_usec()
+	var takes := _takes_pointer(hand, origin, direction, distance, on_top)
+	_pointer_usec += Time.get_ticks_usec() - started
+	return takes
+
+
+func _takes_pointer(hand: XREHand, origin: Vector3, direction: Vector3, distance: float, on_top: bool) -> bool:
+	if _workspace.visible:
+		# The rays below see the cards as this frame's head does; the other hand's call has turned them already.
+		var head := _rig.camera.global_position
+		var frame := Engine.get_process_frames()
+		if frame != _faced_frame or head != _faced_head:
+			_faced_frame = frame
+			_faced_head = head
+			canvas.face_user(head)
 	# What is drawn over everything takes the ray however far it is (D-058).
 	if _workspace.visible and _token_editor.is_interactive() and not _token_editor.pick(origin, direction).is_empty(): return true
 	if _keyboard.is_shown() and _keyboard.intersect_ray(origin, direction, INF) >= 0: return true

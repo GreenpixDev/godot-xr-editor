@@ -51,6 +51,12 @@ public:
 	void set_scenario(const godot::RID &p_scenario);
 	godot::RID get_scenario() const;
 
+	/// Render layers of what the scenario holds beside the scene: geometry on
+	/// these layers alone is passed over before anything dearer is asked of it.
+	/// 0, the default, passes over nothing.
+	void set_skipped_layers(uint32_t p_layers);
+	uint32_t get_skipped_layers() const;
+
 	/// Finds the closest geometry of p_scene_root's scene that the segment from
 	/// p_from to p_to hits. Returns whether there is a hit; the getters describe it.
 	bool cast_segment(godot::Node *p_scene_root, const godot::Vector3 &p_from, const godot::Vector3 &p_to);
@@ -86,6 +92,7 @@ protected:
 
 private:
 	godot::RID scenario;
+	uint32_t skipped_layers = 0;
 	uint64_t hit_node_id = 0;
 	godot::Vector3 hit_position;
 	godot::Vector3 hit_normal;

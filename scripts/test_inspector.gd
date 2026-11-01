@@ -45,7 +45,7 @@ func _init(document: XREDocument) -> void:
 	_steps = [_wait_for_scene, _open_window, _inspector_shown, _select_other_node, _other_node_shown, _sun_shown_again,
 			_drag_value, _open_other_scene, _other_scene_opened, _undo_value, _add_node, _undo_add, _remove_node,
 			_undo_remove, _duplicate_node, _copy_added_node, _undo_duplicate,
-			_add_for_paste, _copy_and_paste, _undo_paste, _edit_on_desktop, _open_for_undo, _undo_open, _redo_open, _undo_open_again, _test_files, _finish]
+			_add_for_paste, _copy_and_paste, _undo_paste, _edit_on_desktop, _open_for_undo, _undo_open, _redo_open, _undo_open_again, _test_files, _test_output_errors, _finish]
 
 
 func _enter_tree() -> void:
@@ -419,6 +419,30 @@ func _test_files() -> void:
 	_check(not entries.has("results/"), "folders Godot ignores are not")
 	_check(_document.list_folder("res://").has("benchmarks/"), "folders end with a slash")
 	_check(_document.get_file_type(SCENE) == &"PackedScene", "files have their types: %s" % _document.get_file_type(SCENE))
+	_next()
+
+
+## The session takes errors off the Output panel and gives them back (D-153); the panel's filter ends as it was.
+func _test_output_errors() -> void:
+	var session := XRESession.new()
+	var button := session.call("_output_errors_button") as Button
+	_check(button != null, "the Output panel's toggle of errors is found by its icon")
+	if button != null:
+		var was := button.button_pressed
+		button.button_pressed = true
+		session.call("_hide_output_errors")
+		_check(not button.button_pressed, "the session takes errors off the panel")
+		session.call("_hide_output_errors")
+		session.call("_show_output_errors")
+		_check(button.button_pressed, "and gives them back")
+		session.call("_show_output_errors")
+		_check(button.button_pressed, "a second time changes nothing")
+		button.button_pressed = false
+		session.call("_hide_output_errors")
+		session.call("_show_output_errors")
+		_check(not button.button_pressed, "errors the user took off stay off")
+		button.button_pressed = was
+	session.free()
 	_next()
 
 

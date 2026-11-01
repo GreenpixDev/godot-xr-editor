@@ -48,6 +48,7 @@ project.godot              хост-проект для разработки (Op
 openxr_action_map.tres     action map по умолчанию, создан Godot (в редакторе не используется)
 scripts/check.sh           проверка без шлема
 scripts/parse_all.gd       загрузчик всех скриптов для check.sh
+scripts/ray_parity.gd      сравнение лучей холста с отсевом по границам карточек и без него (для тестов, D-153)
 scripts/test_tools.gd      headless-тесты пикера, снапа, значков, манипуляции, палитры, удаления и полёта с фейковыми трекерами (для check.sh)
 scripts/test_controller_model.gd  headless-тест выбора модели контроллера (для check.sh)
 scripts/test_play_mode.gd  headless-тест play-mode: кнопка, возврат, аргументы игры (для check.sh)

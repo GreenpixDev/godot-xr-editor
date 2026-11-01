@@ -340,6 +340,9 @@ class Card:
 	## How far the front face is in front of a billboard's: ports, labels and icons sit on it.
 	var face := 0.0
 	var bounds: AABB
+	## All a ray can hit of the card, in its node's space ([method _measure_reach], D-153).
+	var reach: AABB
+	var reach_known := false
 	var mesh: MeshInstance3D
 	var normal: Material
 	var frame: MeshInstance3D
@@ -630,6 +633,8 @@ var _edge_arrow: CylinderMesh
 var _arrows_filled: MultiMeshInstance3D
 var _arrows_open: MultiMeshInstance3D
 var _arrow_clock := 0.0
+## The process frame the cards last turned to the head in, and the wires were laid with them.
+var _viewed_frame := -1
 ## The arrowheads' poses as drawn, kept here too: a renderer need not give them back.
 var _arrow_poses: Array[Transform3D] = []
 ## Arc lengths along a wire's points, reused for every wire; a sign's ports' angles on its rim.
@@ -1151,6 +1156,11 @@ func set_arrow_modes(execution: StringName, data: StringName, open: bool) -> boo
 ## Whether nothing may turn now: something in the graph is held or drawn (D-115).
 func set_turn_frozen(frozen: bool) -> void:
 	_turn_frozen = frozen
+
+
+## Whether nothing may turn now, as [method set_turn_frozen] last said.
+func is_turn_frozen() -> bool:
+	return _turn_frozen
 
 
 ## Switches how ports are drawn to [param display], a value of
@@ -2444,14 +2454,19 @@ func is_faded(id: int) -> bool:
 ## or its parts as Graph turn says, mirrors cards as Card mirror says, and turns
 ## round or flips the pins of the cards that don't face the head as Node back and
 ## Pins say (D-115), [param delta] seconds after the last call (0: at once).
+## With [param again], a call of this frame with no [param delta] turned the parts
+## already: this one only runs the clock and lays the arrows (D-153).
 ## The head is kept for a switch of the settings.
-func face_user(head: Vector3, delta: float = 0.0) -> void:
+func face_user(head: Vector3, delta: float = 0.0, again: bool = false) -> void:
 	_arrow_clock += delta
-	var turned := _turn_parts(head, delta)
+	var turned := not again and _turn_parts(head, delta)
+	var frame := Engine.get_process_frames()
 	if not turned and _faces_user and head.distance_squared_to(_head_position) < HEAD_STEP * HEAD_STEP and global_transform.is_equal_approx(_view_transform):
 		# Every other frame: the arrows run at half the display rate, which the eye does not tell, for half the cost.
-		if _runs_arrows() and Engine.get_process_frames() % 2 == 0: _lay_arrows()
+		# Only the frame's call that runs their clock, unless the frame's first laid them with the wires.
+		if delta > 0.0 and _runs_arrows() and frame % 2 == 0 and not (again and _viewed_frame == frame): _lay_arrows()
 		return
+	_viewed_frame = frame
 	_faces_user = true
 	_head_position = head
 	_view_transform = global_transform
@@ -2716,6 +2731,7 @@ func _decide_sides(card: Card, local_head: Vector3) -> void:
 ## [method _orient]; its labels mirror back to read, their left and right swapped.
 func _set_mirrored(card: Card, mirrored: bool) -> void:
 	card.mirrored = mirrored
+	card.reach_known = false
 	for text: Label3D in card.labels:
 		text.scale.x = -text.scale.x
 		if text.horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT: text.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -2730,6 +2746,7 @@ func _set_mirrored(card: Card, mirrored: bool) -> void:
 ## Moves [param card]'s ports to its other face (Pins Both faces, D-115).
 func _flip_pins(card: Card) -> void:
 	card.pins_back = not card.pins_back
+	card.reach_known = false
 	for port: MeshInstance3D in card.ports: port.position.z = -port.position.z
 	for index: int in card.inputs.size():
 		var point := card.inputs[index]
@@ -3486,6 +3503,7 @@ func get_hit_rack_plus() -> bool:
 
 ## Puts each × of [param card] by its pin as it stands now (D-137).
 func _place_pin_marks(card: Card) -> void:
+	card.reach_known = false
 	var ports := card.inputs if card.pin_input else card.outputs
 	for index: int in card.pin_marks.size():
 		var mark := card.pin_marks[index]
@@ -3623,6 +3641,9 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		var card_inverse := card.node.transform.affine_inverse()
 		var card_origin := card_inverse * local_origin
 		var card_direction := card_inverse.basis * local_direction
+		# Past all that can be hit of a card, nothing below is asked of it (D-153).
+		if not card.reach_known: _measure_reach(card)
+		if card.reach.intersects_ray(card_origin, card_direction) == null: continue
 		var body := _box_distance(card_origin, card_direction, card.bounds, nearest)
 		# A sign takes the ray inside its outline, not its whole box (D-100).
 		if body >= 0 and not card.outline.is_empty():
@@ -3933,6 +3954,40 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 			var band := floori((1.0 - clampf(_hit_height, -1.0, 1.0)) * 0.5 * edges.size())
 			_hit_edge = edges[clampi(band, 0, edges.size() - 1)]
 	return nearest if _hit_id >= 0 or _hit_wire >= 0 else -1.0
+
+
+## Notes [member Card.reach]: the box of all that [method intersect_ray] tries of
+## [param card], at the largest scale a hover or a compatible wire gives it, shown
+## or not, for the rays to miss it cheaply (D-153). Every layout that moves those
+## parts after [method rebuild] marks it stale.
+func _measure_reach(card: Card) -> void:
+	var reach := card.bounds
+	var plus := PLUS_RADIUS * HOVER_SCALE
+	var port := (PORT_RADIUS + PORT_HIT_MARGIN + PORT_DEPTH) * HOVER_SCALE
+	if not card.plus_faces.is_empty(): reach = reach.merge(_cube(card.plus_point, plus))
+	reach = reach.merge(_cube(card.trash_point, plus * TRASH_SCALE))
+	if card.swap != null: reach = reach.merge(_cube(card.swap_point, SWAP_SIZE * 0.5))
+	if card.copy != null: reach = reach.merge(_cube(card.copy_point, plus))
+	if card.open != null: reach = reach.merge(_cube(card.open_point, plus))
+	if card.pure_switch != null: reach = reach.merge(_pure_box(card).grow(0.02))
+	if card.pin_plus != null: reach = reach.merge(_cube(card.pin_plus_point, plus))
+	if card.hidden_chip != null: reach = reach.merge(AABB(card.hidden_chip_point - Vector3(card.hidden_chip_size.x, card.hidden_chip_size.y, 0.006) * 0.5, Vector3(card.hidden_chip_size.x, card.hidden_chip_size.y, 0.006)))
+	if card.rack_rect.has_volume(): reach = reach.merge(card.rack_rect).merge(_cube(card.rack_plus_point, 0.008))
+	for center: Vector3 in card.inputs: reach = reach.merge(_cube(center, port))
+	for center: Vector3 in card.outputs: reach = reach.merge(_cube(center, port))
+	for mark: Node3D in card.pin_marks:
+		if mark != null: reach = reach.merge(_cube(mark.position, PIN_MARK_SIZE * HOVER_SCALE * 0.5))
+	for socket: Socket in card.sockets:
+		reach = reach.merge(_cube(socket.center, port * absf(socket.base_scale.x)))
+		var half := socket.size.abs() * HOVER_SCALE * 0.5 + Vector3.ONE * 0.002
+		reach = reach.merge(AABB(socket.center - half, half * 2.0))
+	card.reach = reach.grow(0.01)
+	card.reach_known = true
+
+
+## The box [param half] each way around [param center].
+static func _cube(center: Vector3, half: float) -> AABB:
+	return AABB(center - Vector3.ONE * half, Vector3.ONE * half * 2.0)
 
 
 ## The nearest wire or knot the ray passes within [constant WIRE_HIT_RADIUS] or
@@ -4458,6 +4513,7 @@ func get_arrow_pose(index: int) -> Transform3D:
 func _lay_rims() -> void:
 	for card: Card in _cards:
 		if card.shape == XREBlueprintShapes.Shape.NONE or card.rim_built.size() != card.ports.size(): continue
+		card.reach_known = false
 		var inverse := card.node.transform.affine_inverse()
 		var count := card.ports.size()
 		if _rim_angles.size() < count: _rim_angles.resize(count)
