@@ -17,6 +17,7 @@ VR-редактор сцен для Godot 4.7 в виде EditorPlugin, дипл
 - [docs/conventions.md](docs/conventions.md) — обоснования инвариантов и правил кода, подводные камни Godot 4.7.
 - [docs/pitfalls.md](docs/pitfalls.md) — подводные камни OpenXR, Quest, SteamVR, Windows; читать перед работой с XR-сессией, нативной частью, play-mode.
 - [docs/benchmarks.md](docs/benchmarks.md) — замеры кадра и прочие команды.
+- [docs/quest_graph_performance.md](docs/quest_graph_performance.md) — открытый граф на Quest 2: замеры, варианты, как мерить; читать перед работой над fps графа.
 - [docs/vr_ui.md](docs/vr_ui.md) — термины интерфейса в шлеме.
 - [docs/blueprints.md](docs/blueprints.md), [docs/blueprints_vr.md](docs/blueprints_vr.md), [docs/vr_feature_map.md](docs/vr_feature_map.md) — Blueprints и карта функций.
 
