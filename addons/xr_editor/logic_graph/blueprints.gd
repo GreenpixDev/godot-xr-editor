@@ -778,7 +778,7 @@ var _process_usec := 0
 var _face_usec := 0
 var _pointer_usec := 0
 var _times_frame := 0
-## The frame and the head [method takes_pointer] last turned the cards to: the panels ask for each hand (D-153).
+## The frame and the head [method takes_pointer] last turned the cards to: the panels ask for each hand (D-158).
 var _faced_frame := -1
 var _faced_head := Vector3.INF
 
@@ -839,7 +839,7 @@ func _process_frame(delta: float) -> void:
 		marker.visual.visible = logic_mode and is_instance_valid(marker.host) and marker.host.is_inside_tree() and is_instance_valid(marker.anchor) and marker.anchor.is_inside_tree()
 		if marker.visual.visible: marker.visual.global_position = marker.anchor.global_position + _rig.global_basis.y * 0.22
 	if _workspace.visible:
-		# The panels, earlier in the frame, turned the parts at once unless they were frozen then (D-153).
+		# The panels, earlier in the frame, turned the parts at once unless they were frozen then (D-158).
 		var settled := _faced_frame == Engine.get_process_frames() and _faced_head == head and not canvas.is_turn_frozen()
 		canvas.set_turn_frozen(_holds_graph())
 		var facing_started := Time.get_ticks_usec()

@@ -1,5 +1,5 @@
 extends RefCounted
-## Checks [method XREBlueprintCanvas.intersect_ray] says the same with its cards' reach (D-153) as with none,
+## Checks [method XREBlueprintCanvas.intersect_ray] says the same with its cards' reach (D-158) as with none,
 ## over a grid of rays around every card: for the graph tests, as each of them leaves the canvas.
 
 ## All that [method XREBlueprintCanvas.intersect_ray] notes of a ray.

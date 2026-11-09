@@ -103,18 +103,52 @@ func _start() -> void:
 ## simulator and on a standalone headset, none on a PC headset.
 func _antialiasing() -> void:
 	_check(XREFeatureSettings.get_default(XREFeatureSettings.ANTIALIASING) == XREFeatureSettings.AUTO, "Antialiasing is Auto by default")
-	_check(_simulator.get_msaa() == Viewport.MSAA_4X, "the simulator starts at 4x")
+	var view := _simulator.get_view()
+	_check(view.msaa_3d == Viewport.MSAA_4X, "the simulator starts at 4x")
 	_check(XRESession.msaa_for(XREFeatureSettings.AUTO, false, true) == Viewport.MSAA_4X
 			and XRESession.msaa_for(XREFeatureSettings.AUTO, true, false) == Viewport.MSAA_4X
 			and XRESession.msaa_for(XREFeatureSettings.AUTO, false, false) == Viewport.MSAA_DISABLED,
 			"Auto: 4x in the simulator and on a standalone headset, off on a PC headset")
-	var expected: Dictionary[StringName, Viewport.MSAA] = {XREFeatureSettings.OFF: Viewport.MSAA_DISABLED,
-			XREFeatureSettings.MSAA_2X: Viewport.MSAA_2X, XREFeatureSettings.MSAA_4X: Viewport.MSAA_4X, XREFeatureSettings.MSAA_8X: Viewport.MSAA_8X}
+	var none := Viewport.SCREEN_SPACE_AA_DISABLED
+	var fxaa := Viewport.SCREEN_SPACE_AA_FXAA
+	# Each value: MSAA, post-process, TAA and scale, the same in the simulator, on a PC and on a standalone headset.
+	var expected: Dictionary[StringName, Array] = {
+		XREFeatureSettings.OFF: [Viewport.MSAA_DISABLED, none, false, 1.0],
+		XREFeatureSettings.MSAA_2X: [Viewport.MSAA_2X, none, false, 1.0],
+		XREFeatureSettings.MSAA_4X: [Viewport.MSAA_4X, none, false, 1.0],
+		XREFeatureSettings.MSAA_8X: [Viewport.MSAA_8X, none, false, 1.0],
+		XREFeatureSettings.MSAA_4X_SSAA_2X: [Viewport.MSAA_4X, none, false, 2.0],
+		XREFeatureSettings.FXAA: [Viewport.MSAA_DISABLED, fxaa, false, 1.0],
+		XREFeatureSettings.SSAA_1_5X: [Viewport.MSAA_DISABLED, none, false, 1.5],
+		XREFeatureSettings.SSAA_2X: [Viewport.MSAA_DISABLED, none, false, 2.0],
+	}
 	for value: StringName in expected:
-		_check(XRESession.msaa_for(value, false, false) == expected[value] and XRESession.msaa_for(value, true, true) == expected[value], "%s is the same everywhere" % value)
-		_simulator.set_msaa(XRESession.msaa_for(value, false, true))
-		_check(_simulator.get_msaa() == expected[value], "the simulator takes %s" % value)
-	_simulator.set_msaa(XRESession.msaa_for(XREFeatureSettings.AUTO, false, true))
+		_check_antialiasing(view, value, false, true, expected[value])
+		var probe := SubViewport.new()
+		_check_antialiasing(probe, value, false, false, expected[value])
+		_check_antialiasing(probe, value, true, false, expected[value])
+		probe.free()
+	var headset := SubViewport.new()
+	# SMAA fails in stereo: only the simulator, which is mono, has it.
+	_check_antialiasing(view, XREFeatureSettings.SMAA, false, true, [Viewport.MSAA_DISABLED, Viewport.SCREEN_SPACE_AA_SMAA, false, 1.0])
+	_check_antialiasing(headset, XREFeatureSettings.SMAA, false, false, [Viewport.MSAA_DISABLED, fxaa, false, 1.0])
+	_check_antialiasing(headset, XREFeatureSettings.SMAA, true, false, [Viewport.MSAA_DISABLED, fxaa, false, 1.0])
+	# The engine doesn't jitter a stereo view, and its Mobile renderer has no TAA: only the simulator has it.
+	_check_antialiasing(view, XREFeatureSettings.TAA, false, true, [Viewport.MSAA_DISABLED, none, true, 1.0])
+	_check_antialiasing(headset, XREFeatureSettings.TAA, false, false, [Viewport.MSAA_4X, none, false, 1.0])
+	_check_antialiasing(headset, XREFeatureSettings.TAA, true, false, [Viewport.MSAA_4X, none, false, 1.0])
+	headset.free()
+	for value: StringName in XREFeatureSettings.DEFINITIONS[XREFeatureSettings.ANTIALIASING]["values"]:
+		_check(value == XREFeatureSettings.AUTO or value in [XREFeatureSettings.SMAA, XREFeatureSettings.TAA] or expected.has(value), "%s is tested" % value)
+	XRESession.apply_antialiasing(view, XREFeatureSettings.AUTO, false, true)
+	_check(view.msaa_3d == Viewport.MSAA_4X and view.screen_space_aa == none and not view.use_taa and is_equal_approx(view.scaling_3d_scale, 1.0),
+			"Auto puts back what the other values changed")
+
+
+func _check_antialiasing(view: Viewport, value: StringName, standalone: bool, simulated: bool, wanted: Array) -> void:
+	XRESession.apply_antialiasing(view, value, standalone, simulated)
+	_check(view.msaa_3d == wanted[0] and view.screen_space_aa == wanted[1] and view.use_taa == wanted[2] and is_equal_approx(view.scaling_3d_scale, wanted[3]),
+			"%s (standalone %s, simulated %s): MSAA %d, screen-space %d, TAA %s, scale %.1f" % [value, standalone, simulated, view.msaa_3d, view.screen_space_aa, view.use_taa, view.scaling_3d_scale])
 
 
 func _hands_at_rest() -> void:

@@ -54,10 +54,19 @@ const TREE := &"tree"
 ## view and of the simulator's window. Auto, as before: 4× on a standalone
 ## headset, whose tiled GPU resolves it on chip, and in the simulator; none on
 ## a PC headset. Off, 2×, 4× or 8× everywhere: more samples cost GPU time.
+## D-153 adds the engine's other ways, as [method XRESession.apply_antialiasing]
+## sets them: FXAA, SMAA, TAA, supersampling and 16 samples a pixel, as MSAA 4×
+## with SSAA 2×, since the engine's and the GPU's MSAA ends at 8×.
 const ANTIALIASING := &"antialiasing"
 const MSAA_2X := &"msaa_2x"
 const MSAA_4X := &"msaa_4x"
 const MSAA_8X := &"msaa_8x"
+const MSAA_4X_SSAA_2X := &"msaa_4x_ssaa_2x"
+const FXAA := &"fxaa"
+const SMAA := &"smaa"
+const TAA := &"taa"
+const SSAA_1_5X := &"ssaa_1_5x"
+const SSAA_2X := &"ssaa_2x"
 
 ## Which logic graph nodes turn towards the head ([XREBlueprintCanvas], D-115;
 ## with [constant NODE_VOLUME] it took the place of Node display, D-039):
@@ -713,9 +722,9 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	ANTIALIASING: {
 		"category": Category.GLOBAL,
 		"title": "Antialiasing",
-		"values": [AUTO, OFF, MSAA_2X, MSAA_4X, MSAA_8X],
-		"labels": ["Auto", "Off", "2×", "4×", "8×"],
-		"hint": "Smooths the edges of cards, wires and objects in the VR view (MSAA). Auto: 4× on a standalone headset and in the window, off on a PC headset. More samples cost GPU time.",
+		"values": [AUTO, OFF, MSAA_2X, MSAA_4X, MSAA_8X, MSAA_4X_SSAA_2X, FXAA, SMAA, TAA, SSAA_1_5X, SSAA_2X],
+		"labels": ["Auto", "Off", "MSAA 2×", "MSAA 4×", "MSAA 8×", "16× (MSAA 4× + SSAA 2×)", "FXAA", "SMAA", "TAA", "SSAA 1.5×", "SSAA 2×"],
+		"hint": "Smooths edges in the VR view. Auto: MSAA 4× on a standalone headset and in the window, off on a PC headset. SSAA also smooths text and costs the most. FXAA blurs. SMAA and TAA act only in the window: in a headset, SMAA is FXAA and TAA is MSAA 4×.",
 	},
 	EXEC_ARROWS: {
 		"category": Category.EDITOR,

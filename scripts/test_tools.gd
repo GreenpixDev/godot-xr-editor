@@ -521,7 +521,7 @@ func _test_picker() -> void:
 	_check(absf(_picker.get_hit_distance() - 4.0) < EPSILON, "distance to the wall: %f" % _picker.get_hit_distance())
 	_check_vector(_picker.get_hit_normal(), Vector3(0.0, 0.0, 1.0), "the normal of the wall faces the ray")
 
-	# The manipulator's pickers pass over the VR layer before they walk a node's ancestors (D-153).
+	# The manipulator's pickers pass over the VR layer before they walk a node's ancestors (D-158).
 	var layered := _scene.get_node(^"Visible") as MeshInstance3D
 	var layers := layered.layers
 	var from_vr := Vector3(0.0, 0.0, 1.0)
@@ -658,7 +658,7 @@ func _start_manipulator() -> void:
 	_manipulator = XREManipulator.new(_document, _rig, _icons)
 	_rig.add_child(_manipulator)
 	for state: XREManipulator.HandState in _manipulator.get("_hands") as Array:
-		_check(state.picker.skipped_layers == XRERig.VR_LAYER, "the manipulator's pickers pass over the VR layer (D-153)")
+		_check(state.picker.skipped_layers == XRERig.VR_LAYER, "the manipulator's pickers pass over the VR layer (D-158)")
 	_counter.set_sources(_manipulator, null)
 	_manipulator.graph_open = func() -> bool: return _graph_open
 	_clipboard.set_sources(null, _icons)
@@ -670,7 +670,7 @@ func _start_manipulator() -> void:
 	_rig.add_child(_shortcut)
 	root.add_child(_rig)
 	_manipulator.call("_process", 0.0)
-	_check(_manipulator.take_process_time() > 0.0 and _manipulator.take_process_time() == 0.0, "its frame is timed and said once (D-153)")
+	_check(_manipulator.take_process_time() > 0.0 and _manipulator.take_process_time() == 0.0, "its frame is timed and said once (D-158)")
 	_set_hand(_right, Vector3(0.0, 0.0, 0.3), 0.0, 0.0)
 
 

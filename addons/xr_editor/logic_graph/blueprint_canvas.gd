@@ -340,7 +340,7 @@ class Card:
 	## How far the front face is in front of a billboard's: ports, labels and icons sit on it.
 	var face := 0.0
 	var bounds: AABB
-	## All a ray can hit of the card, in its node's space ([method _measure_reach], D-153).
+	## All a ray can hit of the card, in its node's space ([method _measure_reach], D-158).
 	var reach: AABB
 	var reach_known := false
 	var mesh: MeshInstance3D
@@ -2455,7 +2455,7 @@ func is_faded(id: int) -> bool:
 ## round or flips the pins of the cards that don't face the head as Node back and
 ## Pins say (D-115), [param delta] seconds after the last call (0: at once).
 ## With [param again], a call of this frame with no [param delta] turned the parts
-## already: this one only runs the clock and lays the arrows (D-153).
+## already: this one only runs the clock and lays the arrows (D-158).
 ## The head is kept for a switch of the settings.
 func face_user(head: Vector3, delta: float = 0.0, again: bool = false) -> void:
 	_arrow_clock += delta
@@ -3641,7 +3641,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 		var card_inverse := card.node.transform.affine_inverse()
 		var card_origin := card_inverse * local_origin
 		var card_direction := card_inverse.basis * local_direction
-		# Past all that can be hit of a card, nothing below is asked of it (D-153).
+		# Past all that can be hit of a card, nothing below is asked of it (D-158).
 		if not card.reach_known: _measure_reach(card)
 		if card.reach.intersects_ray(card_origin, card_direction) == null: continue
 		var body := _box_distance(card_origin, card_direction, card.bounds, nearest)
@@ -3958,7 +3958,7 @@ func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float
 
 ## Notes [member Card.reach]: the box of all that [method intersect_ray] tries of
 ## [param card], at the largest scale a hover or a compatible wire gives it, shown
-## or not, for the rays to miss it cheaply (D-153). Every layout that moves those
+## or not, for the rays to miss it cheaply (D-158). Every layout that moves those
 ## parts after [method rebuild] marks it stale.
 func _measure_reach(card: Card) -> void:
 	var reach := card.bounds

@@ -853,13 +853,13 @@ static func delay_block(graph: XREBlueprintGraph) -> Dictionary:
 
 
 ## The graph lab's larger graph (D-151): its blocks and wires four times over, all on the canvas, the source untouched.
-## With and without the cards' reach, every ray says the same, and again when repeated (D-153).
+## With and without the cards' reach, every ray says the same, and again when repeated (D-158).
 func _check_ray_parity(after: String) -> void:
 	var difference: String = RayParity.first_difference(_canvas)
 	_check(difference.is_empty(), "the reach changes a ray after %s: %s" % [after, difference])
 
 
-## A card's reach (D-153): it holds what rays can hit beside the card, follows a layout that moves them, and rays past it leave the card alone.
+## A card's reach (D-158): it holds what rays can hit beside the card, follows a layout that moves them, and rays past it leave the card alone.
 func _test_ray_reach() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [XREBlueprintGraph.make_node(1, "ready", Vector2.ZERO), XREBlueprintGraph.make_node(2, "for_each", Vector2(0, 400)),
@@ -908,7 +908,7 @@ func _test_ray_reach() -> void:
 	_canvas.set_style(XREFeatureSettings.CLASSIC)
 
 
-## face_user repeated in a frame (D-153): the same head changes nothing; the service's call after the panels' runs the
+## face_user repeated in a frame (D-158): the same head changes nothing; the service's call after the panels' runs the
 ## clock and lays the arrows once, without turning; an eased turn stays eased; the panels' call snaps it, as it did.
 func _test_repeated_facing() -> void:
 	var pair := XREBlueprintGraph.new()
@@ -983,6 +983,16 @@ func _test_lab_enlarged() -> void:
 			var kind := XREGraphLab.kind_of(node as GeometryInstance3D, _canvas)
 			kinds[kind] = kinds.get(kind, 0) + 1
 	_check(kinds.has("text_off") and kinds.has("wires_off") and (kinds.has("shader_off") or kinds.has("plain_off")), "the lab tells the canvas's kinds of object apart: %s" % kinds)
+	var kinds_off: Array[String] = ["ports_off", "shader_off", "plain_off", "text_off", "wires_off", "other_off"]
+	var hiding := 0
+	for step: String in XREGraphLab.EDITOR_STEPS + XREGraphLab.BASE_STEPS + XREGraphLab.BASE_COMPAT_STEPS:
+		for kind: String in kinds_off:
+			if step.contains(kind): hiding += 1
+	_check(hiding == 0, "the steps on the editor and its base don't hide a kind of the canvas's objects by a part of their names")
+	var game := XREGraphLab.game_args(false, false)
+	var compat := XREGraphLab.game_args(true, true)
+	_check(not game.has("--") and game.has("--xr-mode"), "the game's run needs no user arguments on the project's renderer")
+	_check(compat.find("--rendering-method") < compat.find("--") and compat.find("--xre-play") < compat.find("--") and compat.find(XREGraphLab.COMPAT_ARG) > compat.find("--"), "engine arguments go before --, the lab's after it")
 
 
 ## D-044, D-045: a port under the ray thickens one of its wires, which the height of

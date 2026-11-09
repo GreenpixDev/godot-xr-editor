@@ -1,0 +1,15 @@
+{
+	"file_format_version": "1.1.2",
+	"layer": {
+		"name": "VK_LAYER_XRE_dlss",
+		"type": "GLOBAL",
+		"library_path": ".\\build\\xre_dlss_layer.dll",
+		"api_version": "1.4.309",
+		"implementation_version": "1",
+		"description": "Spike: NGX DLSS from a dispatch (D-154)",
+		"functions": {
+			"vkGetInstanceProcAddr": "xre_GetInstanceProcAddr",
+			"vkGetDeviceProcAddr": "xre_GetDeviceProcAddr"
+		}
+	}
+}

@@ -17,6 +17,8 @@ VR-редактор сцен для Godot 4.7 в виде EditorPlugin, дипл
 - [docs/conventions.md](docs/conventions.md) — обоснования инвариантов и правил кода, подводные камни Godot 4.7.
 - [docs/pitfalls.md](docs/pitfalls.md) — подводные камни OpenXR, Quest, SteamVR, Windows; читать перед работой с XR-сессией, нативной частью, play-mode.
 - [docs/benchmarks.md](docs/benchmarks.md) — замеры кадра и прочие команды.
+- [docs/quest_graph_performance.md](docs/quest_graph_performance.md) — открытый граф на Quest 2: замеры, варианты, как мерить; читать перед работой над fps графа.
+- [docs/performance_plan.md](docs/performance_plan.md) — план работ над fps больших графов и сцен (D-157).
 - [docs/vr_ui.md](docs/vr_ui.md) — термины интерфейса в шлеме.
 - [docs/blueprints.md](docs/blueprints.md), [docs/blueprints_vr.md](docs/blueprints_vr.md), [docs/vr_feature_map.md](docs/vr_feature_map.md) — Blueprints и карта функций.
 
@@ -24,7 +26,7 @@ VR-редактор сцен для Godot 4.7 в виде EditorPlugin, дипл
 
 - Godot 4.7.x без обновлений (установлен 4.7.2: `godot` в Git Bash, `godot.cmd` в PowerShell, `%LOCALAPPDATA%\Programs\Godot\`). API 4.8+ не использовать.
 - Объём: с 2026-10-21 проект — полноценный продукт, ограничение «только T1–T3» снято (остальные ограничения в силе).
-- Движок не форкаем: нет хука — обход в GDScript/GDExtension, затем PR в upstream.
+- Движок не форкаем: нет хука — обход в GDScript/GDExtension, затем PR в upstream. Форк — только в крайнем случае по условиям D-157, каждый шаг — своя запись D.
 - Версии закреплены: godot-cpp 10.0.0-stable, OpenXR 1.1.54, MSVC 14.51, Android NDK r29 (29.0.14206865). Смена — запись в `docs/decisions.md`.
 - Данные участников (аудио, анкеты, логи с идентификаторами) — только в `study/data/raw/` (в .gitignore), не в git.
 

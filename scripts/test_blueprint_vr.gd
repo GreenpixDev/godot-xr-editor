@@ -575,7 +575,7 @@ func _test_node_display() -> void:
 	await _test_view_variants()
 
 
-## The panels ask takes_pointer for each hand before the service's frame (D-153): one facing of the cards for one head
+## The panels ask takes_pointer for each hand before the service's frame (D-158): one facing of the cards for one head
 ## in a frame, what it asks of them timed, and rays around a graph as it stands say the same with and without the reach.
 func _test_pointer_once() -> void:
 	var canvas := _service.canvas

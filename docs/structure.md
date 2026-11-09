@@ -48,7 +48,7 @@ project.godot              хост-проект для разработки (Op
 openxr_action_map.tres     action map по умолчанию, создан Godot (в редакторе не используется)
 scripts/check.sh           проверка без шлема
 scripts/parse_all.gd       загрузчик всех скриптов для check.sh
-scripts/ray_parity.gd      сравнение лучей холста с отсевом по границам карточек и без него (для тестов, D-153)
+scripts/ray_parity.gd      сравнение лучей холста с отсевом по границам карточек и без него (для тестов, D-158)
 scripts/test_tools.gd      headless-тесты пикера, снапа, значков, манипуляции, палитры, удаления и полёта с фейковыми трекерами (для check.sh)
 scripts/test_controller_model.gd  headless-тест выбора модели контроллера (для check.sh)
 scripts/test_play_mode.gd  headless-тест play-mode: кнопка, возврат, аргументы игры (для check.sh)
@@ -69,7 +69,7 @@ scripts/quest.py           автономный шлем по USB (adb): коп�
 .run/XR Editor Mirror.run.xml  то же с --mirror: со шлемом его вид ещё и в окне на столе (D-118)
 scripts/build_gdextension.sh  сборка нативной части: Windows (MSVC) или android (NDK); CMake и Ninja из Visual Studio
 docs/                      план и дневник решений (на русском)
-spikes/                    отдельные проекты спайков, не часть плагина (.gdignore): horizon_probe/ — редактор на Horizon OS (D-017), с сырыми логами
+spikes/                    отдельные проекты спайков, не часть плагина (.gdignore): horizon_probe/ — редактор на Horizon OS (D-017), с сырыми логами; comp_layer/ — панель на композиционном слое против панели в кадре (D-156)
 ```
 
 Модули по мере надобности — не заводить пустыми папками: в аддоне `logic_graph/`, `telemetry/`; в корне `study/` (протокол, анкеты, анализ).

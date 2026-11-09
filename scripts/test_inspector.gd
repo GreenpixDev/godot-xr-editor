@@ -422,7 +422,7 @@ func _test_files() -> void:
 	_next()
 
 
-## The session takes errors off the Output panel and gives them back (D-153); the panel's filter ends as it was.
+## The session takes errors off the Output panel and gives them back (D-158); the panel's filter ends as it was.
 func _test_output_errors() -> void:
 	var session := XRESession.new()
 	var button := session.call("_output_errors_button") as Button

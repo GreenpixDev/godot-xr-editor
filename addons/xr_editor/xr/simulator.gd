@@ -220,13 +220,10 @@ func set_active_hand(hand: StringName) -> void:
 	_grip_armed = not _mouse_grip or _grip_held[hand]
 
 
-## The view's multisampling (Antialiasing, D-134); 4× until it is set.
-func get_msaa() -> Viewport.MSAA:
-	return _viewport.msaa_3d
-
-
-func set_msaa(msaa: Viewport.MSAA) -> void:
-	_viewport.msaa_3d = msaa
+## The window or viewport the view renders to, for
+## [method XRESession.apply_antialiasing]; MSAA 4× until that is called.
+func get_view() -> Viewport:
+	return _viewport
 
 
 ## Whether the window has the keyboard: the user works in the VR view.

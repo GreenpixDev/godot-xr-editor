@@ -94,7 +94,7 @@ var fps_history := XREFPSHistory.new()
 var _fps_previous_usec := 0
 ## The value of [constant XREFeatureSettings.ANTIALIASING] last set, which a simulator started later takes too.
 var _antialiasing := XREFeatureSettings.AUTO
-## The Output panel's toggle of errors while the session keeps it off (D-153).
+## The Output panel's toggle of errors while the session keeps it off (D-158).
 var _output_errors: Button
 
 
@@ -223,7 +223,7 @@ func start_simulator() -> bool:
 		_log("no 3D editor viewport, no VR view without a headset.")
 		return false
 	_simulator = XRESimulator.new(editor_viewport.find_world_3d())
-	_simulator.set_msaa(msaa_for(_antialiasing, false, true))
+	apply_antialiasing(_simulator.get_view(), _antialiasing, false, true)
 	_simulator.closed.connect(simulator_closed.emit)
 	_rig = _simulator.rig
 	add_child(_simulator)
@@ -240,23 +240,60 @@ func start_simulator() -> bool:
 func set_antialiasing(value: StringName) -> void:
 	_antialiasing = value
 	if _viewport != null:
-		var msaa := msaa_for(value, XREStandalone.is_standalone(), false)
-		if msaa != _viewport.msaa_3d: _log("VR view MSAA %s." % ("off" if msaa == Viewport.MSAA_DISABLED else "%dx" % (1 << msaa)))
-		_viewport.msaa_3d = msaa
-	if _simulator != null: _simulator.set_msaa(msaa_for(value, false, true))
+		apply_antialiasing(_viewport, value, XREStandalone.is_standalone(), false)
+		_log("VR view antialiasing %s: MSAA %dx, screen-space %d, TAA %s, scale %.1f." % [value, 1 << _viewport.msaa_3d,
+				_viewport.screen_space_aa, _viewport.use_taa, _viewport.scaling_3d_scale])
+	if _simulator != null: apply_antialiasing(_simulator.get_view(), value, false, true)
+
+
+## Sets all that smooths [param view] for [param value] of
+## [constant XREFeatureSettings.ANTIALIASING] (D-134, D-153).
+static func apply_antialiasing(view: Viewport, value: StringName, standalone: bool, simulated: bool) -> void:
+	view.msaa_3d = msaa_for(value, standalone, simulated)
+	view.screen_space_aa = screen_space_aa_for(value, simulated)
+	view.use_taa = taa_for(value, simulated)
+	view.scaling_3d_scale = render_scale_for(value)
 
 
 ## The multisampling of a VR view for [param value] of
 ## [constant XREFeatureSettings.ANTIALIASING] (D-134): Auto is
 ## [constant STANDALONE_MSAA] on a [param standalone] headset and in the
-## [param simulated] view, none on a PC headset, as before.
+## [param simulated] view, none on a PC headset, as before. TAA in a headset is
+## [constant STANDALONE_MSAA] instead (D-153, [method taa_for]).
 static func msaa_for(value: StringName, standalone: bool, simulated: bool) -> Viewport.MSAA:
 	match value:
-		XREFeatureSettings.OFF: return Viewport.MSAA_DISABLED
+		XREFeatureSettings.AUTO: return STANDALONE_MSAA if standalone or simulated else Viewport.MSAA_DISABLED
 		XREFeatureSettings.MSAA_2X: return Viewport.MSAA_2X
-		XREFeatureSettings.MSAA_4X: return Viewport.MSAA_4X
+		XREFeatureSettings.MSAA_4X, XREFeatureSettings.MSAA_4X_SSAA_2X: return Viewport.MSAA_4X
 		XREFeatureSettings.MSAA_8X: return Viewport.MSAA_8X
-	return STANDALONE_MSAA if standalone or simulated else Viewport.MSAA_DISABLED
+		XREFeatureSettings.TAA: return Viewport.MSAA_DISABLED if simulated else STANDALONE_MSAA
+	return Viewport.MSAA_DISABLED
+
+
+## The post-process of a VR view for [param value] (D-153). The engine's SMAA
+## fails on every frame of a stereo view, so only the [param simulated] view,
+## which is mono, has it; a headset gets FXAA.
+static func screen_space_aa_for(value: StringName, simulated: bool) -> Viewport.ScreenSpaceAA:
+	match value:
+		XREFeatureSettings.FXAA: return Viewport.SCREEN_SPACE_AA_FXAA
+		XREFeatureSettings.SMAA: return Viewport.SCREEN_SPACE_AA_SMAA if simulated else Viewport.SCREEN_SPACE_AA_FXAA
+	return Viewport.SCREEN_SPACE_AA_DISABLED
+
+
+## Whether a VR view uses TAA for [param value] (D-153): only the
+## [param simulated] view. The engine doesn't jitter a stereo view, so TAA there
+## smooths nothing, and the Mobile renderer has none.
+static func taa_for(value: StringName, simulated: bool) -> bool:
+	return value == XREFeatureSettings.TAA and simulated
+
+
+## How many times larger than its output a VR view renders for [param value]
+## (D-153), along each side: 2 is four times the pixels.
+static func render_scale_for(value: StringName) -> float:
+	match value:
+		XREFeatureSettings.SSAA_1_5X: return 1.5
+		XREFeatureSettings.SSAA_2X, XREFeatureSettings.MSAA_4X_SSAA_2X: return 2.0
+	return 1.0
 
 
 ## Closes the VR view without a headset, and the tools under its rig with it.
@@ -461,7 +498,7 @@ func _on_session_begun() -> void:
 
 
 ## Takes errors off the Output panel for the session, by its Errors toggle: the panel nobody sees on a standalone
-## headset rewrites their collapsed line every frame (D-153, editor_log.cpp, _add_log_line). They still reach the log.
+## headset rewrites their collapsed line every frame (D-158, editor_log.cpp, _add_log_line). They still reach the log.
 func _hide_output_errors() -> void:
 	if _output_errors != null: return
 	var button := _output_errors_button()

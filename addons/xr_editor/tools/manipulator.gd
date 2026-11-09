@@ -155,7 +155,7 @@ class HandState:
 	func _init(controller: XREHand) -> void:
 		hand = controller
 		picker = XREPicker.new()
-		# The rays of an open graph cross its hundreds of objects (D-153).
+		# The rays of an open graph cross its hundreds of objects (D-158).
 		picker.skipped_layers = XRERig.VR_LAYER
 		outline = XREOutline.new(XREManipulator.HOVER_COLOR)
 

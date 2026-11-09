@@ -223,7 +223,7 @@ void XREPicker::set_hit(Node3D *p_node, const Vector3 &p_position, const Vector3
 bool XREPicker::is_candidate(GeometryInstance3D *p_geometry, Node *p_scene_root) const {
 	// The scenario also holds the VR layer, editor gizmos and the preview sun:
 	// only nodes of the edited scene count. The open graph's hundreds of objects on
-	// the VR layer leave first, before their ancestors are walked (D-153).
+	// the VR layer leave first, before their ancestors are walked (D-158).
 	if (p_geometry == nullptr) {
 		return false;
 	}
