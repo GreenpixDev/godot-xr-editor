@@ -985,10 +985,30 @@ func _test_lab_enlarged() -> void:
 	_check(kinds.has("text_off") and kinds.has("wires_off") and (kinds.has("shader_off") or kinds.has("plain_off")), "the lab tells the canvas's kinds of object apart: %s" % kinds)
 	var kinds_off: Array[String] = ["ports_off", "shader_off", "plain_off", "text_off", "wires_off", "other_off"]
 	var hiding := 0
-	for step: String in XREGraphLab.EDITOR_STEPS + XREGraphLab.BASE_STEPS + XREGraphLab.BASE_COMPAT_STEPS:
+	for step: String in XREGraphLab.EDITOR_STEPS + XREGraphLab.BASE_STEPS + XREGraphLab.BASE_COMPAT_STEPS + XREGraphLab.STRESS_STEPS:
 		for kind: String in kinds_off:
 			if step.contains(kind): hiding += 1
 	_check(hiding == 0, "the steps on the editor and its base don't hide a kind of the canvas's objects by a part of their names")
+	var stress_off := 0
+	for step: String in XREGraphLab.STRESS_STEPS:
+		if step.contains("_off") or step.contains("scale") or step.contains("lean") or step.contains("empty") or step.contains("big"): stress_off += 1
+	_check(stress_off == 0, "the stress steps change only the size of the graph or the scene, nothing else the lab reads from a name")
+	# The stress steps: a graph of a given number of blocks (D-157, step 0.3), built in memory.
+	var wide := XREGraphLab.grown(graph, 5)
+	_check(wide.nodes.size() == 5 and graph.nodes.size() == 2, "a graph of five blocks from two, the source untouched")
+	var wide_ids: Dictionary[int, bool] = {}
+	for node: Dictionary in wide.nodes: wide_ids[node.id as int] = true
+	var lost := 0
+	for edge: Dictionary in wide.edges:
+		if not wide_ids.has(edge.from as int) or not wide_ids.has(edge.to as int): lost += 1
+	_check(wide_ids.size() == 5 and wide.edges.size() == 2 and lost == 0, "the wires cut short with the last copy are gone, the others stay")
+	_check(XREGraphLab.grown(graph, 1).edges.is_empty() and XREGraphLab.grown(graph, 2).edges.size() == 1, "a graph of fewer blocks than the source's keeps only the wires between its blocks")
+	_check(XREGraphLab.graph_blocks("open_graph250") == 250 and XREGraphLab.graph_blocks("open") == 0 and XREGraphLab.graph_blocks("closed_scene5k") == 0, "a step's name tells the graph's size")
+	_check(XREGraphLab.scene_objects("closed_scene20k") == 20000 and XREGraphLab.scene_objects("closed_scene_off") == 0 and XREGraphLab.scene_objects("open_graph500") == 0, "a step's name tells the scene's size")
+	var sizes := 0
+	for step: String in XREGraphLab.STRESS_STEPS:
+		if XREGraphLab.graph_blocks(step) > 0 or XREGraphLab.scene_objects(step) > 0: sizes += 1
+	_check(sizes == 7, "seven stress steps carry a size")
 	var game := XREGraphLab.game_args(false, false)
 	var compat := XREGraphLab.game_args(true, true)
 	_check(not game.has("--") and game.has("--xr-mode"), "the game's run needs no user arguments on the project's renderer")

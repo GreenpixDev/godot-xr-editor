@@ -26,8 +26,11 @@ const COMPAT_STEP_PREFIX := "compat_"
 const STEP_SEC := 20.0
 ## Seconds the headset must have been on before the first step.
 const WARMUP_SEC := 15.0
-## Seconds between lines of the graph's own script time.
+## Seconds between lines of the graph's own script time. A step lasts a whole number of them, so that a step's
+## last report holds only that step's frames.
 const REPORT_SEC := 5.0
+## Fewest frames a report made at the end of a step has.
+const MIN_REPORT_FRAMES := 30
 ## The scene node whose graph the steps open.
 const HOST := "BlueCube"
 ## Steps in order. A step's name holds what it changes from the open graph.
@@ -52,6 +55,22 @@ const BASE_STEPS: Array[String] = [
 	"open", "open_dimmer_off", "open_ui_off", "open_all_off", "open_views_off", "open_root_off", "open_lean", "open", "open_big2", "closed",
 ]
 const BASE_COMPAT_STEPS: Array[String] = ["closed", "closed_vr_off", "closed_empty", "open", "open_ui_off", "open_all_off", "open_big2", "open", "closed"]
+## With [constant CLI_FLAG] after [code]--[/code]: how the cost grows with the graph's and the scene's size (D-157, step 0.3),
+## foveation fixed. [code]graphN[/code] in a step's name is a graph of N blocks, [code]sceneNk[/code] N thousand
+## [MeshInstance3D]-like objects on the rendering server around the scene's host; both are built in memory.
+const STRESS_FLAG := "--xre-graph-lab-stress"
+const STRESS_STEPS: Array[String] = [
+	"closed", "open", "open_graph100", "open_graph250", "open_graph500", "open", "closed",
+	"closed_scene1k", "closed_scene5k", "closed_scene20k", "closed", "open_scene5k", "open", "closed",
+]
+## With [constant CLI_FLAG] after [code]--[/code]: logs each viewport's render time and counters at every report, in any steps (D-157, step 1.1).
+## The base and stress runs do it on their own. Measuring renders costs the GPU a little: compare these runs with each other.
+const VIEWS_FLAG := "--xre-graph-lab-views"
+## Distance between the stress scene's objects, and their size, in metres.
+const SCENE_SPACING := 0.6
+const SCENE_OBJECT := 0.3
+## Radius round the scene's host that the stress scene leaves empty, in metres.
+const SCENE_CLEAR := 3.5
 ## Seconds a step of [constant BASE_STEPS] lasts.
 const BASE_STEP_SEC := 10.0
 ## Foveation of those steps, as [code]graph_runtime_lab[/code] has it: it doesn't follow the load.
@@ -62,6 +81,14 @@ const FAST_FLAG := "--xre-lab-fast"
 const SCALE := 0.7
 
 const _LOG_PREFIX := "XR Editor: "
+
+## One viewport the process renders, and its render time summed over the frames since the last report.
+class _View:
+	var rid: RID
+	var label := ""
+	var cpu := 0.0
+	var gpu := 0.0
+
 
 var _service: XREBlueprints
 var _document: XREDocument
@@ -89,6 +116,10 @@ var _step_sec := STEP_SEC
 var _compat := false
 var _root_stopped := false
 var _rendering_changed := false
+var _views_on := false
+var _views: Dictionary[int, _View] = {}
+var _scene_rids: Array[RID] = []
+var _scene_mesh: BoxMesh
 
 
 func _init(service: XREBlueprints, document: XREDocument) -> void:
@@ -97,8 +128,8 @@ func _init(service: XREBlueprints, document: XREDocument) -> void:
 
 
 ## A copy of [param graph] with [param factor] copies of its blocks and wires, in a grid
-## of two columns around its centre, for the steps on a larger graph. Never saved.
-static func enlarged(graph: XREBlueprintGraph, factor: int) -> XREBlueprintGraph:
+## of two columns around its centre (in [param columns] columns), for the steps on a larger graph. Never saved.
+static func enlarged(graph: XREBlueprintGraph, factor: int, columns := 2) -> XREBlueprintGraph:
 	var result := XREBlueprintGraph.new()
 	result.format_version = graph.format_version
 	result.variables = graph.variables
@@ -117,7 +148,7 @@ static func enlarged(graph: XREBlueprintGraph, factor: int) -> XREBlueprintGraph
 	# With a gap: copies a graph's own size apart meet at its corners.
 	var step := (high - low) * 1.25 if not graph.nodes.is_empty() else Vector2.ZERO
 	for copy: int in factor:
-		var offset := Vector2(copy % 2, copy / 2) * step
+		var offset := Vector2(copy % columns, copy / columns) * step
 		for node: Dictionary in graph.nodes:
 			var block := node.duplicate(true)
 			block.id = (node.id as int) + copy * stride
@@ -129,6 +160,41 @@ static func enlarged(graph: XREBlueprintGraph, factor: int) -> XREBlueprintGraph
 			wire.to = (edge.to as int) + copy * stride
 			result.edges.append(wire)
 	return result
+
+
+## A copy of [param graph] with [param blocks] blocks (the source's, repeated in a square grid, the last copy cut
+## short) and the wires between those that are left. Never saved.
+static func grown(graph: XREBlueprintGraph, blocks: int) -> XREBlueprintGraph:
+	var copies := ceili(float(blocks) / maxi(graph.nodes.size(), 1))
+	var result := enlarged(graph, maxi(copies, 1), ceili(sqrt(float(copies))))
+	if result.nodes.size() > blocks: result.nodes.resize(blocks)
+	var kept: Dictionary[int, bool] = {}
+	for node: Dictionary in result.nodes: kept[node.id as int] = true
+	var wires: Array[Dictionary] = []
+	for edge: Dictionary in result.edges:
+		if kept.has(edge.from as int) and kept.has(edge.to as int): wires.append(edge)
+	result.edges = wires
+	return result
+
+
+## The number of blocks a step's name asks the graph to have ([code]graphN[/code]), or 0.
+static func graph_blocks(step: String) -> int:
+	return _number_after(step, "graph", 1)
+
+
+## The number of objects a step's name asks the scene to have ([code]sceneNk[/code], thousands), or 0.
+static func scene_objects(step: String) -> int:
+	return _number_after(step, "scene", 1000) if step.contains("k") else 0
+
+
+static func _number_after(step: String, word: String, unit: int) -> int:
+	var at := step.find(word)
+	if at < 0: return 0
+	var digits := ""
+	for index: int in range(at + word.length(), step.length()):
+		if step[index] < "0" or step[index] > "9": break
+		digits += step[index]
+	return digits.to_int() * unit
 
 
 ## Engine arguments that run a process on Compatibility.
@@ -161,15 +227,13 @@ func _process(delta: float) -> void:
 	_measure()
 	_report_left -= delta
 	if _report_left <= 0.0 and _started:
-		_report_left = REPORT_SEC
-		var times := _service.take_process_times()
-		var manipulator := (_service.get("_rig") as Node).find_child("XREManipulator", false, false) as XREManipulator
-		# D-158: the panels' routing and the manipulator are outside the graph scripts, and the routing holds a frame's first facing while a hand is free.
-		print(_LOG_PREFIX, "graph lab: graph scripts %.2f ms per frame, of them facing the head %.2f ms; ray routing %.2f ms; manipulator %.2f ms." % [times.x, times.y, times.z, manipulator.take_process_time() if manipulator != null else 0.0])
-		_report_frames()
+		_report()
 	_left -= delta
 	if _left > 0.0: return
 	_left = _step_sec
+	# What the last frames of the step did, if the timer hasn't just said it: a report is then the step's own tail.
+	if _started and _frames >= MIN_REPORT_FRAMES: _report()
+	_report_left = REPORT_SEC
 	if not _started:
 		_started = true
 		var xr := _interface()
@@ -178,6 +242,8 @@ func _process(delta: float) -> void:
 			_steps = EDITOR_STEPS
 			_log_inventory()
 		if OS.get_cmdline_user_args().has(BASE_FLAG): _start_base()
+		if OS.get_cmdline_user_args().has(STRESS_FLAG): _start_stress()
+		if OS.get_cmdline_user_args().has(VIEWS_FLAG): _views_on = true
 	_step += 1
 	if _step >= _steps.size():
 		_restore()
@@ -201,6 +267,21 @@ func _start_base() -> void:
 	_steps = BASE_COMPAT_STEPS if _compat else BASE_STEPS
 	_step_sec = 1.0 if args.has(FAST_FLAG) else BASE_STEP_SEC
 	_left = _step_sec
+	_views_on = true
+	_fix_foveation()
+
+
+## Sets up the steps of how the cost grows with the graph's and the scene's size.
+func _start_stress() -> void:
+	_steps = STRESS_STEPS
+	_step_sec = 1.0 if OS.get_cmdline_user_args().has(FAST_FLAG) else BASE_STEP_SEC
+	_left = _step_sec
+	_views_on = true
+	_fix_foveation()
+
+
+## Logs the renderer, and has foveation stay at one level whatever the load.
+func _fix_foveation() -> void:
 	print(_LOG_PREFIX, "graph lab: renderer ", RenderingServer.get_current_rendering_method(), " on ", RenderingServer.get_current_rendering_driver_name())
 	var xr := _interface()
 	if xr == null: return
@@ -219,8 +300,23 @@ func _measure() -> void:
 		RenderingServer.viewport_set_measure_render_time(rid, true)
 	_render_cpu += RenderingServer.viewport_get_measured_render_time_cpu(rid)
 	_render_gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+	if _views_on:
+		if _views.is_empty(): _refresh_views()
+		for view: _View in _views.values():
+			view.cpu += RenderingServer.viewport_get_measured_render_time_cpu(view.rid)
+			view.gpu += RenderingServer.viewport_get_measured_render_time_gpu(view.rid)
 	_process_time += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 	_frames += 1
+
+
+## Logs the graph's script time and the frames since the last report.
+func _report() -> void:
+	_report_left = REPORT_SEC
+	var times := _service.take_process_times()
+	var manipulator := (_service.get("_rig") as Node).find_child("XREManipulator", false, false) as XREManipulator
+	# D-158: the panels' routing and the manipulator are outside the graph scripts, and the routing holds a frame's first facing while a hand is free.
+	print(_LOG_PREFIX, "graph lab: graph scripts %.2f ms per frame, of them facing the head %.2f ms; ray routing %.2f ms; manipulator %.2f ms." % [times.x, times.y, times.z, manipulator.take_process_time() if manipulator != null else 0.0])
+	_report_frames()
 
 
 ## Logs the frames since the last report, for a runtime without VrApi's counters.
@@ -229,10 +325,52 @@ func _report_frames() -> void:
 	print(_LOG_PREFIX, "graph lab: frames %d fps, VR view render CPU %.2f ms, GPU %.2f ms, process %.2f ms, %d draw calls." % [
 		roundi(Engine.get_frames_per_second()), _render_cpu / frames, _render_gpu / frames, _process_time / frames,
 		roundi(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))])
+	if _views_on:
+		_report_views(frames)
+		_refresh_views()
 	_render_cpu = 0.0
 	_render_gpu = 0.0
 	_process_time = 0.0
 	_frames = 0
+
+
+## Logs, for every viewport that rendered, its render time per frame since the last report and what its last frame
+## drew: the VR view, the editor's window and views, the plugin's panels (D-157, step 1.1). Compatibility on
+## Android writes no GPU time (utilities.cpp), so its GPU column stays zero.
+func _report_views(frames: int) -> void:
+	for view: _View in _views.values():
+		var rid := view.rid
+		var visible_info := RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE
+		var calls := RenderingServer.viewport_get_render_info(rid, visible_info, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		var objects := RenderingServer.viewport_get_render_info(rid, visible_info, RenderingServer.VIEWPORT_RENDER_INFO_OBJECTS_IN_FRAME)
+		var primitives := RenderingServer.viewport_get_render_info(rid, visible_info, RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME)
+		var shadow := RenderingServer.viewport_get_render_info(rid, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		var canvas := RenderingServer.viewport_get_render_info(rid, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		if view.cpu > 0.0 or view.gpu > 0.0 or calls > 0 or canvas > 0:
+			print(_LOG_PREFIX, "graph lab: view %s: render CPU %.2f ms, GPU %.2f ms, visible %d call(s) %d object(s) %d primitive(s), shadow %d call(s), canvas %d call(s)." % [
+				view.label, view.cpu / frames, view.gpu / frames, calls, objects, primitives, shadow, canvas])
+		view.cpu = 0.0
+		view.gpu = 0.0
+
+
+## Has the server measure every viewport that now exists, and forgets those that are gone.
+func _refresh_views() -> void:
+	var live: Array[Viewport] = [get_tree().root]
+	for node: Node in get_tree().root.find_children("*", "Viewport", true, false):
+		live.append(node as Viewport)
+	var kept: Dictionary[int, bool] = {}
+	for viewport: Viewport in live:
+		var id := viewport.get_instance_id()
+		kept[id] = true
+		if _views.has(id): continue
+		var view := _View.new()
+		view.rid = viewport.get_viewport_rid()
+		var named := viewport.name as String if viewport == get_tree().root else "%s/%s" % [viewport.get_parent().name, viewport.name]
+		view.label = named.replace(" ", "_")
+		_views[id] = view
+		RenderingServer.viewport_set_measure_render_time(view.rid, true)
+	for id: int in _views.keys():
+		if not kept.has(id): _views.erase(id)
 
 
 ## The scene is loaded and, with a headset, the session has focus.
@@ -258,6 +396,7 @@ func _host() -> Node3D:
 
 func _apply(step: String) -> void:
 	_restore()
+	_add_scene_objects(scene_objects(step))
 	if step.begins_with("closed"):
 		if _graph_open(): _service.close_graph()
 		_editor_off(step)
@@ -265,7 +404,12 @@ func _apply(step: String) -> void:
 	if not _graph_open():
 		_document.select([_host()], XREDocument.Source.TOOL)
 		_service.open_selected()
-	if step.contains("big2"): _show(enlarged(_service.blueprint.graph, 2), true)
+	var blocks := graph_blocks(step)
+	if blocks > 0:
+		var sized := grown(_service.blueprint.graph, blocks)
+		print(_LOG_PREFIX, "graph lab: graph of %d block(s), %d wire(s)." % [sized.nodes.size(), sized.edges.size()])
+		_show(sized, true)
+	elif step.contains("big2"): _show(enlarged(_service.blueprint.graph, 2), true)
 	elif step.contains("big4"): _show(enlarged(_service.blueprint.graph, 4), true)
 	elif _enlarged: _show(_service.blueprint.graph, false)
 	if step.contains("service_off"):
@@ -281,8 +425,10 @@ func _apply(step: String) -> void:
 
 func _show(graph: XREBlueprintGraph, enlarged_graph: bool) -> void:
 	_enlarged = enlarged_graph
+	var began := Time.get_ticks_usec()
 	_service.canvas.center_graph(graph)
 	_service.canvas.rebuild(graph)
+	print(_LOG_PREFIX, "graph lab: rebuilt %d block(s) in %.1f ms." % [graph.nodes.size(), (Time.get_ticks_usec() - began) / 1000.0])
 
 
 ## Hides the canvas's visible objects of the kind [param step] names, and logs how many.
@@ -329,7 +475,35 @@ func _cut_text() -> void:
 	print(_LOG_PREFIX, "graph lab: cut %d label(s)." % _cut.size())
 
 
+## Adds [param count] objects to the scene's world on the rendering server only, in a lattice around the scene's
+## host with a clear space about it for the graph: separate instances of one box, as a scene of that many meshes
+## would be, so that a good part of them is in the view from wherever the head is. No node, nothing saved.
+func _add_scene_objects(count: int) -> void:
+	if count <= 0: return
+	var host := _host()
+	if host == null: return
+	if _scene_mesh == null:
+		_scene_mesh = BoxMesh.new()
+		_scene_mesh.size = Vector3.ONE * SCENE_OBJECT
+		_scene_mesh.material = StandardMaterial3D.new()
+	var scenario := host.get_world_3d().scenario
+	var side := ceili(pow(float(count) * 1.5, 1.0 / 3.0)) + 2
+	var centre := host.global_position + Vector3.UP * 1.5
+	var corner := centre - Vector3.ONE * (side * SCENE_SPACING * 0.5)
+	for index: int in side * side * side:
+		var place := corner + Vector3(index % side, index / side % side, index / (side * side)) * SCENE_SPACING
+		if place.distance_to(centre) < SCENE_CLEAR: continue
+		var rid := RenderingServer.instance_create2(_scene_mesh.get_rid(), scenario)
+		RenderingServer.instance_set_transform(rid, Transform3D(Basis.IDENTITY, place))
+		_scene_rids.append(rid)
+		if _scene_rids.size() >= count: break
+	print(_LOG_PREFIX, "graph lab: scene of %d object(s) added." % _scene_rids.size())
+
+
 func _restore() -> void:
+	for rid: RID in _scene_rids:
+		RenderingServer.free_rid(rid)
+	_scene_rids.clear()
 	for label: Label3D in _cut:
 		if is_instance_valid(label): label.alpha_cut = Label3D.ALPHA_CUT_DISABLED
 	_cut.clear()

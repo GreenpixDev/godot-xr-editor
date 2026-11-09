@@ -16,15 +16,23 @@ this PC, over USB with adb (docs/decisions.md, D-018).
    answers by opening the editor in VR once the panel has scanned the project
    (XREStandaloneLauncher): on --scene if given, with the --engine arguments
    for its engine and the arguments after -- for the plugin in VR.
-3. Shows the editor's output (logcat, tag godot) and keeps the whole logcat in
+3. With --gpu-profile (D-157, steps 1.2 and 1.4): before the editor starts, puts the
+   Meta runtime's detailed GPU profiling mode on for the package (ovrgpuprofiler -e),
+   which adds about 10 % to the GPU's time; every graph lab step then gets a render
+   stage trace (ovrgpuprofiler -t, its output in logs/quest_<time>_gpu_<n>_<step>.txt) a few seconds
+   into it, and at the end the mode goes off again (-d). The metrics' lists, the mode's
+   state and whether the package is debuggable (per-draw -x needs that) go in
+   logs/quest_<time>_gpu_info.txt.
+4. Shows the editor's output (logcat, tag godot) and keeps the whole logcat in
    logs/quest_<time>.log, until Ctrl+C. The engine's error that repeats every
    frame in the editor (sync_action_sets, D-004) stays out of the console.
 
-Usage: py scripts/quest.py [--scene res://...] [--engine=ARG ...] [--no-deploy] [--no-open] [--no-log] [-- arguments for the plugin in VR]
+Usage: py scripts/quest.py [--scene res://...] [--engine=ARG ...] [--no-deploy] [--no-open] [--no-log] [--gpu-profile [--gpu-trace-delay S] [--gpu-trace-sec S] [--gpu-trace-args "-v"]] [-- arguments for the plugin in VR]
   py scripts/quest.py
   py scripts/quest.py --scene res://benchmarks/play_check.tscn
   py scripts/quest.py --engine=--benchmark   (the editor's startup phases, in the log)
   py scripts/quest.py -- --xre-benchmark
+  py scripts/quest.py --gpu-profile --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base
 Needs the Godot editor from the Horizon Store in the headset (4.7.x), USB
 debugging allowed, and adb: ADB, adb on PATH, the Android SDK's, or SideQuest's.
 Standard library only.
@@ -33,12 +41,15 @@ Standard library only.
 from __future__ import annotations
 
 import argparse
+import atexit
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -59,6 +70,8 @@ DESKTOP_NATIVE = (".dll", ".pdb", ".ilk", ".exp", ".lib", ".dylib", ".TMP")
 STAGE = REPO / "build" / "quest" / REPO.name
 # Console lines: Godot's output, and the editor's processes starting, dying and crashing.
 SHOWN = re.compile(r" godot\s+: | Fatal signal |Start proc \d+:" + re.escape(PACKAGE) + "|Process " + re.escape(PACKAGE))
+# The graph lab's line that starts a step (benchmarks/quest_lab_steps.py reads the same).
+LAB_STEP = re.compile(r"XR Editor: graph lab: ([a-z_0-9]+)\s*$")
 # Printed by the engine every frame in the editor (D-004).
 NOISE = ('Condition "active_sets.is_empty()" is true', "at: sync_action_sets (")
 
@@ -181,10 +194,80 @@ def open_in_vr(adb: Adb, scene: str | None, engine_args: list[str], plugin_args:
     print("quest: opening the project in the headset; the editor in VR follows once the panel has loaded it")
 
 
-def follow_log(adb: Adb) -> int:
+class GpuProfiler:
+    """Meta's ovrgpuprofiler (D-157, steps 1.2 and 1.4): detailed mode for the package, a render stage trace
+    inside every graph lab step, files next to the log. The mode is on from before the editor starts until
+    the end of the run; its instrumentation adds about 10 % to the GPU's time, so the VrApi lines of such a
+    run are compared with each other, not with a run without it (docs/performance_plan.md)."""
+
+    def __init__(self, adb: Adb, stem: Path, delay: float, seconds: float, trace_args: str) -> None:
+        self.adb = adb
+        self.stem = stem
+        self.delay = delay
+        self.seconds = seconds
+        self.trace_args = shlex.split(trace_args)
+        self.count = 0
+        self.busy = threading.Lock()
+        self.enabled = False
+
+    def write(self, name: str, text: str) -> None:
+        path = self.stem.with_name(f"{self.stem.name}_{name}.txt")
+        path.write_text(text, encoding="utf-8")
+        print(f"quest: gpu profiler: {path.relative_to(REPO).as_posix()}")
+
+    def info(self) -> None:
+        """Before the editor starts: what the tool and the package can do."""
+        out = []
+        for title, command in (("ovrgpuprofiler -i", "ovrgpuprofiler -i"), ("real-time metrics", "ovrgpuprofiler -m"),
+                               ("render stage metrics", "ovrgpuprofiler -m -t"), ("per-draw metrics", "ovrgpuprofiler -x -m")):
+            out.append(f"## {title}\n{self.adb.run('shell', command, check=False).strip()}\n")
+        package = self.adb.shell(f"dumpsys package {PACKAGE}")
+        flags = [line.strip() for line in package.splitlines() if "flags=" in line or "pkgFlags=" in line]
+        out.append("## package flags (DEBUGGABLE is needed for per-draw metrics, -x)\n" + "\n".join(flags) + "\n")
+        self.write("info", "\n".join(out))
+        debuggable = any("DEBUGGABLE" in line for line in flags)
+        print(f"quest: {PACKAGE} is {'' if debuggable else 'not '}debuggable" + ("" if debuggable else "; per-draw traces (-x) will fail"))
+
+    def enable(self) -> None:
+        print(self.adb.run("shell", f"ovrgpuprofiler -e {PACKAGE}", check=False).strip())
+        self.enabled = True
+        atexit.register(self.disable)
+        print(f"quest: gpu profiler: detailed mode on for {PACKAGE}: the app starts in it, about 10 % more GPU time")
+
+    def disable(self) -> None:
+        if not self.enabled:
+            return
+        self.enabled = False
+        self.adb.run("shell", "ovrgpuprofiler -d", check=False)
+        print("quest: gpu profiler: detailed mode off (an app already running keeps it until it restarts)")
+
+    def step_started(self, step: str) -> None:
+        threading.Thread(target=self.trace, args=(step,), daemon=True).start()
+
+    def trace(self, step: str) -> None:
+        time.sleep(self.delay)
+        if not self.busy.acquire(blocking=False):
+            print(f"quest: gpu profiler: still tracing, no trace in {step}")
+            return
+        try:
+            self.count += 1
+            started = time.strftime("%H:%M:%S")
+            command = f"ovrgpuprofiler -t{self.seconds:g} " + " ".join(shlex.quote(arg) for arg in self.trace_args)
+            result = self.adb.run("shell", command, check=False)
+            self.write(f"gpu_{self.count:02d}_{step}", f"# {command}\n# step {step}, started {started}, {self.delay:g} s after the step's line\n{result}")
+        finally:
+            self.busy.release()
+
+
+def log_stem() -> Path:
+    """The log's path without its extension: the profiler's files go beside it."""
+    return REPO / "logs" / f"quest_{time.strftime('%Y-%m-%dT%H-%M-%S')}"
+
+
+def follow_log(adb: Adb, stem: Path, profiler: GpuProfiler | None = None) -> int:
     logs = REPO / "logs"
     logs.mkdir(exist_ok=True)
-    log = logs / f"quest_{time.strftime('%Y-%m-%dT%H-%M-%S')}.log"
+    log = stem.with_suffix(".log")
     print(f"quest: log {log.relative_to(REPO).as_posix()}; Ctrl+C to stop")
     process = subprocess.Popen([adb.path, "logcat", "-v", "threadtime"], stdout=subprocess.PIPE)
     try:
@@ -193,6 +276,8 @@ def follow_log(adb: Adb) -> int:
             for raw in process.stdout:
                 file.write(raw)
                 line = raw.decode("utf-8", errors="replace").rstrip()
+                if profiler is not None and (step := LAB_STEP.search(line)):
+                    profiler.step_started(step.group(1))
                 if SHOWN.search(line) and not any(noise in line for noise in NOISE):
                     print(line[6:] if len(line) > 6 else line)
     except KeyboardInterrupt:
@@ -217,6 +302,12 @@ def main() -> int:
     parser.add_argument("--no-deploy", action="store_true", help="don't copy the project")
     parser.add_argument("--no-open", action="store_true", help="don't (re)open the editor")
     parser.add_argument("--no-log", action="store_true", help="don't follow the log")
+    parser.add_argument("--gpu-profile", action="store_true",
+                        help="ovrgpuprofiler: detailed mode for the editor's package from before it starts, a render stage trace in every graph lab step, files beside the log")
+    parser.add_argument("--gpu-trace-delay", type=float, default=5.0, metavar="S", help="seconds into a step before its trace (default 5)")
+    parser.add_argument("--gpu-trace-sec", type=float, default=1.0, metavar="S", help="length of a trace (default 1)")
+    parser.add_argument("--gpu-trace-args", default="-v", metavar="ARGS",
+                        help="more arguments of ovrgpuprofiler -t, e.g. \"-v\" (default), \"-l\", or \"-x=1,2,3,4\" for per-draw metrics")
     options = parser.parse_args(args)
     if options.scene and not options.scene.startswith("res://"):
         print("quest: --scene takes a res:// path", file=sys.stderr)
@@ -231,13 +322,29 @@ def main() -> int:
         return 1
     adb = Adb(path)
     check_headset(adb)
+    stem = log_stem()
+    profiler: GpuProfiler | None = None
+    if options.gpu_profile:
+        if options.no_log:
+            print("quest: --gpu-profile needs the log: the traces follow its lines", file=sys.stderr)
+            return 2
+        profiler = GpuProfiler(adb, stem, options.gpu_trace_delay, options.gpu_trace_sec, options.gpu_trace_args)
+        profiler.info()
     if not options.no_deploy:
         deploy(adb)
-    if not options.no_open:
-        open_in_vr(adb, options.scene, options.engine, plugin_args)
-    if not options.no_log:
-        return follow_log(adb)
-    return 0
+    if profiler is not None:
+        profiler.enable()
+        if options.no_open:
+            print("quest: --no-open: restart the editor in the headset for the detailed mode to take hold")
+    try:
+        if not options.no_open:
+            open_in_vr(adb, options.scene, options.engine, plugin_args)
+        if not options.no_log:
+            return follow_log(adb, stem, profiler)
+        return 0
+    finally:
+        if profiler is not None:
+            profiler.disable()
 
 
 if __name__ == "__main__":

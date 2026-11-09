@@ -220,6 +220,22 @@ py scripts/quest.py --engine=--rendering-method --engine=gl_compatibility --engi
 
 ## Как мерить
 
+Подготовка этапа 1 плана ([performance_plan.md](performance_plan.md)) сделана 2026-11-09, прогон на шлеме и ПК — следующий шаг. Порядок прогонов на шлеме (после `scripts/build_gdextension.sh android`):
+
+```bash
+py scripts/quest.py --gpu-profile --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base
+```
+
+```bash
+py scripts/quest.py --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress
+```
+
+- Первый — база GPU (D-155) с таблицей по вьюпортам и трассой `ovrgpuprofiler` на каждый шаг; **VrApi этого прогона на ~10 % выше** (подробный режим профайлера), сравнивать его только внутри прогона, эталон без профайлера — D-155. Второй — кривые «мс от размера» (граф 100/250/500 блоков, сцена 1k/5k/20k), без профайлера.
+- Разбор обоих: `py benchmarks/quest_lab_steps.py logs/quest_<time>.log` (таблица шагов и таблица вьюпортов: время рендера, вызовы, объекты, примитивы; `--no-views` — без второй). На ПК та же команда читает `logs/editor_sim_*.log` (строки `graph lab: frames`).
+- На ПК: `py scripts/xr_editor.py --runtime sim --hide-ui res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress`. Время рендера вьюпортов на ПК нулевое (причина не найдена), счётчики настоящие; Forward+ склеивает одинаковые меши (автоинстансинг), поэтому вызовов у сцены из одинаковых кубов на ПК мало, на Mobile их будет по числу видимых объектов. Результат пробного прогона: [benchmarks/results/lab_stress_sim_2026-11-09.md](../benchmarks/results/lab_stress_sim_2026-11-09.md).
+- Отчёты привязаны к шагу: последний отчёт шага содержит только его кадры (период отчёта 5 с делит длину шага; в конце шага отчёт выдаётся принудительно).
+- Остаётся от 1.x: сборка Tracy (1.5) и Perfetto (1.6) — отдельная работа, прогонов не требует; Compatibility на Android не пишет время GPU вьюпортов — там `ovrgpuprofiler` и VrApi.
+
 Команды (adb берётся из `ADB`, автор просит SideQuest):
 
 ```bash
