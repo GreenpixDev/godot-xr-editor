@@ -26,7 +26,8 @@ nodes = Array[Dictionary]([{
 },
 "position": Vector2(-219.50381, 105.61734),
 "property_type": 1,
-"vr_depth": 0.8831382
+"vr_depth": 0.8831382,
+"vr_heading": "member"
 }, {
 "function": {
 "advanced_shown": false,
@@ -36,7 +37,7 @@ nodes = Array[Dictionary]([{
 "key": "seconds",
 "label": "Seconds",
 "name": "seconds",
-"positive": true,
+"non_negative": true,
 "type": 3
 }, {
 "class_name": "XREBlueprintRun",
@@ -70,8 +71,8 @@ nodes = Array[Dictionary]([{
 "params": {
 "seconds": 1.0
 },
-"position": Vector2(-884.3643, 18.612045),
-"vr_depth": 0.711759,
+"position": Vector2(-880.4487, -41.682953),
+"vr_depth": 0.7888864,
 "vr_rotation": Vector3(0, 0.5235988, 0)
 }, {
 "function": {
@@ -82,7 +83,7 @@ nodes = Array[Dictionary]([{
 "key": "seconds",
 "label": "Seconds",
 "name": "seconds",
-"positive": true,
+"non_negative": true,
 "type": 3
 }, {
 "class_name": "XREBlueprintRun",

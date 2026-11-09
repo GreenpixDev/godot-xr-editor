@@ -308,7 +308,7 @@ func _bp_value15(run: XREBlueprintRun = null) -> Variant:
 
 # Multiply #16
 func _bp_value16(run: XREBlueprintRun = null) -> Variant:
-	return _bp_operate("multiply", _bp_value17(run), _bp_value19(run), run, 16)
+	return _bp_operate("multiply", 0.0, _bp_value19(run), run, 16)
 
 
 # Sin #17
