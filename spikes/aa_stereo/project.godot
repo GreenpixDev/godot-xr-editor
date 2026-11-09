@@ -1,0 +1,9 @@
+config_version=5
+
+[application]
+
+config/name="AA probe"
+
+[xr]
+
+shaders/enabled=true
