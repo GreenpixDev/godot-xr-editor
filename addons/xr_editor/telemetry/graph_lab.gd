@@ -69,8 +69,30 @@ const VIEWS_FLAG := "--xre-graph-lab-views"
 ## Distance between the stress scene's objects, and their size, in metres.
 const SCENE_SPACING := 0.6
 const SCENE_OBJECT := 0.3
-## Radius round the scene's host that the stress scene leaves empty, in metres.
-const SCENE_CLEAR := 3.5
+## With [constant CLI_FLAG] after [code]--[/code]: no measuring, only the views. Each step moves the user to where the whole
+## scene and the open graph are in view, waits, and saves a picture of what a camera at the head sees there to
+## [constant SHOT_DIR] (D-157): the check of the framing that comes before a measuring run.
+const POSE_FLAG := "--xre-graph-lab-pose"
+const POSE_STEPS: Array[String] = [
+	"closed", "open", "open_graph100", "open_graph250", "open_graph500", "closed_scene1k", "closed_scene5k", "open_scene5k", "closed",
+]
+## Seconds a step of [constant POSE_STEPS] lasts.
+const POSE_STEP_SEC := 6.0
+## Where the pictures go, and their side in pixels.
+const SHOT_DIR := "res://benchmarks/shots"
+const SHOT_SIZE := 960
+## Part of the field of view both eyes share that the framed boxes may use, so that no edge is cut.
+const VIEW_FILL := 0.8
+## Metres the head stands above the middle of the framed boxes.
+const VIEW_LIFT := 0.3
+## Distance a step is framed from at least, and the steps it grows by until everything fits, in metres.
+const VIEW_MIN_DISTANCE := 1.2
+const VIEW_STEP := 0.05
+## Longest diagonal of a part of the scene that counts for the framing, in metres: the ground plane doesn't.
+const SCENE_PART_MAX := 12.0
+## How far behind the scene's host the stress scene's nearest objects stand, and the height of its lowest, in metres.
+const SCENE_NEAR := 3.0
+const SCENE_BASE := 0.1
 ## Seconds a step of [constant BASE_STEPS] lasts.
 const BASE_STEP_SEC := 10.0
 ## Foveation of those steps, as [code]graph_runtime_lab[/code] has it: it doesn't follow the load.
@@ -120,6 +142,8 @@ var _views_on := false
 var _views: Dictionary[int, _View] = {}
 var _scene_rids: Array[RID] = []
 var _scene_mesh: BoxMesh
+var _shots := false
+var _shot_taken := false
 
 
 func _init(service: XREBlueprints, document: XREDocument) -> void:
@@ -229,6 +253,9 @@ func _process(delta: float) -> void:
 	if _report_left <= 0.0 and _started:
 		_report()
 	_left -= delta
+	if _shots and _started and not _shot_taken and _left <= _step_sec * 0.5:
+		_shot_taken = true
+		_snap(_steps[_step])
 	if _left > 0.0: return
 	_left = _step_sec
 	# What the last frames of the step did, if the timer hasn't just said it: a report is then the step's own tail.
@@ -244,7 +271,9 @@ func _process(delta: float) -> void:
 		if OS.get_cmdline_user_args().has(BASE_FLAG): _start_base()
 		if OS.get_cmdline_user_args().has(STRESS_FLAG): _start_stress()
 		if OS.get_cmdline_user_args().has(VIEWS_FLAG): _views_on = true
+		if OS.get_cmdline_user_args().has(POSE_FLAG): _start_pose()
 	_step += 1
+	_shot_taken = false
 	if _step >= _steps.size():
 		_restore()
 		if _steps == BASE_STEPS and not OS.get_cmdline_user_args().has(FAST_FLAG):
@@ -278,6 +307,15 @@ func _start_stress() -> void:
 	_left = _step_sec
 	_views_on = true
 	_fix_foveation()
+
+
+## Sets up the steps of the framing check.
+func _start_pose() -> void:
+	_steps = POSE_STEPS
+	_step_sec = 1.0 if OS.get_cmdline_user_args().has(FAST_FLAG) else POSE_STEP_SEC
+	_left = _step_sec
+	_shots = true
+	print(_LOG_PREFIX, "graph lab: framing with tangents ", _view_tangents())
 
 
 ## Logs the renderer, and has foveation stay at one level whatever the load.
@@ -399,6 +437,7 @@ func _apply(step: String) -> void:
 	_add_scene_objects(scene_objects(step))
 	if step.begins_with("closed"):
 		if _graph_open(): _service.close_graph()
+		_frame_view()
 		_editor_off(step)
 		return
 	if not _graph_open():
@@ -412,6 +451,7 @@ func _apply(step: String) -> void:
 	elif step.contains("big2"): _show(enlarged(_service.blueprint.graph, 2), true)
 	elif step.contains("big4"): _show(enlarged(_service.blueprint.graph, 4), true)
 	elif _enlarged: _show(_service.blueprint.graph, false)
+	_frame_view()
 	if step.contains("service_off"):
 		_service.set_process(false)
 		_stopped.append(_service)
@@ -421,6 +461,109 @@ func _apply(step: String) -> void:
 	if step.contains("_off"): _hide_kind(step)
 	if step.contains("text_cut"): _cut_text()
 	_editor_off(step)
+
+
+## Moves the rig, and with it the user, to where the whole scene and the open graph are in view: looking at the middle of
+## their boxes from the side the graph faces, upright, from as near as everything's corners fit in the field of view both
+## eyes share. The graph and the scene stay where they are, and so does the way the user's head is turned in the rig:
+## the rig turns to make the camera look right.
+func _frame_view() -> void:
+	var rig := _service.get("_rig") as XRERig
+	var workspace := _service.get("_workspace") as Node3D
+	if rig == null or rig.camera == null or workspace == null: return
+	var scene_box := _box_of(_document.get_scene_root(), SCENE_PART_MAX)
+	var graph_box := _box_of(_service.canvas, INF) if _graph_open() else AABB()
+	var box := scene_box
+	if graph_box.size != Vector3.ZERO: box = graph_box if scene_box.size == Vector3.ZERO else scene_box.merge(graph_box)
+	if box.size == Vector3.ZERO: return
+	var back := _view_back()
+	var centre := box.get_center()
+	var tangents := _view_tangents()
+	var distance := VIEW_MIN_DISTANCE
+	var standing := centre + back * distance + Vector3.UP * VIEW_LIFT
+	var gaze := Basis.looking_at(centre - standing, Vector3.UP)
+	for _try: int in 600:
+		standing = centre + back * distance + Vector3.UP * VIEW_LIFT
+		gaze = Basis.looking_at(centre - standing, Vector3.UP)
+		if _fits(box, standing, gaze, tangents): break
+		distance += VIEW_STEP
+	var inside := rig.global_transform.affine_inverse() * rig.camera.global_transform
+	var turned := (gaze * inside.basis.inverse()).orthonormalized()
+	rig.global_transform = Transform3D(turned, standing - turned * inside.origin)
+	_service.canvas.face_user(rig.camera.global_position)
+	print(_LOG_PREFIX, "graph lab: view of scene %s and graph %s from %.2f m, tangents %.2f x %.2f." % [scene_box, graph_box, distance, tangents.x, tangents.y])
+
+
+## Whether all corners of [param box] are in the view of a camera at [param at] turned by [param gaze].
+func _fits(box: AABB, at: Vector3, gaze: Basis, tangents: Vector2) -> bool:
+	var back := gaze.inverse()
+	for corner: int in 8:
+		var point := back * (box.get_endpoint(corner) - at)
+		var depth := -point.z
+		if depth < 0.05 or absf(point.x) > tangents.x * depth or absf(point.y) > tangents.y * depth: return false
+	return true
+
+
+## The box, in the world, of the visible geometry under [param root] whose parts are not longer than [param limit] across.
+func _box_of(root: Node, limit: float) -> AABB:
+	var box := AABB()
+	var found := false
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		stack.append_array(node.get_children())
+		var item := node as GeometryInstance3D
+		if item == null or not item.is_visible_in_tree(): continue
+		var part := item.global_transform * item.get_aabb()
+		if part.size.length() > limit: continue
+		box = box.merge(part) if found else part
+		found = true
+	return box
+
+
+## The tangents of the half angles, horizontal and vertical, of the field of view both eyes share, taken by
+## [constant VIEW_FILL]; 40 degrees where there are no eyes (a window).
+func _view_tangents() -> Vector2:
+	var xr := XRServer.primary_interface
+	var low := Vector2(0.84, 0.84)
+	if xr != null and xr.get_view_count() > 0:
+		low = Vector2.INF
+		for view: int in xr.get_view_count():
+			var projection := xr.get_projection_for_view(view, 1.0, 0.1, 100.0)
+			var focal := Vector2(absf(projection.x.x), absf(projection.y.y))
+			if focal.x < 0.0001 or focal.y < 0.0001: continue
+			var shift := Vector2(projection.z.x, projection.z.y)
+			low = low.min(Vector2(minf(absf(shift.x + 1.0), absf(shift.x - 1.0)) / focal.x, minf(absf(shift.y + 1.0), absf(shift.y - 1.0)) / focal.y))
+		if not is_finite(low.x) or not is_finite(low.y): low = Vector2(0.84, 0.84)
+	return low * VIEW_FILL
+
+
+## Saves a picture of what a camera at the head sees, as wide as the framing counts on, to [constant SHOT_DIR].
+func _snap(label: String) -> void:
+	var rig := _service.get("_rig") as XRERig
+	if rig == null or rig.camera == null: return
+	var view := SubViewport.new()
+	view.size = Vector2i(SHOT_SIZE, SHOT_SIZE)
+	view.world_3d = rig.get_viewport().world_3d
+	view.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var camera := Camera3D.new()
+	camera.cull_mask = rig.camera.cull_mask
+	camera.keep_aspect = Camera3D.KEEP_WIDTH
+	camera.fov = rad_to_deg(2.0 * atan(_view_tangents().x / VIEW_FILL))
+	view.add_child(camera)
+	add_child(view)
+	camera.global_transform = rig.camera.global_transform
+	camera.current = true
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var folder := ProjectSettings.globalize_path(SHOT_DIR)
+	DirAccess.make_dir_recursive_absolute(folder)
+	# The editor would import the pictures, and give two copies of one (a pulled one) the same uid.
+	if not FileAccess.file_exists(folder + "/.gdignore"): FileAccess.open(folder + "/.gdignore", FileAccess.WRITE)
+	var path := "%s/lab_%s.png" % [folder, label]
+	var saved := view.get_texture().get_image().save_png(path)
+	print(_LOG_PREFIX, "graph lab: picture %s %s." % [path, "saved" if saved == OK else "not saved (%d)" % saved])
+	view.queue_free()
 
 
 func _show(graph: XREBlueprintGraph, enlarged_graph: bool) -> void:
@@ -475,9 +618,10 @@ func _cut_text() -> void:
 	print(_LOG_PREFIX, "graph lab: cut %d label(s)." % _cut.size())
 
 
-## Adds [param count] objects to the scene's world on the rendering server only, in a lattice around the scene's
-## host with a clear space about it for the graph: separate instances of one box, as a scene of that many meshes
-## would be, so that a good part of them is in the view from wherever the head is. No node, nothing saved.
+## Adds [param count] objects to the scene's world on the rendering server only: separate instances of one box, as a
+## scene of that many meshes would be, in a cube of a lattice behind the scene's host as the views see it ([method _view_back]),
+## [constant SCENE_NEAR] metres beyond it and standing on the ground, so that all of them are in the view of the head that
+## [method _frame_view] puts in front of the host. No node, nothing saved.
 func _add_scene_objects(count: int) -> void:
 	if count <= 0: return
 	var host := _host()
@@ -487,17 +631,25 @@ func _add_scene_objects(count: int) -> void:
 		_scene_mesh.size = Vector3.ONE * SCENE_OBJECT
 		_scene_mesh.material = StandardMaterial3D.new()
 	var scenario := host.get_world_3d().scenario
-	var side := ceili(pow(float(count) * 1.5, 1.0 / 3.0)) + 2
-	var centre := host.global_position + Vector3.UP * 1.5
-	var corner := centre - Vector3.ONE * (side * SCENE_SPACING * 0.5)
-	for index: int in side * side * side:
-		var place := corner + Vector3(index % side, index / side % side, index / (side * side)) * SCENE_SPACING
-		if place.distance_to(centre) < SCENE_CLEAR: continue
+	var side := ceili(pow(float(count), 1.0 / 3.0))
+	var back := _view_back()
+	var right := Vector3.UP.cross(back)
+	var origin := Vector3(host.global_position.x, SCENE_BASE, host.global_position.z)
+	for index: int in count:
+		var cell := Vector3(index % side, index / side % side, index / (side * side))
+		var place := origin + right * ((cell.x - side * 0.5) * SCENE_SPACING) + Vector3.UP * (cell.y * SCENE_SPACING) - back * (SCENE_NEAR + cell.z * SCENE_SPACING)
 		var rid := RenderingServer.instance_create2(_scene_mesh.get_rid(), scenario)
 		RenderingServer.instance_set_transform(rid, Transform3D(Basis.IDENTITY, place))
 		_scene_rids.append(rid)
-		if _scene_rids.size() >= count: break
 	print(_LOG_PREFIX, "graph lab: scene of %d object(s) added." % _scene_rids.size())
+
+
+## The horizontal direction from the scene to the head's side: the way the graph's front faces.
+func _view_back() -> Vector3:
+	var workspace := _service.get("_workspace") as Node3D
+	if workspace == null: return Vector3.BACK
+	var back := Vector3(workspace.global_basis.z.x, 0.0, workspace.global_basis.z.z)
+	return back.normalized() if back.length_squared() > 0.0001 else Vector3.BACK
 
 
 func _restore() -> void:

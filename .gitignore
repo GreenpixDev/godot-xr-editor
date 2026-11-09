@@ -31,3 +31,6 @@ desktop.ini
 
 # Python bytecode (scripts/ import each other)
 __pycache__/
+
+# Pictures of the graph lab's framing check
+benchmarks/shots/
