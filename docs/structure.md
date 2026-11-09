@@ -68,7 +68,7 @@ scripts/quest.py           автономный шлем по USB (adb): коп�
 .run/XR Editor Mirror.run.xml  то же с --mirror: со шлемом его вид ещё и в окне на столе (D-118)
 scripts/build_gdextension.sh  сборка нативной части: Windows (MSVC) или android (NDK); CMake и Ninja из Visual Studio
 docs/                      план и дневник решений (на русском)
-spikes/                    отдельные проекты спайков, не часть плагина (.gdignore): horizon_probe/ — редактор на Horizon OS (D-017), с сырыми логами
+spikes/                    отдельные проекты спайков, не часть плагина (.gdignore): horizon_probe/ — редактор на Horizon OS (D-017), с сырыми логами; comp_layer/ — панель на композиционном слое против панели в кадре (D-156)
 ```
 
 Модули по мере надобности — не заводить пустыми папками: в аддоне `logic_graph/`, `telemetry/`; в корне `study/` (протокол, анкеты, анализ).
