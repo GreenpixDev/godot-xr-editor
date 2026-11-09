@@ -15,8 +15,13 @@ extends Node
 const CLI_FLAG := "--xre-graph-lab"
 ## With [constant CLI_FLAG] on a standalone headset: goes straight to [constant GAME_SCENE] in the game process, as Play does (D-018).
 const GAME_FLAG := "--xre-graph-lab-game"
+## As [constant GAME_FLAG], straight to Compatibility: for when that renderer's part of the game's run didn't start (D-155).
+const COMPAT_FLAG := "--xre-graph-lab-compat"
 ## The canvas alone, measured outside the editor.
 const GAME_SCENE := "res://benchmarks/graph_runtime_lab.tscn"
+## User argument that tells [constant GAME_SCENE] it runs on Compatibility, and what its steps' names start with there.
+const COMPAT_ARG := "--xre-lab-compat"
+const COMPAT_STEP_PREFIX := "compat_"
 ## Seconds each step lasts.
 const STEP_SEC := 20.0
 ## Seconds the headset must have been on before the first step.
@@ -35,10 +40,24 @@ const STEPS: Array[String] = [
 ## With [constant EDITOR_FLAG] after [code]--[/code]: what the editor and the plugin cost, with the graph open and closed.
 const EDITOR_FLAG := "--xre-graph-lab-editor"
 const EDITOR_STEPS: Array[String] = [
-	"closed", "closed_tree_off", "closed", "open", "open_errors_off", "open", "open_log_off", "open", "open_viewports_off", "open", "open_editor_off",
+	"closed", "closed_tree_off", "closed", "open", "open_errors_off", "open", "open_log_off", "open", "open_views_off", "open", "open_editor_off",
 	"open", "open_panels_off", "open", "open_manipulator_off", "open", "open_plugin_off",
 	"open", "open_tree_off", "open", "open_physics_off", "open", "open_tree_off", "open", "closed",
 ]
+## With [constant CLI_FLAG] after [code]--[/code]: what the GPU's base in the editor is made of (D-155), foveation
+## fixed. The editor then opens itself again on Compatibility for [constant BASE_COMPAT_STEPS].
+const BASE_FLAG := "--xre-graph-lab-base"
+const BASE_STEPS: Array[String] = [
+	"closed", "closed_vr_off", "closed_views_off", "closed_root_off", "closed_lean", "closed_scene_off", "closed_empty", "closed",
+	"open", "open_dimmer_off", "open_ui_off", "open_all_off", "open_views_off", "open_root_off", "open_lean", "open", "open_big2", "closed",
+]
+const BASE_COMPAT_STEPS: Array[String] = ["closed", "closed_vr_off", "closed_empty", "open", "open_ui_off", "open_all_off", "open_big2", "open", "closed"]
+## Seconds a step of [constant BASE_STEPS] lasts.
+const BASE_STEP_SEC := 10.0
+## Foveation of those steps, as [code]graph_runtime_lab[/code] has it: it doesn't follow the load.
+const BASE_FOVEATION := 3
+## User argument (after [code]--[/code]): one second a step, and no second renderer, for a check without a headset.
+const FAST_FLAG := "--xre-lab-fast"
 ## Scale of the render target in the scaled steps.
 const SCALE := 0.7
 
@@ -66,6 +85,10 @@ var _paused: Array[Node] = []
 var _paused_physics: Array[Node] = []
 var _modes: Dictionary[Node, Node.ProcessMode] = {}
 var _updates: Dictionary[SubViewport, SubViewport.UpdateMode] = {}
+var _step_sec := STEP_SEC
+var _compat := false
+var _root_stopped := false
+var _rendering_changed := false
 
 
 func _init(service: XREBlueprints, document: XREDocument) -> void:
@@ -108,12 +131,32 @@ static func enlarged(graph: XREBlueprintGraph, factor: int) -> XREBlueprintGraph
 	return result
 
 
+## Engine arguments that run a process on Compatibility.
+static func compat_engine_args() -> PackedStringArray:
+	return PackedStringArray(["--rendering-method", "gl_compatibility", "--rendering-driver", "opengl3"])
+
+
+## The command line of [constant GAME_SCENE] as a game, on Compatibility if [param compat], one second a step if [param fast].
+static func game_args(compat: bool, fast: bool) -> PackedStringArray:
+	var args := PackedStringArray(["--path", ProjectSettings.globalize_path("res://"), "--scene", GAME_SCENE])
+	if compat: args.append_array(compat_engine_args())
+	args = XREPlayMode.game_args(args)
+	var user := PackedStringArray()
+	if compat: user.append(COMPAT_ARG)
+	if fast: user.append("--xre-lab-fast")
+	if not user.is_empty():
+		args.append("--")
+		args.append_array(user)
+	return args
+
+
 func _process(delta: float) -> void:
 	if not _ready_to_start(): return
-	if OS.get_cmdline_user_args().has(GAME_FLAG):
+	var user_args := OS.get_cmdline_user_args()
+	if user_args.has(GAME_FLAG) or user_args.has(COMPAT_FLAG):
 		print(_LOG_PREFIX, "graph lab: leaving for the game process.")
 		set_process(false)
-		OS.create_instance(XREPlayMode.game_args(PackedStringArray(["--path", ProjectSettings.globalize_path("res://"), "--scene", GAME_SCENE])))
+		OS.create_instance(game_args(user_args.has(COMPAT_FLAG), false))
 		return
 	_measure()
 	_report_left -= delta
@@ -124,7 +167,7 @@ func _process(delta: float) -> void:
 		_report_frames()
 	_left -= delta
 	if _left > 0.0: return
-	_left = STEP_SEC
+	_left = _step_sec
 	if not _started:
 		_started = true
 		var xr := _interface()
@@ -132,14 +175,36 @@ func _process(delta: float) -> void:
 		if OS.get_cmdline_user_args().has(EDITOR_FLAG):
 			_steps = EDITOR_STEPS
 			_log_inventory()
+		if OS.get_cmdline_user_args().has(BASE_FLAG): _start_base()
 	_step += 1
 	if _step >= _steps.size():
 		_restore()
+		if _steps == BASE_STEPS and not OS.get_cmdline_user_args().has(FAST_FLAG):
+			print(_LOG_PREFIX, "graph lab: leaving for Compatibility.")
+			set_process(false)
+			XREStandalone.open_editor_in_vr(PackedStringArray([CLI_FLAG, BASE_FLAG, COMPAT_ARG]), _document.get_scene_root().scene_file_path, compat_engine_args())
+			return
 		print(_LOG_PREFIX, "graph lab: done.")
+		if OS.get_cmdline_user_args().has(FAST_FLAG): get_tree().quit()
 		queue_free()
 		return
-	print(_LOG_PREFIX, "graph lab: ", _steps[_step])
+	print(_LOG_PREFIX, "graph lab: ", COMPAT_STEP_PREFIX if _compat else "", _steps[_step])
 	_apply(_steps[_step])
+
+
+## Sets up the steps of what the GPU's base is made of.
+func _start_base() -> void:
+	var args := OS.get_cmdline_user_args()
+	_compat = args.has(COMPAT_ARG)
+	_steps = BASE_COMPAT_STEPS if _compat else BASE_STEPS
+	_step_sec = 1.0 if args.has(FAST_FLAG) else BASE_STEP_SEC
+	_left = _step_sec
+	print(_LOG_PREFIX, "graph lab: renderer ", RenderingServer.get_current_rendering_method(), " on ", RenderingServer.get_current_rendering_driver_name())
+	var xr := _interface()
+	if xr == null: return
+	xr.foveation_dynamic = false
+	xr.foveation_level = BASE_FOVEATION
+	print(_LOG_PREFIX, "graph lab: foveation %s, render target %s." % ["supported" if xr.is_foveation_supported() else "not supported", xr.get_render_target_size()])
 
 
 ## Adds this frame's render times of the VR view; the first call has the server measure them.
@@ -291,6 +356,12 @@ func _restore() -> void:
 	for viewport: SubViewport in _updates:
 		if is_instance_valid(viewport): viewport.render_target_update_mode = _updates[viewport]
 	_updates.clear()
+	if _root_stopped:
+		_root_stopped = false
+		RenderingServer.viewport_set_update_mode(get_tree().root.get_viewport_rid(), RenderingServer.VIEWPORT_UPDATE_WHEN_VISIBLE)
+	if _rendering_changed:
+		_rendering_changed = false
+		_set_scene_rendering(false, false, false)
 
 
 ## Applies what [param step] turns off of the editor and the plugin, and logs how much.
@@ -302,7 +373,17 @@ func _editor_off(step: String) -> void:
 		PhysicsServer2D.set_active(false)
 	if step.contains("panels_off"): _pause_tool("XREPanels")
 	if step.contains("manipulator_off"): _pause_tool("XREManipulator")
-	if step.contains("viewports_off"): _stop_viewports()
+	if step.contains("views_off"): _stop_viewports()
+	if step.contains("root_off"):
+		_root_stopped = true
+		RenderingServer.viewport_set_update_mode(get_tree().root.get_viewport_rid(), RenderingServer.VIEWPORT_UPDATE_DISABLED)
+	if step.contains("vr_off") or step.contains("empty"): _hide_vr(false)
+	if step.contains("ui_off"): _hide_vr(true)
+	if step.contains("dimmer_off"): _hide_node(_service.get("_dimmer") as Node3D)
+	var empty := step.contains("empty")
+	if empty or step.contains("lean") or step.contains("scene_off"):
+		_rendering_changed = true
+		_set_scene_rendering(empty or step.contains("lean"), empty or step.contains("scene_off"), empty)
 	if step.contains("editor_off") or step.contains("tree_off"): _stop_editor()
 	if step.contains("plugin_off") or step.contains("tree_off"): _stop_plugin(step.contains("tree_off"))
 	print(_LOG_PREFIX, "graph lab: stopped %d viewport(s), %d branch(es), %d script(s), %d physics script(s)." % [_updates.size(), _modes.size(), _paused.size(), _paused_physics.size()])
@@ -318,11 +399,51 @@ func _take_out_log() -> void:
 	_log_parent.remove_child(_log_dock)
 
 
-## The editor's own viewports stop updating: its 3D and 2D views and any others under its interface.
+## Hides what the VR layer draws, or, if [param keep_graph], all of it but the graph and what dims the scene behind it.
+func _hide_vr(keep_graph: bool) -> void:
+	var dimmer := _service.get("_dimmer") as Node
+	var count := 0
+	var stack: Array[Node] = [_service.get("_rig") as Node]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if keep_graph and (node == _service.canvas or node == dimmer): continue
+		stack.append_array(node.get_children())
+		if node is GeometryInstance3D and (node as GeometryInstance3D).visible:
+			_hide_node(node as Node3D)
+			count += 1
+	print(_LOG_PREFIX, "graph lab: hid %d object(s) of the VR layer." % count)
+
+
+func _hide_node(node: Node3D) -> void:
+	if node == null or not node.visible: return
+	node.visible = false
+	_stopped.append(node)
+
+
+## Turns off, or back on, the costs of the edited scene: sky and tonemapper if [param lean], its meshes if
+## [param meshes], its lights if [param lights]. On the rendering server only: the scene's nodes and resources stay as they are.
+func _set_scene_rendering(lean: bool, meshes: bool, lights: bool) -> void:
+	var stack: Array[Node] = [_document.get_scene_root()]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		stack.append_array(node.get_children())
+		if node is WorldEnvironment and (node as WorldEnvironment).environment != null:
+			var environment := (node as WorldEnvironment).environment
+			RenderingServer.environment_set_background(environment.get_rid(), RenderingServer.ENV_BG_COLOR if lean else environment.background_mode as RenderingServer.EnvironmentBG)
+			RenderingServer.environment_set_tonemap(environment.get_rid(), RenderingServer.ENV_TONE_MAPPER_LINEAR if lean else environment.tonemap_mode as RenderingServer.EnvironmentToneMapper, environment.tonemap_exposure, environment.tonemap_white)
+		elif node is Light3D:
+			var light := node as Light3D
+			RenderingServer.instance_set_visible(light.get_instance(), light.is_visible_in_tree() and not lights)
+		elif node is GeometryInstance3D:
+			var instance := node as GeometryInstance3D
+			RenderingServer.instance_set_visible(instance.get_instance(), instance.is_visible_in_tree() and not meshes)
+
+
+## Every viewport but the VR view stops updating: the editor's 3D and 2D views and the plugin's panels.
 func _stop_viewports() -> void:
-	for node: Node in EditorInterface.get_base_control().find_children("*", "SubViewport", true, false):
+	for node: Node in get_tree().root.find_children("*", "SubViewport", true, false):
 		var viewport := node as SubViewport
-		if viewport.render_target_update_mode == SubViewport.UPDATE_DISABLED: continue
+		if viewport == _service.get_viewport() or viewport.render_target_update_mode == SubViewport.UPDATE_DISABLED: continue
 		_updates[viewport] = viewport.render_target_update_mode
 		viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 

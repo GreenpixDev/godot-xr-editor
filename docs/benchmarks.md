@@ -17,7 +17,7 @@ py benchmarks/frametime_report.py benchmarks/results/frametime_<stamp>.csv  # с
 godot --path . --editor --xr-mode on --log-file logs/xr_handoff.log -- --xre-handoff  # замер передачи шлема игре и обратно
 godot --path . --editor --xr-mode off --log-file logs/shots.log res://benchmarks/play_check.tscn -- --xre-shot-blueprint-vr  # снимки графа GreenCube с головы в build/shots/ (с сохранёнными настройками Settings), редактор закрывается сам
 py scripts/xr_editor.py [сцена] -- --xre-session-frames  # покадровый замер (CPU, GPU) каждого отрезка, пока шлем у редактора: до игры и после каждого возврата; CSV в benchmarks/results/
-py scripts/quest.py --scene res://benchmarks/play_check.tscn -- --xre-graph-lab [--xre-graph-lab-editor | --xre-graph-lab-game]  # цена открытого графа по шагам (D-151, D-152): части холста; с -editor — части редактора и плагина (контроллеры держать в руках); с -game — холст в игровом процессе. Разбор: py benchmarks/quest_fps_report.py logs/quest_<time>.log
+py scripts/quest.py --scene res://benchmarks/play_check.tscn -- --xre-graph-lab [--xre-graph-lab-editor | --xre-graph-lab-game | --xre-graph-lab-compat | --xre-graph-lab-base]  # цена открытого графа по шагам (D-151, D-152, D-155): части холста; с -editor — части редактора и плагина (контроллеры держать в руках); с -game — база GPU, настройки и холст в игровом процессе, затем тот же процесс на Compatibility; с -compat — сразу Compatibility, если он не запустился сам; с -base — из чего состоит база GPU в самом редакторе, затем редактор на Compatibility. Разбор по шагам: py benchmarks/quest_lab_steps.py logs/quest_<time>.log
 ```
 
 ## Подробности основных команд

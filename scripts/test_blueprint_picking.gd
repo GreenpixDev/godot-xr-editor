@@ -876,6 +876,16 @@ func _test_lab_enlarged() -> void:
 			var kind := XREGraphLab.kind_of(node as GeometryInstance3D, _canvas)
 			kinds[kind] = kinds.get(kind, 0) + 1
 	_check(kinds.has("text_off") and kinds.has("wires_off") and (kinds.has("shader_off") or kinds.has("plain_off")), "the lab tells the canvas's kinds of object apart: %s" % kinds)
+	var kinds_off: Array[String] = ["ports_off", "shader_off", "plain_off", "text_off", "wires_off", "other_off"]
+	var hiding := 0
+	for step: String in XREGraphLab.EDITOR_STEPS + XREGraphLab.BASE_STEPS + XREGraphLab.BASE_COMPAT_STEPS:
+		for kind: String in kinds_off:
+			if step.contains(kind): hiding += 1
+	_check(hiding == 0, "the steps on the editor and its base don't hide a kind of the canvas's objects by a part of their names")
+	var game := XREGraphLab.game_args(false, false)
+	var compat := XREGraphLab.game_args(true, true)
+	_check(not game.has("--") and game.has("--xr-mode"), "the game's run needs no user arguments on the project's renderer")
+	_check(compat.find("--rendering-method") < compat.find("--") and compat.find("--xre-play") < compat.find("--") and compat.find(XREGraphLab.COMPAT_ARG) > compat.find("--"), "engine arguments go before --, the lab's after it")
 
 
 ## D-044, D-045: a port under the ray thickens one of its wires, which the height of
