@@ -27,7 +27,8 @@ plugin's native library: a second editor on this project starts without it,
 and without it VR doesn't work (docs/decisions.md, D-005). Unsaved changes in
 the editor closed are lost; --no-restart fails instead.
 
-Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--mirror] [--hide-ui] [--check] [--no-restart] [scene] [-- arguments for the plugin]
+Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--mirror] [--hide-ui] [--engine=ARG ...] [--check] [--no-restart] [scene] [-- arguments for the plugin]
+  py scripts/xr_editor.py --engine=--gpu-profile res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress   (the engine prints its GPU time by stage every second)
   py scripts/xr_editor.py res://benchmarks/manipulation_check.tscn
   py scripts/xr_editor.py --fallback sim --mirror    (the headset with its view on the desktop, else the window)
   py scripts/xr_editor.py --runtime meta res://benchmarks/empty.tscn -- --xre-benchmark
@@ -349,6 +350,8 @@ def main() -> int:
     parser.add_argument("--hide-ui", action="store_true",
                         help="hide the editor's 2D UI while in VR: the headset, or the VR view in a window")
     parser.add_argument("--check", action="store_true", help="only report the runtime that would be used")
+    parser.add_argument("--engine", action="append", default=[], metavar="ARG",
+                        help="argument for the engine, e.g. --engine=--gpu-profile; repeatable")
     parser.add_argument("--no-restart", action="store_true",
                         help="fail if an editor is already open on this project instead of closing it")
     parser.add_argument("scene", nargs="?", help="scene to open, e.g. res://benchmarks/manipulation_check.tscn")
@@ -402,6 +405,7 @@ def main() -> int:
           f"log {log.relative_to(REPO).as_posix()}")
 
     command = [godot, "--path", str(REPO), "--editor", "--xr-mode", "on" if manifest else "off", "--log-file", str(log)]
+    command += options.engine
     if options.scene:
         command.append(options.scene)
     if plugin_args:

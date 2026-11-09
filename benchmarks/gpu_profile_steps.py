@@ -14,7 +14,7 @@ from pathlib import Path
 STEP = re.compile(r"XR Editor: graph lab: ((?:compat_)?[a-z][a-z0-9_]*)\s*$")
 NOT_STEPS = {"done", "framing", "graph", "view", "picture", "rebuilt", "scene", "renderer", "foveation", "frames", "leaving"}
 HEAD = re.compile(r"GPU PROFILE \(total ([\d.]+)ms\)")
-STAGE = re.compile(r"godot\s*:\s*\t-(.+?): ([\d.]+)ms")
+STAGE = re.compile(r"(?:godot\s*:\s*)?\t-(.+?): ([\d.]+)ms")
 
 
 def main() -> None:
