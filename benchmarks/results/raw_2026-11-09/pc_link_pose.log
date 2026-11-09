@@ -1,0 +1,99 @@
+OpenXR: Running on OpenXR runtime:  Oculus   1.208.0
+Vulkan 1.4.351 - Forward+ - Using Device #0: NVIDIA - NVIDIA GeForce RTX 4060
+XR Editor: OpenXR runtime Oculus 1.208.0, system Oculus Quest2.
+XR Editor: display refresh rate 120.0 Hz, available [119.999992370605].
+XR Editor: 119 fps, 66 frame(s) late, slowest 148.2 ms, process 449.8 ms mean 3344.7 ms longest, 2 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: 119 fps, 0 frame(s) late, slowest 10.1 ms, process 4.5 ms mean 5.0 ms longest, 2 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: 120 fps, 0 frame(s) late, slowest 9.8 ms, process 4.3 ms mean 4.7 ms longest, 2 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: framing with tangents (0.8, 0.88849)
+XR Editor: graph lab: closed
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: graph lab: picture C:/Users/aniku/Projects/godot-xr-editor/benchmarks/shots/lab_closed.png saved.
+XR Editor: 110 fps, 2 frame(s) late, slowest 85.7 ms, process 20.2 ms mean 87.3 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.11 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 110 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 90.20 ms, 26 draw calls.
+XR Editor: graph lab: graph scripts 0.10 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 120 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 4.72 ms, 26 draw calls.
+XR Editor: graph lab: open
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-1.433293, 0.492022, -0.793281), S: (2.229684, 1.966338, 2.567884)] from 2.85 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: graph lab: picture C:/Users/aniku/Projects/godot-xr-editor/benchmarks/shots/lab_open.png saved.
+XR Editor: 119 fps, 6 frame(s) late, slowest 129.5 ms, process 42.5 ms mean 232.5 ms longest, 412 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.60 ms per frame, of them facing the head 0.36 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 119 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 63.58 ms, 410 draw calls.
+XR Editor: graph lab: graph scripts 0.59 ms per frame, of them facing the head 0.37 ms; ray routing 0.00 ms; manipulator 0.03 ms.
+XR Editor: graph lab: frames 119 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 6.26 ms, 410 draw calls.
+XR Editor: graph lab: open_graph100
+XR Editor: graph lab: graph of 100 block(s), 112 wire(s).
+XR Editor: graph lab: rebuilt 100 block(s) in 153.2 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-2.171036, 0.333848, -0.987544), S: (3.699117, 2.849239, 3.069827)] from 3.80 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: 81 fps, 73 frame(s) late, slowest 149.0 ms, process 68.2 ms mean 246.9 ms longest, 1368 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: picture C:/Users/aniku/Projects/godot-xr-editor/benchmarks/shots/lab_open_graph100.png saved.
+XR Editor: graph lab: graph scripts 1.93 ms per frame, of them facing the head 1.69 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 85 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 76.88 ms, 1369 draw calls.
+XR Editor: graph lab: graph scripts 2.36 ms per frame, of them facing the head 2.08 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 75 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 18.36 ms, 1369 draw calls.
+XR Editor: graph lab: open_graph250
+XR Editor: graph lab: graph of 250 block(s), 280 wire(s).
+XR Editor: graph lab: rebuilt 250 block(s) in 431.2 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-3.589626, -0.162304, -1.535367), S: (6.508211, 3.843842, 4.18029)] from 6.10 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: 45 fps, 177 frame(s) late, slowest 134.6 ms, process 123.5 ms mean 683.1 ms longest, 3279 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: picture C:/Users/aniku/Projects/godot-xr-editor/benchmarks/shots/lab_open_graph250.png saved.
+XR Editor: graph lab: graph scripts 7.22 ms per frame, of them facing the head 6.94 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 58 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 189.85 ms, 3284 draw calls.
+XR Editor: graph lab: graph scripts 8.43 ms per frame, of them facing the head 8.15 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 40 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 47.90 ms, 3287 draw calls.
+XR Editor: graph lab: open_graph500
+XR Editor: graph lab: graph of 500 block(s), 560 wire(s).
+XR Editor: graph lab: rebuilt 500 block(s) in 961.1 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-4.286112, -0.661344, -1.801709), S: (7.906931, 4.840264, 4.701924)] from 7.30 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: 39 fps, 195 frame(s) late, slowest 140.6 ms, process 77.6 ms mean 1514.4 ms longest, 6486 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: picture C:/Users/aniku/Projects/godot-xr-editor/benchmarks/shots/lab_open_graph500.png saved.
+XR Editor: graph lab: graph scripts 53.73 ms per frame, of them facing the head 53.43 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 15 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 351.31 ms, 6484 draw calls.
+XR Editor: 15 fps, 63 frame(s) late, slowest 147.3 ms, process 308.8 ms mean 1514.4 ms longest, 6494 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: closed_scene1k
+XR Editor: graph lab: scene of 1000 object(s) added.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: graph lab: picture C:/Users/aniku/Projects/godot-xr-editor/benchmarks/shots/lab_closed_scene1k.png saved.
+XR Editor: 111 fps, 23 frame(s) late, slowest 144.3 ms, process 78.3 ms mean 197.3 ms longest, 36 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 1.15 ms per frame, of them facing the head 1.03 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 120 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 71.01 ms, 36 draw calls.
+XR Editor: graph lab: graph scripts 0.11 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 120 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 4.90 ms, 37 draw calls.
+XR Editor: graph lab: closed_scene5k
+XR Editor: graph lab: scene of 5000 object(s) added.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: graph lab: picture C:/Users/aniku/Projects/godot-xr-editor/benchmarks/shots/lab_closed_scene5k.png saved.
+XR Editor: 120 fps, 8 frame(s) late, slowest 59.7 ms, process 15.9 ms mean 65.1 ms longest, 39 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 119 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 20.75 ms, 39 draw calls.
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 120 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 6.60 ms, 39 draw calls.
+XR Editor: graph lab: open_scene5k
+XR Editor: graph lab: scene of 5000 object(s) added.
+XR Editor: graph lab: rebuilt 25 block(s) in 39.9 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-1.431245, 0.486107, -0.793281), S: (2.181718, 1.972252, 2.548198)] from 2.80 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: 84 fps, 19 frame(s) late, slowest 145.4 ms, process 68.8 ms mean 339.3 ms longest, 424 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: picture C:/Users/aniku/Projects/godot-xr-editor/benchmarks/shots/lab_open_scene5k.png saved.
+XR Editor: graph lab: graph scripts 0.60 ms per frame, of them facing the head 0.36 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 83 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 78.95 ms, 423 draw calls.
+XR Editor: graph lab: graph scripts 0.54 ms per frame, of them facing the head 0.30 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 102 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 9.15 ms, 423 draw calls.
+XR Editor: graph lab: closed
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: 114 fps, 50 frame(s) late, slowest 68.7 ms, process 21.6 ms mean 58.6 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: picture C:/Users/aniku/Projects/godot-xr-editor/benchmarks/shots/lab_closed.png saved.
+XR Editor: graph lab: graph scripts 0.11 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 120 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 28.86 ms, 26 draw calls.
+XR Editor: graph lab: graph scripts 0.11 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 120 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 3.97 ms, 26 draw calls.
+XR Editor: graph lab: done.

@@ -1,0 +1,1790 @@
+OpenXR: Running on OpenXR runtime:  Oculus   1.208.0
+Vulkan 1.4.351 - Forward+ - Using Device #0: NVIDIA - NVIDIA GeForce RTX 4060
+XR Editor: OpenXR runtime Oculus 1.208.0, system Oculus Quest2.
+XR Editor: display refresh rate 120.0 Hz, available [119.999992370605].
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.14812499284744ms
+	-Setup Shadows: 0.01399999950081ms
+	-Render Opaque Pass: 0.01037499960512ms
+	-Render Sky: 0.04237499833107ms
+	-Render 3D Transparent Pass: 0.03237500041723ms
+	-Tonemap: 0.11550000309944ms
+	-Glow: 0.36000001430511ms
+	-Render CanvasItems: 0.08425000309944ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199997311547ms
+	-Render Depth Pre-Pass: 0.0110000031335ms
+	-Setup Shadows: 0.0180000038374ms
+	-Render Opaque Pass: 0.01399999998865ms
+	-Render Sky: 0.05599999995459ms
+	-Render 3D Transparent Pass: 0.04199999854678ms
+	-Tonemap: 0.15300003687541ms
+	-Glow: 0.22800000508626ms
+	-Render CanvasItems: 0.11300000690279ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199996055441ms
+	-Render Depth Pre-Pass: 0.01100000422052ms
+	-Setup Shadows: 0.01800000540754ms
+	-Render Opaque Pass: 0.01399999983767ms
+	-Render Sky: 0.05599999935069ms
+	-Render 3D Transparent Pass: 0.04200002741306ms
+	-Tonemap: 0.1529999793844ms
+	-Glow: 0.22799997126802ms
+	-Render CanvasItems: 0.11299995665855ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200020386292ms
+	-Render Depth Pre-Pass: 0.01099999960478ms
+	-Setup Shadows: 0.01800000560176ms
+	-Render Opaque Pass: 0.01400002058562ms
+	-Render Sky: 0.05600008234247ms
+	-Render 3D Transparent Pass: 0.04200001020689ms
+	-Tonemap: 0.15299992947965ms
+	-Glow: 0.22800015973615ms
+	-Render CanvasItems: 0.11299993325998ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021711446ms
+	-Render Depth Pre-Pass: 0.01100000183461ms
+	-Setup Shadows: 0.01799999859373ms
+	-Render Opaque Pass: 0.01400002281545ms
+	-Render Sky: 0.05600009126178ms
+	-Render 3D Transparent Pass: 0.04199999873921ms
+	-Tonemap: 0.1529999264216ms
+	-Glow: 0.22800018827794ms
+	-Render CanvasItems: 0.11299993224063ms
+XR Editor: 117 fps, 19 frame(s) late, slowest 148.9 ms, process 647.1 ms mean 3208.4 ms longest, 2 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+XR Editor: 120 fps, 0 frame(s) late, slowest 11.6 ms, process 7.2 ms mean 7.6 ms longest, 2 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+XR Editor: 119 fps, 1 frame(s) late, slowest 12.6 ms, process 7.2 ms mean 7.6 ms longest, 2 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: renderer forward_plus on vulkan
+XR Editor: graph lab: foveation not supported, render target (1616.0, 1648.0).
+XR Editor: graph lab: closed
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021349151ms
+	-Render Depth Pre-Pass: 0.01100000122498ms
+	-Setup Shadows: 0.01800000050972ms
+	-Render Opaque Pass: 0.01400002220581ms
+	-Render Sky: 0.05600008882325ms
+	-Render 3D Transparent Pass: 0.04200000187446ms
+	-Tonemap: 0.15299992725767ms
+	-Glow: 0.22800018047464ms
+	-Render CanvasItems: 0.11299993251932ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: 119 fps, 4 frame(s) late, slowest 36.0 ms, process 14.0 ms mean 32.8 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.11 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 119 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 114.26 ms, 26 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6 call(s) 6 object(s) 62 primitive(s), shadow 20 call(s), canvas 0 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021349151ms
+	-Render Depth Pre-Pass: 0.01100000122498ms
+	-Setup Shadows: 0.01800000050972ms
+	-Render Opaque Pass: 0.01400002220581ms
+	-Render Sky: 0.05600008882325ms
+	-Render 3D Transparent Pass: 0.04200000187446ms
+	-Tonemap: 0.15299992725767ms
+	-Glow: 0.22800018047464ms
+	-Render CanvasItems: 0.11299993251932ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: 119 fps, 5 frame(s) late, slowest 23.4 ms, process 12.3 ms mean 27.4 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.10 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 119 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 12.19 ms, 26 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6 call(s) 6 object(s) 62 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: open
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-1.433433, 0.492256, -0.793281), S: (2.232999, 1.966104, 2.569641)] from 2.85 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200014864461ms
+	-Render Depth Pre-Pass: 0.01099999165267ms
+	-Setup Shadows: 0.01800000533629ms
+	-Render Opaque Pass: 0.01400001129408ms
+	-Render Sky: 0.0560000451763ms
+	-Render 3D Transparent Pass: 0.04200003923995ms
+	-Tonemap: 0.1529999315069ms
+	-Glow: 0.2280000408044ms
+	-Render CanvasItems: 0.11299993750754ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021531847ms
+	-Render Depth Pre-Pass: 0.0110000015324ms
+	-Setup Shadows: 0.01799999954354ms
+	-Render Opaque Pass: 0.01400002251323ms
+	-Render Sky: 0.05600009005294ms
+	-Render 3D Transparent Pass: 0.04200000029344ms
+	-Tonemap: 0.15299992683606ms
+	-Glow: 0.22800018440964ms
+	-Render CanvasItems: 0.11299993237879ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: 118 fps, 6 frame(s) late, slowest 144.5 ms, process 61.0 ms mean 261.4 ms longest, 410 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.55 ms per frame, of them facing the head 0.32 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 118 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 60.99 ms, 410 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 370 call(s) 372 object(s) 80096 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021163277ms
+	-Render Depth Pre-Pass: 0.01100000091221ms
+	-Setup Shadows: 0.01800000149271ms
+	-Render Opaque Pass: 0.01400002189305ms
+	-Render Sky: 0.05600008757218ms
+	-Render 3D Transparent Pass: 0.04200000348298ms
+	-Tonemap: 0.15299992768661ms
+	-Glow: 0.22800017647121ms
+	-Render CanvasItems: 0.1129999326623ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021711446ms
+	-Render Depth Pre-Pass: 0.01100000183461ms
+	-Setup Shadows: 0.01799999859373ms
+	-Render Opaque Pass: 0.01400002281545ms
+	-Render Sky: 0.05600009126178ms
+	-Render 3D Transparent Pass: 0.04199999873921ms
+	-Tonemap: 0.1529999264216ms
+	-Glow: 0.22800018827794ms
+	-Render CanvasItems: 0.11299993224063ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: 118 fps, 6 frame(s) late, slowest 26.0 ms, process 14.1 ms mean 31.6 ms longest, 410 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.53 ms per frame, of them facing the head 0.30 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 118 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 13.90 ms, 410 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 370 call(s) 372 object(s) 80108 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: open_graph100
+XR Editor: graph lab: graph of 100 block(s), 112 wire(s).
+XR Editor: graph lab: rebuilt 100 block(s) in 150.9 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-2.170901, 0.333888, -0.988272), S: (3.681888, 2.848055, 3.061584)] from 3.75 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200013206119ms
+	-Render Depth Pre-Pass: 0.01099999248981ms
+	-Setup Shadows: 0.01800000525656ms
+	-Render Opaque Pass: 0.0140000085036ms
+	-Render Sky: 0.05600003401438ms
+	-Render 3D Transparent Pass: 0.04200003828321ms
+	-Tonemap: 0.15299993469602ms
+	-Glow: 0.22800000508626ms
+	-Render CanvasItems: 0.11299993878319ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200005716352ms
+	-Render Depth Pre-Pass: 0.01099999627071ms
+	-Setup Shadows: 0.01800000489648ms
+	-Render Opaque Pass: 0.01399999945911ms
+	-Render Sky: 0.05599999783644ms
+	-Render 3D Transparent Pass: 0.04200003396219ms
+	-Tonemap: 0.15299994909941ms
+	-Glow: 0.22799988647005ms
+	-Render CanvasItems: 0.11299994454455ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.1520000730242ms
+	-Render Depth Pre-Pass: 0.01099999547005ms
+	-Setup Shadows: 0.01800000497273ms
+	-Render Opaque Pass: 0.01399999942098ms
+	-Render Sky: 0.05599999768393ms
+	-Render 3D Transparent Pass: 0.04200003487723ms
+	-Tonemap: 0.15299994604928ms
+	-Glow: 0.22799987792969ms
+	-Render CanvasItems: 0.1129999433245ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200005716352ms
+	-Render Depth Pre-Pass: 0.01099999627071ms
+	-Setup Shadows: 0.01800000489648ms
+	-Render Opaque Pass: 0.01399999945911ms
+	-Render Sky: 0.05599999783644ms
+	-Render 3D Transparent Pass: 0.04200003396219ms
+	-Tonemap: 0.15299994909941ms
+	-Glow: 0.22799988647005ms
+	-Render CanvasItems: 0.11299994454455ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.152000096639ms
+	-Render Depth Pre-Pass: 0.01099999427795ms
+	-Setup Shadows: 0.01800000508626ms
+	-Render Opaque Pass: 0.01400000254313ms
+	-Render Sky: 0.05600001017253ms
+	-Render 3D Transparent Pass: 0.04200003623962ms
+	-Tonemap: 0.15299994150798ms
+	-Glow: 0.22799992879232ms
+	-Render CanvasItems: 0.11299994150798ms
+XR Editor: 76 fps, 237 frame(s) late, slowest 132.9 ms, process 63.4 ms mean 288.2 ms longest, 1368 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 1.49 ms per frame, of them facing the head 1.24 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 76 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 68.19 ms, 1369 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 1329 call(s) 1338 object(s) 305262 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.1520000828637ms
+	-Render Depth Pre-Pass: 0.01099999497334ms
+	-Setup Shadows: 0.01800000502004ms
+	-Render Opaque Pass: 0.01400000022517ms
+	-Render Sky: 0.05600000090069ms
+	-Render 3D Transparent Pass: 0.0420000354449ms
+	-Tonemap: 0.15299994415707ms
+	-Glow: 0.22799989912245ms
+	-Render CanvasItems: 0.11299994256761ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.1520000730242ms
+	-Render Depth Pre-Pass: 0.01099999547005ms
+	-Setup Shadows: 0.01800000497273ms
+	-Render Opaque Pass: 0.01399999942098ms
+	-Render Sky: 0.05599999768393ms
+	-Render 3D Transparent Pass: 0.04200003487723ms
+	-Tonemap: 0.15299994604928ms
+	-Glow: 0.22799987792969ms
+	-Render CanvasItems: 0.1129999433245ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200009217133ms
+	-Render Depth Pre-Pass: 0.01099999450349ms
+	-Setup Shadows: 0.01800000506478ms
+	-Render Opaque Pass: 0.01400000179136ms
+	-Render Sky: 0.05600000716544ms
+	-Render 3D Transparent Pass: 0.04200003598187ms
+	-Tonemap: 0.15299994236714ms
+	-Glow: 0.22799991916966ms
+	-Render CanvasItems: 0.11299994185164ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200008758127ms
+	-Render Depth Pre-Pass: 0.0109999947352ms
+	-Setup Shadows: 0.01800000504272ms
+	-Render Opaque Pass: 0.01400000101899ms
+	-Render Sky: 0.05600000407598ms
+	-Render 3D Transparent Pass: 0.04200003571706ms
+	-Tonemap: 0.15299994324985ms
+	-Glow: 0.22799990928336ms
+	-Render CanvasItems: 0.11299994220472ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200008758127ms
+	-Render Depth Pre-Pass: 0.0109999947352ms
+	-Setup Shadows: 0.01800000504272ms
+	-Render Opaque Pass: 0.01400000101899ms
+	-Render Sky: 0.05600000407598ms
+	-Render 3D Transparent Pass: 0.04200003571706ms
+	-Tonemap: 0.15299994324985ms
+	-Glow: 0.22799990928336ms
+	-Render CanvasItems: 0.11299994220472ms
+XR Editor: 71 fps, 277 frame(s) late, slowest 28.2 ms, process 18.2 ms mean 33.2 ms longest, 1369 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 1.25 ms per frame, of them facing the head 1.00 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 71 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 18.41 ms, 1367 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 1327 call(s) 1338 object(s) 305310 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: open_graph250
+XR Editor: graph lab: graph of 250 block(s), 280 wire(s).
+XR Editor: graph lab: rebuilt 250 block(s) in 417.6 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-3.590433, -0.162232, -1.487138), S: (6.448478, 3.841451, 4.115692)] from 6.05 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199998446873ms
+	-Render Depth Pre-Pass: 0.0109999999404ms
+	-Setup Shadows: 0.01800000454698ms
+	-Render Opaque Pass: 0.01399999963386ms
+	-Render Sky: 0.05599999853543ms
+	-Render 3D Transparent Pass: 0.04200002976826ms
+	-Tonemap: 0.15299996307918ms
+	-Glow: 0.2279999256134ms
+	-Render CanvasItems: 0.11299995013646ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199995940586ms
+	-Render Depth Pre-Pass: 0.01100000120559ms
+	-Setup Shadows: 0.0180000055511ms
+	-Render Opaque Pass: 0.0139999996941ms
+	-Render Sky: 0.05599999877642ms
+	-Render 3D Transparent Pass: 0.04200002832233ms
+	-Tonemap: 0.15299996789896ms
+	-Glow: 0.22799993910879ms
+	-Render CanvasItems: 0.11299995206437ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199995994568ms
+	-Render Depth Pre-Pass: 0.0110000026226ms
+	-Setup Shadows: 0.01800000548363ms
+	-Render Opaque Pass: 0.01399999976158ms
+	-Render Sky: 0.05599999904633ms
+	-Render 3D Transparent Pass: 0.04200002670288ms
+	-Tonemap: 0.15299997329712ms
+	-Glow: 0.22799995422363ms
+	-Render CanvasItems: 0.11299995422363ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199999973692ms
+	-Render Depth Pre-Pass: 0.01099999916965ms
+	-Setup Shadows: 0.01800000462039ms
+	-Render Opaque Pass: 0.01399999959715ms
+	-Render Sky: 0.05599999838862ms
+	-Render 3D Transparent Pass: 0.04200003064912ms
+	-Tonemap: 0.15299996014299ms
+	-Glow: 0.22799991739207ms
+	-Render CanvasItems: 0.11299994896198ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199998446873ms
+	-Render Depth Pre-Pass: 0.0109999999404ms
+	-Setup Shadows: 0.01800000454698ms
+	-Render Opaque Pass: 0.01399999963386ms
+	-Render Sky: 0.05599999853543ms
+	-Render 3D Transparent Pass: 0.04200002976826ms
+	-Tonemap: 0.15299996307918ms
+	-Glow: 0.2279999256134ms
+	-Render CanvasItems: 0.11299995013646ms
+XR Editor: 57 fps, 258 frame(s) late, slowest 128.1 ms, process 83.8 ms mean 704.7 ms longest, 3278 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 3.37 ms per frame, of them facing the head 3.10 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 53 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 88.89 ms, 3276 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 3236 call(s) 3270 object(s) 755718 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199995940586ms
+	-Render Depth Pre-Pass: 0.01100000120559ms
+	-Setup Shadows: 0.0180000055511ms
+	-Render Opaque Pass: 0.0139999996941ms
+	-Render Sky: 0.05599999877642ms
+	-Render 3D Transparent Pass: 0.04200002832233ms
+	-Tonemap: 0.15299996789896ms
+	-Glow: 0.22799993910879ms
+	-Render CanvasItems: 0.11299995206437ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199999223676ms
+	-Render Depth Pre-Pass: 0.01099999954826ms
+	-Setup Shadows: 0.01800000458433ms
+	-Render Opaque Pass: 0.01399999961518ms
+	-Render Sky: 0.05599999846074ms
+	-Render 3D Transparent Pass: 0.04200003021642ms
+	-Tonemap: 0.15299996158533ms
+	-Glow: 0.22799992143062ms
+	-Render CanvasItems: 0.11299994953892ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199995957888ms
+	-Render Depth Pre-Pass: 0.01100000165976ms
+	-Setup Shadows: 0.01800000552948ms
+	-Render Opaque Pass: 0.01399999971573ms
+	-Render Sky: 0.05599999886293ms
+	-Render 3D Transparent Pass: 0.04200002780327ms
+	-Tonemap: 0.15299996962914ms
+	-Glow: 0.22799994395329ms
+	-Render CanvasItems: 0.11299995275644ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199998446873ms
+	-Render Depth Pre-Pass: 0.0109999999404ms
+	-Setup Shadows: 0.01800000454698ms
+	-Render Opaque Pass: 0.01399999963386ms
+	-Render Sky: 0.05599999853543ms
+	-Render 3D Transparent Pass: 0.04200002976826ms
+	-Tonemap: 0.15299996307918ms
+	-Glow: 0.2279999256134ms
+	-Render CanvasItems: 0.11299995013646ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200000698284ms
+	-Render Depth Pre-Pass: 0.01099999880387ms
+	-Setup Shadows: 0.01800000465522ms
+	-Render Opaque Pass: 0.01399999957974ms
+	-Render Sky: 0.05599999831895ms
+	-Render 3D Transparent Pass: 0.04200003106715ms
+	-Tonemap: 0.15299995874954ms
+	-Glow: 0.22799991349042ms
+	-Render CanvasItems: 0.1129999484046ms
+XR Editor: 55 fps, 271 frame(s) late, slowest 54.8 ms, process 38.9 ms mean 48.3 ms longest, 3277 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 3.28 ms per frame, of them facing the head 3.01 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 59 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 37.43 ms, 3281 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 3241 call(s) 3270 object(s) 755718 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: open_graph500
+XR Editor: graph lab: graph of 500 block(s), 560 wire(s).
+XR Editor: graph lab: rebuilt 500 block(s) in 971.8 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-4.286282, -0.661308, -1.800354), S: (7.907565, 4.840464, 4.70092)] from 7.30 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199996365441ms
+	-Render Depth Pre-Pass: 0.01100000490745ms
+	-Setup Shadows: 0.01800000502004ms
+	-Render Opaque Pass: 0.01400000022517ms
+	-Render Sky: 0.05600000090069ms
+	-Render 3D Transparent Pass: 0.04200001888805ms
+	-Tonemap: 0.15300001038445ms
+	-Glow: 0.22800005806817ms
+	-Render CanvasItems: 0.11299996905857ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199996579078ms
+	-Render Depth Pre-Pass: 0.01100000450688ms
+	-Setup Shadows: 0.01800000475299ms
+	-Render Opaque Pass: 0.01399999953085ms
+	-Render Sky: 0.05599999812342ms
+	-Render 3D Transparent Pass: 0.04200001301304ms
+	-Tonemap: 0.15300003174813ms
+	-Glow: 0.22800005635908ms
+	-Render CanvasItems: 0.11299997760404ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199998292056ms
+	-Render Depth Pre-Pass: 0.0109999999404ms
+	-Setup Shadows: 0.01800000261177ms
+	-Render Opaque Pass: 0.01399999992414ms
+	-Render Sky: 0.05599999969656ms
+	-Render 3D Transparent Pass: 0.04199999841777ms
+	-Tonemap: 0.15299999713898ms
+	-Glow: 0.22799999063665ms
+	-Render CanvasItems: 0.11300001361153ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199998021126ms
+	-Render Depth Pre-Pass: 0.0109999999404ms
+	-Setup Shadows: 0.01800000295043ms
+	-Render Opaque Pass: 0.01399999981125ms
+	-Render Sky: 0.05599999924501ms
+	-Render 3D Transparent Pass: 0.04200000067552ms
+	-Tonemap: 0.15299999713898ms
+	-Glow: 0.22799998521805ms
+	-Render CanvasItems: 0.11300001541773ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199997208335ms
+	-Render Depth Pre-Pass: 0.01100000332702ms
+	-Setup Shadows: 0.01800000396642ms
+	-Render Opaque Pass: 0.01399999992414ms
+	-Render Sky: 0.05599999969656ms
+	-Render 3D Transparent Pass: 0.04199999841777ms
+	-Tonemap: 0.15300004048781ms
+	-Glow: 0.22800001231107ms
+	-Render CanvasItems: 0.11300000277433ms
+XR Editor: 17 fps, 105 frame(s) late, slowest 149.2 ms, process 503.5 ms mean 1530.3 ms longest, 6476 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 28.93 ms per frame, of them facing the head 28.64 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 17 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 614.49 ms, 6484 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6444 call(s) 6490 object(s) 1502218 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199997791877ms
+	-Render Depth Pre-Pass: 0.01100000051352ms
+	-Setup Shadows: 0.01800000323699ms
+	-Render Opaque Pass: 0.01399999971573ms
+	-Render Sky: 0.05599999886293ms
+	-Render 3D Transparent Pass: 0.04200000029344ms
+	-Tonemap: 0.15299999713898ms
+	-Glow: 0.22799998063308ms
+	-Render CanvasItems: 0.11300001694606ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199997425079ms
+	-Render Depth Pre-Pass: 0.01100000292063ms
+	-Setup Shadows: 0.01800000369549ms
+	-Render Opaque Pass: 0.0140000000596ms
+	-Render Sky: 0.05600000023842ms
+	-Render 3D Transparent Pass: 0.0419999986887ms
+	-Tonemap: 0.15300003290176ms
+	-Glow: 0.22799999713898ms
+	-Render CanvasItems: 0.11300001144409ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199996443356ms
+	-Render Depth Pre-Pass: 0.01100000476136ms
+	-Setup Shadows: 0.01800000492264ms
+	-Render Opaque Pass: 0.01399999944603ms
+	-Render Sky: 0.05599999778411ms
+	-Render 3D Transparent Pass: 0.0420000167454ms
+	-Tonemap: 0.15300001817591ms
+	-Glow: 0.22800006585963ms
+	-Render CanvasItems: 0.11299997217515ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199996365441ms
+	-Render Depth Pre-Pass: 0.01100000490745ms
+	-Setup Shadows: 0.01800000502004ms
+	-Render Opaque Pass: 0.01400000022517ms
+	-Render Sky: 0.05600000090069ms
+	-Render 3D Transparent Pass: 0.04200001888805ms
+	-Tonemap: 0.15300001038445ms
+	-Glow: 0.22800005806817ms
+	-Render CanvasItems: 0.11299996905857ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199998219808ms
+	-Render Depth Pre-Pass: 0.01100000143051ms
+	-Setup Shadows: 0.01800000270208ms
+	-Render Opaque Pass: 0.0139999995629ms
+	-Render Sky: 0.0559999982516ms
+	-Render 3D Transparent Pass: 0.04199999968211ms
+	-Tonemap: 0.15300000508626ms
+	-Glow: 0.22799997329712ms
+	-Render CanvasItems: 0.11300001939138ms
+XR Editor: 19 fps, 115 frame(s) late, slowest 150.0 ms, process 86.0 ms mean 140.9 ms longest, 6481 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 15.17 ms per frame, of them facing the head 14.89 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 19 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 87.69 ms, 6479 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6439 call(s) 6490 object(s) 1502218 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: open
+XR Editor: graph lab: rebuilt 25 block(s) in 89.6 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-3.155368, 0.481868, -1.314757), S: (4.028139, 2.518101, 3.102973)] from 3.95 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199998021126ms
+	-Render Depth Pre-Pass: 0.01100000180304ms
+	-Setup Shadows: 0.01800000295043ms
+	-Render Opaque Pass: 0.01399999950081ms
+	-Render Sky: 0.05599999800324ms
+	-Render 3D Transparent Pass: 0.04199999943376ms
+	-Tonemap: 0.15300001204014ms
+	-Glow: 0.22799997031689ms
+	-Render CanvasItems: 0.11300002038479ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021349151ms
+	-Render Depth Pre-Pass: 0.01100000122498ms
+	-Setup Shadows: 0.01800000050972ms
+	-Render Opaque Pass: 0.01400002220581ms
+	-Render Sky: 0.05600008882325ms
+	-Render 3D Transparent Pass: 0.04200000187446ms
+	-Tonemap: 0.15299992725767ms
+	-Glow: 0.22800018047464ms
+	-Render CanvasItems: 0.11299993251932ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200020974143ms
+	-Render Depth Pre-Pass: 0.01100000059396ms
+	-Setup Shadows: 0.01800000249294ms
+	-Render Opaque Pass: 0.01400002157479ms
+	-Render Sky: 0.05600008629916ms
+	-Render 3D Transparent Pass: 0.04200000511973ms
+	-Tonemap: 0.15299992812307ms
+	-Glow: 0.22800017239755ms
+	-Render CanvasItems: 0.11299993280779ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021711446ms
+	-Render Depth Pre-Pass: 0.01100000183461ms
+	-Setup Shadows: 0.01799999859373ms
+	-Render Opaque Pass: 0.01400002281545ms
+	-Render Sky: 0.05600009126178ms
+	-Render 3D Transparent Pass: 0.04199999873921ms
+	-Tonemap: 0.1529999264216ms
+	-Glow: 0.22800018827794ms
+	-Render CanvasItems: 0.11299993224063ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021531847ms
+	-Render Depth Pre-Pass: 0.0110000015324ms
+	-Setup Shadows: 0.01799999954354ms
+	-Render Opaque Pass: 0.01400002251323ms
+	-Render Sky: 0.05600009005294ms
+	-Render 3D Transparent Pass: 0.04200000029344ms
+	-Tonemap: 0.15299992683606ms
+	-Glow: 0.22800018440964ms
+	-Render CanvasItems: 0.11299993237879ms
+XR Editor: 113 fps, 26 frame(s) late, slowest 146.9 ms, process 53.2 ms mean 244.8 ms longest, 410 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.54 ms per frame, of them facing the head 0.31 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 113 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 46.83 ms, 410 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 370 call(s) 372 object(s) 80116 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200020585741ms
+	-Render Depth Pre-Pass: 0.0109999999404ms
+	-Setup Shadows: 0.01800000454698ms
+	-Render Opaque Pass: 0.01400002092123ms
+	-Render Sky: 0.05600008368492ms
+	-Render 3D Transparent Pass: 0.04200000848089ms
+	-Tonemap: 0.15299992901938ms
+	-Glow: 0.22800016403198ms
+	-Render CanvasItems: 0.11299993310656ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021163277ms
+	-Render Depth Pre-Pass: 0.01100000091221ms
+	-Setup Shadows: 0.01800000149271ms
+	-Render Opaque Pass: 0.01400002189305ms
+	-Render Sky: 0.05600008757218ms
+	-Render 3D Transparent Pass: 0.04200000348298ms
+	-Tonemap: 0.15299992768661ms
+	-Glow: 0.22800017647121ms
+	-Render CanvasItems: 0.1129999326623ms
+XR Editor: 114 fps, 7 frame(s) late, slowest 47.1 ms, process 14.4 ms mean 30.5 ms longest, 410 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.51 ms per frame, of them facing the head 0.28 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 118 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 14.24 ms, 410 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 370 call(s) 372 object(s) 80100 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: closed
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200017162205ms
+	-Render Depth Pre-Pass: 0.01099999417964ms
+	-Setup Shadows: 0.01800000544676ms
+	-Render Opaque Pass: 0.01400001516047ms
+	-Render Sky: 0.05600006064189ms
+	-Render 3D Transparent Pass: 0.04200003810765ms
+	-Tonemap: 0.15299992708816ms
+	-Glow: 0.22800009029428ms
+	-Render CanvasItems: 0.11299993574005ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200002076196ms
+	-Render Depth Pre-Pass: 0.01099999810829ms
+	-Setup Shadows: 0.01800000472147ms
+	-Render Opaque Pass: 0.01399999954661ms
+	-Render Sky: 0.05599999818646ms
+	-Render 3D Transparent Pass: 0.0420000318621ms
+	-Tonemap: 0.15299995609971ms
+	-Glow: 0.2279999060709ms
+	-Render CanvasItems: 0.11299994734467ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200003366622ms
+	-Render Depth Pre-Pass: 0.01099999745687ms
+	-Setup Shadows: 0.01800000478351ms
+	-Render Opaque Pass: 0.01399999951559ms
+	-Render Sky: 0.05599999806238ms
+	-Render 3D Transparent Pass: 0.04200003260658ms
+	-Tonemap: 0.15299995361813ms
+	-Glow: 0.22799989912245ms
+	-Render CanvasItems: 0.11299994635204ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200002076196ms
+	-Render Depth Pre-Pass: 0.01099999810829ms
+	-Setup Shadows: 0.01800000472147ms
+	-Render Opaque Pass: 0.01399999954661ms
+	-Render Sky: 0.05599999818646ms
+	-Render 3D Transparent Pass: 0.0420000318621ms
+	-Tonemap: 0.15299995609971ms
+	-Glow: 0.2279999060709ms
+	-Render CanvasItems: 0.11299994734467ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200003366622ms
+	-Render Depth Pre-Pass: 0.01099999745687ms
+	-Setup Shadows: 0.01800000478351ms
+	-Render Opaque Pass: 0.01399999951559ms
+	-Render Sky: 0.05599999806238ms
+	-Render 3D Transparent Pass: 0.04200003260658ms
+	-Tonemap: 0.15299995361813ms
+	-Glow: 0.22799989912245ms
+	-Render CanvasItems: 0.11299994635204ms
+XR Editor: 61 fps, 264 frame(s) late, slowest 78.3 ms, process 23.9 ms mean 76.0 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.13 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.07 ms.
+XR Editor: graph lab: frames 62 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 26.29 ms, 26 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6 call(s) 6 object(s) 62 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200010935465ms
+	-Render Depth Pre-Pass: 0.01099999363606ms
+	-Setup Shadows: 0.0180000051474ms
+	-Render Opaque Pass: 0.01400000468279ms
+	-Render Sky: 0.05600001873114ms
+	-Render 3D Transparent Pass: 0.04200003697322ms
+	-Tonemap: 0.15299993906266ms
+	-Glow: 0.22799995617989ms
+	-Render CanvasItems: 0.11299994052985ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+XR Editor: 120 fps, 38 frame(s) late, slowest 32.4 ms, process 15.0 ms mean 33.5 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 120 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 14.10 ms, 26 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6 call(s) 6 object(s) 62 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: closed_scene1k
+XR Editor: graph lab: scene of 1000 object(s) added.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021163277ms
+	-Render Depth Pre-Pass: 0.01100000091221ms
+	-Setup Shadows: 0.01800000149271ms
+	-Render Opaque Pass: 0.01400002189305ms
+	-Render Sky: 0.05600008757218ms
+	-Render 3D Transparent Pass: 0.04200000348298ms
+	-Tonemap: 0.15299992768661ms
+	-Glow: 0.22800017647121ms
+	-Render CanvasItems: 0.1129999326623ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: 119 fps, 3 frame(s) late, slowest 52.2 ms, process 16.8 ms mean 47.8 ms longest, 36 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 119 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 16.93 ms, 35 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 7 call(s) 956 object(s) 11462 primitive(s), shadow 28 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021531847ms
+	-Render Depth Pre-Pass: 0.0110000015324ms
+	-Setup Shadows: 0.01799999954354ms
+	-Render Opaque Pass: 0.01400002251323ms
+	-Render Sky: 0.05600009005294ms
+	-Render 3D Transparent Pass: 0.04200000029344ms
+	-Tonemap: 0.15299992683606ms
+	-Glow: 0.22800018440964ms
+	-Render CanvasItems: 0.11299993237879ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: 119 fps, 2 frame(s) late, slowest 23.8 ms, process 13.3 ms mean 28.9 ms longest, 36 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 117 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 13.23 ms, 36 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 7 call(s) 956 object(s) 11462 primitive(s), shadow 29 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: closed_scene5k
+XR Editor: graph lab: scene of 5000 object(s) added.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200019109817ms
+	-Render Depth Pre-Pass: 0.01099999745687ms
+	-Setup Shadows: 0.01800000554039ms
+	-Render Opaque Pass: 0.0140000184377ms
+	-Render Sky: 0.05600007375081ms
+	-Render 3D Transparent Pass: 0.04200002125331ms
+	-Tonemap: 0.15299993242536ms
+	-Glow: 0.22800013224284ms
+	-Render CanvasItems: 0.11299993424189ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021163277ms
+	-Render Depth Pre-Pass: 0.01100000091221ms
+	-Setup Shadows: 0.01800000149271ms
+	-Render Opaque Pass: 0.01400002189305ms
+	-Render Sky: 0.05600008757218ms
+	-Render 3D Transparent Pass: 0.04200000348298ms
+	-Tonemap: 0.15299992768661ms
+	-Glow: 0.22800017647121ms
+	-Render CanvasItems: 0.1129999326623ms
+XR Editor: 118 fps, 15 frame(s) late, slowest 73.1 ms, process 22.9 ms mean 70.3 ms longest, 40 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021888028ms
+	-Render Depth Pre-Pass: 0.01100000213174ms
+	-Setup Shadows: 0.01799999765989ms
+	-Render Opaque Pass: 0.01400002311258ms
+	-Render Sky: 0.05600009245031ms
+	-Render 3D Transparent Pass: 0.0419999972111ms
+	-Tonemap: 0.15299992601411ms
+	-Glow: 0.22800019208123ms
+	-Render CanvasItems: 0.1129999321048ms
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 117 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 23.05 ms, 40 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 7 call(s) 3581 object(s) 42962 primitive(s), shadow 33 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021349151ms
+	-Render Depth Pre-Pass: 0.01100000122498ms
+	-Setup Shadows: 0.01800000050972ms
+	-Render Opaque Pass: 0.01400002220581ms
+	-Render Sky: 0.05600008882325ms
+	-Render 3D Transparent Pass: 0.04200000187446ms
+	-Tonemap: 0.15299992725767ms
+	-Glow: 0.22800018047464ms
+	-Render CanvasItems: 0.11299993251932ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021888028ms
+	-Render Depth Pre-Pass: 0.01100000213174ms
+	-Setup Shadows: 0.01799999765989ms
+	-Render Opaque Pass: 0.01400002311258ms
+	-Render Sky: 0.05600009245031ms
+	-Render 3D Transparent Pass: 0.0419999972111ms
+	-Tonemap: 0.15299992601411ms
+	-Glow: 0.22800019208123ms
+	-Render CanvasItems: 0.1129999321048ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021349151ms
+	-Render Depth Pre-Pass: 0.01100000122498ms
+	-Setup Shadows: 0.01800000050972ms
+	-Render Opaque Pass: 0.01400002220581ms
+	-Render Sky: 0.05600008882325ms
+	-Render 3D Transparent Pass: 0.04200000187446ms
+	-Tonemap: 0.15299992725767ms
+	-Glow: 0.22800018047464ms
+	-Render CanvasItems: 0.11299993251932ms
+XR Editor: 116 fps, 8 frame(s) late, slowest 19.4 ms, process 15.7 ms mean 31.7 ms longest, 39 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200020974143ms
+	-Render Depth Pre-Pass: 0.01100000059396ms
+	-Setup Shadows: 0.01800000249294ms
+	-Render Opaque Pass: 0.01400002157479ms
+	-Render Sky: 0.05600008629916ms
+	-Render 3D Transparent Pass: 0.04200000511973ms
+	-Tonemap: 0.15299992812307ms
+	-Glow: 0.22800017239755ms
+	-Render CanvasItems: 0.11299993280779ms
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 113 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 15.84 ms, 39 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 7 call(s) 4206 object(s) 50462 primitive(s), shadow 32 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: closed_scene20k
+XR Editor: graph lab: scene of 20000 object(s) added.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200006260591ms
+	-Render Depth Pre-Pass: 0.01099999599597ms
+	-Setup Shadows: 0.01800000492264ms
+	-Render Opaque Pass: 0.01399999944603ms
+	-Render Sky: 0.05599999778411ms
+	-Render 3D Transparent Pass: 0.04200003427618ms
+	-Tonemap: 0.1529999480528ms
+	-Glow: 0.22799988353954ms
+	-Render CanvasItems: 0.1129999441259ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199999973692ms
+	-Render Depth Pre-Pass: 0.01099999916965ms
+	-Setup Shadows: 0.01800000462039ms
+	-Render Opaque Pass: 0.01399999959715ms
+	-Render Sky: 0.05599999838862ms
+	-Render 3D Transparent Pass: 0.04200003064912ms
+	-Tonemap: 0.15299996014299ms
+	-Glow: 0.22799991739207ms
+	-Render CanvasItems: 0.11299994896198ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200000698284ms
+	-Render Depth Pre-Pass: 0.01099999880387ms
+	-Setup Shadows: 0.01800000465522ms
+	-Render Opaque Pass: 0.01399999957974ms
+	-Render Sky: 0.05599999831895ms
+	-Render 3D Transparent Pass: 0.04200003106715ms
+	-Tonemap: 0.15299995874954ms
+	-Glow: 0.22799991349042ms
+	-Render CanvasItems: 0.1129999484046ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199999973692ms
+	-Render Depth Pre-Pass: 0.01099999916965ms
+	-Setup Shadows: 0.01800000462039ms
+	-Render Opaque Pass: 0.01399999959715ms
+	-Render Sky: 0.05599999838862ms
+	-Render 3D Transparent Pass: 0.04200003064912ms
+	-Tonemap: 0.15299996014299ms
+	-Glow: 0.22799991739207ms
+	-Render CanvasItems: 0.11299994896198ms
+XR Editor: 56 fps, 245 frame(s) late, slowest 142.2 ms, process 46.0 ms mean 176.7 ms longest, 44 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199999223676ms
+	-Render Depth Pre-Pass: 0.01099999954826ms
+	-Setup Shadows: 0.01800000458433ms
+	-Render Opaque Pass: 0.01399999961518ms
+	-Render Sky: 0.05599999846074ms
+	-Render 3D Transparent Pass: 0.04200003021642ms
+	-Tonemap: 0.15299996158533ms
+	-Glow: 0.22799992143062ms
+	-Render CanvasItems: 0.11299994953892ms
+XR Editor: graph lab: graph scripts 0.13 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 57 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 51.02 ms, 44 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 7 call(s) 9211 object(s) 110522 primitive(s), shadow 37 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199998446873ms
+	-Render Depth Pre-Pass: 0.0109999999404ms
+	-Setup Shadows: 0.01800000454698ms
+	-Render Opaque Pass: 0.01399999963386ms
+	-Render Sky: 0.05599999853543ms
+	-Render 3D Transparent Pass: 0.04200002976826ms
+	-Tonemap: 0.15299996307918ms
+	-Glow: 0.2279999256134ms
+	-Render CanvasItems: 0.11299995013646ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199999223676ms
+	-Render Depth Pre-Pass: 0.01099999954826ms
+	-Setup Shadows: 0.01800000458433ms
+	-Render Opaque Pass: 0.01399999961518ms
+	-Render Sky: 0.05599999846074ms
+	-Render 3D Transparent Pass: 0.04200003021642ms
+	-Tonemap: 0.15299996158533ms
+	-Glow: 0.22799992143062ms
+	-Render CanvasItems: 0.11299994953892ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199999223676ms
+	-Render Depth Pre-Pass: 0.01099999954826ms
+	-Setup Shadows: 0.01800000458433ms
+	-Render Opaque Pass: 0.01399999961518ms
+	-Render Sky: 0.05599999846074ms
+	-Render 3D Transparent Pass: 0.04200003021642ms
+	-Tonemap: 0.15299996158533ms
+	-Glow: 0.22799992143062ms
+	-Render CanvasItems: 0.11299994953892ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199999973692ms
+	-Render Depth Pre-Pass: 0.01099999916965ms
+	-Setup Shadows: 0.01800000462039ms
+	-Render Opaque Pass: 0.01399999959715ms
+	-Render Sky: 0.05599999838862ms
+	-Render 3D Transparent Pass: 0.04200003064912ms
+	-Tonemap: 0.15299996014299ms
+	-Glow: 0.22799991739207ms
+	-Render CanvasItems: 0.11299994896198ms
+XR Editor: 56 fps, 279 frame(s) late, slowest 31.8 ms, process 19.5 ms mean 33.9 ms longest, 44 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15199999223676ms
+	-Render Depth Pre-Pass: 0.01099999954826ms
+	-Setup Shadows: 0.01800000458433ms
+	-Render Opaque Pass: 0.01399999961518ms
+	-Render Sky: 0.05599999846074ms
+	-Render 3D Transparent Pass: 0.04200003021642ms
+	-Tonemap: 0.15299996158533ms
+	-Glow: 0.22799992143062ms
+	-Render CanvasItems: 0.11299994953892ms
+XR Editor: graph lab: graph scripts 0.13 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 57 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 19.61 ms, 44 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 7 call(s) 10572 object(s) 126854 primitive(s), shadow 37 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: closed
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200015476772ms
+	-Render Depth Pre-Pass: 0.01099999134357ms
+	-Setup Shadows: 0.01800000536573ms
+	-Render Opaque Pass: 0.01400001232441ms
+	-Render Sky: 0.05600004929763ms
+	-Render 3D Transparent Pass: 0.0420000395932ms
+	-Tonemap: 0.15299993032938ms
+	-Glow: 0.22800005399264ms
+	-Render CanvasItems: 0.11299993703654ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021888028ms
+	-Render Depth Pre-Pass: 0.01100000213174ms
+	-Setup Shadows: 0.01799999765989ms
+	-Render Opaque Pass: 0.01400002311258ms
+	-Render Sky: 0.05600009245031ms
+	-Render 3D Transparent Pass: 0.0419999972111ms
+	-Tonemap: 0.15299992601411ms
+	-Glow: 0.22800019208123ms
+	-Render CanvasItems: 0.1129999321048ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+XR Editor: 119 fps, 42 frame(s) late, slowest 78.8 ms, process 25.8 ms mean 77.8 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 118 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 24.25 ms, 26 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6 call(s) 6 object(s) 62 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021349151ms
+	-Render Depth Pre-Pass: 0.01100000122498ms
+	-Setup Shadows: 0.01800000050972ms
+	-Render Opaque Pass: 0.01400002220581ms
+	-Render Sky: 0.05600008882325ms
+	-Render 3D Transparent Pass: 0.04200000187446ms
+	-Tonemap: 0.15299992725767ms
+	-Glow: 0.22800018047464ms
+	-Render CanvasItems: 0.11299993251932ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+XR Editor: 119 fps, 3 frame(s) late, slowest 24.5 ms, process 12.2 ms mean 26.8 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 120 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 12.11 ms, 26 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6 call(s) 6 object(s) 62 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: open_scene5k
+XR Editor: graph lab: scene of 5000 object(s) added.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-1.432622, 0.485951, -0.793281), S: (2.126646, 1.972408, 2.535068)] from 2.80 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200002076196ms
+	-Render Depth Pre-Pass: 0.01099999810829ms
+	-Setup Shadows: 0.01800000472147ms
+	-Render Opaque Pass: 0.01399999954661ms
+	-Render Sky: 0.05599999818646ms
+	-Render 3D Transparent Pass: 0.0420000318621ms
+	-Tonemap: 0.15299995609971ms
+	-Glow: 0.2279999060709ms
+	-Render CanvasItems: 0.11299994734467ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200002076196ms
+	-Render Depth Pre-Pass: 0.01099999810829ms
+	-Setup Shadows: 0.01800000472147ms
+	-Render Opaque Pass: 0.01399999954661ms
+	-Render Sky: 0.05599999818646ms
+	-Render 3D Transparent Pass: 0.0420000318621ms
+	-Tonemap: 0.15299995609971ms
+	-Glow: 0.2279999060709ms
+	-Render CanvasItems: 0.11299994734467ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200001398722ms
+	-Render Depth Pre-Pass: 0.01099999845028ms
+	-Setup Shadows: 0.0180000046889ms
+	-Render Opaque Pass: 0.0139999995629ms
+	-Render Sky: 0.0559999982516ms
+	-Render 3D Transparent Pass: 0.04200003147125ms
+	-Tonemap: 0.15299995740255ms
+	-Glow: 0.22799990971883ms
+	-Render CanvasItems: 0.1129999478658ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200002731815ms
+	-Render Depth Pre-Pass: 0.01099999777732ms
+	-Setup Shadows: 0.01800000475299ms
+	-Render Opaque Pass: 0.01399999953085ms
+	-Render Sky: 0.05599999812342ms
+	-Render 3D Transparent Pass: 0.04200003224034ms
+	-Tonemap: 0.15299995483891ms
+	-Glow: 0.22799990254064ms
+	-Render CanvasItems: 0.11299994684035ms
+XR Editor: 61 fps, 249 frame(s) late, slowest 140.1 ms, process 37.9 ms mean 157.3 ms longest, 423 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200003366622ms
+	-Render Depth Pre-Pass: 0.01099999745687ms
+	-Setup Shadows: 0.01800000478351ms
+	-Render Opaque Pass: 0.01399999951559ms
+	-Render Sky: 0.05599999806238ms
+	-Render 3D Transparent Pass: 0.04200003260658ms
+	-Tonemap: 0.15299995361813ms
+	-Glow: 0.22799989912245ms
+	-Render CanvasItems: 0.11299994635204ms
+XR Editor: graph lab: graph scripts 0.53 ms per frame, of them facing the head 0.29 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 61 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 42.28 ms, 422 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 371 call(s) 5138 object(s) 137296 primitive(s), shadow 31 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200003366622ms
+	-Render Depth Pre-Pass: 0.01099999745687ms
+	-Setup Shadows: 0.01800000478351ms
+	-Render Opaque Pass: 0.01399999951559ms
+	-Render Sky: 0.05599999806238ms
+	-Render 3D Transparent Pass: 0.04200003260658ms
+	-Tonemap: 0.15299995361813ms
+	-Glow: 0.22799989912245ms
+	-Render CanvasItems: 0.11299994635204ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200005155621ms
+	-Render Depth Pre-Pass: 0.01099999655377ms
+	-Setup Shadows: 0.01800000486952ms
+	-Render Opaque Pass: 0.01399999947259ms
+	-Render Sky: 0.05599999789036ms
+	-Render 3D Transparent Pass: 0.04200003363869ms
+	-Tonemap: 0.15299995017774ms
+	-Glow: 0.22799988948938ms
+	-Render CanvasItems: 0.11299994497588ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.1520000398159ms
+	-Render Depth Pre-Pass: 0.01099999714643ms
+	-Setup Shadows: 0.01800000481308ms
+	-Render Opaque Pass: 0.01399999950081ms
+	-Render Sky: 0.05599999800324ms
+	-Render 3D Transparent Pass: 0.04200003296137ms
+	-Tonemap: 0.15299995243549ms
+	-Glow: 0.22799989581108ms
+	-Render CanvasItems: 0.11299994587898ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200002076196ms
+	-Render Depth Pre-Pass: 0.01099999810829ms
+	-Setup Shadows: 0.01800000472147ms
+	-Render Opaque Pass: 0.01399999954661ms
+	-Render Sky: 0.05599999818646ms
+	-Render 3D Transparent Pass: 0.0420000318621ms
+	-Tonemap: 0.15299995609971ms
+	-Glow: 0.2279999060709ms
+	-Render CanvasItems: 0.11299994734467ms
+XR Editor: 60 fps, 301 frame(s) late, slowest 33.4 ms, process 17.3 ms mean 30.7 ms longest, 423 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200002076196ms
+	-Render Depth Pre-Pass: 0.01099999810829ms
+	-Setup Shadows: 0.01800000472147ms
+	-Render Opaque Pass: 0.01399999954661ms
+	-Render Sky: 0.05599999818646ms
+	-Render 3D Transparent Pass: 0.0420000318621ms
+	-Tonemap: 0.15299995609971ms
+	-Glow: 0.2279999060709ms
+	-Render CanvasItems: 0.11299994734467ms
+XR Editor: graph lab: graph scripts 0.65 ms per frame, of them facing the head 0.40 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 59 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 17.30 ms, 422 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 371 call(s) 5078 object(s) 136588 primitive(s), shadow 31 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: open
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-1.407418, 0.482693, -0.793281), S: (2.272618, 1.975667, 2.576816)] from 2.90 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200020781661ms
+	-Render Depth Pre-Pass: 0.01100000027007ms
+	-Setup Shadows: 0.01800000351087ms
+	-Render Opaque Pass: 0.0140000212509ms
+	-Render Sky: 0.05600008500361ms
+	-Render 3D Transparent Pass: 0.04200000678543ms
+	-Tonemap: 0.15299992856726ms
+	-Glow: 0.22800016825178ms
+	-Render CanvasItems: 0.11299993295585ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021163277ms
+	-Render Depth Pre-Pass: 0.01100000091221ms
+	-Setup Shadows: 0.01800000149271ms
+	-Render Opaque Pass: 0.01400002189305ms
+	-Render Sky: 0.05600008757218ms
+	-Render 3D Transparent Pass: 0.04200000348298ms
+	-Tonemap: 0.15299992768661ms
+	-Glow: 0.22800017647121ms
+	-Render CanvasItems: 0.1129999326623ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: 118 fps, 44 frame(s) late, slowest 34.7 ms, process 18.7 ms mean 45.6 ms longest, 410 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.54 ms per frame, of them facing the head 0.31 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 119 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 17.97 ms, 410 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 370 call(s) 372 object(s) 80092 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200021531847ms
+	-Render Depth Pre-Pass: 0.0110000015324ms
+	-Setup Shadows: 0.01799999954354ms
+	-Render Opaque Pass: 0.01400002251323ms
+	-Render Sky: 0.05600009005294ms
+	-Render 3D Transparent Pass: 0.04200000029344ms
+	-Tonemap: 0.15299992683606ms
+	-Glow: 0.22800018440964ms
+	-Render CanvasItems: 0.11299993237879ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+XR Editor: 119 fps, 4 frame(s) late, slowest 45.1 ms, process 18.0 ms mean 51.3 ms longest, 410 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.49 ms per frame, of them facing the head 0.26 ms; ray routing 0.00 ms; manipulator 0.04 ms.
+XR Editor: graph lab: frames 118 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 17.90 ms, 410 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 370 call(s) 372 object(s) 80108 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: closed
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.80 x 0.89.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200020585741ms
+	-Render Depth Pre-Pass: 0.0109999999404ms
+	-Setup Shadows: 0.01800000454698ms
+	-Render Opaque Pass: 0.01400002092123ms
+	-Render Sky: 0.05600008368492ms
+	-Render 3D Transparent Pass: 0.04200000848089ms
+	-Tonemap: 0.15299992901938ms
+	-Glow: 0.22800016403198ms
+	-Render CanvasItems: 0.11299993310656ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200002731815ms
+	-Render Depth Pre-Pass: 0.01099999777732ms
+	-Setup Shadows: 0.01800000475299ms
+	-Render Opaque Pass: 0.01399999953085ms
+	-Render Sky: 0.05599999812342ms
+	-Render 3D Transparent Pass: 0.04200003224034ms
+	-Tonemap: 0.15299995483891ms
+	-Glow: 0.22799990254064ms
+	-Render CanvasItems: 0.11299994684035ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200002731815ms
+	-Render Depth Pre-Pass: 0.01099999777732ms
+	-Setup Shadows: 0.01800000475299ms
+	-Render Opaque Pass: 0.01399999953085ms
+	-Render Sky: 0.05599999812342ms
+	-Render 3D Transparent Pass: 0.04200003224034ms
+	-Tonemap: 0.15299995483891ms
+	-Glow: 0.22799990254064ms
+	-Render CanvasItems: 0.11299994684035ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200003366622ms
+	-Render Depth Pre-Pass: 0.01099999745687ms
+	-Setup Shadows: 0.01800000478351ms
+	-Render Opaque Pass: 0.01399999951559ms
+	-Render Sky: 0.05599999806238ms
+	-Render 3D Transparent Pass: 0.04200003260658ms
+	-Tonemap: 0.15299995361813ms
+	-Glow: 0.22799989912245ms
+	-Render CanvasItems: 0.11299994635204ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200003366622ms
+	-Render Depth Pre-Pass: 0.01099999745687ms
+	-Setup Shadows: 0.01800000478351ms
+	-Render Opaque Pass: 0.01399999951559ms
+	-Render Sky: 0.05599999806238ms
+	-Render 3D Transparent Pass: 0.04200003260658ms
+	-Tonemap: 0.15299995361813ms
+	-Glow: 0.22799989912245ms
+	-Render CanvasItems: 0.11299994635204ms
+XR Editor: 61 fps, 260 frame(s) late, slowest 55.2 ms, process 19.0 ms mean 52.2 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.13 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.07 ms.
+XR Editor: graph lab: frames 62 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 20.74 ms, 26 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6 call(s) 6 object(s) 62 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200004577637ms
+	-Render Depth Pre-Pass: 0.01099999684554ms
+	-Setup Shadows: 0.01800000484173ms
+	-Render Opaque Pass: 0.01399999948648ms
+	-Render Sky: 0.05599999794593ms
+	-Render 3D Transparent Pass: 0.04200003330524ms
+	-Tonemap: 0.15299995128925ms
+	-Glow: 0.2279998926016ms
+	-Render CanvasItems: 0.11299994542049ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022061666ms
+	-Render Depth Pre-Pass: 0.01100000242392ms
+	-Setup Shadows: 0.01799999674161ms
+	-Render Opaque Pass: 0.01400002340476ms
+	-Render Sky: 0.05600009361903ms
+	-Render 3D Transparent Pass: 0.04199999570847ms
+	-Tonemap: 0.1529999256134ms
+	-Glow: 0.22800019582113ms
+	-Render CanvasItems: 0.11299993197123ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+GPU PROFILE (total 0.804ms): 
+	-Setup Sky: 0.15200022232434ms
+	-Render Depth Pre-Pass: 0.01100000271127ms
+	-Setup Shadows: 0.01799999583851ms
+	-Render Opaque Pass: 0.01400002369211ms
+	-Render Sky: 0.05600009476843ms
+	-Render 3D Transparent Pass: 0.04199999423066ms
+	-Tonemap: 0.15299992521932ms
+	-Glow: 0.22800019949921ms
+	-Render CanvasItems: 0.11299993183987ms
+XR Editor: 120 fps, 42 frame(s) late, slowest 37.1 ms, process 16.0 ms mean 35.7 ms longest, 26 draw calls, session FOCUSED, display 120.0 Hz, editor window focused true, controller trackers [&"left_hand", &"right_hand"], low-processor mode false.
+XR Editor: graph lab: graph scripts 0.12 ms per frame, of them facing the head 0.00 ms; ray routing 0.00 ms; manipulator 0.05 ms.
+XR Editor: graph lab: frames 119 fps, VR view render CPU 0.00 ms, GPU 0.00 ms, process 15.13 ms, 26 draw calls.
+XR Editor: graph lab: view @SubViewportContainer@10250/@SubViewport@10251: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESession/XREViewport: render CPU 0.00 ms, GPU 0.00 ms, visible 6 call(s) 6 object(s) 62 primitive(s), shadow 20 call(s), canvas 0 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: done.

@@ -1,6 +1,6 @@
 # ПК со шлемом (Quest 2 по Link), кривые роста (D-157, 2026-11-09)
 
-Windows 11, редактор Godot 4.7.2 на Forward+ (Vulkan), Meta Horizon (Oculus 1.208.0), Quest 2 по Link, дисплей 120 Гц (бюджет кадра 8,3 мс). Команда: `py scripts/xr_editor.py --fallback sim --hide-ui res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress`; лог `logs/editor_meta_2026-11-09T20-56-29.log`. Вид сверен проверкой `--xre-graph-lab-pose` (лог `logs/editor_meta_2026-11-09T20-54-52.log`, снимки: граф на 500 блоков, стол и сцена целиком в кадре).
+Windows 11, видеокарта RTX 4060 (по прогону sim того же дня), редактор Godot 4.7.2 на Forward+ (Vulkan), Meta Horizon (Oculus 1.208.0), Quest 2 по Link, дисплей 120 Гц (бюджет кадра 8,3 мс). Команда: `py scripts/xr_editor.py --fallback sim --hide-ui res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress`; лог `logs/editor_meta_2026-11-09T20-56-29.log` (сжатый — `raw_2026-11-09/pc_link_stress.log`). Выводы по всем замерам — [stage1_summary_2026-11-09.md](stage1_summary_2026-11-09.md). Вид сверен проверкой `--xre-graph-lab-pose` (лог `logs/editor_meta_2026-11-09T20-54-52.log`, снимки: граф на 500 блоков, стол и сцена целиком в кадре).
 
 ## Выводы
 
@@ -23,7 +23,7 @@ Windows 11, редактор Godot 4.7.2 на Forward+ (Vulkan), Meta Horizon (O
 ## Что на ПК не измерено и почему
 
 - **Время рендера вида** (`viewport_get_measured_render_time_*`) на ПК по-прежнему 0, и в настоящей сессии Link тоже: причина не найдена. В таблицах ниже колонки CPU и GPU вида нулевые, счётчики вызовов и объектов настоящие.
-- **`--engine=--gpu-profile` (шаг 1.3) на ПК бесполезен.** Движок печатает «GPU PROFILE» раз в секунду, но во всех 169 блоках одно и то же: total 0,804 мс, стадии Setup Sky 0,15, Tonemap 0,15, Glow 0,23, Render CanvasItems 0,11, ни одного отличия между шагами. Это профиль окна редактора, не XR-вида. Лог `logs/editor_meta_2026-11-09T20-59-54.log`. GPU ПК надо мерить снаружи: PresentMon, Nsight или счётчики карты; не сделано.
+- **`--engine=--gpu-profile` (шаг 1.3) на ПК бесполезен.** Движок печатает «GPU PROFILE» раз в секунду, но во всех 169 блоках одно и то же: total 0,804 мс, стадии Setup Sky 0,15, Tonemap 0,15, Glow 0,23, Render CanvasItems 0,11, ни одного отличия между шагами. Профиль не обновляется или не относится к XR-виду (чей он, не выяснено). Лог `logs/editor_meta_2026-11-09T20-59-54.log`, сжатый — `raw_2026-11-09/pc_link_stress_engine_gpu_profile.log`. GPU ПК надо мерить снаружи: PresentMon, Nsight или счётчики карты; не сделано.
 
 ## Таблица. Прогон `--xre-graph-lab-stress` на ПК
 logs/editor_meta_2026-11-09T20-56-29.log
