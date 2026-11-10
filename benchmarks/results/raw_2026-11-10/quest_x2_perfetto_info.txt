@@ -1,0 +1,141 @@
+# org.godotengine.editor.v4.meta.release
+# trace config
+buffers { size_kb: 131072 fill_policy: DISCARD }
+buffers { size_kb: 65536 fill_policy: DISCARD }
+data_sources { config { name: "track_event" target_buffer: 0
+  track_event_config { enabled_categories: "godot" disabled_categories: "*" } } }
+data_sources { config { name: "linux.ftrace" target_buffer: 1
+  ftrace_config { ftrace_events: "sched/sched_switch" ftrace_events: "power/cpu_frequency"
+    ftrace_events: "power/gpu_frequency" ftrace_events: "power/suspend_resume" } } }
+data_sources { config { name: "linux.process_stats" target_buffer: 1 } }
+data_sources { config { name: "gpu.renderstages.oculus" target_buffer: 1 } }
+data_sources { config { name: "gpu.counters.oculus" target_buffer: 1
+  gpu_counter_config { counter_period_ns: 1000000 } } }
+duration_ms: 3000
+
+## perfetto --query
+[31mNot meant for machine consumption. Use --query-raw for scripts.[0m
+
+Service: Perfetto v50.1 (N/A)
+Tracing sessions: 0 (started: 0)
+
+
+PRODUCER PROCESSES CONNECTED:
+
+ID     PID      UID      FLAGS  NAME                                       SDK
+==     ===      ===      =====  ====                                       ===
+1      1119     9999            traced                                     
+2      954      1000            /system_ext/bin/runtimeipcbroker           Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+3      1212     1000            /system_ext/bin/mrsystemservice            Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+4      1115     9999            perfetto.traced_probes                     Perfetto v50.1 (N/A)
+5      1217     1000            /system_ext/bin/trackingfidelityservice    Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+6      1215     2907            /system_ext/bin/parfait                    Perfetto v50.1 (N/A)
+7      1212     1000            /system_ext/bin/mrsystemservice            Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+8      1246     1000            /system_ext/bin/xrspd                      Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+9      1218     1000            /system_ext/bin/voiceassistantserver       Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+10     1162     1000            /system_ext/bin/telemetry                  Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+11     915      1000            /system_ext/bin/settingsserver             Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+12     992      1000            /system_ext/bin/crcs                       Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+13     972      1000            /odm/bin/trackingservice                   Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+14     972      1000            /odm/bin/trackingservice                   Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+15     977      1000            /odm/bin/hw/vendor.oculus.hardware.sensors@1.0-service Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+16     972      1000            /odm/bin/trackingservice                   Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+17     986      1041            /system/bin/audioserver                    Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+18     1524     1000            system_server                              Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+19     2097     1000            com.oculus.os.cm                           Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+20     2097     1000            com.oculus.os.cm                           Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+22     985      1000            /system/bin/surfaceflinger                 Perfetto v50.1 (N/A)
+23     985      1000            /system/bin/surfaceflinger                 Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+24     2518     1000            /system_ext/bin/perfstream                 Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+25     2470     10012           com.oculus.vrruntimeservice                Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+26     2470     10012           com.oculus.vrruntimeservice                Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+27     2950     10050           com.oculus.vrshell                         Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+28     2866     10073           com.facebook.wearable.system.location.service Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+29     985      1000            /system/bin/surfaceflinger                 Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+30     1212     1000            /system_ext/bin/mrsystemservice            Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+31     2950     10050           com.oculus.vrshell                         Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+32     3802     10059           com.facebook.spatial_persistence_service   Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+33     3986     10044           com.oculus.vrguardianservice               Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+34     3986     10044           com.oculus.vrguardianservice               Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+35     3986     10044           com.oculus.vrguardianservice               Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+36     4531     10008           com.oculus.presence                        Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+37     4531     10008           com.oculus.presence                        Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+38     4907     10053           com.oculus.systemux:SystemUX               Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+72     5887     10112           org.godotengine.editor.v4.meta.release     Perfetto v58.2-add693d8b (add693d8b338ba9599dbcbc3e300b1ab8c000897)
+73     6526     10112           org.godotengine.editor.v4.meta.release:GodotXRGame Perfetto v58.2-add693d8b (add693d8b338ba9599dbcbc3e300b1ab8c000897)
+74     6526     10112           org.godotengine.editor.v4.meta.release:GodotXRGame Perfetto v27.1-b02c84497 (b02c84497b5387066a8f48eae60c6a8f1e042d5b)
+75     6526     10112           org.godotengine.editor.v4.meta.release:GodotXRGame Perfetto v46.0-7114ea53e (7114ea53e3297191d34072cd64cf8a7be7076bb6)
+
+
+DATA SOURCES REGISTERED:
+
+NAME                                     PRODUCER                     DETAILS
+===                                      ========                     ========
+android.game_interventions               perfetto.traced_probes (4)   
+android.heapprofd                        traced (1)                   
+android.java_hprof                       traced (1)                   
+android.java_hprof.oom                   traced (1)                   
+android.kernel_wakelocks                 perfetto.traced_probes (4)   
+android.log                              perfetto.traced_probes (4)   
+android.packages_list                    perfetto.traced_probes (4)   
+android.polled_state                     perfetto.traced_probes (4)   
+android.power                            perfetto.traced_probes (4)   
+android.sdk_sysprop_guard                traced (1)                   
+android.statsd                           perfetto.traced_probes (4)   
+android.surfaceflinger.frame             /system/bin/surfaceflinger (22) 
+android.surfaceflinger.frametimeline     /system/bin/surfaceflinger (22) 
+android.system_property                  perfetto.traced_probes (4)   
+linux.frozen_ftrace                      perfetto.traced_probes (4)   
+linux.ftrace                             perfetto.traced_probes (4)   gfx,input,view,webview,wm,am,sm,audio,vi... (use --long to expand)
+linux.inode_file_map                     perfetto.traced_probes (4)   
+linux.perf                               traced (1)                   
+linux.process_stats                      perfetto.traced_probes (4)   
+linux.sys_stats                          perfetto.traced_probes (4)   
+linux.sysfs_power                        perfetto.traced_probes (4)   
+linux.system_info                        perfetto.traced_probes (4)   
+perfetto.metatrace                       traced (1)                   
+perfetto.metatrace                       perfetto.traced_probes (4)   
+track_event                              /system_ext/bin/runtimeipcbroker (2) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system_ext/bin/mrsystemservice (3) mixedreality
+track_event                              /system_ext/bin/trackingfidelityservice (5) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system_ext/bin/parfait (6)  parfait
+track_event                              /system_ext/bin/mrsystemservice (7) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system_ext/bin/xrspd (8)    camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system_ext/bin/voiceassistantserver (9) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system_ext/bin/telemetry (10) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system_ext/bin/settingsserver (11) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system_ext/bin/crcs (12)    camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /odm/bin/trackingservice (13) BoltAnalyzer,xrfury,QPL,xr_runtime_marke... (use --long to expand)
+track_event                              /odm/bin/trackingservice (14) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /odm/bin/hw/vendor.oculus.hardware.sensors@1.0-service (15) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /odm/bin/trackingservice (16) mixedreality
+track_event                              /system/bin/audioserver (17) audio
+track_event                              system_server (18)           camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              com.oculus.os.cm (19)        camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              com.oculus.os.cm (20)        camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system/bin/surfaceflinger (23) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system_ext/bin/perfstream (24) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              com.oculus.vrruntimeservice (25) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              com.oculus.vrruntimeservice (26) BoltAnalyzer,xrfury,QPL,xr_runtime_marke... (use --long to expand)
+track_event                              com.oculus.vrshell (27)      camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              com.facebook.wearable.system.location.service (28) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              /system/bin/surfaceflinger (29) BoltAnalyzer,xrfury,QPL,xr_runtime_marke... (use --long to expand)
+track_event                              /system_ext/bin/mrsystemservice (30) BoltAnalyzer,xrfury,QPL,xr_runtime_marke... (use --long to expand)
+track_event                              com.oculus.vrshell (31)      BoltAnalyzer,xrfury,QPL,xr_runtime_marke... (use --long to expand)
+track_event                              com.facebook.spatial_persistence_service (32) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              com.oculus.vrguardianservice (33) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              com.oculus.vrguardianservice (34) BoltAnalyzer,xrfury,QPL,xr_runtime_marke... (use --long to expand)
+track_event                              com.oculus.vrguardianservice (35) BoltAnalyzer,xrfury,QPL,xr_runtime_marke... (use --long to expand)
+track_event                              com.oculus.presence (36)     aidl,telemetry
+track_event                              com.oculus.presence (37)     camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              com.oculus.systemux:SystemUX (38) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              org.godotengine.editor.v4.meta.release (72) godot,godot_scripting
+track_event                              org.godotengine.editor.v4.meta.release:GodotXRGame (73) godot,godot_scripting
+track_event                              org.godotengine.editor.v4.meta.release:GodotXRGame (74) camera_mux_mode,mixed_reality,power_moni... (use --long to expand)
+track_event                              org.godotengine.editor.v4.meta.release:GodotXRGame (75) BoltAnalyzer,xrfury,QPL,xr_runtime_marke... (use --long to expand)
+
+
+TRACING SESSIONS:
+
+ID      UID     STATE      BUF (#) KB   DUR (s)   #DS  STARTED  NAME
+===     ===     =====      ==========   =======   ===  =======  ====
