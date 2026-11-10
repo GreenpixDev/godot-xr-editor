@@ -583,6 +583,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	canvas.set_turn_modes(document.features.get_value(XREFeatureSettings.GRAPH_TURN), document.features.get_value(XREFeatureSettings.GRAPH_PARTS) == XREFeatureSettings.PARTS)
 	_set_arrow_modes(document.features)
 	canvas.set_arrow_layout(document.features.get_value(XREFeatureSettings.ARROW_LAYOUT) == XREFeatureSettings.NATIVE)
+	XREBlueprintCanvas.set_sharing(document.features.get_value(XREFeatureSettings.GRAPH_MATERIALS) == XREFeatureSettings.SHARED)
 	canvas.set_style(document.features.get_value(XREFeatureSettings.NODE_STYLE))
 	canvas.set_shrink(document.features.get_value(XREFeatureSettings.NODE_SHRINK))
 	canvas.set_heading(document.features.get_value(XREFeatureSettings.NODE_HEADING))
@@ -3460,6 +3461,7 @@ func _feature_changed(key: StringName) -> void:
 	# Arrowheads are laid again at once, with no rebuild (D-115).
 	if key in [XREFeatureSettings.EXEC_ARROWS, XREFeatureSettings.DATA_ARROWS, XREFeatureSettings.ARROW_STYLE]:
 		_set_arrow_modes(_document.features)
+		return
 	if key == XREFeatureSettings.ARROW_LAYOUT:
 		canvas.set_arrow_layout(_document.features.get_value(key) == XREFeatureSettings.NATIVE)
 		return
@@ -3483,6 +3485,9 @@ func _feature_changed(key: StringName) -> void:
 	elif key == XREFeatureSettings.CARD_PLUS: switched = canvas.set_plus_shown(value == XREFeatureSettings.SHOWN)
 	elif key == XREFeatureSettings.WIRE_BENDS: switched = canvas.set_bends_shown(value == XREFeatureSettings.ON)
 	elif key == XREFeatureSettings.BLOCK_COPY: switched = canvas.set_copy_shown(value == XREFeatureSettings.ON)
+	elif key == XREFeatureSettings.GRAPH_MATERIALS:
+		switched = XREBlueprintCanvas.share_parts != (value == XREFeatureSettings.SHARED)
+		XREBlueprintCanvas.set_sharing(value == XREFeatureSettings.SHARED)
 	if not switched: return
 	_finish_holds()
 	_cancel_bends()

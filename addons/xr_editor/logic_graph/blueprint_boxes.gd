@@ -614,9 +614,10 @@ func _add_drawer(box: Box) -> void:
 ## An archetypes' box's face in [param color] (D-106): drawn before the labels
 ## and tokens on it, as a card's face is, so that sorting never puts it over them.
 static func under_material(color: Color) -> StandardMaterial3D:
-	var result := XREBlueprintCanvas.material(color, true)
-	result.render_priority = Material.RENDER_PRIORITY_MAX - 1
-	return result
+	return XREBlueprintCanvas._shared_material([&"under", color], func() -> Material:
+		var result := XREBlueprintCanvas.material(color, true)
+		result.render_priority = Material.RENDER_PRIORITY_MAX - 1
+		return result) as StandardMaterial3D
 
 
 ## Shows each box's trash while a ray is on it (D-106), as archetypes' cards do:

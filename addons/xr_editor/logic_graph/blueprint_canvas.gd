@@ -916,9 +916,9 @@ func get_port_shapes() -> bool:
 func _port_visual(type: int, color: Color, spherical: bool) -> MeshInstance3D:
 	if XREBlueprintCollections.is_collection(type): return collection_visual(type)
 	# An archetype's execution is an arrow whatever Port shapes says (D-106), as the mockup's.
-	if _port_shapes or (type == XREBlueprintGraph.EXEC and _style == XREFeatureSettings.ARCHETYPES): return XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type, PORT_RADIUS, PORT_DEPTH * 2.0), material(color, true))
+	if _port_shapes or (type == XREBlueprintGraph.EXEC and _style == XREFeatureSettings.ARCHETYPES): return XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type, PORT_RADIUS, PORT_DEPTH * 2.0), shared_material(color, true))
 	if spherical: return XRERig.create_vr_mesh(_sphere_mesh, wire_material(color))
-	var disc := XRERig.create_vr_mesh(_port_mesh, material(color, true))
+	var disc := XRERig.create_vr_mesh(_port_mesh, shared_material(color, true))
 	disc.rotation.x = PI * 0.5
 	return disc
 
@@ -973,9 +973,9 @@ func collection_visual(category: int) -> MeshInstance3D:
 ## One port of a stack (D-143): the element's shape with Port shapes on, else a disc.
 func _stack_disc(element: int, color: Color, size: float) -> MeshInstance3D:
 	var disc: MeshInstance3D
-	if _port_shapes: disc = XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(element, PORT_RADIUS * size, PORT_DEPTH * 2.0), material(color, true))
+	if _port_shapes: disc = XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(element, PORT_RADIUS * size, PORT_DEPTH * 2.0), shared_material(color, true))
 	else:
-		disc = XRERig.create_vr_mesh(_port_mesh, material(color, true))
+		disc = XRERig.create_vr_mesh(_port_mesh, shared_material(color, true))
 		disc.rotation.x = PI * 0.5
 	return disc
 
@@ -1455,9 +1455,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 			card.plus.add_child(face)
 			card.plus_faces.append(face)
 			for size: Vector3 in [Vector3(0.018, 0.004, 0.002), Vector3(0.004, 0.018, 0.002)]:
-				var bar := BoxMesh.new()
-				bar.size = size
-				var visual := XRERig.create_vr_mesh(bar, material(Color.WHITE, true))
+				var visual := XRERig.create_vr_mesh(shared_box(size), shared_material(Color.WHITE, true))
 				face.add_child(visual)
 		card.trash_point = trash_point
 		card.trash = Node3D.new()
@@ -1667,10 +1665,10 @@ func _add_function_marks(card: Card, block: Dictionary, row: float, front: float
 	card.pure_switch.name = "Pure"
 	card.pure_switch.position = card.pure_point
 	card.node.add_child(card.pure_switch)
-	var pill := XRERig.create_vr_mesh(XREBlueprintShapes.body(XREBlueprintShapes.stadium(PURE_SIZE), 0.0006), material(PURE_ON if card.pure_on else PURE_OFF, true))
+	var pill := XRERig.create_vr_mesh(XREBlueprintShapes.body(XREBlueprintShapes.stadium(PURE_SIZE), 0.0006), shared_material(PURE_ON if card.pure_on else PURE_OFF, true))
 	pill.name = "Pill"
 	card.pure_switch.add_child(pill)
-	var knob := XRERig.create_vr_mesh(XREBlueprintShapes.body(XREBlueprintShapes.circle(PURE_SIZE.y * 0.36), 0.0006), material(Color("e9edf5"), true))
+	var knob := XRERig.create_vr_mesh(XREBlueprintShapes.body(XREBlueprintShapes.circle(PURE_SIZE.y * 0.36), 0.0006), shared_material(Color("e9edf5"), true))
 	knob.name = "Knob"
 	knob.position = Vector3((1.0 if card.pure_on else -1.0) * (PURE_SIZE.x - PURE_SIZE.y) * 0.5, 0, 0.0008)
 	card.pure_switch.add_child(knob)
@@ -1694,7 +1692,7 @@ func _ring_untyped(card: Card, block: Dictionary) -> void:
 		var mesh := card.ports[port]
 		# A real hole in the port itself, so that it grows, hides and moves with the port.
 		mesh.mesh = XREBlueprintShapes.ring(XREBlueprintShapes.circle(PORT_RADIUS), 0.0, PORT_RADIUS * 0.4, PORT_DEPTH * 2.0)
-		mesh.material_override = material(PIN_MARK_COLOR, true)
+		mesh.material_override = shared_material(PIN_MARK_COLOR, true)
 
 
 ## The box of an Entry's pure switch, its word and pill, around [member Card.pure_point].
@@ -1785,9 +1783,7 @@ func _add_icon_to(parent: Node3D, texture: Texture2D, tint: Color, size: float, 
 	if texture == null: return
 	var quad := QuadMesh.new()
 	quad.size = Vector2.ONE * size
-	var face := material(tint, true)
-	face.albedo_texture = texture
-	var visual := XRERig.create_vr_mesh(quad, face)
+	var visual := XRERig.create_vr_mesh(quad, shared_material(tint, true, texture))
 	visual.position = point
 	parent.add_child(visual)
 
@@ -1818,9 +1814,8 @@ func _add_swap(card: Card, block: Dictionary) -> void:
 	card.node.add_child(card.swap)
 	var quad := QuadMesh.new()
 	quad.size = Vector2.ONE * SWAP_SIZE
-	var face := material(MEMBER_COLOR if heading_of(block) == XREFeatureSettings.MEMBER else Color.WHITE, true)
-	face.albedo_texture = XREBlueprintIcons.texture(&"swap", ICON_PIXELS, false)
-	card.swap.add_child(XRERig.create_vr_mesh(quad, face))
+	card.swap.add_child(XRERig.create_vr_mesh(quad, shared_material(MEMBER_COLOR if heading_of(block) == XREFeatureSettings.MEMBER else Color.WHITE, true,
+			XREBlueprintIcons.texture(&"swap", ICON_PIXELS, false))))
 	card.swap.visible = false
 
 ## A square of [param texture] on [param card], [param size] across at
@@ -1829,9 +1824,7 @@ func _add_icon(card: Card, part: String, texture: Texture2D, tint: Color, size: 
 	if texture == null: return
 	var quad := QuadMesh.new()
 	quad.size = Vector2.ONE * size
-	var face := material(tint, true)
-	face.albedo_texture = texture
-	var visual := XRERig.create_vr_mesh(quad, face)
+	var visual := XRERig.create_vr_mesh(quad, shared_material(tint, true, texture))
 	visual.name = part
 	visual.position = point
 	card.node.add_child(visual)
@@ -1889,7 +1882,7 @@ func _add_tag(card: Card, block: Dictionary, outputs: Array) -> void:
 	card.frame.set_meta(&"painted", true)
 	card.node.add_child(card.frame)
 	var type := int((outputs[0] as Array)[1]) if not outputs.is_empty() else XREBlueprintGraph.VALUE
-	var dot := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type if _port_shapes else XREBlueprintGraph.NUMBER, PORT_RADIUS, PORT_DEPTH * 2.0), material(type_color(type), true))
+	var dot := XRERig.create_vr_mesh(XREBlueprintShapes.port_mesh(type if _port_shapes else XREBlueprintGraph.NUMBER, PORT_RADIUS, PORT_DEPTH * 2.0), shared_material(type_color(type), true))
 	dot.scale = Vector3.ONE * 0.55
 	dot.position = Vector3(-card.width * 0.5 + 0.017, 0, front + 0.0004)
 	card.node.add_child(dot)
@@ -1976,7 +1969,7 @@ func _add_rims(card: Card, block: Dictionary, outputs: Array) -> void:
 	card.node.add_child(card.frame)
 	if XREBlueprintGraph.is_operator(block) or outputs.is_empty(): return
 	var color := type_color(int((outputs[0] as Array)[1]))
-	var rim := XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, INNER_INSET, INNER_RIM, front), material(Color(color, INNER_SEEN), true))
+	var rim := XRERig.create_vr_mesh(XREBlueprintShapes.ring(card.outline, INNER_INSET, INNER_RIM, front), shared_material(Color(color, INNER_SEEN), true))
 	rim.name = "Rim"
 	card.node.add_child(rim)
 
@@ -3347,9 +3340,7 @@ func _add_pin_buttons(card: Card, block: Dictionary, archetype: bool, inputs: Ar
 		card.pin_plus.position = card.pin_plus_point
 		card.node.add_child(card.pin_plus)
 		for size: Vector3 in [Vector3(0.018, 0.004, 0.002), Vector3(0.004, 0.018, 0.002)]:
-			var bar := BoxMesh.new()
-			bar.size = size
-			card.pin_plus.add_child(XRERig.create_vr_mesh(bar, _pin_plus_material))
+			card.pin_plus.add_child(XRERig.create_vr_mesh(shared_box(size), _pin_plus_material))
 		card.pin_plus.visible = not archetype
 	card.pin_marks.clear()
 	card.pin_shifts.clear()
@@ -3409,15 +3400,15 @@ func _add_rack(card: Card, block: Dictionary, graph: XREBlueprintGraph) -> void:
 	var top := at.y + RACK_ROW * 0.5 + RACK_PAD * 0.5
 	var outline := XREBlueprintShapes.rounded_rect(Vector2(width, height), Vector4.ONE * 0.005)
 	var center := Vector3(right - width * 0.5, top - height * 0.5, z)
-	var piece := XRERig.create_vr_mesh(XREBlueprintShapes.body(outline, 0.002), material(XREBlueprintIcons.BODY, true))
+	var piece := XRERig.create_vr_mesh(XREBlueprintShapes.body(outline, 0.002), shared_material(XREBlueprintIcons.BODY, true))
 	piece.position = center
 	card.node.add_child(piece)
-	var rim := XRERig.create_vr_mesh(XREBlueprintShapes.ring(outline, 0.0, 0.0014, 0.0012), material(color, true))
+	var rim := XRERig.create_vr_mesh(XREBlueprintShapes.ring(outline, 0.0, 0.0014, 0.0012), shared_material(color, true))
 	rim.position = center
 	card.node.add_child(rim)
 	var tail_mesh := BoxMesh.new()
 	tail_mesh.size = Vector3(at.x - right, 0.004, 0.002)
-	var tail := XRERig.create_vr_mesh(tail_mesh, material(color, true))
+	var tail := XRERig.create_vr_mesh(tail_mesh, shared_material(color, true))
 	tail.position = Vector3((at.x + right) * 0.5, at.y, z)
 	card.node.add_child(tail)
 	for index: int in items.size():
@@ -3428,9 +3419,7 @@ func _add_rack(card: Card, block: Dictionary, graph: XREBlueprintGraph) -> void:
 		card.node.add_child(token)
 	card.rack_plus_point = Vector3(center.x, at.y - items.size() * RACK_ROW, z + 0.002)
 	for size: Vector3 in [Vector3(0.012, 0.003, 0.002), Vector3(0.003, 0.012, 0.002)]:
-		var bar := BoxMesh.new()
-		bar.size = size
-		var mesh := XRERig.create_vr_mesh(bar, material(Color.WHITE, true))
+		var mesh := XRERig.create_vr_mesh(shared_box(size), shared_material(Color.WHITE, true))
 		mesh.position = card.rack_plus_point
 		card.node.add_child(mesh)
 	card.rack_rect = AABB(Vector3(right - width, top - height, z - 0.006), Vector3(width, height, 0.014))
@@ -3480,7 +3469,7 @@ func _add_field_buttons(card: Card, block: Dictionary, graph: XREBlueprintGraph)
 	card.hidden_chip.name = "HiddenChip"
 	card.hidden_chip.position = card.hidden_chip_point
 	card.node.add_child(card.hidden_chip)
-	var pill := XRERig.create_vr_mesh(XREBlueprintShapes.body(XREBlueprintShapes.stadium(card.hidden_chip_size), 0.001), material(Color("232a3b"), true))
+	var pill := XRERig.create_vr_mesh(XREBlueprintShapes.body(XREBlueprintShapes.stadium(card.hidden_chip_size), 0.001), shared_material(Color("232a3b"), true))
 	card.hidden_chip.add_child(pill)
 	text.position = Vector3(0, 0, 0.0008)
 	card.hidden_chip.add_child(text)
@@ -5129,7 +5118,7 @@ func _add_rows(card: Card, graph: XREBlueprintGraph, block: Dictionary, inputs: 
 			var point := _row_point(card, row, true)
 			var square := BoxMesh.new()
 			square.size = Vector3(0.0136, 0.0136, 0.0012)
-			var socket_visual := XRERig.create_vr_mesh(square, material(Color(1, 1, 1, 0.55), true))
+			var socket_visual := XRERig.create_vr_mesh(square, shared_material(Color(1, 1, 1, 0.55), true))
 			socket_visual.position = point
 			card.node.add_child(socket_visual)
 			var text := label(XREBlueprintFunctions.title_of(key) if not card.bead else "", 18)
@@ -5851,6 +5840,64 @@ func _find_card(id: int) -> Card:
 	return null
 
 
+## Graph materials Shared (D-167): the parts' materials and meshes of one look are made once and shared,
+## so that the renderer sorts and binds fewer of them. Nothing changes a shared one in place: a look of its
+## own (focus, a texture) is a copy ([method XREBlueprintFocus.variant]). Per part: a new one each time, as before.
+static var share_parts := true
+static var _shared_materials: Dictionary = {}
+static var _shared_meshes: Dictionary = {}
+## Entries the caches keep at most; past it they start again (parts keep theirs).
+const SHARED_LIMIT := 4096
+
+
+## Whether the parts' materials and meshes are shared (D-167). Forgets the shared ones on a change.
+static func set_sharing(shared: bool) -> void:
+	share_parts = shared
+	_shared_materials.clear()
+	_shared_meshes.clear()
+
+
+## The materials shared now, by their look (for the tests).
+static func shared_materials() -> Dictionary:
+	return _shared_materials
+
+
+## A material or mesh shared under [param key], made by [param make] the first time; made anew without sharing.
+static func _shared_material(key: Array, make: Callable) -> Material:
+	if not share_parts: return make.call()
+	if _shared_materials.has(key): return _shared_materials[key]
+	if _shared_materials.size() >= SHARED_LIMIT: _shared_materials.clear()
+	var result: Material = make.call()
+	_shared_materials[key] = result
+	return result
+
+
+static func _shared_mesh(key: Array, make: Callable) -> Mesh:
+	if not share_parts: return make.call()
+	if _shared_meshes.has(key): return _shared_meshes[key]
+	if _shared_meshes.size() >= SHARED_LIMIT: _shared_meshes.clear()
+	var result: Mesh = make.call()
+	_shared_meshes[key] = result
+	return result
+
+
+## [method material] for a part that keeps it as it is (D-167): shared by every part of the same look,
+## with [param texture] as its albedo. Never change the result; [method material] makes one to change.
+static func shared_material(color: Color, overlay: bool = false, texture: Texture2D = null) -> StandardMaterial3D:
+	return _shared_material([&"plain", color, overlay, texture], func() -> Material:
+		var result := material(color, overlay)
+		if texture != null: result.albedo_texture = texture
+		return result) as StandardMaterial3D
+
+
+## A box of [param size], shared as [method shared_material] is.
+static func shared_box(size: Vector3) -> BoxMesh:
+	return _shared_mesh([&"box", size], func() -> Mesh:
+		var box := BoxMesh.new()
+		box.size = size
+		return box) as BoxMesh
+
+
 ## Shared unlit materials keep graph geometry readable independently of scene lighting.
 static func material(color: Color, overlay: bool = false) -> StandardMaterial3D:
 	var result := StandardMaterial3D.new()
@@ -5867,6 +5914,10 @@ static func material(color: Color, overlay: bool = false) -> StandardMaterial3D:
 ## it in the transparent pass above the scene dimmer, with the overlays' render priority.
 ## [param grow] thickens the tube by that many meters around, along its normals.
 static func wire_material(color: Color, grow: float = 0.0) -> ShaderMaterial:
+	return _shared_material([&"wire", color, grow], _new_wire_material.bind(color, grow)) as ShaderMaterial
+
+
+static func _new_wire_material(color: Color, grow: float) -> ShaderMaterial:
 	if _wire_shader == null:
 		_wire_shader = Shader.new()
 		_wire_shader.code = """
@@ -5895,6 +5946,10 @@ static var _strand_shader: Shader
 ## A collection's wire of two strands (D-143): [param outer] where the tube
 ## turns away, [param core] in its middle facing the head, a little thicker.
 static func strand_material(outer: Color, core: Color) -> ShaderMaterial:
+	return _shared_material([&"strand", outer, core], _new_strand_material.bind(outer, core)) as ShaderMaterial
+
+
+static func _new_strand_material(outer: Color, core: Color) -> ShaderMaterial:
 	if _strand_shader == null:
 		_strand_shader = Shader.new()
 		_strand_shader.code = """

@@ -987,6 +987,79 @@ func _check_arrow_layouts(filled: MultiMeshInstance3D, open: MultiMeshInstance3D
 	_canvas.set_arrow_layout(true)
 
 
+## Graph materials (D-167): Shared gives parts of one look one material and one mesh, and nothing paints
+## a shared one in place: hover, focus and see-through make copies. Per part: one each, as before.
+func _test_shared_materials() -> void:
+	var graph := XREBlueprintGraph.new()
+	graph.nodes = [
+		{"id": 1, "kind": "value", "position": Vector2(0, 0), "params": {"value": 1.0}},
+		{"id": 2, "kind": "print", "position": Vector2(400, -300), "params": {}},
+	]
+	graph.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 1}]
+	graph.upgrade()
+	var big := XREGraphLab.enlarged(graph, 4)
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.GRAPH_MATERIALS) == XREFeatureSettings.SHARED, "graph materials are shared by default")
+	var counts: Array[Vector2i] = []
+	for shared: bool in [false, true]:
+		XREBlueprintCanvas.set_sharing(shared)
+		_canvas.center_graph(big)
+		_canvas.rebuild(big)
+		counts.append(_count_looks())
+	_check(counts[1].x == counts[0].x and counts[1].y < counts[0].y,
+			"shared, the same %d parts draw with fewer materials and meshes: %d against %d" % [counts[1].x, counts[1].y, counts[0].y])
+	var looks := _shared_looks()
+	_check(not looks.is_empty(), "shared materials are kept: %d" % looks.size())
+	var modes := _canvas.get_focus_modes()
+	_canvas.set_focus_modes(XREFeatureSettings.FRONT, XREFeatureSettings.DIM)
+	var ids: Array[int] = [1]
+	_canvas.select_blocks(ids)
+	_canvas.hover_actions(1, false, true, true, 0, false)
+	_canvas.highlight_ports(XREBlueprintGraph.NUMBER, true)
+	_canvas.face_user(Vector3(0.3, 0.2, 2.5))
+	var wire := (_canvas.get("_wires") as Array)[0] as XREBlueprintCanvas.Wire
+	_canvas.set_wire_seen(wire, &"focus", 0.4)
+	_check(_shared_looks() == looks, "hover, focus and see-through leave every shared material as it was")
+	_canvas.set_wire_seen(wire, &"focus", 1.0)
+	_canvas.highlight_ports(-1, false)
+	_canvas.hover_actions(-1, false, false, true)
+	var none: Array[int] = []
+	_canvas.select_blocks(none)
+	_canvas.set_focus_modes(modes[0], modes[1])
+
+
+## How many parts the canvas draws, and how many materials and meshes they draw with.
+func _count_looks() -> Vector2i:
+	var parts := 0
+	var looks: Dictionary[int, bool] = {}
+	var stack: Array[Node] = [_canvas]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		stack.append_array(node.get_children())
+		var mesh := node as MeshInstance3D
+		if mesh == null or mesh.mesh == null or mesh.material_override == null: continue
+		parts += 1
+		looks[mesh.material_override.get_instance_id()] = true
+		looks[mesh.mesh.get_instance_id()] = true
+	return Vector2i(parts, looks.size())
+
+
+## What every shared material looks like now.
+func _shared_looks() -> Dictionary:
+	var looks := {}
+	var shared: Dictionary = XREBlueprintCanvas.shared_materials()
+	for key: Variant in shared:
+		var material: Material = shared[key]
+		var look: Array = [material.render_priority]
+		if material is StandardMaterial3D:
+			var plain := material as StandardMaterial3D
+			look.append_array([plain.albedo_color, plain.no_depth_test, plain.transparency, plain.albedo_texture, plain.depth_draw_mode])
+		elif material is ShaderMaterial:
+			var shaded := material as ShaderMaterial
+			look.append_array([shaded.shader, shaded.get_shader_parameter(&"tint"), shaded.get_shader_parameter(&"core"), shaded.get_shader_parameter(&"grow")])
+		looks[material.get_instance_id()] = look
+	return looks
+
+
 ## The lab's own list of steps and a setting's value for one run (D-164).
 func _test_lab_steps_and_features() -> void:
 	var none := PackedStringArray(["--xre-graph-lab", "--xre-graph-lab-stress"])
@@ -1215,6 +1288,7 @@ func _run() -> void:
 	_test_port_wires()
 	_check_ray_parity("_test_port_wires")
 	_test_lab_steps_and_features()
+	_test_shared_materials()
 	_test_lab_enlarged()
 	_test_ray_reach()
 	await _test_repeated_facing()

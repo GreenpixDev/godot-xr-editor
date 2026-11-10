@@ -216,6 +216,10 @@ static func contains(points: PackedVector2Array, point: Vector2) -> bool:
 
 ## A solid of [param points] [param depth] deep around z = 0: its front faces +Z.
 static func body(points: PackedVector2Array, depth: float) -> ArrayMesh:
+	return XREBlueprintCanvas._shared_mesh([&"body", points, depth], _new_body.bind(points, depth)) as ArrayMesh
+
+
+static func _new_body(points: PackedVector2Array, depth: float) -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var triangles := Geometry2D.triangulate_polygon(points)
@@ -246,6 +250,10 @@ static func body(points: PackedVector2Array, depth: float) -> ArrayMesh:
 ## A flat band along [param points] at depth [param z], from [param inset]
 ## inside the outline to [param width] further in: a sign's rim.
 static func ring(points: PackedVector2Array, inset: float, width: float, z: float) -> ArrayMesh:
+	return XREBlueprintCanvas._shared_mesh([&"ring", points, inset, width, z], _new_ring.bind(points, inset, width, z)) as ArrayMesh
+
+
+static func _new_ring(points: PackedVector2Array, inset: float, width: float, z: float) -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var outer := PackedVector2Array()

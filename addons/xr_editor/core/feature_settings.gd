@@ -64,6 +64,10 @@ const ANTIALIASING := &"antialiasing"
 ## How the wires' arrowheads are laid out each time they move (D-166): natively, by [XREGraphArrows] in one
 ## call; or in GDScript, as before. The same poses and colours.
 const ARROW_LAYOUT := &"arrow_layout"
+## Whether the logic graph's parts of one look share their material and mesh (D-167): Shared, made once
+## for each colour and shape; Per part, each its own, as before. They look the same.
+const GRAPH_MATERIALS := &"graph_materials"
+const PER_PART := &"per_part"
 const NATIVE := &"native"
 const SCRIPT := &"script"
 ## Whether the editor's own window is drawn while its 2D UI is hidden in VR (D-165): always on a
@@ -753,6 +757,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [NATIVE, SCRIPT],
 		"labels": ["Native", "Script"],
 		"hint": "How the wires' arrowheads are laid out as they run or the head moves. Native: in the plugin's C++ part, in one call. Script: in GDScript, as before; slower on large graphs. They look the same.",
+	},
+	GRAPH_MATERIALS: {
+		"category": Category.GRAPHICS,
+		"title": "Graph materials",
+		"values": [SHARED, PER_PART],
+		"labels": ["Shared", "Per part"],
+		"hint": "Shared: parts of the graph that look the same share one material and mesh, so drawing them costs less. Per part: each has its own, as before. They look the same.",
 	},
 	EXEC_ARROWS: {
 		"category": Category.EDITOR,
