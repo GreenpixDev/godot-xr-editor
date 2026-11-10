@@ -32,6 +32,7 @@ scripts/build_gdextension.sh                  # собрать gdextension/ в a
 py scripts/build_engine.py tracy|perfetto|tools  # Godot 4.7.2 с профайлером (D-160): редактор Windows с Tracy, APK для Quest с Perfetto, инструменты разбора
 py scripts/xr_editor.py --tracy [--tracy-delay S] [--tracy-sec S] [--unattended] ... -- --xre-graph-lab --xre-graph-lab-stress  # редактор с Tracy, запись на каждом шаге лаборатории; --godot PATH — любой другой бинарник; --unattended — прогоны ИИ (D-162): редактор закрывается после `graph lab: done` или `leaving for Compatibility`, через 240 с без строки лаборатории прогон бросается
 py benchmarks/tracy_steps.py logs/editor_<рантайм>_<время>  # зоны движка и GDScript по шагам, мс на кадр
+py benchmarks/tracy_process.py logs/editor_<рантайм>_<время> [--summary]  # что внутри `process`: по вложенности зон, части плагина и C++ узлов
 py scripts/quest.py --perfetto [--install] [--perfetto-delay S] [--perfetto-sec S] [--perfetto-categories godot[,godot_scripting]] ... -- --xre-graph-lab --xre-graph-lab-base  # редактор с Perfetto на Quest (свой пакет рядом со Store), трасса на каждом шаге, по умолчанию только зоны движка (зоны GDScript ломают вложенность, D-162); --package NAME — другой пакет редактора
 py benchmarks/perfetto_steps.py logs/quest_<время>  # то же для трасс Perfetto; подробности — docs/profiling_builds.md
 ```

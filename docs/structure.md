@@ -71,6 +71,7 @@ scripts/quest_link.py      шлем в Link по кабелю и обратно 
 scripts/build_gdextension.sh  сборка нативной части: Windows (MSVC) или android (NDK); CMake и Ninja из Visual Studio
 scripts/build_engine.py    сборка неизменённого Godot 4.7.2 с профайлером вне репозитория (%LOCALAPPDATA%\xre): tracy — редактор Windows, perfetto — APK для Quest (D-160, docs/profiling_builds.md)
 benchmarks/tracy_steps.py, perfetto_steps.py  таблицы зон по шагам лаборатории из записей Tracy (xr_editor.py --tracy) и трасс Perfetto (quest.py --perfetto)
+benchmarks/tracy_process.py  состав фазы `process` по вложенности зон Tracy: части плагина, C++ узлов, симулятор и лаборатория
 docs/                      план и дневник решений (на русском)
 spikes/                    отдельные проекты спайков, не часть плагина (.gdignore): horizon_probe/ — редактор на Horizon OS (D-017), с сырыми логами; comp_layer/ — панель на композиционном слое против панели в кадре (D-156)
 ```
