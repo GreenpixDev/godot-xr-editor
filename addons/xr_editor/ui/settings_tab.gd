@@ -2,7 +2,7 @@
 class_name XRESettingsTab
 extends XREPanelTab
 ## Settings in the headset (D-039, D-116), drawn as the mockup "Новое меню
-## Settings" is. Sections are on the left: Global, Editor and Controls
+## Settings" is. Sections are on the left: Global, Graphics (D-164), Editor and Controls
 ## ([enum XREFeatureSettings.Category]). The Editor's subsections
 ## ([constant XREFeatureSettings.GROUPS]) are a row over the settings or open
 ## under Editor on the left, as [constant XREFeatureSettings.SETTINGS_SUBSECTIONS]
@@ -54,8 +54,11 @@ const HINT_TITLE := "Point at a setting"
 const HINT_TEXT := "Its explanation shows here."
 const MENU_WIDTH := 290.0
 ## Titles and glyphs ([XRETabIcons]) of the sections, by [enum XREFeatureSettings.Category].
-const SECTION_TITLES: Array[String] = ["Global", "Editor", "Controls"]
-const SECTION_GLYPHS: Array[StringName] = [&"globe", &"editor", &"controller"]
+const SECTION_TITLES: Array[String] = ["Global", "Editor", "Controls", "Graphics"]
+const SECTION_GLYPHS: Array[StringName] = [&"globe", &"editor", &"controller", &"display"]
+## The sections on the left, in order: Graphics second, after Global (D-164, mockup «Раздел Graphics в Settings»).
+const SECTION_ORDER: Array[XREFeatureSettings.Category] = [XREFeatureSettings.Category.GLOBAL, XREFeatureSettings.Category.GRAPHICS,
+		XREFeatureSettings.Category.EDITOR, XREFeatureSettings.Category.CONTROLS]
 ## What a reset puts back: the subsection's settings, the section's, every
 ## setting, or the controls layout to the runtime's.
 const RESET_GROUP := &"group"
@@ -410,6 +413,8 @@ func _refresh() -> void:
 	_set_nav(&"editor", _section == XREFeatureSettings.Category.EDITOR and not (tree and _open),
 			0 if tree and _open else features.count_changed(XREFeatureSettings.get_keys(XREFeatureSettings.Category.EDITOR)))
 	_set_nav(&"controls", _section == XREFeatureSettings.Category.CONTROLS, 1 if features.is_layout_picked() else 0)
+	_set_nav(&"graphics", _section == XREFeatureSettings.Category.GRAPHICS,
+			features.count_changed(XREFeatureSettings.get_keys(XREFeatureSettings.Category.GRAPHICS)))
 	for group: StringName in XREFeatureSettings.GROUPS:
 		var count := features.count_changed(XREFeatureSettings.get_keys(XREFeatureSettings.Category.EDITOR, group))
 		if group in _nav_buttons:
@@ -650,8 +655,8 @@ func _build_nav(body: HBoxContainer) -> void:
 	nav.size_flags_horizontal = SIZE_EXPAND_FILL
 	nav.add_theme_constant_override(&"separation", _px(2.0))
 	box.add_child(nav)
-	for index: int in SECTION_TITLES.size():
-		var category := index as XREFeatureSettings.Category
+	for category: XREFeatureSettings.Category in SECTION_ORDER:
+		var index := category as int
 		var section_name := StringName(SECTION_TITLES[index].to_lower())
 		var chevron := -1
 		if tree and category == XREFeatureSettings.Category.EDITOR:
@@ -1261,7 +1266,7 @@ func _reset_scopes() -> Array[StringName]:
 	match _section:
 		XREFeatureSettings.Category.CONTROLS:
 			return [RESET_LAYOUT]
-		XREFeatureSettings.Category.GLOBAL:
+		XREFeatureSettings.Category.GLOBAL, XREFeatureSettings.Category.GRAPHICS:
 			return [RESET_SECTION, RESET_ALL]
 	return [RESET_GROUP, RESET_SECTION, RESET_ALL]
 

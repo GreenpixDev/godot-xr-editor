@@ -1240,6 +1240,17 @@ func _settings_dimmed() -> void:
 	_check(_document.undo(XREDocument.Source.TOOL) and features.get_value(XREFeatureSettings.NODE_STYLE) == XREFeatureSettings.CLASSIC,
 			"undo brings the reset settings back")
 	_document.set_feature(XREFeatureSettings.NODE_STYLE, XREFeatureSettings.ARCHETYPES, XREDocument.Source.TOOL)
+	# Graphics (D-164): second on the left, with antialiasing and the drawing's variants.
+	var graphics := tab.get_nav_button(&"graphics")
+	var global_button := tab.get_nav_button(&"global")
+	_check(graphics != null and global_button != null and graphics.get_index() == global_button.get_index() + 1
+			and graphics.get_index() < tab.get_nav_button(&"editor").get_index(), "Graphics is second on the left, after Global")
+	tab.select_section(XREFeatureSettings.Category.GRAPHICS)
+	_check(tab.get_section() == XREFeatureSettings.Category.GRAPHICS and tab.get_subsection_row() == null
+			and tab.get_button(XREFeatureSettings.EDITOR_WINDOW, XREFeatureSettings.LIVE) != null, "Graphics shows its settings, without subsections")
+	tab.get_button(XREFeatureSettings.EDITOR_WINDOW, XREFeatureSettings.LIVE).pressed.emit()
+	_check(_document.features.get_value(XREFeatureSettings.EDITOR_WINDOW) == XREFeatureSettings.LIVE, "a click switches a Graphics setting")
+	_document.set_feature(XREFeatureSettings.EDITOR_WINDOW, XREFeatureSettings.PAUSED, XREDocument.Source.TOOL)
 	tab.select_section(XREFeatureSettings.Category.GLOBAL)
 	_check(tab.get_subsection_row() == null and tab.get_button(XREFeatureSettings.SETTINGS_SUBSECTIONS, XREFeatureSettings.TREE) != null,
 			"Global has where the subsections show")

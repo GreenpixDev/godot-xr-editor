@@ -98,6 +98,9 @@ const GLYPHS: Dictionary[StringName, String] = {
 <path d="M64 16L106 40V88L64 112L22 88V40Z"/><path d="M22 40L64 64L106 40M64 64V112"/></g>""",
 	&"controller": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
 <circle cx="64" cy="44" r="28"/><path d="M54 72L46 112H82L74 72"/></g>""",
+	# Graphics (D-164): a display on its stand.
+	&"display": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+<rect x="16" y="24" width="96" height="64" rx="10"/><path d="M48 108H80M64 88V108"/></g>""",
 	&"globe": """<g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round">
 <circle cx="64" cy="64" r="44"/><path d="M20 64H108M64 20C42 46 42 82 64 108M64 20C86 46 86 82 64 108"/></g>""",
 }
