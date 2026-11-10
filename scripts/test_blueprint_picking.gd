@@ -958,6 +958,36 @@ func _test_repeated_facing() -> void:
 	_canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.OFF, false)
 
 
+## The lab's own list of steps and a setting's value for one run (D-164).
+func _test_lab_steps_and_features() -> void:
+	var none := PackedStringArray(["--xre-graph-lab", "--xre-graph-lab-stress"])
+	_check(XREGraphLab.custom_steps(none).is_empty() and XREGraphLab.lab_features(none).is_empty() and XREGraphLab.flag_errors(none).is_empty(),
+			"without the flags the run keeps its steps and settings")
+	var args := PackedStringArray(["--xre-graph-lab", "--xre-graph-lab-steps=closed,open,open_graph500",
+			"--xre-lab-feature=antialiasing=off", "--xre-lab-feature=exec_arrows=at_end"])
+	var wanted: Array[String] = ["closed", "open", "open_graph500"]
+	_check(XREGraphLab.custom_steps(args) == wanted, "the steps of one's own, in order")
+	var features := XREGraphLab.lab_features(args)
+	_check(features.size() == 2 and features[XREFeatureSettings.ANTIALIASING] == XREFeatureSettings.OFF
+			and features[XREFeatureSettings.EXEC_ARROWS] == XREFeatureSettings.AT_END, "each setting's value for the run: %s" % features)
+	_check(XREGraphLab.flag_errors(args).is_empty(), "valid names and values start the run")
+	for bad: String in ["--xre-graph-lab-steps=open,Open-1", "--xre-graph-lab-steps=", "--xre-lab-feature=antialiasing=nine",
+			"--xre-lab-feature=no_such=on", "--xre-lab-feature=antialiasing"]:
+		_check(not XREGraphLab.flag_errors(PackedStringArray([bad])).is_empty(), "the run doesn't start with %s" % bad)
+	var file := OS.get_temp_dir().path_join("xre_lab_features_%d.cfg" % OS.get_process_id())
+	if FileAccess.file_exists(file): DirAccess.remove_absolute(file)
+	var store := XREFeatureSettings.new(file)
+	var heard: Array[StringName] = []
+	store.changed.connect(func(key: StringName) -> void: heard.append(key))
+	_check(store.set_value(XREFeatureSettings.ANTIALIASING, XREFeatureSettings.OFF, false)
+			and store.get_value(XREFeatureSettings.ANTIALIASING) == XREFeatureSettings.OFF and heard == [XREFeatureSettings.ANTIALIASING],
+			"a value for the run acts and is announced")
+	_check(not FileAccess.file_exists(file), "a value for the run isn't saved (XREDocument.set_feature_for_run, no history either)")
+	store.set_value(XREFeatureSettings.ANTIALIASING, XREFeatureSettings.MSAA_2X)
+	_check(FileAccess.file_exists(file), "a value set as before is saved")
+	DirAccess.remove_absolute(file)
+
+
 func _test_lab_enlarged() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [
@@ -1155,6 +1185,7 @@ func _run() -> void:
 	_canvas.rebuild(graph)
 	_test_port_wires()
 	_check_ray_parity("_test_port_wires")
+	_test_lab_steps_and_features()
 	_test_lab_enlarged()
 	_test_ray_reach()
 	await _test_repeated_facing()

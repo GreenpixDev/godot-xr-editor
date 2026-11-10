@@ -105,6 +105,12 @@ const BASE_FOVEATION := 3
 const FAST_FLAG := "--xre-lab-fast"
 ## Scale of the render target in the scaled steps.
 const SCALE := 0.7
+## User argument (after [code]--[/code]) with a list of steps of one's own, as [code]--xre-graph-lab-steps=closed,open[/code],
+## in place of the run's (D-164). With [constant BASE_FLAG] or [constant STRESS_FLAG] the steps last as theirs do.
+const STEPS_FLAG := "--xre-graph-lab-steps="
+## User argument, repeated for more settings, as [code]--xre-lab-feature=editor_window=live[/code]: a setting's value
+## for this run only, neither saved nor in the history (D-164).
+const FEATURE_FLAG := "--xre-lab-feature="
 
 const _LOG_PREFIX := "XR Editor: "
 
@@ -114,6 +120,8 @@ const _LOG_PREFIX := "XR Editor: "
 ## frame on Quest 2 (D-163).
 class _View:
 	var rid: RID
+	## The viewport's instance: one freed between reports is skipped, not read (its RID errs every frame).
+	var id := 0
 	var label := ""
 	var active := false
 	var frames := 0
@@ -294,6 +302,43 @@ static func _number_after(step: String, word: String, unit: int) -> int:
 	return digits.to_int() * unit
 
 
+## The steps [constant STEPS_FLAG] in [param args] lists, or none without it.
+static func custom_steps(args: PackedStringArray) -> Array[String]:
+	var steps: Array[String] = []
+	for arg: String in args:
+		if not arg.begins_with(STEPS_FLAG): continue
+		steps.clear()
+		for step: String in arg.substr(STEPS_FLAG.length()).split(",", false): steps.append(step.strip_edges())
+	return steps
+
+
+## The settings [constant FEATURE_FLAG] in [param args] sets for the run, by key.
+static func lab_features(args: PackedStringArray) -> Dictionary[StringName, StringName]:
+	var features: Dictionary[StringName, StringName] = {}
+	for arg: String in args:
+		if not arg.begins_with(FEATURE_FLAG): continue
+		var pair := arg.substr(FEATURE_FLAG.length()).split("=")
+		if pair.size() == 2: features[StringName(pair[0].strip_edges())] = StringName(pair[1].strip_edges())
+	return features
+
+
+## What is wrong with the steps and settings [param args] give the lab: a step not named in
+## [code][a-z_0-9]+[/code], an empty list, an unknown setting or value. Empty when the run may start.
+static func flag_errors(args: PackedStringArray) -> Array[String]:
+	var errors: Array[String] = []
+	var name := RegEx.create_from_string("^[a-z_0-9]+$")
+	for arg: String in args:
+		if arg.begins_with(STEPS_FLAG) and custom_steps(PackedStringArray([arg])).is_empty(): errors.append("no steps in %s" % arg)
+		if arg.begins_with(FEATURE_FLAG) and arg.substr(FEATURE_FLAG.length()).split("=").size() != 2: errors.append("not key=value: %s" % arg)
+	for step: String in custom_steps(args):
+		if name.search(step) == null: errors.append("a step's name isn't [a-z_0-9]+: '%s'" % step)
+	var features := lab_features(args)
+	for key: StringName in features:
+		if not key in XREFeatureSettings.DEFINITIONS: errors.append("no setting %s" % key)
+		elif not features[key] in XREFeatureSettings.get_values(key): errors.append("setting %s has no value %s" % [key, features[key]])
+	return errors
+
+
 ## Engine arguments that run a process on Compatibility.
 static func compat_engine_args() -> PackedStringArray:
 	return PackedStringArray(["--rendering-method", "gl_compatibility", "--rendering-driver", "opengl3"])
@@ -353,6 +398,19 @@ func _process(delta: float) -> void:
 		if OS.get_cmdline_user_args().has(STRESS_FLAG): _start_stress()
 		if OS.get_cmdline_user_args().has(VIEWS_FLAG): _views_on = true
 		if OS.get_cmdline_user_args().has(POSE_FLAG): _start_pose()
+		var args := OS.get_cmdline_user_args()
+		var errors := flag_errors(args)
+		if not errors.is_empty():
+			push_error(_LOG_PREFIX + "graph lab: not started: " + "; ".join(errors))
+			_restore()
+			queue_free()
+			return
+		var custom := custom_steps(args)
+		if not custom.is_empty(): _steps = custom
+		var features := lab_features(args)
+		for key: StringName in features:
+			_document.set_feature_for_run(key, features[key], XREDocument.Source.TOOL)
+			print(_LOG_PREFIX, "graph lab: feature %s=%s" % [key, features[key]])
 	_step += 1
 	_shot_taken = false
 	if _step >= _steps.size():
@@ -423,6 +481,7 @@ func _measure() -> void:
 	if _views_on:
 		if _views.is_empty(): _refresh_views()
 		for view: _View in _active_views:
+			if not is_instance_id_valid(view.id): continue
 			view.cpu += RenderingServer.viewport_get_measured_render_time_cpu(view.rid)
 			view.gpu += RenderingServer.viewport_get_measured_render_time_gpu(view.rid)
 			view.frames += 1
@@ -461,6 +520,7 @@ func _report_frames() -> void:
 ## made active here and logged from the next report on, over the frames it was read in.
 func _report_views() -> void:
 	for view: _View in _views.values():
+		if not is_instance_id_valid(view.id): continue
 		var rid := view.rid
 		var visible_info := RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE
 		var calls := RenderingServer.viewport_get_render_info(rid, visible_info, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
@@ -493,6 +553,7 @@ func _refresh_views() -> void:
 		if _views.has(id): continue
 		var view := _View.new()
 		view.rid = viewport.get_viewport_rid()
+		view.id = id
 		var named := viewport.name as String if viewport == get_tree().root else "%s/%s" % [viewport.get_parent().name, viewport.name]
 		view.label = named.replace(" ", "_")
 		_views[id] = view

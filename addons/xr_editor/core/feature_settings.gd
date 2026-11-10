@@ -30,6 +30,9 @@ enum Category {
 	EDITOR,
 	## Which controller buttons do what: the layout and its bindings (D-050).
 	CONTROLS,
+	## How the headset's frame is drawn and what it costs (D-164): antialiasing and the drawing's
+	## performance variants. Not in the settings tab until its mockup is approved.
+	GRAPHICS,
 }
 
 ## Subsections of the Editor section, in order, by the names settings give in
@@ -720,7 +723,7 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"hint": "Where Settings shows a section's subsections. On top: a row over the settings; drag it sideways when it doesn't fit. On the left: under the section's name, which opens and closes them.",
 	},
 	ANTIALIASING: {
-		"category": Category.GLOBAL,
+		"category": Category.GRAPHICS,
 		"title": "Antialiasing",
 		"values": [AUTO, OFF, MSAA_2X, MSAA_4X, MSAA_8X, MSAA_4X_SSAA_2X, FXAA, SMAA, TAA, SSAA_1_5X, SSAA_2X],
 		"labels": ["Auto", "Off", "MSAA 2×", "MSAA 4×", "MSAA 8×", "16× (MSAA 4× + SSAA 2×)", "FXAA", "SMAA", "TAA", "SSAA 1.5×", "SSAA 2×"],
@@ -1007,14 +1010,14 @@ func get_value(key: StringName) -> StringName:
 	return _values[key] if key in _values else get_default(key)
 
 
-## Sets setting [param key] to [param value] and saves it. Returns false, and
-## changes nothing, for an unknown key or value or the current value. Tools and
-## panels call [method XREDocument.set_feature], which logs the switch.
-func set_value(key: StringName, value: StringName) -> bool:
+## Sets setting [param key] to [param value] and saves it, unless [param persist] is false
+## (a value for one run, D-164). Returns false, and changes nothing, for an unknown key or
+## value or the current value. Tools and panels call [method XREDocument.set_feature], which logs the switch.
+func set_value(key: StringName, value: StringName, persist := true) -> bool:
 	if not value in get_values(key) or get_value(key) == value:
 		return false
 	_values[key] = value
-	_save()
+	if persist: _save()
 	changed.emit(key)
 	return true
 

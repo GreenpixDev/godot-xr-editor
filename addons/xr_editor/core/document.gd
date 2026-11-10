@@ -107,6 +107,16 @@ func set_feature(key: StringName, value: StringName, source: Source) -> bool:
 	return true
 
 
+## Switches feature [param key] to [param value] for this run of the editor only: not saved, not
+## in the history, recorded as [code]&"set_feature"[/code] (the graph lab's runs, D-164).
+func set_feature_for_run(key: StringName, value: StringName, source: Source) -> bool:
+	if not features.set_value(key, value, false):
+		return false
+	print("XR Editor: feature %s = %s (this run)" % [key, value])
+	_record(&"set_feature", source, [])
+	return true
+
+
 ## Puts feature settings [param keys] back to their defaults and records one
 ## [code]&"reset_features"[/code] operation, undone in one step (D-116).
 ## Returns how many changed; none, nothing is recorded.

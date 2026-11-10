@@ -992,9 +992,11 @@ func _test_feature_groups() -> void:
 		grouped += keys.size()
 	_check(grouped == editor.size(), "every Editor setting is in a subsection: %d of %d" % [grouped, editor.size()])
 	var global := XREFeatureSettings.get_keys(XREFeatureSettings.Category.GLOBAL)
-	_check(global == [XREFeatureSettings.SETTINGS_SUBSECTIONS, XREFeatureSettings.ANTIALIASING]
-			and XREFeatureSettings.get_group(XREFeatureSettings.SETTINGS_SUBSECTIONS) == &"" and XREFeatureSettings.get_group(XREFeatureSettings.ANTIALIASING) == &"",
-			"Global has where the subsections show and antialiasing (D-134), without a subsection: %s" % [global])
+	_check(global == [XREFeatureSettings.SETTINGS_SUBSECTIONS] and XREFeatureSettings.get_group(XREFeatureSettings.SETTINGS_SUBSECTIONS) == &"",
+			"Global has where the subsections show, without a subsection: %s" % [global])
+	var graphics := XREFeatureSettings.get_keys(XREFeatureSettings.Category.GRAPHICS)
+	_check(graphics.has(XREFeatureSettings.ANTIALIASING) and XREFeatureSettings.get_group(XREFeatureSettings.ANTIALIASING) == &"",
+			"Graphics has antialiasing (D-134, D-164), without a subsection: %s" % [graphics])
 	_check(XREFeatureSettings.get_default(XREFeatureSettings.SETTINGS_SUBSECTIONS) == XREFeatureSettings.ROW,
 			"the subsections are a row on top by default")
 	_check(XREFeatureSettings.get_group(XREFeatureSettings.WINDOW_SHAPE) == &"view"
