@@ -61,6 +61,12 @@ const TREE := &"tree"
 ## sets them: FXAA, SMAA, TAA, supersampling and 16 samples a pixel, as MSAA 4×
 ## with SSAA 2×, since the engine's and the GPU's MSAA ends at 8×.
 const ANTIALIASING := &"antialiasing"
+## Whether the editor's own window is drawn while its 2D UI is hidden in VR (D-165): always on a
+## standalone headset, on a PC with --hide-ui. Paused stops its viewport, the root, from updating;
+## Live draws it as before. A key or a click in the window shows the UI, and draws it, at once.
+const EDITOR_WINDOW := &"editor_window"
+const PAUSED := &"paused"
+const LIVE := &"live"
 const MSAA_2X := &"msaa_2x"
 const MSAA_4X := &"msaa_4x"
 const MSAA_8X := &"msaa_8x"
@@ -728,6 +734,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [AUTO, OFF, MSAA_2X, MSAA_4X, MSAA_8X, MSAA_4X_SSAA_2X, FXAA, SMAA, TAA, SSAA_1_5X, SSAA_2X],
 		"labels": ["Auto", "Off", "MSAA 2×", "MSAA 4×", "MSAA 8×", "16× (MSAA 4× + SSAA 2×)", "FXAA", "SMAA", "TAA", "SSAA 1.5×", "SSAA 2×"],
 		"hint": "Smooths edges in the VR view. Auto: MSAA 4× on a standalone headset and in the window, off on a PC headset. SSAA also smooths text and costs the most. FXAA blurs. SMAA and TAA act only in the window: in a headset, SMAA is FXAA and TAA is MSAA 4×.",
+	},
+	EDITOR_WINDOW: {
+		"category": Category.GRAPHICS,
+		"title": "Editor window",
+		"values": [PAUSED, LIVE],
+		"labels": ["Paused", "Live"],
+		"hint": "While the editor's 2D window is hidden in VR, Paused stops drawing it, and the headset gets that time. Live draws it as before. A key or a click in the window shows it again.",
 	},
 	EXEC_ARROWS: {
 		"category": Category.EDITOR,

@@ -18,6 +18,13 @@ extends RefCounted
 var enabled := false
 ## Minimize the editor's window while the UI is hidden. Needs a real window: off in tests.
 var minimize := false
+## Stop rendering the editor's window while the UI is hidden (Editor window Paused, D-165):
+## its viewport, the root, isn't updated; the VR view, the simulator's window and the mirror,
+## viewports of their own, still are. Set at once, also while hidden.
+var pause_window := true:
+	set(value):
+		pause_window = value
+		_apply_pause()
 
 var _control: Control
 var _hidden := false
@@ -25,6 +32,8 @@ var _shown_by_user := false
 ## What [member minimize] puts back when the UI shows.
 var _mode_before := DisplayServer.WINDOW_MODE_WINDOWED
 var _sleep_before := 0
+## Whether this stopped the root viewport's updates.
+var _window_paused := false
 
 
 ## [param control] is what hides: the editor's base control.
@@ -63,6 +72,19 @@ func is_hidden() -> bool:
 	return _hidden
 
 
+## Whether the editor's window isn't rendered now ([member pause_window]).
+func is_window_paused() -> bool:
+	return _window_paused
+
+
+## Stops the editor's window's rendering again if it should be stopped: after someone else (the
+## graph lab's root_off steps) turned it back on.
+func reapply_pause() -> void:
+	if not _window_paused: return
+	_window_paused = false
+	_apply_pause()
+
+
 ## Shows the UI, as it was before.
 func restore() -> void:
 	_shown_by_user = false
@@ -74,6 +96,7 @@ func _set_hidden(hidden: bool) -> bool:
 		return false
 	_hidden = hidden
 	_control.visible = not hidden
+	_apply_pause()
 	if not minimize:
 		return true
 	if hidden:
@@ -86,3 +109,14 @@ func _set_hidden(hidden: bool) -> bool:
 					if _mode_before == DisplayServer.WINDOW_MODE_MINIMIZED else _mode_before)
 		OS.low_processor_usage_mode_sleep_usec = _sleep_before
 	return true
+
+
+## Stops or restarts the root viewport's updates as [member pause_window] and the UI's state say.
+## [method RenderingServer.viewport_set_active] would stop the VR view with it (D-017).
+func _apply_pause() -> void:
+	var paused := _hidden and pause_window
+	if paused == _window_paused or _control == null or not _control.is_inside_tree():
+		return
+	_window_paused = paused
+	RenderingServer.viewport_set_update_mode(_control.get_viewport().get_viewport_rid(),
+			RenderingServer.VIEWPORT_UPDATE_DISABLED if paused else RenderingServer.VIEWPORT_UPDATE_WHEN_VISIBLE)

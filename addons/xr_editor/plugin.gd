@@ -55,6 +55,7 @@ func _enter_tree() -> void:
 	document = XREPluginDocument.new(self)
 	_session = XRESession.new()
 	_session.name = "XRESession"
+	_session.set_pause_desktop_window(document.features.get_value(XREFeatureSettings.EDITOR_WINDOW) == XREFeatureSettings.PAUSED)
 	add_child(_session)
 	_session.set_antialiasing(document.features.get_value(XREFeatureSettings.ANTIALIASING))
 	document.features.changed.connect(_on_feature_changed)
@@ -220,6 +221,7 @@ func _forget_tools() -> void:
 ## Antialiasing takes effect at once (D-134), in the headset and in the simulator's window.
 func _on_feature_changed(key: StringName) -> void:
 	if key == XREFeatureSettings.ANTIALIASING: _session.set_antialiasing(document.features.get_value(key))
+	if key == XREFeatureSettings.EDITOR_WINDOW: _session.set_pause_desktop_window(document.features.get_value(key) == XREFeatureSettings.PAUSED)
 
 
 ## Opens the VR view without a headset, or closes it (D-057).

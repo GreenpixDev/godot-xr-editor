@@ -96,6 +96,8 @@ var _fps_previous_usec := 0
 var _antialiasing := XREFeatureSettings.AUTO
 ## The Output panel's toggle of errors while the session keeps it off (D-158).
 var _output_errors: Button
+## [method set_pause_desktop_window]'s value, which the desktop UI made on entering the tree takes.
+var _pause_window := true
 
 
 func _enter_tree() -> void:
@@ -103,6 +105,7 @@ func _enter_tree() -> void:
 	# Nobody sees the window on a standalone headset; on a PC it is minimized too.
 	_desktop_ui.enabled = XREStandalone.is_standalone()
 	_desktop_ui.minimize = not XREStandalone.is_standalone()
+	_desktop_ui.pause_window = _pause_window
 	_editor_window = EditorInterface.get_base_control().get_window()
 	_editor_window.window_input.connect(_desktop_ui.handle_input)
 	var xr := XRServer.find_interface("OpenXR") as OpenXRInterface
@@ -346,6 +349,22 @@ func set_hide_desktop_ui(enabled: bool) -> void:
 ## Whether [method set_hide_desktop_ui] is on.
 func is_hiding_desktop_ui() -> bool:
 	return _desktop_ui != null and _desktop_ui.enabled
+
+
+## Whether the editor's window stops rendering while its UI is hidden ([constant XREFeatureSettings.EDITOR_WINDOW], D-165).
+func set_pause_desktop_window(paused: bool) -> void:
+	_pause_window = paused
+	if _desktop_ui != null: _desktop_ui.pause_window = paused
+
+
+## Whether the editor's window isn't rendered now.
+func is_desktop_window_paused() -> bool:
+	return _desktop_ui != null and _desktop_ui.is_window_paused()
+
+
+## Stops the editor's window's rendering again if the hidden UI should keep it stopped, after the graph lab restarted it.
+func reapply_desktop_pause() -> void:
+	if _desktop_ui != null: _desktop_ui.reapply_pause()
 
 
 ## Whether the VR view runs without a headset ([method start_simulator]).

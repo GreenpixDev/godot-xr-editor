@@ -841,6 +841,9 @@ func _restore() -> void:
 	if _root_stopped:
 		_root_stopped = false
 		RenderingServer.viewport_set_update_mode(get_tree().root.get_viewport_rid(), RenderingServer.VIEWPORT_UPDATE_WHEN_VISIBLE)
+		# Editor window Paused (D-165): the hidden UI keeps the root stopped.
+		var session := get_tree().root.find_child("XRESession", true, false) as XRESession
+		if session != null: session.reapply_desktop_pause()
 	if _rendering_changed:
 		_rendering_changed = false
 		_set_scene_rendering(false, false, false)

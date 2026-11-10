@@ -353,6 +353,43 @@ func _desktop_ui() -> void:
 	ui.restore()
 	_check(control.visible and not ui.is_hidden(), "restored, it shows")
 	control.free()
+	_desktop_window_paused()
+
+
+## Editor window (D-165): Paused stops the window's viewport while the UI is hidden, Live doesn't.
+func _desktop_window_paused() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.EDITOR_WINDOW) == XREFeatureSettings.PAUSED
+			and XREFeatureSettings.DEFINITIONS[XREFeatureSettings.EDITOR_WINDOW]["category"] == XREFeatureSettings.Category.GRAPHICS,
+			"Editor window is Paused by default, in Graphics")
+	var control := Control.new()
+	root.add_child(control)
+	var ui := XREDesktopUI.new(control)
+	ui.enabled = true
+	_check(ui.pause_window and not ui.is_window_paused(), "shown, the window renders")
+	ui.update(true, false)
+	_check(ui.is_hidden() and ui.is_window_paused(), "Paused: hidden, the window stops rendering")
+	ui.pause_window = false
+	_check(ui.is_hidden() and not ui.is_window_paused(), "Live while hidden: it renders again at once")
+	ui.pause_window = true
+	_check(ui.is_window_paused(), "Paused again while hidden, it stops again")
+	ui.reapply_pause()
+	_check(ui.is_window_paused(), "put back after the lab restarted it, it stays stopped")
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_SPACE
+	key.pressed = true
+	ui.handle_input(key)
+	_check(not ui.is_hidden() and not ui.is_window_paused(), "a key in the window shows it and it renders")
+	ui.update(true, true)
+	_check(ui.is_window_paused(), "a trigger hides it again, stopped")
+	ui.restore()
+	_check(not ui.is_window_paused(), "restored (the session ended, a game, the plugin left), it renders")
+	var live := XREDesktopUI.new(control)
+	live.enabled = true
+	live.pause_window = false
+	live.update(true, false)
+	_check(live.is_hidden() and not live.is_window_paused(), "Live: hidden, the window still renders")
+	live.restore()
+	control.free()
 
 
 func _finish() -> void:
