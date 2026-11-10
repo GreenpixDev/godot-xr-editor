@@ -285,6 +285,7 @@ func _run() -> void:
 	await _test_depth_lap(print_id)
 	await _test_keyboard()
 	await _test_windows_and_ports(print_id)
+	await _test_graph_drawing(print_id)
 	_service.add_block("branch")
 	await _frames()
 	var branch_id: int = _service.blueprint.graph.nodes.back()["id"]
@@ -1255,6 +1256,43 @@ func _click_on(surface: XREPanelSurface, pixel: Vector2) -> void:
 	_right.set_input(&"trigger", 1.0)
 	await _frames()
 	_right.set_input(&"trigger", 0.0)
+	await _frames()
+
+
+## Graph drawing (D-168): Merged draws a card's ports as merged meshes on its node, the ports off the VR
+## layer but still there and shown for the ray; a port under the ray grows in its merged mesh too.
+## Per node: no merged meshes, each port draws itself.
+func _test_graph_drawing(id: int) -> void:
+	var features := _document.features
+	var canvas := _service.canvas
+	var card := _card(id)
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.GRAPH_DRAWING) == XREFeatureSettings.PER_NODE and canvas.merged_count(id) == 0
+			and card.merge == null, "per node by default: no merged meshes")
+	features.set_value(XREFeatureSettings.GRAPH_DRAWING, XREFeatureSettings.MERGED)
+	await _frames()
+	_check(canvas.merged_count(id) > 0, "Merged: the card's ports are %d merged mesh(es)" % canvas.merged_count(id))
+	var merged: Array[MeshInstance3D] = card.merge.get_meshes()
+	var off := card.ports.all(func(port: MeshInstance3D) -> bool: return port.layers == 0 and port.visible)
+	_check(off and merged.all(func(mesh: MeshInstance3D) -> bool: return mesh.get_parent() == card.node and mesh.layers == XRERig.VR_LAYER),
+			"the ports leave the VR layer but stay shown; the merged meshes are the card's, on the VR layer")
+	var before := AABB()
+	for mesh: MeshInstance3D in merged: before = before.merge(mesh.get_aabb()) if before.size != Vector3.ZERO else mesh.get_aabb()
+	# The service hovers by the rays every frame: checked before the next one.
+	canvas.hover_actions(id, false, false, true, 0, true)
+	var after := AABB()
+	for mesh: MeshInstance3D in merged: after = after.merge(mesh.get_aabb()) if after.size != Vector3.ZERO else mesh.get_aabb()
+	_check(card.ports[0].scale.x > 1.0 and not after.is_equal_approx(before), "a port under the ray grows in the merged mesh: %s to %s" % [before.size, after.size])
+	canvas.hover_actions(-1, false, false, true)
+	await _frames()
+	features.set_value(XREFeatureSettings.GRAPH_DRAWING, XREFeatureSettings.PER_NODE)
+	await _frames()
+	_check(canvas.merged_count(id) == 0 and card.merge == null and card.ports.all(func(port: MeshInstance3D) -> bool: return port.layers == XRERig.VR_LAYER)
+			and card.node.get_children().all(func(child: Node) -> bool: return not child.has_meta(XRECardMerge.MERGED) or not is_instance_valid(child) or child.is_queued_for_deletion()),
+			"Per node: no merged meshes, each port on the VR layer again")
+	features.set_value(XREFeatureSettings.GRAPH_DRAWING, XREFeatureSettings.MERGED)
+	await _frames()
+	_check(canvas.merged_count(id) > 0, "Merged again, the ports merge again")
+	features.set_value(XREFeatureSettings.GRAPH_DRAWING, XREFeatureSettings.PER_NODE)
 	await _frames()
 
 
@@ -5449,7 +5487,13 @@ func _test_d072() -> void:
 			and not labels.is_empty() and (labels[0] as Label3D).no_depth_test and wire.mesh.has_meta(&"untop") and wire.mesh.material_override != wire.normal,
 			"and is drawn over everything: its materials skip the depth test, its labels and its wire too")
 	# Without the depth test its parts are drawn back to front: by how far toward its front each stands.
-	var parts := card.node.find_children("*", "GeometryInstance3D", true, false)
+	# A merged mesh (Graph drawing Merged, D-168) draws its ports, sorted as the frontmost of them.
+	var parts := card.node.find_children("*", "GeometryInstance3D", true, false).filter(func(part: Node) -> bool: return not part.has_meta(XRECardMerge.MERGED))
+	var port_offset := -INF
+	for port: MeshInstance3D in card.ports: port_offset = maxf(port_offset, port.sorting_offset)
+	for merged: Node in card.node.get_children().filter(func(child: Node) -> bool: return child.has_meta(XRECardMerge.MERGED)):
+		_check(is_equal_approx((merged as MeshInstance3D).sorting_offset, port_offset) and card.ports[seconds].layers == 0,
+				"with Front the merged ports are sorted as the frontmost port, the ports themselves off the VR layer")
 	var inverse := card.node.global_transform.affine_inverse()
 	var ordered := true
 	var highest := 0.0

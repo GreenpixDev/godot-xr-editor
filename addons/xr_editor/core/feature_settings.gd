@@ -67,6 +67,11 @@ const ARROW_LAYOUT := &"arrow_layout"
 ## Whether the logic graph's parts of one look share their material and mesh (D-167): Shared, made once
 ## for each colour and shape; Per part, each its own, as before. They look the same.
 const GRAPH_MATERIALS := &"graph_materials"
+## How a logic graph card's parts are drawn (D-168): Per node, each by itself, as before; Merged, its ports of
+## one look as one mesh, merged again when one changes. Per node first until a headset run shows Merged's gain.
+const GRAPH_DRAWING := &"graph_drawing"
+const MERGED := &"merged"
+const PER_NODE := &"per_node"
 const PER_PART := &"per_part"
 const NATIVE := &"native"
 const SCRIPT := &"script"
@@ -764,6 +769,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [SHARED, PER_PART],
 		"labels": ["Shared", "Per part"],
 		"hint": "Shared: parts of the graph that look the same share one material and mesh, so drawing them costs less. Per part: each has its own, as before. They look the same.",
+	},
+	GRAPH_DRAWING: {
+		"category": Category.GRAPHICS,
+		"title": "Graph drawing",
+		"values": [PER_NODE, MERGED],
+		"labels": ["Per node", "Merged"],
+		"hint": "Per node: each part of a card is drawn on its own, as before. Merged: a card's ports are drawn as one mesh, drawn again when one changes; fewer draw calls. They look the same.",
 	},
 	EXEC_ARROWS: {
 		"category": Category.EDITOR,

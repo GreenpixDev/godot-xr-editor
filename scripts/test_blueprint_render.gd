@@ -26,6 +26,9 @@ class EmptyDocument extends XREDocument:
 	func get_snap() -> XRESnap: return XRESnap.new(false, 0.0, 0.0, 0.0)
 
 
+## Pixels of a 1024 × 768 picture Merged may draw otherwise than Per node: wire tips in ports (D-168).
+const MERGE_PIXELS := 16
+
 var _checks := 0
 var _failures := 0
 var _viewport: SubViewport
@@ -58,6 +61,69 @@ func _white_at(image: Image, point: Vector3) -> bool:
 			var color := image.get_pixel(x, y)
 			if minf(color.r, minf(color.g, color.b)) > 0.8: return true
 	return false
+
+
+## Graph drawing (D-168): a graph drawn Merged looks as drawn Per node, pixel for pixel within the vertex
+## colours' 8 bits, as it is, with a card in focus over everything and with sphere ports
+## (build/blueprint_render_drawing_*.png). Allowed: a few pixels where a wire's tip goes into its port, as the
+## wire and the card's ports are now sorted as two see-through objects, not as the wire and each port.
+func _test_graph_drawing() -> void:
+	var camera_before := _camera.transform
+	var size_before := _camera.size
+	var graph := XREBlueprintGraph.new()
+	graph.nodes = [
+		XREBlueprintGraph.make_node(1, "ready", Vector2(-260, -60)),
+		XREBlueprintGraph.make_node(2, "branch", Vector2(60, -60)),
+		XREBlueprintGraph.make_node(3, "value", Vector2(-260, 140)),
+		XREBlueprintGraph.make_node(4, "print", Vector2(160, 160)),
+	]
+	graph.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 0}, {"from": 3, "from_port": 0, "to": 4, "to_port": 1}]
+	graph.upgrade()
+	var canvas := XREBlueprintCanvas.new()
+	_viewport.add_child(canvas)
+	canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.OFF, false)
+	canvas.rebuild(graph)
+	# Placed after the rebuild, which puts the canvas where its graph says.
+	canvas.position = Vector3(-40.0, 0.0, 0.0)
+	canvas.face_user(canvas.to_global(Vector3(0.0, 0.0, 1.0)))
+	_camera.transform = Transform3D(Basis.IDENTITY, Vector3(-40.0, 0.0, 1.0))
+	_camera.size = 0.8
+	_camera.current = true
+	for look: int in 3:
+		var focused := look == 1
+		if look == 1:
+			canvas.set_focus_modes(XREFeatureSettings.FRONT, XREFeatureSettings.DIM)
+			canvas.hover_actions(2, false, false, true)
+		if look == 2:
+			# Sphere ports, shaded as wires are: the merge's other look.
+			canvas.hover_actions(-1, false, false, true)
+			canvas.set_port_display(XREFeatureSettings.SPHERE)
+			canvas.rebuild(graph)
+			canvas.position = Vector3(-40.0, 0.0, 0.0)
+			canvas.face_user(canvas.to_global(Vector3(0.0, 0.0, 1.0)))
+		var images: Array[Image] = []
+		for merged: bool in [false, true]:
+			canvas.set_merging(merged)
+			images.append(await _capture("drawing_%s_%s" % [["plain", "focus", "spheres"][look], "merged" if merged else "per_node"]))
+		var differ := 0
+		var most := 0.0
+		for y: int in images[0].get_height():
+			for x: int in images[0].get_width():
+				var a := images[0].get_pixel(x, y)
+				var b := images[1].get_pixel(x, y)
+				var delta := maxf(absf(a.r - b.r), maxf(absf(a.g - b.g), absf(a.b - b.b)))
+				most = maxf(most, delta)
+				if delta > 3.0 / 255.0: differ += 1
+		var drawn := 0
+		for y: int in range(0, images[0].get_height(), 4):
+			for x: int in range(0, images[0].get_width(), 4):
+				if not images[0].get_pixel(x, y).is_equal_approx(images[0].get_pixel(0, 0)): drawn += 1
+		_check(drawn > 200, "the graph is in view: %d sampled pixel(s) not the background" % drawn)
+		_check(differ <= MERGE_PIXELS and canvas.merged_count(2) > 0, "%s, Merged draws as Per node: %d pixel(s) differ, at most by %.0f/255"
+				% [["as it is", "a card in focus", "sphere ports"][look], differ, most * 255.0])
+	canvas.queue_free()
+	_camera.transform = camera_before
+	_camera.size = size_before
 
 
 ## Corner handles of a window over the logic veil (D-040), looked at away from everything else.
@@ -410,6 +476,7 @@ func _run() -> void:
 	debug.setup(null)
 	session.free()
 	fps.queue_free()
+	await _test_graph_drawing()
 	await _test_launcher_look()
 	await _test_window_color()
 	await _test_objects_and_wire()

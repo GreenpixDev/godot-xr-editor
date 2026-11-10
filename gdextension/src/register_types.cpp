@@ -4,6 +4,7 @@
 #include "picker.h"
 #include "graph_wire.h"
 #include "graph_arrows.h"
+#include "mesh_merger.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/classes/engine.hpp>
@@ -39,6 +40,7 @@ void initialize_xre_native(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(xre::XREPicker);
 		GDREGISTER_CLASS(xre::XREGraphWire);
 		GDREGISTER_CLASS(xre::XREGraphArrows);
+		GDREGISTER_CLASS(xre::XREMeshMerger);
 		return;
 	}
 	// OpenXR creates its instance at the servers level and refuses wrappers

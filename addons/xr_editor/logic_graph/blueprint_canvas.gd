@@ -397,6 +397,8 @@ class Card:
 	var input_types: Array[int] = []
 	var output_types: Array[int] = []
 	var ports: Array[MeshInstance3D] = []
+	## Its ports drawn as one mesh of each look (Graph drawing Merged, D-168), or null.
+	var merge: XRECardMerge
 	var sockets: Array[Socket] = []
 	## The wire of output 0 leaves the Finished socket: its block waits (D-052).
 	var waits := false
@@ -641,6 +643,8 @@ var _arrow_tints: Array[Color] = []
 ## Arrow layout Native (D-166): [XREGraphArrows] lays them in one call from the tubes listed here, by index up to
 ## the count of a layout; the lists only grow. Script: [method _arrows_on] as before.
 var _native_arrows := true
+## Graph drawing Merged (D-168): each card's ports are drawn as one mesh of each look ([XRECardMerge]).
+var _merging := false
 var _arrows_native: XREGraphArrows
 var _arrow_pieces: Array = []
 var _arrow_specs := PackedInt32Array()
@@ -682,6 +686,11 @@ var _compatible_input := false
 var _head_position := Vector3.ZERO
 var _view_transform := Transform3D.IDENTITY
 static var _wire_shader: Shader
+
+
+## The wires' shader, once a wire material is made, else null: what [XRECardMerge] recognises.
+static func wire_shader() -> Shader:
+	return _wire_shader
 ## Focus on what a ray is on (D-072): the settings [constant XREFeatureSettings.FOCUS]
 ## and [constant XREFeatureSettings.DEFOCUS], the cards in focus (-1 for none),
 ## the boxes of variables in focus (empty for none), whether anything is, and
@@ -1561,6 +1570,7 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	select_blocks(_selected)
 	_paint_focus()
 	_show_link_wires()
+	for card: Card in _cards: _merge_card(card)
 
 
 ## The port type a pure [param block]'s frame and icon take, -1 for none: its
@@ -2432,6 +2442,7 @@ func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> voi
 		if faded == card.faded: continue
 		card.faded = faded
 		XREBlueprintFade.set_faded(card.node, faded)
+		_merge_card(card)
 	for wire: Wire in _wires:
 		# A bent wire (D-081) covers the input if one of its tubes does.
 		var faded := false
@@ -2753,6 +2764,7 @@ func _flip_pins(card: Card) -> void:
 	card.pins_back = not card.pins_back
 	card.reach_known = false
 	for port: MeshInstance3D in card.ports: port.position.z = -port.position.z
+	_merge_card(card)
 	for index: int in card.inputs.size():
 		var point := card.inputs[index]
 		card.inputs[index] = Vector3(point.x, point.y, -point.z)
@@ -3081,6 +3093,7 @@ func _look_card(card: Card) -> void:
 		XREBlueprintFocus.paint(card.sockets[index].visual, XREBlueprintFocus.PLAIN)
 		XREBlueprintFade.set_seen(card.sockets[index].visual, &"focus", 1.0)
 	_paint_frame(card)
+	_merge_card(card)
 
 
 func _look_wire(wire: Wire) -> void:
@@ -3140,9 +3153,14 @@ func highlight_ports(type: int, want_input: bool) -> void:
 ## Grows the ports a wire may end on and, more, the ports under a ray.
 func _scale_ports() -> void:
 	for card: Card in _cards:
+		var grown := false
 		for index: int in card.ports.size():
 			var hovered := Vector2i(card.id, index) == _port_right or Vector2i(card.id, index) == _port_left
-			card.ports[index].scale = Vector3.ONE * (HOVER_SCALE if hovered else COMPATIBLE_SCALE if _compatible(card, index) else 1.0)
+			var scale := Vector3.ONE * (HOVER_SCALE if hovered else COMPATIBLE_SCALE if _compatible(card, index) else 1.0)
+			if card.ports[index].scale.is_equal_approx(scale): continue
+			card.ports[index].scale = scale
+			grown = true
+		if grown: _merge_card(card)
 	# An input's × shows while the ray is on its port (D-137).
 	_show_pins()
 	update_wires()
@@ -4467,6 +4485,38 @@ func _list_arrows(wire: Wire, execution: bool, forward: bool, listed: int) -> in
 	return listed
 
 
+## Graph drawing (D-168): [param merged] draws each card's ports as one mesh of each look, else each by
+## itself as before. Returns whether it changed.
+func set_merging(merged: bool) -> bool:
+	if merged == _merging: return false
+	_merging = merged
+	for card: Card in _cards: _merge_card(card)
+	return true
+
+
+## Merges [param card]'s ports again as they are now, or gives them back their own drawing without merging.
+## Called wherever a port's look, size, place or see-through changes.
+func _merge_card(card: Card) -> void:
+	if not _merging:
+		if card.merge != null:
+			card.merge.release()
+			card.merge = null
+		return
+	if card.merge == null:
+		card.merge = XRECardMerge.new(card.node)
+		var parts: Array[GeometryInstance3D] = []
+		for port: MeshInstance3D in card.ports:
+			if port != null: parts.append(port)
+		card.merge.set_parts(parts)
+	card.merge.merge()
+
+
+## How many merged meshes [param id]'s card draws (D-168), for the tests.
+func merged_count(id: int) -> int:
+	var card := _find_card(id)
+	return card.merge.mesh_count() if card != null and card.merge != null else 0
+
+
 ## Arrow layout (D-166): [param native] lays arrowheads with [XREGraphArrows], else in GDScript as before.
 ## Returns whether it changed.
 func set_arrow_layout(native: bool) -> bool:
@@ -4607,12 +4657,16 @@ func _lay_rims() -> void:
 					_rim_angles[second] += push
 					_hold_rim(card, first)
 					_hold_rim(card, second)
+		var rim_moved := false
 		for index: int in count:
 			var spot := _rim_point(card, _rim_angles[index])
 			var port := card.ports[index]
-			port.position = Vector3(spot.x, spot.y, port.position.z)
+			var moved_to := Vector3(spot.x, spot.y, port.position.z)
+			if not moved_to.is_equal_approx(port.position): rim_moved = true
+			port.position = moved_to
 			if index < card.inputs.size(): card.inputs[index] = port.position
 			else: card.outputs[index - card.inputs.size()] = port.position
+		if rim_moved: _merge_card(card)
 		for socket: Socket in card.sockets:
 			if socket.kind != TOKEN or socket.port < 0 or socket.port >= card.inputs.size(): continue
 			var built := card.rim_built[socket.port]
