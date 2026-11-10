@@ -8,7 +8,8 @@ extends Node
 ## in memory. It opens and closes the graph itself, logs each step's name when it
 ## starts, and the graph's own script time every [constant REPORT_SEC]; read the
 ## steps' frame rate and App GPU ms (VrApi) around those lines with
-## [code]benchmarks/quest_fps_report.py[/code]. Nothing it does reaches a saved graph.
+## [code]benchmarks/quest_fps_report.py[/code]. Nothing it does reaches a saved graph. A step during which the
+## session leaves focus (the headset slept) is logged as cut and run again from its start (D-161).
 ## Start: [code]py scripts/quest.py --scene res://benchmarks/play_check.tscn -- --xre-graph-lab[/code].
 
 ## User argument (after [code]--[/code]) that runs the lab.
@@ -31,6 +32,9 @@ const WARMUP_SEC := 15.0
 const REPORT_SEC := 5.0
 ## Fewest frames a report made at the end of a step has.
 const MIN_REPORT_FRAMES := 30
+## Longest frame, in seconds, a step may hold: a longer one means the process stood still (the headset slept), and
+## the step is void as when the session leaves focus (D-161).
+const STALL_SEC := 1.0
 ## The scene node whose graph the steps open.
 const HOST := "BlueCube"
 ## Steps in order. A step's name holds what it changes from the open graph.
@@ -144,11 +148,72 @@ var _scene_rids: Array[RID] = []
 var _scene_mesh: BoxMesh
 var _shots := false
 var _shot_taken := false
+var _away := false
+var _busy_frame := -2
+var _xr: OpenXRInterface
 
 
 func _init(service: XREBlueprints, document: XREDocument) -> void:
 	_service = service
 	_document = document
+
+
+func _enter_tree() -> void:
+	_xr = _interface()
+	if _xr == null: return
+	# The states a session passes through when the headset is taken off or sleeps; they may come and go within
+	# one frame, before _process sees the state.
+	_xr.session_visible.connect(_on_session_left)
+	_xr.session_synchronized.connect(_on_session_left)
+	_xr.session_stopping.connect(_on_session_left)
+
+
+func _exit_tree() -> void:
+	if _xr == null: return
+	_xr.session_visible.disconnect(_on_session_left)
+	_xr.session_synchronized.disconnect(_on_session_left)
+	_xr.session_stopping.disconnect(_on_session_left)
+	_xr = null
+
+
+func _on_session_left() -> void:
+	_leave("the session left focus")
+
+
+## The headset was taken off or slept: what the step has measured so far is void (D-161).
+func _leave(reason: String) -> void:
+	if _away: return
+	_away = true
+	if _started and _step >= 0 and _step < _steps.size():
+		print(_LOG_PREFIX, "graph lab: away in %s%s: %s; the step starts again when the headset is back." % [COMPAT_STEP_PREFIX if _compat else "", _steps[_step], reason])
+
+
+## The headset is back: the warm-up, or the step that was cut, starts again from the beginning with its line.
+func _come_back() -> void:
+	_away = false
+	_discard_measures()
+	if not _started:
+		_left = WARMUP_SEC
+		return
+	_left = _step_sec
+	_report_left = REPORT_SEC
+	_shot_taken = false
+	print(_LOG_PREFIX, "graph lab: ", COMPAT_STEP_PREFIX if _compat else "", _steps[_step])
+
+
+## Forgets the times summed since the last report.
+func _discard_measures() -> void:
+	_render_cpu = 0.0
+	_render_gpu = 0.0
+	_process_time = 0.0
+	_frames = 0
+	for view: _View in _views.values():
+		view.cpu = 0.0
+		view.gpu = 0.0
+	_service.take_process_times()
+	var rig := _service.get("_rig") as Node
+	var manipulator := rig.find_child("XREManipulator", false, false) as XREManipulator if rig != null else null
+	if manipulator != null: manipulator.take_process_time()
 
 
 ## A copy of [param graph] with [param factor] copies of its blocks and wires, in a grid
@@ -241,7 +306,14 @@ static func game_args(compat: bool, fast: bool) -> PackedStringArray:
 
 
 func _process(delta: float) -> void:
-	if not _ready_to_start(): return
+	# The lab's own long frames (a step that builds a large graph, a picture) are not a stall.
+	if delta > STALL_SEC and Engine.get_process_frames() > _busy_frame + 1: _leave("the process stood still %.1f s" % delta)
+	if not _ready_to_start():
+		if _host() != null: _leave("the session isn't focused")
+		return
+	if _away:
+		_come_back()
+		return
 	var user_args := OS.get_cmdline_user_args()
 	if user_args.has(GAME_FLAG) or user_args.has(COMPAT_FLAG):
 		print(_LOG_PREFIX, "graph lab: leaving for the game process.")
@@ -256,6 +328,7 @@ func _process(delta: float) -> void:
 	if _shots and _started and not _shot_taken and _left <= _step_sec * 0.5:
 		_shot_taken = true
 		_snap(_steps[_step])
+		_busy_frame = Engine.get_process_frames()
 	if _left > 0.0: return
 	_left = _step_sec
 	# What the last frames of the step did, if the timer hasn't just said it: a report is then the step's own tail.
@@ -287,6 +360,7 @@ func _process(delta: float) -> void:
 		return
 	print(_LOG_PREFIX, "graph lab: ", COMPAT_STEP_PREFIX if _compat else "", _steps[_step])
 	_apply(_steps[_step])
+	_busy_frame = Engine.get_process_frames()
 
 
 ## Sets up the steps of what the GPU's base is made of.

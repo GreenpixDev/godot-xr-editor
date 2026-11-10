@@ -4,6 +4,7 @@ Usage: py benchmarks/gpu_profile_steps.py logs/quest_<time>.log
 
 Each block is "GPU PROFILE (total X ms):" followed by "-Stage: Y ms" lines; a block belongs to the step whose
 "graph lab: <step>" line came last before it. The first block after a step starts is skipped (it holds the change).
+An attempt the lab cut ("graph lab: away in <step>", the session left focus, D-161) is left out.
 Prints a Markdown table: the steps in order, their blocks, the mean total and the mean of every stage.
 """
 import re
@@ -12,6 +13,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 STEP = re.compile(r"XR Editor: graph lab: ((?:compat_)?[a-z][a-z0-9_]*)\s*$")
+AWAY = re.compile(r"XR Editor: graph lab: away in ")
 NOT_STEPS = {"done", "framing", "graph", "view", "picture", "rebuilt", "scene", "renderer", "foveation", "frames", "leaving"}
 HEAD = re.compile(r"GPU PROFILE \(total ([\d.]+)ms\)")
 STAGE = re.compile(r"(?:godot\s*:\s*)?\t-(.+?): ([\d.]+)ms")
@@ -25,6 +27,12 @@ def main() -> None:
     block = None
     skip = 0
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if AWAY.search(line) and current is not None:
+            # The session left focus: the attempt is void, and the lab starts the step again (D-161).
+            del steps[current]
+            current = None
+            block = None
+            continue
         found = STEP.search(line)
         if found and found.group(1).split("_")[0] not in NOT_STEPS:
             current = found.group(1)

@@ -26,8 +26,16 @@ this PC, over USB with adb (docs/decisions.md, D-018).
 4. Shows the editor's output (logcat, tag godot) and keeps the whole logcat in
    logs/quest_<time>.log, until Ctrl+C. The engine's error that repeats every
    frame in the editor (sync_action_sets, D-004) stays out of the console.
+5. With --unattended, for runs Claude drives, worn or not (D-161): the proximity sensor
+   and Guardian are off from before the editor starts, so the headset may lie anywhere,
+   awake, with the session focused and no boundary setup in the way. The log stops by
+   itself after "graph lab: done" (and the traces under way), and the sensor and Guardian
+   are on again before the script ends, also after Ctrl+C. Without it the headset is left
+   as it is (the Rider configuration). A graph lab step during which the session left focus
+   is restarted by the lab ("graph lab: away in <step>"); the GPU traces of the cut attempt
+   get .void after their name, and the step tables leave that attempt out.
 
-Usage: py scripts/quest.py [--scene res://...] [--engine=ARG ...] [--no-deploy] [--no-open] [--no-log] [--gpu-profile [--gpu-trace-delay S] [--gpu-trace-sec S] [--gpu-trace-args "-v"]] [-- arguments for the plugin in VR]
+Usage: py scripts/quest.py [--scene res://...] [--engine=ARG ...] [--no-deploy] [--no-open] [--no-log] [--unattended] [--gpu-profile [--gpu-trace-delay S] [--gpu-trace-sec S] [--gpu-trace-args "-v"]] [-- arguments for the plugin in VR]
   py scripts/quest.py
   py scripts/quest.py --scene res://benchmarks/play_check.tscn
   py scripts/quest.py --engine=--benchmark   (the editor's startup phases, in the log)
@@ -72,6 +80,16 @@ STAGE = REPO / "build" / "quest" / REPO.name
 SHOWN = re.compile(r" godot\s+: | Fatal signal |Start proc \d+:" + re.escape(PACKAGE) + "|Process " + re.escape(PACKAGE))
 # The graph lab's line that starts a step (benchmarks/quest_lab_steps.py reads the same).
 LAB_STEP = re.compile(r"XR Editor: graph lab: ([a-z_0-9]+)\s*$")
+# The lab's last line: with --unattended the log stops there and the headset is set back (D-161).
+LAB_DONE = "XR Editor: graph lab: done"
+# The lab's line when the session left focus within a step: the step starts again (D-161).
+LAB_AWAY = re.compile(r"XR Editor: graph lab: away in ([a-z_0-9]+): (.*)$")
+# The Meta runtime's broadcasts: the proximity sensor reads "worn" until told otherwise or the
+# headset restarts; automation_disable gives the sensor back.
+PROXIMITY_OFF = "am broadcast -a com.oculus.vrpowermanager.prox_close"
+PROXIMITY_ON = "am broadcast -a com.oculus.vrpowermanager.automation_disable"
+# 1: Guardian paused, no boundary setup when a headset lying on a desk wakes; reset by a restart.
+GUARDIAN_PAUSE = "debug.oculus.guardian_pause"
 # Printed by the engine every frame in the editor (D-004).
 NOISE = ('Condition "active_sets.is_empty()" is true', "at: sync_action_sets (")
 
@@ -194,6 +212,45 @@ def open_in_vr(adb: Adb, scene: str | None, engine_args: list[str], plugin_args:
     print("quest: opening the project in the headset; the editor in VR follows once the panel has loaded it")
 
 
+class StepAttempts:
+    """Which attempt at a graph lab step a trace belongs to: the lab starts a step again after the
+    session left focus in it (D-161), and the files of a cut attempt get .void after their name,
+    which the step tables don't read."""
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self.attempt = 0
+        self.cut_attempts: set[int] = set()
+        self.files: dict[int, list[Path]] = {}
+        self.lock = threading.Lock()
+
+    def start(self) -> int:
+        with self.lock:
+            self.attempt += 1
+            return self.attempt
+
+    def cut(self) -> None:
+        """The step under way was cut: its files so far, and those its traces still write, are void."""
+        with self.lock:
+            self.cut_attempts.add(self.attempt)
+            for path in self.files.pop(self.attempt, []):
+                self.void(path)
+
+    def keep(self, attempt: int, path: Path) -> None:
+        with self.lock:
+            if attempt in self.cut_attempts:
+                self.void(path)
+            else:
+                self.files.setdefault(attempt, []).append(path)
+
+    def void(self, path: Path) -> None:
+        if not path.is_file():
+            return
+        target = path.with_name(path.name + ".void")
+        path.replace(target)
+        print(f"quest: {self.label}: {target.relative_to(REPO).as_posix()} (the step was cut)")
+
+
 class GpuProfiler:
     """Meta's ovrgpuprofiler (D-157, steps 1.2 and 1.4): detailed mode for the package, a render stage trace
     inside every graph lab step, files next to the log. The mode is on from before the editor starts until
@@ -209,11 +266,13 @@ class GpuProfiler:
         self.count = 0
         self.busy = threading.Lock()
         self.enabled = False
+        self.attempts = StepAttempts("gpu profiler")
 
-    def write(self, name: str, text: str) -> None:
+    def write(self, name: str, text: str) -> Path:
         path = self.stem.with_name(f"{self.stem.name}_{name}.txt")
         path.write_text(text, encoding="utf-8")
         print(f"quest: gpu profiler: {path.relative_to(REPO).as_posix()}")
+        return path
 
     def info(self) -> None:
         """Before the editor starts: what the tool and the package can do."""
@@ -242,9 +301,9 @@ class GpuProfiler:
         print("quest: gpu profiler: detailed mode off (an app already running keeps it until it restarts)")
 
     def step_started(self, step: str) -> None:
-        threading.Thread(target=self.trace, args=(step,), daemon=True).start()
+        threading.Thread(target=self.trace, args=(step, self.attempts.start()), daemon=True).start()
 
-    def trace(self, step: str) -> None:
+    def trace(self, step: str, attempt: int) -> None:
         time.sleep(self.delay)
         if not self.busy.acquire(blocking=False):
             print(f"quest: gpu profiler: still tracing, no trace in {step}")
@@ -254,9 +313,27 @@ class GpuProfiler:
             started = time.strftime("%H:%M:%S")
             command = f"ovrgpuprofiler -t{self.seconds:g} " + " ".join(shlex.quote(arg) for arg in self.trace_args)
             result = self.adb.run("shell", command, check=False)
-            self.write(f"gpu_{self.count:02d}_{step}", f"# {command}\n# step {step}, started {started}, {self.delay:g} s after the step's line\n{result}")
+            path = self.write(f"gpu_{self.count:02d}_{step}", f"# {command}\n# step {step}, started {started}, {self.delay:g} s after the step's line\n{result}")
+            self.attempts.keep(attempt, path)
         finally:
             self.busy.release()
+
+
+def set_unattended(adb: Adb, unattended: bool) -> None:
+    """Unattended: the proximity sensor reads "worn" and Guardian is paused, so the headset lies on a
+    desk awake, keeps the session focused and opens no boundary setup (D-161). Both stay so until
+    set back or the headset restarts."""
+    result = adb.run("shell", PROXIMITY_OFF if unattended else PROXIMITY_ON, check=False).strip()
+    if "Broadcast completed" not in result:
+        print(f"quest: warning: the proximity sensor didn't answer: {result[-200:]}")
+    adb.run("shell", f"setprop {GUARDIAN_PAUSE} {1 if unattended else 0}", check=False)
+    paused = adb.run("shell", f"getprop {GUARDIAN_PAUSE}", check=False).strip()
+    if paused != ("1" if unattended else "0"):
+        print(f"quest: warning: Guardian pause is '{paused}'")
+    if unattended:
+        print("quest: unattended: proximity sensor and Guardian off; the headset stays awake on a desk")
+    else:
+        print("quest: proximity sensor and Guardian on again")
 
 
 def log_stem() -> Path:
@@ -264,11 +341,13 @@ def log_stem() -> Path:
     return REPO / "logs" / f"quest_{time.strftime('%Y-%m-%dT%H-%M-%S')}"
 
 
-def follow_log(adb: Adb, stem: Path, profiler: GpuProfiler | None = None) -> int:
+def follow_log(adb: Adb, stem: Path, profiler: GpuProfiler | None = None, stop_after_lab: bool = False) -> int:
+    """Writes and shows the log until Ctrl+C, or with [stop_after_lab] until the graph lab is done
+    and the trace under way is written."""
     logs = REPO / "logs"
     logs.mkdir(exist_ok=True)
     log = stem.with_suffix(".log")
-    print(f"quest: log {log.relative_to(REPO).as_posix()}; Ctrl+C to stop")
+    print(f"quest: log {log.relative_to(REPO).as_posix()}; " + ("stops after the graph lab's end" if stop_after_lab else "Ctrl+C to stop"))
     process = subprocess.Popen([adb.path, "logcat", "-v", "threadtime"], stdout=subprocess.PIPE)
     try:
         with open(log, "wb") as file:
@@ -276,10 +355,23 @@ def follow_log(adb: Adb, stem: Path, profiler: GpuProfiler | None = None) -> int
             for raw in process.stdout:
                 file.write(raw)
                 line = raw.decode("utf-8", errors="replace").rstrip()
+                if away := LAB_AWAY.search(line):
+                    print(f"quest: warning: the session left focus in step {away.group(1)} ({away.group(2)}); "
+                          "the lab starts the step again. Was the headset taken off, or did it sleep (--unattended)?")
+                    if profiler is not None:
+                        profiler.attempts.cut()
                 if profiler is not None and (step := LAB_STEP.search(line)):
                     profiler.step_started(step.group(1))
                 if SHOWN.search(line) and not any(noise in line for noise in NOISE):
                     print(line[6:] if len(line) > 6 else line)
+                if stop_after_lab and LAB_DONE in line:
+                    # A trace starts some seconds into a step and may still be under way.
+                    if profiler is not None:
+                        time.sleep(profiler.delay)
+                        if profiler.busy.acquire(timeout=60):
+                            profiler.busy.release()
+                    print("quest: the graph lab is done; log closed")
+                    break
     except KeyboardInterrupt:
         pass
     finally:
@@ -302,6 +394,8 @@ def main() -> int:
     parser.add_argument("--no-deploy", action="store_true", help="don't copy the project")
     parser.add_argument("--no-open", action="store_true", help="don't (re)open the editor")
     parser.add_argument("--no-log", action="store_true", help="don't follow the log")
+    parser.add_argument("--unattended", action="store_true",
+                        help="for runs Claude drives: proximity sensor and Guardian off, the log stops after the graph lab is done, then both on again")
     parser.add_argument("--gpu-profile", action="store_true",
                         help="ovrgpuprofiler: detailed mode for the editor's package from before it starts, a render stage trace in every graph lab step, files beside the log")
     parser.add_argument("--gpu-trace-delay", type=float, default=5.0, metavar="S", help="seconds into a step before its trace (default 5)")
@@ -323,6 +417,9 @@ def main() -> int:
     adb = Adb(path)
     check_headset(adb)
     stem = log_stem()
+    if options.unattended and options.no_log:
+        print("quest: --unattended needs the log: the headset is set back when the log stops", file=sys.stderr)
+        return 2
     profiler: GpuProfiler | None = None
     if options.gpu_profile:
         if options.no_log:
@@ -337,14 +434,18 @@ def main() -> int:
         if options.no_open:
             print("quest: --no-open: restart the editor in the headset for the detailed mode to take hold")
     try:
+        if options.unattended:
+            set_unattended(adb, True)
         if not options.no_open:
             open_in_vr(adb, options.scene, options.engine, plugin_args)
         if not options.no_log:
-            return follow_log(adb, stem, profiler)
+            return follow_log(adb, stem, profiler, options.unattended)
         return 0
     finally:
         if profiler is not None:
             profiler.disable()
+        if options.unattended:
+            set_unattended(adb, False)
 
 
 if __name__ == "__main__":

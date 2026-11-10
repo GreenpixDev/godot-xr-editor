@@ -8,6 +8,8 @@ one a second) without the first seconds, and the GPU's clock and foveation the r
 in it, as they follow the load.
 Without VrApi lines (the PC, the simulator): the lab's own "graph lab: frames" lines, which are
 the frame rate, the VR view's render time, the process time and the draw calls of the last report of the step.
+An attempt at a step the lab cut ("graph lab: away in <step>", the session left focus, D-161) is left
+out; the step's next attempt counts.
 Then, if the run measured viewports (--xre-graph-lab-base, -stress, -views), for each step what each
 viewport that rendered cost and drew in its last report (D-157, step 1.1), and the stress steps' sizes.
 
@@ -25,6 +27,7 @@ from collections import Counter
 SKIPPED_SEC = 3
 LINE = re.compile(r"FPS=(\d+)/.*?Stale=(\d+).*?Fov=(\w+),CPU4/GPU=(\d+)/(\d+),(\d+)/(\d+)MHz.*?TW=([\d.]+)ms,App=([\d.]+)ms.*?CPU&GPU=([\d.]+)ms.*?GPU%=([\d.]+)")
 STEP = re.compile(r"graph lab: ([a-z_0-9]+)\s*$")
+AWAY = re.compile(r"graph lab: away in ([a-z_0-9]+): (.*)$")
 CALLS = re.compile(r"graph lab: frames .* (\d+) draw calls")
 FRAMES = re.compile(r"graph lab: frames (\d+) fps, VR view render CPU ([\d.]+) ms, GPU ([\d.]+) ms, process ([\d.]+) ms, (\d+) draw calls")
 VIEW = re.compile(r"graph lab: view (\S+): render CPU ([\d.]+) ms, GPU ([\d.]+) ms, visible (\d+) call\(s\) (\d+) object\(s\) (\d+) primitive\(s\), shadow (\d+) call\(s\), canvas (\d+) call\(s\)")
@@ -69,6 +72,10 @@ def read_steps(path: str) -> list[dict[str, object]]:
         for line in log:
             if "graph lab: done" in line or "graph lab: leaving" in line:
                 flush()
+                step, rows, calls, frames, views, sizes = "", [], [], [], {}, []
+            elif "XR Editor" in line and (found := AWAY.search(line)):
+                # The session left focus: the attempt is void, and the lab starts the step again (D-161).
+                print(f"{path}: step {found.group(1)} was cut and run again: {found.group(2)}", file=sys.stderr)
                 step, rows, calls, frames, views, sizes = "", [], [], [], {}, []
             elif "XR Editor" in line and (found := STEP.search(line)):
                 flush()
