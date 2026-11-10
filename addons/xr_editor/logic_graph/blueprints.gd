@@ -582,6 +582,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	canvas.set_rim_ports(document.features.get_value(XREFeatureSettings.SIGN_PORTS) == XREFeatureSettings.RIM)
 	canvas.set_turn_modes(document.features.get_value(XREFeatureSettings.GRAPH_TURN), document.features.get_value(XREFeatureSettings.GRAPH_PARTS) == XREFeatureSettings.PARTS)
 	_set_arrow_modes(document.features)
+	canvas.set_arrow_layout(document.features.get_value(XREFeatureSettings.ARROW_LAYOUT) == XREFeatureSettings.NATIVE)
 	canvas.set_style(document.features.get_value(XREFeatureSettings.NODE_STYLE))
 	canvas.set_shrink(document.features.get_value(XREFeatureSettings.NODE_SHRINK))
 	canvas.set_heading(document.features.get_value(XREFeatureSettings.NODE_HEADING))
@@ -3459,6 +3460,8 @@ func _feature_changed(key: StringName) -> void:
 	# Arrowheads are laid again at once, with no rebuild (D-115).
 	if key in [XREFeatureSettings.EXEC_ARROWS, XREFeatureSettings.DATA_ARROWS, XREFeatureSettings.ARROW_STYLE]:
 		_set_arrow_modes(_document.features)
+	if key == XREFeatureSettings.ARROW_LAYOUT:
+		canvas.set_arrow_layout(_document.features.get_value(key) == XREFeatureSettings.NATIVE)
 		return
 	var value := _document.features.get_value(key)
 	var switched := false

@@ -61,6 +61,11 @@ const TREE := &"tree"
 ## sets them: FXAA, SMAA, TAA, supersampling and 16 samples a pixel, as MSAA 4×
 ## with SSAA 2×, since the engine's and the GPU's MSAA ends at 8×.
 const ANTIALIASING := &"antialiasing"
+## How the wires' arrowheads are laid out each time they move (D-166): natively, by [XREGraphArrows] in one
+## call; or in GDScript, as before. The same poses and colours.
+const ARROW_LAYOUT := &"arrow_layout"
+const NATIVE := &"native"
+const SCRIPT := &"script"
 ## Whether the editor's own window is drawn while its 2D UI is hidden in VR (D-165): always on a
 ## standalone headset, on a PC with --hide-ui. Paused stops its viewport, the root, from updating;
 ## Live draws it as before. A key or a click in the window shows the UI, and draws it, at once.
@@ -741,6 +746,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [PAUSED, LIVE],
 		"labels": ["Paused", "Live"],
 		"hint": "While the editor's 2D window is hidden in VR, Paused stops drawing it, and the headset gets that time. Live draws it as before. A key or a click in the window shows it again.",
+	},
+	ARROW_LAYOUT: {
+		"category": Category.GRAPHICS,
+		"title": "Arrow layout",
+		"values": [NATIVE, SCRIPT],
+		"labels": ["Native", "Script"],
+		"hint": "How the wires' arrowheads are laid out as they run or the head moves. Native: in the plugin's C++ part, in one call. Script: in GDScript, as before; slower on large graphs. They look the same.",
 	},
 	EXEC_ARROWS: {
 		"category": Category.EDITOR,

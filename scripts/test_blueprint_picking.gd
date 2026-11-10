@@ -287,6 +287,7 @@ func _test_parts_and_wires() -> void:
 	_canvas.set_wire_seen(wire, &"focus", 1.0)
 	wire.focus = XREBlueprintFocus.NORMAL
 	_canvas.set_focus_modes(modes[0], modes[1])
+	_check_arrow_layouts(filled, open)
 	_canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.OFF, false)
 	_check(not filled.visible and not open.visible, "off, none are drawn")
 	_canvas.set_node_modes(XREFeatureSettings.ON, false, false, XREFeatureSettings.FACE, false)
@@ -956,6 +957,34 @@ func _test_repeated_facing() -> void:
 	_canvas.face_user(head, 0.05)
 	_check(_canvas.get_arrow_pose(0).origin.is_equal_approx(moved), "every other frame they rest")
 	_canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.OFF, false)
+
+
+## Arrow layout (D-166): Native lays the arrowheads Script does, each in the same pose and colour, in every mode.
+func _check_arrow_layouts(filled: MultiMeshInstance3D, open: MultiMeshInstance3D) -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.ARROW_LAYOUT) == XREFeatureSettings.NATIVE, "arrows are laid natively by default")
+	var cases: Array[Array] = [
+		[XREFeatureSettings.CHEVRONS, XREFeatureSettings.CHEVRONS, false], [XREFeatureSettings.RUNNING, XREFeatureSettings.AT_END, true],
+		[XREFeatureSettings.AT_END, XREFeatureSettings.RUNNING, false], [XREFeatureSettings.RUNNING, XREFeatureSettings.CHEVRONS, true]]
+	for modes: Array in cases:
+		_canvas.set_arrow_modes(modes[0], modes[1], modes[2])
+		var layer := open if modes[2] else filled
+		var laid: Array[Array] = []
+		for native: bool in [false, true]:
+			_canvas.set_arrow_layout(native)
+			_canvas.call("_lay_arrows")
+			var poses: Array[Transform3D] = []
+			var colors: Array[Color] = []
+			for index: int in layer.multimesh.visible_instance_count:
+				poses.append(_canvas.get_arrow_pose(index))
+				colors.append(_canvas.get_arrow_color(index))
+			laid.append([poses, colors])
+		var script_poses: Array[Transform3D] = laid[0][0]
+		var native_poses: Array[Transform3D] = laid[1][0]
+		var same := script_poses.size() == native_poses.size() and script_poses.size() > 0
+		for index: int in mini(script_poses.size(), native_poses.size()):
+			same = same and script_poses[index].is_equal_approx(native_poses[index]) and (laid[0][1][index] as Color).is_equal_approx(laid[1][1][index] as Color)
+		_check(same, "Native and Script lay the same %d arrowhead(s) with %s: %d natively" % [script_poses.size(), modes, native_poses.size()])
+	_canvas.set_arrow_layout(true)
 
 
 ## The lab's own list of steps and a setting's value for one run (D-164).

@@ -637,6 +637,15 @@ var _arrow_clock := 0.0
 var _viewed_frame := -1
 ## The arrowheads' poses as drawn, kept here too: a renderer need not give them back.
 var _arrow_poses: Array[Transform3D] = []
+var _arrow_tints: Array[Color] = []
+## Arrow layout Native (D-166): [XREGraphArrows] lays them in one call from the tubes listed here, by index up to
+## the count of a layout; the lists only grow. Script: [method _arrows_on] as before.
+var _native_arrows := true
+var _arrows_native: XREGraphArrows
+var _arrow_pieces: Array = []
+var _arrow_specs := PackedInt32Array()
+var _arrow_sizes := PackedFloat32Array()
+var _arrow_colors := PackedColorArray()
 ## Arc lengths along a wire's points, reused for every wire; a sign's ports' angles on its rim.
 var _arc := PackedFloat32Array()
 var _rim_angles := PackedFloat32Array()
@@ -778,6 +787,9 @@ void fragment() { ALBEDO = face_tint.rgb * mix(0.55, 1.0, front); ALPHA = 1.0; }
 	_arrows_open = _arrow_layer(_open_arrow_mesh())
 	_arc.resize(XREGraphWire.SAMPLES)
 	_arrow_poses.resize(ARROW_LIMIT)
+	_arrow_tints.resize(ARROW_LIMIT)
+	_arrows_native = XREGraphArrows.new()
+	_arrows_native.configure(ARROW_LIMIT, ARROW_STEP, ARROW_SPEED, ARROW_MARGIN, ARROW_END, ARROW_END_SCALE)
 
 
 ## A multimesh of up to [constant ARROW_LIMIT] arrowheads of [param mesh] on the
@@ -4423,13 +4435,56 @@ func _lay_arrows() -> void:
 	var count := 0
 	if _exec_arrows != XREFeatureSettings.OFF or _data_arrows != XREFeatureSettings.OFF:
 		var head := to_local(_head_position) if is_inside_tree() else _head_position
-		for wire: Wire in _wires:
-			var execution := wire.from != null and wire.from.output_types[wire.from_port] == XREBlueprintGraph.EXEC
-			count = _arrows_on(layer.multimesh, wire, execution, true, head, count)
-		for link: Wire in _variable_links: count = _arrows_on(layer.multimesh, link, false, link.writes, head, count)
-		for link: Wire in _scene_links: count = _arrows_on(layer.multimesh, link, false, false, head, count)
+		if _native_arrows:
+			var listed := 0
+			for wire: Wire in _wires:
+				listed = _list_arrows(wire, wire.from != null and wire.from.output_types[wire.from_port] == XREBlueprintGraph.EXEC, true, listed)
+			for link: Wire in _variable_links: listed = _list_arrows(link, false, link.writes, listed)
+			for link: Wire in _scene_links: listed = _list_arrows(link, false, false, listed)
+			count = _arrows_native.lay(_arrow_pieces, listed, _arrow_specs, _arrow_sizes, _arrow_colors, head, _arrow_clock, _open_arrows, layer.multimesh.get_rid())
+		else:
+			for wire: Wire in _wires:
+				var execution := wire.from != null and wire.from.output_types[wire.from_port] == XREBlueprintGraph.EXEC
+				count = _arrows_on(layer.multimesh, wire, execution, true, head, count)
+			for link: Wire in _variable_links: count = _arrows_on(layer.multimesh, link, false, link.writes, head, count)
+			for link: Wire in _scene_links: count = _arrows_on(layer.multimesh, link, false, false, head, count)
 	layer.multimesh.visible_instance_count = count
 	layer.visible = count > 0
+
+
+## Lists [param wire]'s tubes for [XREGraphArrows] from entry [param listed] on, as [method _arrows_on] lays
+## them; the count after them. Grows the lists only when they are full.
+func _list_arrows(wire: Wire, execution: bool, forward: bool, listed: int) -> int:
+	var mode := _exec_arrows if execution else _data_arrows
+	if mode == XREFeatureSettings.OFF or not wire.mesh.visible: return listed
+	var code := XREGraphArrows.MODE_AT_END if mode == XREFeatureSettings.AT_END \
+			else XREGraphArrows.MODE_RUNNING if mode == XREFeatureSettings.RUNNING else XREGraphArrows.MODE_CHEVRONS
+	if forward: code |= XREGraphArrows.SPEC_FORWARD
+	var size := 1.0 if execution else 0.8
+	var color := _arrow_color(wire)
+	var end := wire.pieces.size() - 1 if forward else 0
+	for index: int in wire.pieces.size():
+		if listed >= _arrow_pieces.size():
+			var grown := maxi(64, _arrow_pieces.size() * 2)
+			_arrow_pieces.resize(grown)
+			_arrow_specs.resize(grown)
+			_arrow_sizes.resize(grown)
+			_arrow_colors.resize(grown)
+		_arrow_pieces[listed] = wire.pieces[index]
+		_arrow_specs[listed] = code | (XREGraphArrows.SPEC_END_PIECE if index == end else 0)
+		_arrow_sizes[listed] = size
+		_arrow_colors[listed] = color
+		listed += 1
+	return listed
+
+
+## Arrow layout (D-166): [param native] lays arrowheads with [XREGraphArrows], else in GDScript as before.
+## Returns whether it changed.
+func set_arrow_layout(native: bool) -> bool:
+	if native == _native_arrows: return false
+	_native_arrows = native
+	_lay_arrows()
+	return true
 
 
 ## Lays [param wire]'s arrowheads into [param arrows] from instance [param count]
@@ -4497,12 +4552,20 @@ func _put_arrow(arrows: MultiMesh, piece: XREGraphWire, points: int, along: floa
 	arrows.set_instance_transform(count, pose)
 	arrows.set_instance_color(count, color)
 	_arrow_poses[count] = pose
+	_arrow_tints[count] = color
 	return count + 1
 
 
 ## Where arrowhead [param index] of those drawn now is, in the canvas's space (D-115).
 func get_arrow_pose(index: int) -> Transform3D:
+	if _native_arrows: return _arrows_native.get_pose(index)
 	return _arrow_poses[index] if index >= 0 and index < _arrow_poses.size() else Transform3D()
+
+
+## The colour of arrowhead [param index] of those drawn now (D-115, D-166).
+func get_arrow_color(index: int) -> Color:
+	if _native_arrows: return _arrows_native.get_color(index)
+	return _arrow_tints[index] if index >= 0 and index < _arrow_tints.size() else Color(0, 0, 0, 0)
 
 
 ## Puts each port of a sign on its rim towards the far ends of its wires, as the

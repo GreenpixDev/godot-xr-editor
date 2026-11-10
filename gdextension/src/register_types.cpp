@@ -3,6 +3,7 @@
 #include "frame_timer.h"
 #include "picker.h"
 #include "graph_wire.h"
+#include "graph_arrows.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/classes/engine.hpp>
@@ -37,6 +38,7 @@ void initialize_xre_native(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(xre::XREPicker);
 		GDREGISTER_CLASS(xre::XREGraphWire);
+		GDREGISTER_CLASS(xre::XREGraphArrows);
 		return;
 	}
 	// OpenXR creates its instance at the servers level and refuses wrappers
