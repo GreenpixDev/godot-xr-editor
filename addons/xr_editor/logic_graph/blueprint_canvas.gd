@@ -729,6 +729,64 @@ var _hit_bend := -1
 var _hit_wire_point := Vector3.ZERO
 var _hit_piece := -1
 
+## One ray's answer of [method intersect_ray] (D-169): the ray, the frame and the state it was asked in,
+## and all it noted, for the frame's next ask of the same ray. Made once; filled in place.
+class RayAnswer:
+	var frame := -1
+	var version := -1
+	var boxes_version := -1
+	var origin := Vector3.ZERO
+	var direction := Vector3.ZERO
+	var maximum := 0.0
+	var place := Transform3D()
+	var result := -1.0
+	var hit_id := -1
+	var hit_port := -1
+	var hit_input := false
+	var hit_plus := false
+	var hit_delete := false
+	var hit_swap := false
+	var hit_copy := false
+	var hit_open := false
+	var hit_pure := false
+	var button_distance := -1.0
+	var hit_pin_plus := false
+	var hit_pin_mark := -1
+	var hit_hidden_chip := false
+	var hit_rack := false
+	var hit_rack_plus := false
+	var rack_card := -1
+	var hit_pin_row := -1
+	var pin_row_card := -1
+	var pin_distance := -1.0
+	var hit_edge := -1
+	var hit_height := 0.0
+	var hit_socket := -1
+	var hit_finished := false
+	var hit_box := false
+	var hit_wire := -1
+	var hit_bend := -1
+	var hit_wire_point := Vector3.ZERO
+	var hit_piece := -1
+	var box_hit := Vector4i(-1, 0, -1, -1)
+
+## Ray picking (D-169): whether a ray asked again in the same frame, with nothing changed, gets the answer kept.
+var _ray_cache := false
+## The rays kept, two a hand, and the next to fill.
+var _ray_answers: Array[RayAnswer] = [RayAnswer.new(), RayAnswer.new(), RayAnswer.new(), RayAnswer.new()]
+var _ray_next := 0
+## Grows with every change of what [method intersect_ray] reads: a kept ray asked at another value is asked again.
+var _pick_version := 0
+## For the tests: each kept answer is checked against the ray asked again, and the ones that differ are counted.
+static var check_ray_cache := false
+static var ray_cache_misses := 0
+## Kept answers given, for the lab and the tests.
+var ray_cache_hits := 0
+
+## Wire picking (D-169): the wires the rays pass near found natively by [XREGraphWirePicker], else in GDScript as before.
+var _native_wires := false
+var _wire_picker: XREGraphWirePicker
+
 
 func _init() -> void:
 	_selected_material = material(Color.WHITE, true)
@@ -867,6 +925,7 @@ static func _face(shader: Shader, tint: Color) -> ShaderMaterial:
 ## [constant XREFeatureSettings.NODE_STYLE] (D-099). Takes effect on the next
 ## [method rebuild]; false if it is unknown or already the current one.
 func set_style(style: StringName) -> bool:
+	_pick_version += 1
 	if style == _style or not style in XREFeatureSettings.get_values(XREFeatureSettings.NODE_STYLE): return false
 	_style = style
 	return true
@@ -881,6 +940,7 @@ func get_style() -> StringName:
 ## [constant XREFeatureSettings.NODE_SHRINK] (D-100). Takes effect on the next
 ## [method rebuild]; false if it is unknown or already the current one.
 func set_shrink(shrink: StringName) -> bool:
+	_pick_version += 1
 	if shrink == _shrink or not shrink in XREFeatureSettings.get_values(XREFeatureSettings.NODE_SHRINK): return false
 	_shrink = shrink
 	return true
@@ -895,6 +955,7 @@ func get_shrink() -> StringName:
 ## [param composite], a value of [constant XREFeatureSettings.COMPOSITE_VALUES]
 ## (D-105). Takes effect on the next [method rebuild]; false if unchanged or unknown.
 func set_composite(composite: StringName) -> bool:
+	_pick_version += 1
 	if composite == _composite or not composite in XREFeatureSettings.get_values(XREFeatureSettings.COMPOSITE_VALUES): return false
 	_composite = composite
 	return true
@@ -908,6 +969,7 @@ func get_composite() -> StringName:
 ## Whether ports are shaped by their types ([constant XREFeatureSettings.PORT_SHAPES],
 ## D-104). Takes effect on the next [method rebuild]; true if it changed.
 func set_port_shapes(shaped: bool) -> bool:
+	_pick_version += 1
 	if shaped == _port_shapes: return false
 	_port_shapes = shaped
 	return true
@@ -936,6 +998,7 @@ func _port_visual(type: int, color: Color, spherical: bool) -> MeshInstance3D:
 ## literal] (Collection literal) and [param double] (Collection wire, D-143).
 ## Takes effect on the next [method rebuild]; false if nothing changed.
 func set_collection_modes(port: StringName, literal: StringName, double: bool) -> bool:
+	_pick_version += 1
 	if [port, literal, double] == [_collection_port, _collection_literal, _collection_wire]: return false
 	_collection_port = port
 	_collection_literal = literal
@@ -1031,6 +1094,7 @@ func _grid_material() -> StandardMaterial3D:
 ## [constant XREFeatureSettings.NODE_HEADING] (D-101). Takes effect on the next
 ## [method rebuild]; false if it is unknown or already the current one.
 func set_heading(heading: StringName) -> bool:
+	_pick_version += 1
 	if heading == _heading or not heading in XREFeatureSettings.get_values(XREFeatureSettings.NODE_HEADING): return false
 	_heading = heading
 	return true
@@ -1099,6 +1163,7 @@ func get_hit_swap() -> bool:
 ## Where archetypes take the editor's icon of an engine class (D-099):
 ## [param class_icon] takes a class name and gives a [Texture2D] or null.
 func set_class_icons(class_icon: Callable) -> void:
+	_pick_version += 1
 	_class_icon = class_icon
 
 
@@ -1110,6 +1175,7 @@ func set_class_icons(class_icon: Callable) -> void:
 ## mirror themselves past 90° ([param mirror]). Takes effect on the next
 ## [method rebuild]; false if nothing changed or a value is unknown.
 func set_node_modes(facing: StringName, solid: bool, labelled_back: bool, pins: StringName, mirror: bool) -> bool:
+	_pick_version += 1
 	if not facing in XREFeatureSettings.get_values(XREFeatureSettings.NODE_FACING) or not pins in XREFeatureSettings.get_values(XREFeatureSettings.PIN_PLACE): return false
 	if [facing, solid, labelled_back, pins, mirror] == [_facing, _solid, _labelled_back, _pins, _card_mirror]: return false
 	_facing = facing
@@ -1140,6 +1206,7 @@ func turns_on_grab(id: int) -> bool:
 ## Switches where signs' ports are to their rims ([param rim], D-115). Takes
 ## effect on the next [method rebuild]; true if it changed.
 func set_rim_ports(rim: bool) -> bool:
+	_pick_version += 1
 	if rim == _rim_ports: return false
 	_rim_ports = rim
 	return true
@@ -1149,6 +1216,7 @@ func set_rim_ports(rim: bool) -> bool:
 ## [constant XREFeatureSettings.GRAPH_TURN] — and whether by its parts (D-115).
 ## Takes effect on the next [method rebuild]; false if nothing changed or the mode is unknown.
 func set_turn_modes(turn: StringName, by_parts: bool) -> bool:
+	_pick_version += 1
 	if not turn in XREFeatureSettings.get_values(XREFeatureSettings.GRAPH_TURN) or [turn, by_parts] == [_turn_mode, _by_parts]: return false
 	_turn_mode = turn
 	_by_parts = by_parts
@@ -1188,6 +1256,7 @@ func is_turn_frozen() -> bool:
 ## [constant XREFeatureSettings.PORT_DISPLAY]. Takes effect on the next
 ## [method rebuild]; false if it is unknown or already the current one.
 func set_port_display(display: StringName) -> bool:
+	_pick_version += 1
 	if display == _port_display or not display in XREFeatureSettings.get_values(XREFeatureSettings.PORT_DISPLAY): return false
 	_port_display = display
 	return true
@@ -1196,6 +1265,7 @@ func set_port_display(display: StringName) -> bool:
 ## Whether cards have their plus ([constant XREFeatureSettings.CARD_PLUS], D-058);
 ## true if that changed, for a rebuild.
 func set_plus_shown(shown: bool) -> bool:
+	_pick_version += 1
 	if shown == _plus_shown: return false
 	_plus_shown = shown
 	return true
@@ -1204,6 +1274,7 @@ func set_plus_shown(shown: bool) -> bool:
 ## Whether cards have the copy button ([constant XREFeatureSettings.BLOCK_COPY],
 ## D-093); true if that changed, for a rebuild.
 func set_copy_shown(shown: bool) -> bool:
+	_pick_version += 1
 	if shown == _copy_shown: return false
 	_copy_shown = shown
 	return true
@@ -1213,6 +1284,7 @@ func set_copy_shown(shown: bool) -> bool:
 ## through their bends, which the ray takes. Off, wires are drawn as before
 ## and the graph keeps their bends. True if that changed, for a rebuild.
 func set_bends_shown(shown: bool) -> bool:
+	_pick_version += 1
 	if shown == _bends_shown: return false
 	_bends_shown = shown
 	return true
@@ -1234,6 +1306,7 @@ func get_port_display() -> StringName:
 ## [constant XREFeatureSettings.VARIABLE_INPUT]. Takes effect on the next
 ## [method rebuild]; false if nothing changed.
 func set_parameter_modes(values: StringName, targets: StringName, wait: StringName, variables: StringName) -> bool:
+	_pick_version += 1
 	if [values, targets, wait, variables] == [_value_mode, _target_mode, _wait_mode, _variable_mode]: return false
 	_value_mode = values
 	_target_mode = targets
@@ -1249,6 +1322,7 @@ func get_parameter_modes() -> Array[StringName]:
 
 ## Initializes the view's center once on open, keeping it fixed during edits.
 func center_graph(graph: XREBlueprintGraph) -> void:
+	_pick_version += 1
 	# Another graph's parts keep nothing of the last one's turn or mirror.
 	_parts = []
 	_offset = Vector2.ZERO
@@ -1270,6 +1344,7 @@ func center_graph(graph: XREBlueprintGraph) -> void:
 ## opened from the Functions window over it (D-148)
 ## (docs/blueprint_functions.md). Not kept in the graph.
 func center_at(graph: XREBlueprintGraph, point: Vector3) -> void:
+	_pick_version += 1
 	center_graph(graph)
 	for block: Dictionary in graph.nodes:
 		if block["kind"] != "entry": continue
@@ -1292,12 +1367,14 @@ func get_view() -> Vector3:
 
 ## Shows the graph from [param view], as [method get_view] gave it.
 func set_view(view: Vector3) -> void:
+	_pick_version += 1
 	_offset = Vector2(view.x, view.y)
 	_depth = view.z
 
 
 ## Rebuilds only after document changes; never called by the frame loop.
 func rebuild(graph: XREBlueprintGraph) -> void:
+	_pick_version += 1
 	_structure = graph.structure_key()
 	for card: Card in _cards:
 		remove_child(card.node)
@@ -2094,6 +2171,7 @@ static func link_key(id: int, variable: bool = false) -> int:
 ## [method update_scene_wire] and the others. It bends as an edge does, with
 ## the bends [param block] keeps; [method remove_scene_link] takes it away.
 func add_scene_link(block: Dictionary, color: Color) -> Wire:
+	_pick_version += 1
 	var link := Wire.new()
 	link.owner = block["id"]
 	link.edge = link_key(link.owner)
@@ -2104,12 +2182,14 @@ func add_scene_link(block: Dictionary, color: Color) -> Wire:
 
 
 func remove_scene_link(link: Wire) -> void:
+	_pick_version += 1
 	_free_wire(link)
 	_scene_links.erase(link)
 
 
 ## Shows or hides [param wire], every tube and knot of it.
 func set_wire_shown(wire: Wire, shown: bool) -> void:
+	_pick_version += 1
 	if wire.mesh.visible == shown: return
 	for piece: XREGraphWire in wire.pieces: piece.visible = shown
 	for knot: MeshInstance3D in wire.knots: knot.visible = shown
@@ -2117,6 +2197,7 @@ func set_wire_shown(wire: Wire, shown: bool) -> void:
 
 ## Draws [param wire] with [param shown]: its normal or its lit material, or another.
 func light_wire(wire: Wire, shown: Material) -> void:
+	_pick_version += 1
 	if wire.mesh.material_override == shown: return
 	for piece: XREGraphWire in wire.pieces: piece.material_override = shown
 	for knot: MeshInstance3D in wire.knots: knot.material_override = shown
@@ -2125,6 +2206,7 @@ func light_wire(wire: Wire, shown: Material) -> void:
 ## Makes every tube and knot of [param wire] see-through for [param layer], as
 ## [method XREBlueprintFade.set_seen] does: a link's (D-074), the focus's (D-072).
 func set_wire_seen(wire: Wire, layer: StringName, seen: float) -> void:
+	_pick_version += 1
 	for piece: XREGraphWire in wire.pieces: XREBlueprintFade.set_layer(piece, layer, seen)
 	for knot: MeshInstance3D in wire.knots: XREBlueprintFade.set_layer(knot, layer, seen)
 
@@ -2132,6 +2214,7 @@ func set_wire_seen(wire: Wire, layer: StringName, seen: float) -> void:
 ## Puts a scene link [param wire] in focus [param state] as its card is
 ## ([method focus_state]), its arrowheads darker or lit as its tubes (D-115).
 func set_link_focus(wire: Wire, state: int) -> void:
+	_pick_version += 1
 	if wire.focus == state: return
 	wire.focus = state
 	_lay_arrows()
@@ -2139,6 +2222,7 @@ func set_link_focus(wire: Wire, state: int) -> void:
 
 ## Draws every tube and knot of [param wire] over the rest of the graph, or as before (D-075).
 func raise_wire(wire: Wire, enabled: bool) -> void:
+	_pick_version += 1
 	for piece: XREGraphWire in wire.pieces: XREBlueprintFocus.raise(piece, enabled)
 	for knot: MeshInstance3D in wire.knots: XREBlueprintFocus.raise(knot, enabled)
 
@@ -2312,6 +2396,7 @@ func _shelf(graph: XREBlueprintGraph) -> Vector2:
 ## wires as it does (D-081), when only placement changed.
 ## False means the blocks differ and [method rebuild] is needed.
 func sync_placement(graph: XREBlueprintGraph) -> bool:
+	_pick_version += 1
 	if graph.structure_key() != _structure: return false
 	var blocks: Array[Dictionary] = []
 	for block: Dictionary in graph.nodes:
@@ -2344,6 +2429,7 @@ func _reload_bends(graph: XREBlueprintGraph, wire: Wire) -> void:
 
 ## Commits one spatial move to the shared graph history after previewing its geometry.
 func commit_move(document: XREBlueprintDocument, id: int) -> bool:
+	_pick_version += 1
 	var card := _find_card(id)
 	if card == null: return false
 	card.held_face = INF
@@ -2362,6 +2448,7 @@ func commit_move(document: XREBlueprintDocument, id: int) -> bool:
 ## Commits the places of the cards of [param ids], moved together (D-122), as
 ## one step of the graph's history, as [method commit_move] one card's.
 func commit_moves(document: XREBlueprintDocument, ids: Array[int]) -> bool:
+	_pick_version += 1
 	var state := document.graph.snapshot()
 	for block: Dictionary in state["nodes"]:
 		var card := _find_card(int(block["id"])) if ids.has(block["id"]) else null
@@ -2376,6 +2463,7 @@ func commit_moves(document: XREBlueprintDocument, ids: Array[int]) -> bool:
 ## the canvas's space, along with a card being held (D-122): live geometry
 ## only, as [method preview_move], the wires bent once for all of them.
 func preview_group(ids: Array[int], starts: Array[Vector3], shift: Vector3) -> void:
+	_pick_version += 1
 	for index: int in ids.size():
 		var card := _find_card(ids[index])
 		if card == null: continue
@@ -2386,6 +2474,7 @@ func preview_group(ids: Array[int], starts: Array[Vector3], shift: Vector3) -> v
 
 ## Live geometry only; a preview never modifies the resource or undo history.
 func preview_move(id: int, point: Vector3) -> void:
+	_pick_version += 1
 	var card := _find_card(id)
 	if card == null: return
 	card.node.position = point
@@ -2396,6 +2485,7 @@ func preview_move(id: int, point: Vector3) -> void:
 ## Previews position and orientation without touching the graph resource; a
 ## turn of a held card's yaw goes back to its block's (D-115).
 func preview_transform(id: int, pose: Transform3D) -> void:
+	_pick_version += 1
 	var card := _find_card(id)
 	if card == null: return
 	card.yaw = card.block_yaw
@@ -2408,6 +2498,7 @@ func preview_transform(id: int, pose: Transform3D) -> void:
 ## Commits the place of the box of [param variable] (D-078), previewed by
 ## [method preview_box_move], to the graph's history, as [method commit_move] a card's.
 func commit_box_move(document: XREBlueprintDocument, variable: String) -> bool:
+	_pick_version += 1
 	if not _boxes.has_box(variable): return false
 	var point := _boxes.box_point(variable)
 	var state := document.graph.snapshot()
@@ -2420,6 +2511,7 @@ func commit_box_move(document: XREBlueprintDocument, variable: String) -> bool:
 
 ## Shows the box of [param variable] at [param point] (the canvas's space) without editing the graph (D-078).
 func preview_box_move(variable: String, point: Vector3) -> void:
+	_pick_version += 1
 	_boxes.move_box(variable, point)
 	update_wires()
 
@@ -2428,6 +2520,7 @@ func preview_box_move(variable: String, point: Vector3) -> void:
 ## [param contact] (global) is where [param local_contact], a point of the
 ## box, goes, in the graph's orientation; the box turns to the head about its center (D-090).
 func preview_box_grab(variable: String, contact: Vector3, local_contact: Vector3) -> void:
+	_pick_version += 1
 	preview_box_move(variable, to_local(contact) - local_contact)
 
 
@@ -2441,6 +2534,7 @@ func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> voi
 		var faded := count > 0 and card.node.visible and XREBlueprintFade.covers(eye, targets, count, card.node.global_transform * card.bounds)
 		if faded == card.faded: continue
 		card.faded = faded
+		_pick_version += 1
 		XREBlueprintFade.set_faded(card.node, faded)
 		_merge_card(card)
 	for wire: Wire in _wires:
@@ -2482,6 +2576,7 @@ func face_user(head: Vector3, delta: float = 0.0, again: bool = false) -> void:
 		# Only the frame's call that runs their clock, unless the frame's first laid them with the wires.
 		if delta > 0.0 and _runs_arrows() and frame % 2 == 0 and not (again and _viewed_frame == frame): _lay_arrows()
 		return
+	_pick_version += 1
 	_viewed_frame = frame
 	_faces_user = true
 	_head_position = head
@@ -2652,6 +2747,7 @@ func _turn_target(part: Part, bearing: float) -> float:
 ## Turns the part of card [param id] to the last head once (Graph turn On aim,
 ## D-115), as a ray comes onto it; nothing while something is held.
 func aim_at(id: int) -> void:
+	_pick_version += 1
 	var card := _find_card(id)
 	if card == null or _turn_mode != XREFeatureSettings.AIM or _turn_frozen or card.part >= _parts.size(): return
 	var part := _parts[card.part]
@@ -2777,6 +2873,7 @@ func _flip_pins(card: Card) -> void:
 ## one that doesn't keeps its orientation, which the hand's [param twist] about
 ## the vertical since the grab, in radians, turns in steps of 15° (D-115).
 func preview_grab(id: int, contact: Vector3, local_contact: Vector3, head: Vector3, twist: float = 0.0) -> void:
+	_pick_version += 1
 	var card := _find_card(id)
 	if card == null: return
 	if not _faces(card):
@@ -2818,6 +2915,7 @@ static func _yaw_to(local_head: Vector3, point: Vector3) -> float:
 ## [code]vr_rotation[/code] that turns its card to the last head, in steps of
 ## 15°, where cards don't all face the head (D-115): as a held card turns.
 func turn_to_head(block: Dictionary, point: Vector3) -> void:
+	_pick_version += 1
 	if _facing == XREFeatureSettings.ON or not _faces_user: return
 	var yaw := wrapf(snappedf(_yaw_to(to_local(_head_position), point), YAW_STEP), -PI, PI)
 	if is_zero_approx(yaw): block.erase("vr_rotation")
@@ -2861,6 +2959,7 @@ func get_block_position(id: int) -> Vector3:
 
 ## Highlights a card without changing the scene selection; -1 highlights none.
 func select_block(id: int) -> void:
+	_pick_version += 1
 	var ids: Array[int] = []
 	if id >= 0: ids.append(id)
 	select_blocks(ids)
@@ -2877,6 +2976,7 @@ func blocks_in_rect(rect: Rect2) -> Array[int]:
 
 ## Highlights the cards of [param ids], several at once (D-122).
 func select_blocks(ids: Array[int]) -> void:
+	_pick_version += 1
 	_selected = ids.duplicate()
 	for card: Card in _cards: _paint_frame(card)
 	# A card selected or let go of out of focus is darkened or not (D-122), and a
@@ -2898,6 +2998,7 @@ func _paint_frame(card: Card) -> void:
 ## and [param defocus], one of [constant XREFeatureSettings.DEFOCUS]: the graph
 ## is painted again. False if nothing changed.
 func set_focus_modes(focus: StringName, defocus: StringName) -> bool:
+	_pick_version += 1
 	if focus == _focus_mode and defocus == _defocus_mode: return false
 	_focus_mode = focus
 	_defocus_mode = defocus
@@ -2918,6 +3019,7 @@ func get_focus_modes() -> Array[StringName]:
 ## which takes effect on the next [method rebuild], and [param wires], one of
 ## [constant XREFeatureSettings.LINK_WIRES], which does at once. True if a rebuild is needed.
 func set_link_modes(preview: StringName, wires: StringName) -> bool:
+	_pick_version += 1
 	_link_wires = wires
 	_show_link_wires()
 	if preview == _link_preview: return false
@@ -2953,6 +3055,7 @@ func _show_link_wires() -> void:
 ## nothing in focus gives everything back. Only what changes is painted: it
 ## may be called every frame.
 func set_focus(cards: Vector3i, box: String = "", other_box: String = "") -> void:
+	_pick_version += 1
 	if cards == _focus_cards and box == _focus_box and other_box == _focus_other_box: return
 	_focus_cards = cards
 	_focus_box = box
@@ -3133,6 +3236,7 @@ func _paint_link(link: Wire) -> void:
 ## Each hand contributes hover independently, so one idle ray cannot clear the other.
 func hover_plus(id: int, right: bool) -> void:
 	if (right and _hover_right == id) or (not right and _hover_left == id): return
+	_pick_version += 1
 	if right: _hover_right = id
 	else: _hover_left = id
 	for card: Card in _cards:
@@ -3142,6 +3246,7 @@ func hover_plus(id: int, right: bool) -> void:
 
 ## Highlights only type-compatible endpoints while a connection is being made.
 func highlight_ports(type: int, want_input: bool) -> void:
+	_pick_version += 1
 	var changed := type != _compatible_type or want_input != _compatible_input
 	_compatible_type = type
 	_compatible_input = want_input
@@ -3152,6 +3257,7 @@ func highlight_ports(type: int, want_input: bool) -> void:
 
 ## Grows the ports a wire may end on and, more, the ports under a ray.
 func _scale_ports() -> void:
+	_pick_version += 1
 	for card: Card in _cards:
 		var grown := false
 		for index: int in card.ports.size():
@@ -3201,6 +3307,7 @@ func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1
 	_hover_edge(edge, right)
 	var hovered := id if trash else -1
 	if (right and _delete_right == hovered) or (not right and _delete_left == hovered): return
+	_pick_version += 1
 	if right: _delete_right = hovered
 	else: _delete_left = hovered
 	for card: Card in _cards:
@@ -3267,6 +3374,7 @@ func _hover_port(id: int, port: int, input: bool, right: bool) -> void:
 
 func _hover_copy(id: int, right: bool) -> void:
 	if id == (_copy_right if right else _copy_left): return
+	_pick_version += 1
 	if right: _copy_right = id
 	else: _copy_left = id
 	for card: Card in _cards:
@@ -3276,6 +3384,7 @@ func _hover_copy(id: int, right: bool) -> void:
 ## Grows a call's open button and an Entry's pure switch under a hand's ray.
 func _hover_function(open: int, pure: int, right: bool) -> void:
 	if open == (_open_right if right else _open_left) and pure == (_pure_right if right else _pure_left): return
+	_pick_version += 1
 	if right:
 		_open_right = open
 		_pure_right = pure
@@ -3289,6 +3398,7 @@ func _hover_function(open: int, pure: int, right: bool) -> void:
 
 func _hover_swap(id: int, right: bool) -> void:
 	if id == (_swap_right if right else _swap_left): return
+	_pick_version += 1
 	if right: _swap_right = id
 	else: _swap_left = id
 	for card: Card in _cards:
@@ -3534,6 +3644,7 @@ func _place_pin_marks(card: Card) -> void:
 ## itself, by its pin as it stands now (D-137) — on the pin is anywhere in its
 ## half of the row, its name too (D-140) —, and grows the plus or the × under a ray.
 func _show_pins() -> void:
+	_pick_version += 1
 	for card: Card in _cards:
 		if card.pin_plus != null:
 			card.pin_plus.scale = Vector3.ONE * (HOVER_SCALE if card.id == _pin_plus_right or card.id == _pin_plus_left else 1.0)
@@ -3620,7 +3731,143 @@ static func _append_trash_bar(surface: SurfaceTool, dimensions: Vector3, point: 
 
 ## Nearest oriented body, action icon or surface port; distance is in world meters.
 ## Both port faces retain an enlarged click area around their contact pad.
+## With Ray picking Per frame (D-169), the same ray asked again in the frame, with nothing it reads
+## changed since, gets the answer kept from the first ask, all it noted too.
 func intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float:
+	if not _ray_cache: return _intersect_ray(origin, direction, maximum)
+	var frame := Engine.get_process_frames()
+	var place := global_transform
+	var boxes_version := _boxes.pick_version if _boxes != null else 0
+	for answer: RayAnswer in _ray_answers:
+		if answer.frame != frame or answer.version != _pick_version or answer.boxes_version != boxes_version or answer.maximum != maximum \
+				or answer.origin != origin or answer.direction != direction or answer.place != place: continue
+		_restore_ray(answer)
+		ray_cache_hits += 1
+		if check_ray_cache: _check_kept_ray(answer, origin, direction, maximum)
+		return answer.result
+	var result := _intersect_ray(origin, direction, maximum)
+	var kept := _ray_answers[_ray_next]
+	_ray_next = (_ray_next + 1) % _ray_answers.size()
+	kept.frame = frame
+	kept.version = _pick_version
+	kept.boxes_version = boxes_version
+	kept.origin = origin
+	kept.direction = direction
+	kept.maximum = maximum
+	kept.place = place
+	_keep_ray(kept, result)
+	return result
+
+
+## Ray picking (D-169): [param cached] keeps each ray's answer for the frame's next ask of it, else asks each
+## time as before. Returns whether it changed.
+func set_ray_cache(cached: bool) -> bool:
+	if cached == _ray_cache: return false
+	_ray_cache = cached
+	forget_rays()
+	return true
+
+
+## Forgets the rays kept (D-169): for what changes the cards behind the canvas's back, as the tests do.
+func forget_rays() -> void:
+	_pick_version += 1
+
+
+## Wire picking (D-169): [param native] finds the wires a ray passes near with [XREGraphWirePicker], else in
+## GDScript as before. Returns whether it changed.
+func set_wire_picking(native: bool) -> bool:
+	if native == _native_wires: return false
+	_native_wires = native
+	if native and _wire_picker == null: _wire_picker = XREGraphWirePicker.new()
+	forget_rays()
+	return true
+
+
+func _keep_ray(answer: RayAnswer, result: float) -> void:
+	answer.result = result
+	answer.hit_id = _hit_id
+	answer.hit_port = _hit_port
+	answer.hit_input = _hit_input
+	answer.hit_plus = _hit_plus
+	answer.hit_delete = _hit_delete
+	answer.hit_swap = _hit_swap
+	answer.hit_copy = _hit_copy
+	answer.hit_open = _hit_open
+	answer.hit_pure = _hit_pure
+	answer.button_distance = _button_distance
+	answer.hit_pin_plus = _hit_pin_plus
+	answer.hit_pin_mark = _hit_pin_mark
+	answer.hit_hidden_chip = _hit_hidden_chip
+	answer.hit_rack = _hit_rack
+	answer.hit_rack_plus = _hit_rack_plus
+	answer.rack_card = _rack_card
+	answer.hit_pin_row = _hit_pin_row
+	answer.pin_row_card = _pin_row_card
+	answer.pin_distance = _pin_distance
+	answer.hit_edge = _hit_edge
+	answer.hit_height = _hit_height
+	answer.hit_socket = _hit_socket
+	answer.hit_finished = _hit_finished
+	answer.hit_box = _hit_box
+	answer.hit_wire = _hit_wire
+	answer.hit_bend = _hit_bend
+	answer.hit_wire_point = _hit_wire_point
+	answer.hit_piece = _hit_piece
+	if _boxes != null: answer.box_hit = _boxes.get_hit_state()
+
+
+func _restore_ray(answer: RayAnswer) -> void:
+	_hit_id = answer.hit_id
+	_hit_port = answer.hit_port
+	_hit_input = answer.hit_input
+	_hit_plus = answer.hit_plus
+	_hit_delete = answer.hit_delete
+	_hit_swap = answer.hit_swap
+	_hit_copy = answer.hit_copy
+	_hit_open = answer.hit_open
+	_hit_pure = answer.hit_pure
+	_button_distance = answer.button_distance
+	_hit_pin_plus = answer.hit_pin_plus
+	_hit_pin_mark = answer.hit_pin_mark
+	_hit_hidden_chip = answer.hit_hidden_chip
+	_hit_rack = answer.hit_rack
+	_hit_rack_plus = answer.hit_rack_plus
+	_rack_card = answer.rack_card
+	_hit_pin_row = answer.hit_pin_row
+	_pin_row_card = answer.pin_row_card
+	_pin_distance = answer.pin_distance
+	_hit_edge = answer.hit_edge
+	_hit_height = answer.hit_height
+	_hit_socket = answer.hit_socket
+	_hit_finished = answer.hit_finished
+	_hit_box = answer.hit_box
+	_hit_wire = answer.hit_wire
+	_hit_bend = answer.hit_bend
+	_hit_wire_point = answer.hit_wire_point
+	_hit_piece = answer.hit_piece
+	if _boxes != null: _boxes.set_hit_state(answer.box_hit)
+
+
+## For the tests: asks the ray again and counts a kept answer that says otherwise.
+func _check_kept_ray(answer: RayAnswer, origin: Vector3, direction: Vector3, maximum: float) -> void:
+	var fresh := RayAnswer.new()
+	_keep_ray(fresh, _intersect_ray(origin, direction, maximum))
+	var same := fresh.result == answer.result and fresh.hit_id == answer.hit_id and fresh.hit_port == answer.hit_port and fresh.hit_input == answer.hit_input \
+			and fresh.hit_plus == answer.hit_plus and fresh.hit_delete == answer.hit_delete and fresh.hit_swap == answer.hit_swap and fresh.hit_copy == answer.hit_copy \
+			and fresh.hit_open == answer.hit_open and fresh.hit_pure == answer.hit_pure and fresh.button_distance == answer.button_distance \
+			and fresh.hit_pin_plus == answer.hit_pin_plus and fresh.hit_pin_mark == answer.hit_pin_mark and fresh.hit_hidden_chip == answer.hit_hidden_chip \
+			and fresh.hit_rack == answer.hit_rack and fresh.hit_rack_plus == answer.hit_rack_plus and fresh.rack_card == answer.rack_card \
+			and fresh.hit_pin_row == answer.hit_pin_row and fresh.pin_row_card == answer.pin_row_card and fresh.pin_distance == answer.pin_distance \
+			and fresh.hit_edge == answer.hit_edge and fresh.hit_height == answer.hit_height and fresh.hit_socket == answer.hit_socket \
+			and fresh.hit_finished == answer.hit_finished and fresh.hit_box == answer.hit_box and fresh.hit_wire == answer.hit_wire \
+			and fresh.hit_bend == answer.hit_bend and fresh.hit_wire_point == answer.hit_wire_point and fresh.hit_piece == answer.hit_piece and fresh.box_hit == answer.box_hit
+	if not same:
+		ray_cache_misses += 1
+		push_warning("XREBlueprintCanvas: a kept ray says %s, asked again %s" % [answer.hit_id, fresh.hit_id])
+	_restore_ray(answer)
+
+
+func _intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> float:
 	_hit_id = -1
 	_hit_port = -1
 	_hit_input = false
@@ -4014,6 +4261,15 @@ static func _cube(center: Vector3, half: float) -> AABB:
 ## space (D-081); -1 for none. Each tube's bounds sort out the wires far from
 ## the ray first. A knot on the wire the ray is on wins over its tube.
 func _intersect_wires(origin: Vector3, direction: Vector3, maximum: float) -> float:
+	if _native_wires:
+		# The same search in one native call (D-169).
+		var hit := _wire_picker.pick(_wires, _variable_links, _scene_links, origin, direction, maximum, WIRE_HIT_RADIUS, KNOT_HIT_RADIUS)
+		if _wire_picker.get_edge() >= 0:
+			_hit_wire = _wire_picker.get_edge()
+			_hit_bend = _wire_picker.get_bend()
+			_hit_piece = _wire_picker.get_piece()
+			_hit_wire_point = _wire_picker.get_point()
+		return hit
 	var nearest := _intersect_tubes(_wires, origin, direction, maximum)
 	nearest = _intersect_tubes(_variable_links, origin, direction, nearest)
 	nearest = _intersect_tubes(_scene_links, origin, direction, nearest)
@@ -4229,6 +4485,7 @@ func is_token_wired(id: int, key: String) -> bool:
 ## Hides the token of [param key] on block [param id] while it is carried away (D-058);
 ## the next rebuild shows the socket as the graph has it.
 func hide_token(id: int, key: String, hidden: bool = true) -> void:
+	_pick_version += 1
 	var socket := _socket(id, key)
 	if socket != null and socket.visual != null: socket.visual.visible = not hidden
 
@@ -4236,6 +4493,7 @@ func hide_token(id: int, key: String, hidden: bool = true) -> void:
 ## Shows [param value] on the token of [param key] on block [param id] until
 ## the next rebuild, as [param shown] says if given (an expression, D-063).
 func preview_token(id: int, key: String, value: Variant, shown: String = "") -> void:
+	_pick_version += 1
 	var socket := _socket(id, key)
 	if socket != null and socket.text != null: socket.text.text = shown if not shown.is_empty() else XREBlueprintTokens.text(value, key)
 
@@ -4261,6 +4519,7 @@ func socket_position(id: int, kind: int) -> Vector3:
 func hover_socket(id: int, socket: int, right: bool) -> void:
 	var key := Vector2i(id, socket)
 	if key == (_socket_right if right else _socket_left): return
+	_pick_version += 1
 	if right: _socket_right = key
 	else: _socket_left = key
 	for card: Card in _cards:
@@ -4390,6 +4649,7 @@ func has_port(id: int, port: int, input: bool) -> bool:
 ## wire from Play Animation's output 0 leaves Finished with [param finished] 1,
 ## Then with 0, and where its wire is with -1.
 func show_connection(id: int, port: int, input: bool, end: Vector3, end_id: int = -1, end_port: int = -1, end_input: bool = false, finished: int = -1) -> void:
+	_pick_version += 1
 	# Over a port the preview snaps to it; elsewhere its end follows the ray freely.
 	var direction := Vector3.ZERO
 	if end_id >= 0 and end_port >= 0:
@@ -4403,6 +4663,7 @@ func show_connection(id: int, port: int, input: bool, end: Vector3, end_id: int 
 
 ## A preview from socket [param kind] of card [param id] — Source or Variable — to [param end], in the canvas's space.
 func show_socket_link(id: int, kind: int, end: Vector3) -> void:
+	_pick_version += 1
 	var card := _find_card(id)
 	if card == null: return
 	for socket: Socket in card.sockets:
@@ -4414,12 +4675,14 @@ func show_socket_link(id: int, kind: int, end: Vector3) -> void:
 
 ## Clears preview geometry and compatibility emphasis.
 func hide_connection() -> void:
+	_pick_version += 1
 	_preview.visible = false
 	highlight_ports(-1, false)
 
 
 ## Updates existing mesh transforms after a card preview; creates no geometry.
 func update_wires() -> void:
+	_pick_version += 1
 	for wire: Wire in _wires: _update_wire(wire)
 	for link: Wire in _variable_links: _update_variable_link(link)
 	_lay_arrows()
@@ -4488,6 +4751,7 @@ func _list_arrows(wire: Wire, execution: bool, forward: bool, listed: int) -> in
 ## Graph drawing (D-168): [param merged] draws each card's ports as one mesh of each look, else each by
 ## itself as before. Returns whether it changed.
 func set_merging(merged: bool) -> bool:
+	_pick_version += 1
 	if merged == _merging: return false
 	_merging = merged
 	for card: Card in _cards: _merge_card(card)
@@ -4829,6 +5093,7 @@ func wire_knot(edge: int, bend: int) -> MeshInstance3D:
 ## the graph is unchanged. Returns the new bend's index; -1 while bends are off
 ## or the wire has [constant XREBlueprintGraph.MAX_BENDS].
 func insert_bend(edge: int, index: int, point: Vector3) -> int:
+	_pick_version += 1
 	var wire := _find_wire(edge)
 	if wire == null or not _bends_shown or wire.bends.size() >= XREBlueprintGraph.MAX_BENDS: return -1
 	index = clampi(index, 0, wire.bends.size())
@@ -4841,6 +5106,7 @@ func insert_bend(edge: int, index: int, point: Vector3) -> int:
 ## Moves bend [param index] of the wire of graph edge [param edge] to [param point]:
 ## a drag's preview, every frame, which allocates nothing.
 func preview_bend(edge: int, index: int, point: Vector3) -> void:
+	_pick_version += 1
 	var wire := _find_wire(edge)
 	if wire == null or index < 0 or index >= wire.bends.size(): return
 	wire.bends[index] = point
@@ -4850,6 +5116,7 @@ func preview_bend(edge: int, index: int, point: Vector3) -> void:
 ## Takes bend [param index] off the wire of graph edge [param edge], or all its
 ## bends with -1, until [method commit_bends] or [method reset_bends].
 func remove_bend(edge: int, index: int = -1) -> void:
+	_pick_version += 1
 	var wire := _find_wire(edge)
 	if wire == null or index >= wire.bends.size(): return
 	if index < 0: wire.bends.clear()
@@ -4860,6 +5127,7 @@ func remove_bend(edge: int, index: int = -1) -> void:
 
 ## Draws the wire of graph edge [param edge] with the bends [param graph] has: ends a preview.
 func reset_bends(graph: XREBlueprintGraph, edge: int) -> void:
+	_pick_version += 1
 	var wire := _find_wire(edge)
 	if wire == null: return
 	_reload_bends(graph, wire)
@@ -4870,6 +5138,7 @@ func reset_bends(graph: XREBlueprintGraph, edge: int) -> void:
 ## is drawn with in the graph — on the edge or the link's block — as one edit
 ## called [param title]; false if the document refused it.
 func commit_bends(document: XREBlueprintDocument, edge: int, title: String) -> bool:
+	_pick_version += 1
 	var wire := _find_wire(edge)
 	if wire == null: return false
 	var state := document.graph.snapshot()
@@ -4903,6 +5172,7 @@ func hover_bend(edge: int, bend: int, point: Vector3, right: bool) -> void:
 	var key := Vector2i(edge, bend)
 	var before := _bend_right if right else _bend_left
 	if key == before: return
+	_pick_version += 1
 	if right: _bend_right = key
 	else: _bend_left = key
 	_scale_knot(before)
@@ -4950,6 +5220,7 @@ static func _find_in(wires: Array[Wire], edge: int) -> Wire:
 
 ## Creates one reusable native tube; permanent, preview and scene wires share it.
 func create_scene_wire(color: Color) -> XREGraphWire:
+	_pick_version += 1
 	var wire := XREGraphWire.new()
 	wire.layers = XRERig.VR_LAYER
 	wire.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -4963,12 +5234,14 @@ func create_scene_wire(color: Color) -> XREGraphWire:
 
 ## A preview from [param from] to [param to], in the canvas's space: a wire from a petal or a box.
 func show_link(from: Vector3, to: Vector3) -> void:
+	_pick_version += 1
 	_preview.update_curve(from, Vector3.ZERO, to, Vector3.ZERO, Vector3.BACK)
 	_preview.visible = true
 
 
 ## A static wire from socket [param kind] of block [param id] — an event's Source — towards the scene object.
 func update_socket_wire(link: Wire, id: int, kind: int, end: Vector3) -> void:
+	_pick_version += 1
 	var card := _find_card(id)
 	_lay(link, socket_position(id, kind), -_side(card), end, Vector3.ZERO, _front(card))
 
@@ -4977,6 +5250,7 @@ func update_socket_wire(link: Wire, id: int, kind: int, end: Vector3) -> void:
 ## [param variable] — a variable in use that can't be deleted — their frames
 ## and their wires, drawn even where a link hides them (D-079); or puts them back.
 func flash_variable(variable: String, lit: bool) -> void:
+	_pick_version += 1
 	for link: Wire in _variable_links:
 		if link.variable != variable: continue
 		link.flash = wire_material(Color.WHITE, LIT_WIRE_GROW * 2.0) if lit else null
@@ -4989,6 +5263,7 @@ func flash_variable(variable: String, lit: bool) -> void:
 ## Lights the frames of cards [param ids] — the calls that keep a function
 ## from being deleted (docs/blueprint_functions.md) — or puts them back.
 func flash_cards(ids: Array[int], lit: bool = true) -> void:
+	_pick_version += 1
 	for card: Card in _cards:
 		if not ids.has(card.id): continue
 		card.flash = lit
@@ -4997,6 +5272,7 @@ func flash_cards(ids: Array[int], lit: bool = true) -> void:
 
 ## A static Target wire ([method add_scene_link]): from its input port, leaving left, free towards the scene object.
 func update_scene_wire(link: Wire, id: int, port: int, end: Vector3) -> void:
+	_pick_version += 1
 	_lay(link, port_position(id, port, true), port_direction(id, true), end, Vector3.ZERO, _front(_find_card(id)))
 
 
@@ -5004,6 +5280,7 @@ func update_scene_wire(link: Wire, id: int, port: int, end: Vector3) -> void:
 ## from input [param port] of block [param id] to the fork at [param fork] with
 ## [param from] negative, or a branch from the fork to an object at [param end].
 func update_branch_wire(link: Wire, id: int, port: int, fork: Vector3, end: Vector3, branch: bool) -> void:
+	_pick_version += 1
 	if not branch:
 		_lay(link, port_position(id, port, true), port_direction(id, true), fork, Vector3.ZERO, _front(_find_card(id)))
 		return
@@ -5386,6 +5663,7 @@ func adapter_end(id: int) -> Variant:
 
 ## A static wire from the adapter of block [param id], leaving left, free towards the scene object.
 func update_adapter_wire(link: Wire, id: int, start: Vector3, end: Vector3) -> void:
+	_pick_version += 1
 	var card := _find_card(id)
 	_lay(link, start, -_side(card), end, Vector3.ZERO, _front(card))
 
@@ -5517,6 +5795,7 @@ func _link_socket(card: Card, port: int, kind: int) -> Socket:
 
 ## Hides the link of [param ref] while it is carried away (D-058, D-074), or shows it again.
 func hide_link(ref: Dictionary, hidden: bool) -> void:
+	_pick_version += 1
 	var card := _find_card(int(ref["card"]))
 	var socket := _link_socket(card, int(ref["port"]), int(ref["kind"])) if card != null else null
 	if socket != null: socket.visual.visible = not hidden
@@ -5569,6 +5848,7 @@ func ref_wire(ref: Dictionary) -> XREGraphWire:
 
 ## Shows or hides every tube and knot of the wire of the variable reference [param ref] (D-074, D-081).
 func show_ref_wire(ref: Dictionary, shown: bool) -> void:
+	_pick_version += 1
 	var wire := _ref_wire(ref)
 	if wire != null: set_wire_shown(wire, shown)
 

@@ -3,6 +3,7 @@
 #include "frame_timer.h"
 #include "picker.h"
 #include "graph_wire.h"
+#include "graph_wire_picker.h"
 #include "graph_arrows.h"
 #include "mesh_merger.h"
 
@@ -39,6 +40,7 @@ void initialize_xre_native(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(xre::XREPicker);
 		GDREGISTER_CLASS(xre::XREGraphWire);
+		GDREGISTER_CLASS(xre::XREGraphWirePicker);
 		GDREGISTER_CLASS(xre::XREGraphArrows);
 		GDREGISTER_CLASS(xre::XREMeshMerger);
 		return;

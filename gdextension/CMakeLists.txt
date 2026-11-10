@@ -21,6 +21,8 @@ add_library(xre_native SHARED
 	src/picker.h
 	src/graph_wire.cpp
 	src/graph_wire.h
+	src/graph_wire_picker.cpp
+	src/graph_wire_picker.h
 	src/graph_arrows.cpp
 	src/graph_arrows.h
 	src/mesh_merger.cpp

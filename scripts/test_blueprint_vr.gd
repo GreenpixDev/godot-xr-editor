@@ -22,6 +22,7 @@ var _saved_display := XREFeatureSettings.ON
 ## The same for the port display and the window shape (D-043).
 var _saved_ports := XREFeatureSettings.FLAT
 var _saved_shape := XREFeatureSettings.FLAT
+var _saved_rays := XREFeatureSettings.EACH_CALL
 ## The same for the parameter settings (D-052), which a headset session leaves as it set them.
 var _saved_parameters: Dictionary[StringName, StringName] = {}
 ## The editor's settings file, kept aside while the checks run.
@@ -149,6 +150,11 @@ func _run() -> void:
 	for key: StringName in PARAMETER_SETTINGS:
 		_saved_parameters[key] = _document.features.get_value(key)
 		_document.features.set_value(key, BASELINE[key])
+	# Ray picking Per frame (D-169) all through: every kept answer the service gets is asked again and compared.
+	_saved_rays = _document.features.get_value(XREFeatureSettings.RAY_PICKING)
+	_document.features.set_value(XREFeatureSettings.RAY_PICKING, XREFeatureSettings.PER_FRAME)
+	XREBlueprintCanvas.check_ray_cache = true
+	XREBlueprintCanvas.ray_cache_misses = 0
 	DirAccess.make_dir_recursive_absolute("res://build/blueprint_vr_tests")
 	_right = XRControllerTracker.new()
 	_right.name = &"right_hand"
@@ -453,6 +459,9 @@ func _run() -> void:
 	_check(not graph.validate().is_empty(), "non-finite card orientation is rejected")
 	_document.select([], XREDocument.Source.TOOL)
 	EditorInterface.inspect_object(null)
+	_check(XREBlueprintCanvas.ray_cache_misses == 0 and _service.canvas.ray_cache_hits > 0,
+			"Ray picking Per frame: all %d kept rays said what they say asked again, %d did not" % [_service.canvas.ray_cache_hits, XREBlueprintCanvas.ray_cache_misses])
+	XREBlueprintCanvas.check_ray_cache = false
 	_service.close_graph()
 	_service.queue_free()
 	await _frames()
@@ -467,6 +476,7 @@ func _run() -> void:
 	_document.features.set_value(XREFeatureSettings.PORT_DISPLAY, _saved_ports)
 	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, _saved_shape)
 	for key: StringName in PARAMETER_SETTINGS: _document.features.set_value(key, _saved_parameters[key])
+	_document.features.set_value(XREFeatureSettings.RAY_PICKING, _saved_rays)
 	_document.features.path = _saved_path
 	print("test_blueprint_vr: %d of %d checks failed" % [_failures, _checks])
 	get_tree().quit(1 if _failures > 0 else 0)

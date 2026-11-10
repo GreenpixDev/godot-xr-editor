@@ -1090,6 +1090,159 @@ func _test_lab_steps_and_features() -> void:
 	DirAccess.remove_absolute(file)
 
 
+## A graph with wires, a bend shown as a knot and a variable's box, four times over, faced from in front.
+func _picking_graph() -> XREBlueprintGraph:
+	var graph := XREBlueprintGraph.new()
+	graph.nodes = [
+		{"id": 1, "kind": "value", "position": Vector2(0, 0), "params": {"value": 1.0}},
+		{"id": 2, "kind": "print", "position": Vector2(400, -300), "params": {}},
+		XREBlueprintGraph.make_operator(3, "add", Vector2(0, 300)),
+	]
+	graph.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 1, "vr_bends": PackedVector3Array([Vector3(200, 100, 0)])},
+		{"from": 3, "from_port": 0, "to": 2, "to_port": 1}]
+	graph.upgrade()
+	return XREGraphLab.enlarged(graph, 4)
+
+
+## Rays at every wire's points and knots, a little off them each way and from three sides, and the parity grid's
+## rays across every card: origins and directions in pairs.
+func _picking_rays() -> Array[PackedVector3Array]:
+	var origins := PackedVector3Array()
+	var directions := PackedVector3Array()
+	var place := _canvas.global_transform
+	for wire: XREBlueprintCanvas.Wire in _canvas.get("_wires") as Array:
+		var targets := PackedVector3Array(wire.bends)
+		for piece: XREGraphWire in wire.pieces:
+			for sample: int in range(0, piece.get_point_count(), 3): targets.append(piece.get_point(sample))
+		for target: Vector3 in targets:
+			for off: Vector3 in [Vector3.ZERO, Vector3(0.006, 0, 0), Vector3(0, -0.009, 0), Vector3(0.013, 0.004, 0)]:
+				for from: Vector3 in [Vector3.BACK, Vector3(0.5, 0.3, 1).normalized(), Vector3(-0.4, -0.6, 1).normalized()]:
+					origins.append(place * (target + off + from * 0.7))
+					directions.append(place.basis * -from)
+	for card: XREBlueprintCanvas.Card in _canvas.get("_cards") as Array:
+		var to_global := place * card.node.transform
+		for column: int in 7:
+			for row: int in 7:
+				var point := card.bounds.position + Vector3(card.bounds.size.x * column / 6.0, card.bounds.size.y * row / 6.0, card.bounds.size.z * 0.5)
+				origins.append(to_global * point + to_global.basis.z * 0.8)
+				directions.append(-to_global.basis.z)
+	return [origins, directions]
+
+
+## Wire picking (D-169): Native finds the wire, its knot, piece and point Script does, for every ray.
+func _test_wire_picking() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.WIRE_PICKING) == XREFeatureSettings.SCRIPT, "wires are picked in GDScript by default")
+	var big := _picking_graph()
+	_canvas.set_bends_shown(true)
+	_canvas.center_graph(big)
+	_canvas.rebuild(big)
+	_canvas.face_user(Vector3(0, 0, 3))
+	var rays := _picking_rays()
+	var differ := 0
+	var wires := 0
+	var knots := 0
+	var first := ""
+	for index: int in rays[0].size():
+		var said: Array[Array] = []
+		for native: bool in [false, true]:
+			_canvas.set_wire_picking(native)
+			said.append(RayParity.outcome(_canvas, rays[0][index], rays[1][index], 5.0))
+		if said[0][RayParity.FIELDS.find("_hit_wire") + 1] >= 0: wires += 1
+		if said[0][RayParity.FIELDS.find("_hit_bend") + 1] >= 0: knots += 1
+		if said[0] != said[1]:
+			differ += 1
+			if first.is_empty(): first = "from %s along %s: script %s, native %s" % [rays[0][index], rays[1][index], said[0], said[1]]
+	_check(differ == 0 and wires > 50 and knots > 5, "Native and Script pick the same on %d rays, %d on wires, %d on knots: %d differ %s" % [rays[0].size(), wires, knots, differ, first])
+	_canvas.set_wire_picking(false)
+	_canvas.set_bends_shown(false)
+
+
+## Ray picking (D-169): Per frame answers a ray asked again in the frame as Each call does, all it notes too, and
+## asks again once the cards turn to another head or the graph changes.
+func _test_ray_cache() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.RAY_PICKING) == XREFeatureSettings.EACH_CALL, "rays are asked each time by default")
+	var big := _picking_graph()
+	_canvas.set_bends_shown(true)
+	_canvas.center_graph(big)
+	_canvas.rebuild(big)
+	_canvas.face_user(Vector3(0, 0, 3))
+	var rays := _picking_rays()
+	var fresh: Array[Array] = []
+	for index: int in rays[0].size(): fresh.append(RayParity.outcome(_canvas, rays[0][index], rays[1][index], 5.0))
+	_canvas.set_ray_cache(true)
+	var hits := _canvas.ray_cache_hits
+	var differ := 0
+	var kept := 0
+	for index: int in rays[0].size():
+		var once := RayParity.outcome(_canvas, rays[0][index], rays[1][index], 5.0)
+		var before := _canvas.ray_cache_hits
+		var again := RayParity.outcome(_canvas, rays[0][index], rays[1][index], 5.0)
+		if _canvas.ray_cache_hits == before + 1: kept += 1
+		if once != fresh[index] or again != fresh[index]: differ += 1
+	_check(differ == 0 and kept == rays[0].size(), "kept rays say what rays asked each time do: %d of %d differ, %d of them kept" % [differ, rays[0].size(), kept])
+	# Two hands' rays in turn are both kept, so both their second asks are answered.
+	var a := rays[0].size() / 3
+	var b := rays[0].size() / 2
+	RayParity.outcome(_canvas, rays[0][a], rays[1][a], 5.0)
+	RayParity.outcome(_canvas, rays[0][b], rays[1][b], 5.0)
+	hits = _canvas.ray_cache_hits
+	var second_a := RayParity.outcome(_canvas, rays[0][a], rays[1][a], 5.0)
+	var second_b := RayParity.outcome(_canvas, rays[0][b], rays[1][b], 5.0)
+	_check(_canvas.ray_cache_hits == hits + 2 and second_a == fresh[a] and second_b == fresh[b], "both hands' rays are kept")
+	# Another maximum is another ray.
+	hits = _canvas.ray_cache_hits
+	_canvas.intersect_ray(rays[0][a], rays[1][a], 4.0)
+	_check(_canvas.ray_cache_hits == hits, "a ray asked to another distance is asked again")
+	# The cards turned to another head: the rays are asked again, and say what the turned cards do.
+	var target := -1
+	for index: int in rays[0].size():
+		if fresh[index][1] >= 0 and fresh[index][RayParity.FIELDS.find("_hit_id") + 1] >= 0:
+			target = index
+			break
+	RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_canvas.face_user(Vector3(2.5, 0.4, 1.5))
+	hits = _canvas.ray_cache_hits
+	var turned := RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_canvas.set_ray_cache(false)
+	var turned_fresh := RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_check(_canvas.ray_cache_hits == hits and turned == turned_fresh, "after face_user to another head the ray is asked again: %s" % [turned])
+	# The graph changed: a card moved away, the ray asked again misses it.
+	_canvas.face_user(Vector3(0, 0, 3))
+	_canvas.set_ray_cache(true)
+	RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	var id: int = fresh[target][RayParity.FIELDS.find("_hit_id") + 1]
+	_canvas.preview_move(id, _canvas.get_block_position(id) + Vector3(3, 3, 0))
+	hits = _canvas.ray_cache_hits
+	var moved := RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_check(_canvas.ray_cache_hits == hits and moved[RayParity.FIELDS.find("_hit_id") + 1] != id, "after the card moves the ray is asked again: %s" % [moved])
+	big.nodes[0]["position"] = Vector2(-900, 0)
+	_canvas.rebuild(big)
+	_canvas.face_user(Vector3(0, 0, 3))
+	hits = _canvas.ray_cache_hits
+	RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_check(_canvas.ray_cache_hits == hits, "after a rebuild the ray is asked again")
+	# Hover grows a port: the ray is asked again.
+	RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_canvas.hover_actions(id, false, false, true, 0, false)
+	hits = _canvas.ray_cache_hits
+	RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_check(_canvas.ray_cache_hits == hits, "after a hover changes a port the ray is asked again")
+	# The same hover again changes nothing: the ray stays kept.
+	RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_canvas.hover_actions(id, false, false, true, 0, false)
+	hits = _canvas.ray_cache_hits
+	RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_check(_canvas.ray_cache_hits == hits + 1, "the same hover again keeps the ray")
+	_canvas.hover_actions(-1, false, false, true)
+	# The next frame asks every ray again.
+	await process_frame
+	hits = _canvas.ray_cache_hits
+	RayParity.outcome(_canvas, rays[0][target], rays[1][target], 5.0)
+	_check(_canvas.ray_cache_hits == hits, "the next frame asks the ray again")
+	_canvas.set_ray_cache(false)
+	_canvas.set_bends_shown(false)
+
+
 func _test_lab_enlarged() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [
@@ -1291,6 +1444,8 @@ func _run() -> void:
 	_test_shared_materials()
 	_test_lab_enlarged()
 	_test_ray_reach()
+	_test_wire_picking()
+	await _test_ray_cache()
 	await _test_repeated_facing()
 	_canvas.queue_free()
 	await process_frame

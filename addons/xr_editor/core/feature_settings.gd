@@ -72,6 +72,14 @@ const GRAPH_MATERIALS := &"graph_materials"
 const GRAPH_DRAWING := &"graph_drawing"
 const MERGED := &"merged"
 const PER_NODE := &"per_node"
+## How the logic graph answers the hands' rays (D-169): Each call, every ask worked out, as before; Per frame,
+## the same ray asked again in a frame, with nothing changed, answered as the first time. The same answers.
+const RAY_PICKING := &"ray_picking"
+const EACH_CALL := &"each_call"
+const PER_FRAME := &"per_frame"
+## How a ray finds the logic graph's wires it passes near (D-169): in GDScript, as before; or natively, by
+## [XREGraphWirePicker] in one call. The same wires.
+const WIRE_PICKING := &"wire_picking"
 const PER_PART := &"per_part"
 const NATIVE := &"native"
 const SCRIPT := &"script"
@@ -776,6 +784,20 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [PER_NODE, MERGED],
 		"labels": ["Per node", "Merged"],
 		"hint": "Per node: each part of a card is drawn on its own, as before. Merged: a card's ports are drawn as one mesh, drawn again when one changes; fewer draw calls. They look the same.",
+	},
+	RAY_PICKING: {
+		"category": Category.GRAPHICS,
+		"title": "Ray picking",
+		"values": [EACH_CALL, PER_FRAME],
+		"labels": ["Each call", "Per frame"],
+		"hint": "How the graph finds what a hand's ray is on. Each call: worked out every time it is asked, as before. Per frame: the same ray asked again in a frame, with nothing changed, gets the first answer; less CPU. The same answers.",
+	},
+	WIRE_PICKING: {
+		"category": Category.GRAPHICS,
+		"title": "Wire picking",
+		"values": [SCRIPT, NATIVE],
+		"labels": ["Script", "Native"],
+		"hint": "How a ray finds the wires it passes near. Script: in GDScript, as before. Native: in the plugin's C++ part, in one call; less CPU on large graphs. The same wires.",
 	},
 	EXEC_ARROWS: {
 		"category": Category.EDITOR,

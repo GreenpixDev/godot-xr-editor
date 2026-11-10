@@ -127,6 +127,8 @@ var _hit := -1
 var _hit_part := BODY
 var _hit_component := -1
 var _hit_item := -1
+## Grows with every change of what [method intersect_ray] reads, for the canvas's kept rays (D-169).
+var pick_version := 0
 var _mark_mesh: Mesh
 var _split := false
 var _archetype := false
@@ -150,6 +152,10 @@ func _init(trash_mesh: Mesh, trash_material: Material, archetype_trash: Material
 	_archetype_trash = archetype_trash
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED: pick_version += 1
+
+
 ## Rebuilds the boxes of [param graph]'s variables, each at its point of
 ## [param places] (canvas space, by variable); tokens in the [param style] of
 ## [constant XREFeatureSettings.VALUE_INPUT], text with Window. [param used]
@@ -158,6 +164,7 @@ func _init(trash_mesh: Mesh, trash_material: Material, archetype_trash: Material
 ## [param archetype] the boxes look as archetypes do (D-106); with [param shapes]
 ## their dots and outputs have their types' shapes, else they are circles (D-114).
 func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], style: StringName, used: Dictionary, split: bool = false, archetype: bool = false, shapes: bool = false) -> void:
+	pick_version += 1
 	_split = split
 	_archetype = archetype
 	_shapes = shapes
@@ -174,6 +181,7 @@ func rebuild(graph: XREBlueprintGraph, places: Dictionary[String, Vector3], styl
 ## Moves the boxes to their points of [param places] (canvas space, by
 ## variable), when only the graph's placement changed; creates nothing.
 func place(places: Dictionary[String, Vector3]) -> void:
+	pick_version += 1
 	for box: Box in _boxes:
 		if not places.has(box.name): continue
 		box.node.position = places[box.name]
@@ -184,6 +192,7 @@ func place(places: Dictionary[String, Vector3]) -> void:
 ## turn ([method XREBlueprintCanvas.face_user]), with [param facing]; without it,
 ## as with cuboid cards, they keep the graph's orientation.
 func face(head: Vector3, facing: bool) -> void:
+	pick_version += 1
 	_head = head
 	_facing = facing
 	for box: Box in _boxes: _orient(box)
@@ -197,6 +206,7 @@ func _orient(box: Box) -> void:
 
 ## Shows the box of [param variable] at [param point] (canvas space) without editing the graph, as it is carried (D-078).
 func move_box(variable: String, point: Vector3) -> void:
+	pick_version += 1
 	for box: Box in _boxes:
 		if box.name != variable: continue
 		box.node.position = point
@@ -624,6 +634,7 @@ static func under_material(color: Color) -> StandardMaterial3D:
 ## [param focused] names the boxes in focus.
 func show_trashes(focused: Array[String]) -> void:
 	if not _archetype: return
+	pick_version += 1
 	for box: Box in _boxes:
 		if box.trash != null: box.trash.visible = focused.has(box.name)
 
@@ -659,7 +670,21 @@ func fade_covering(eye: Vector3, targets: PackedVector4Array, count: int) -> voi
 		var faded := count > 0 and visible and XREBlueprintFade.covers(eye, targets, count, box.node.global_transform * _bounds(box))
 		if faded == box.faded: continue
 		box.faded = faded
+		pick_version += 1
 		XREBlueprintFade.set_faded(box.node, faded)
+
+
+## What the last [method intersect_ray] hit: the box, its part, component and element; for the canvas's kept rays (D-169).
+func get_hit_state() -> Vector4i:
+	return Vector4i(_hit, _hit_part, _hit_component, _hit_item)
+
+
+## Puts back what [method get_hit_state] gave.
+func set_hit_state(state: Vector4i) -> void:
+	_hit = state.x
+	_hit_part = state.y
+	_hit_component = state.z
+	_hit_item = state.w
 
 
 ## Nearest box part on the ray, in the canvas's space; -1 if none. The hit is
@@ -811,6 +836,7 @@ func get_hit_part() -> int:
 func hover(index: int, part: int, right: bool, component: int = -1) -> void:
 	var key := Vector3i(index, part, component if part in [COMPONENT, ITEM, ITEM_MARK] else -1) if index >= 0 else Vector3i(-1, -1, -1)
 	if key == (_hover_right if right else _hover_left): return
+	pick_version += 1
 	if right: _hover_right = key
 	else: _hover_left = key
 	for box: int in _boxes.size():
