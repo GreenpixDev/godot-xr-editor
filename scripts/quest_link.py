@@ -140,6 +140,9 @@ def link_on(adb: quest.Adb) -> int:
     if streaming(adb):
         print("quest_link: Link already streams")
         return 0
+    # A Godot editor left open in the headset (after quest.py --unattended) stays on top of the Link dialog.
+    for package in (quest.STORE_PACKAGE, quest.build_engine.APK_PACKAGE):
+        adb.shell(f"am force-stop {package}")
     stop_service(adb)
     log = pc_log()
     offset = log.stat().st_size if log else 0

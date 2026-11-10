@@ -27,8 +27,16 @@ plugin's native library: a second editor on this project starts without it,
 and without it VR doesn't work (docs/decisions.md, D-005). Unsaved changes in
 the editor closed are lost; --no-restart fails instead.
 
-Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--mirror] [--hide-ui] [--engine=ARG ...] [--check] [--no-restart] [scene] [-- arguments for the plugin]
+--tracy (docs/performance_plan.md step 1.5, D-160) starts the editor built with Tracy
+(scripts/build_engine.py tracy) unless --godot or GODOT names another, and records a Tracy
+capture inside every graph lab step: --tracy-delay seconds after the step's line, for
+--tracy-sec seconds, into logs/editor_<runtime>_<time>_tracy_<n>_<step>.tracy (open one in
+tracy-profiler.exe to look); benchmarks/tracy_steps.py makes the tables after the run, so that
+exporting doesn't load the CPU during it. The engine's lines then pass through this script.
+
+Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|sim] [--mirror] [--hide-ui] [--engine=ARG ...] [--godot PATH] [--tracy [--tracy-delay S] [--tracy-sec S]] [--check] [--no-restart] [scene] [-- arguments for the plugin]
   py scripts/xr_editor.py --engine=--gpu-profile res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress   (the engine prints its GPU time by stage every second)
+  py scripts/xr_editor.py --tracy --fallback sim --hide-ui res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress   (CPU by function in every step)
   py scripts/xr_editor.py res://benchmarks/manipulation_check.tscn
   py scripts/xr_editor.py --fallback sim --mirror    (the headset with its view on the desktop, else the window)
   py scripts/xr_editor.py --runtime meta res://benchmarks/empty.tscn -- --xre-benchmark
@@ -37,7 +45,7 @@ Usage: py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback
 --runtime steamvr or meta skips the order above and fails if that runtime
 sees no headset (steamvr launches SteamVR if needed). --check only reports
 the runtime that would be used, without starting Godot. Override the Godot
-binary with GODOT=path/to/Godot_..._console.exe. Windows only, standard library only.
+binary with --godot or GODOT=path/to/Godot_..._console.exe. Windows only, standard library only.
 """
 
 from __future__ import annotations
@@ -46,18 +54,29 @@ import argparse
 import ctypes
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import winreg
 from ctypes import POINTER, byref, c_char, c_char_p, c_int32, c_uint32, c_uint64, c_void_p
 from pathlib import Path
 from typing import Any
 
+import build_engine
+from quest import LAB_AWAY, StepAttempts
 from xr_extensions import load_runtime, xr_make_version
 
 REPO = Path(__file__).resolve().parent.parent
+# The graph lab's line that starts a step (quest.py and benchmarks/*_steps.py read the same).
+LAB_STEP = re.compile(r"XR Editor: graph lab: ([a-z_0-9]+)\s*$")
+# Where an unattended graph lab run ends here: done, or off to a second editor on Compatibility,
+# which runs on its own and isn't measured from this script.
+LAB_END = ("XR Editor: graph lab: done", "XR Editor: graph lab: leaving for Compatibility")
+# Seconds without a graph lab line after which an unattended run gives up.
+LAB_SILENCE = 240
 NATIVE_BIN = REPO / "addons" / "xr_editor" / "bin"
 DEFAULT_META_MANIFEST = Path(r"C:\Program Files\Meta Horizon\Support\oculus-runtime\oculus_openxr_64.json")
 # A runtime that doesn't answer in this time counts as having no headset, in seconds.
@@ -292,6 +311,113 @@ def godot_binary() -> str | None:
     return None
 
 
+class TracyCapture:
+    """Tracy captures inside graph lab steps (docs/performance_plan.md step 1.5, D-160). The engine is
+    built with TRACY_ON_DEMAND: it records only while tracy-capture is connected, so every capture is
+    its own short connection, and nothing is kept between steps."""
+
+    def __init__(self, stem: Path, delay: float, seconds: float) -> None:
+        self.stem = stem
+        self.delay = delay
+        self.seconds = seconds
+        self.count = 0
+        self.busy = threading.Lock()
+        self.capture = build_engine.TRACY_TOOLS / "tracy-capture.exe"
+        self.process: subprocess.Popen[str] | None = None
+        self.attempts = StepAttempts("tracy")
+
+    def available(self) -> bool:
+        return self.capture.is_file()
+
+    def stop(self) -> None:
+        """Ends a capture still running: left behind, it would attach to the next Tracy editor."""
+        if self.process is not None and self.process.poll() is None:
+            self.process.kill()
+
+    def step_started(self, step: str) -> None:
+        threading.Thread(target=self.record, args=(step, self.attempts.start()), daemon=True).start()
+
+    def record(self, step: str, attempt: int) -> None:
+        time.sleep(self.delay)
+        if not self.busy.acquire(blocking=False):
+            print(f"xr_editor: tracy: still capturing, no capture in {step}")
+            return
+        try:
+            self.count += 1
+            trace = self.stem.with_name(f"{self.stem.name}_tracy_{self.count:02d}_{step}.tracy")
+            self.process = subprocess.Popen([str(self.capture), "-o", str(trace), "-f", "-s", f"{self.seconds:g}"],
+                                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+            output, _ = self.process.communicate()
+            if self.process.returncode != 0 or not trace.is_file():
+                print(f"xr_editor: tracy: capture in {step} failed: {output.strip()[-300:]}")
+                return
+            print(f"xr_editor: tracy: {trace.relative_to(REPO).as_posix()} ({self.seconds:g} s of {step})")
+            self.attempts.keep(attempt, trace)
+        finally:
+            self.busy.release()
+
+
+def kill_tree(process: subprocess.Popen[bytes]) -> None:
+    """Ends the editor and what it started (another editor instance, a game): taskkill /T."""
+    if process.poll() is None:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+
+
+def run_following(command: list[str], env: dict[str, str], tracy: TracyCapture | None, unattended: bool) -> int:
+    """Runs Godot with its output passing through, starting a Tracy capture on every graph lab step.
+    [unattended]: the editor is closed after the graph lab is done (or leaves for Compatibility, a
+    second editor instance that runs on its own), once the capture under way is written; and the run
+    is given up after LAB_SILENCE s without a graph lab line."""
+    process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert process.stdout is not None
+    last_lab = [time.monotonic()]
+    silent = threading.Event()
+
+    def watch() -> None:
+        while process.poll() is None:
+            if time.monotonic() - last_lab[0] > LAB_SILENCE:
+                silent.set()
+                kill_tree(process)
+                return
+            time.sleep(1)
+
+    if unattended:
+        threading.Thread(target=watch, daemon=True).start()
+    try:
+        for raw in process.stdout:
+            # The engine's bytes as they are (UTF-8), not re-encoded to the console's code page.
+            sys.stdout.buffer.write(raw)
+            sys.stdout.buffer.flush()
+            line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+            if "XR Editor: graph lab" in line:
+                last_lab[0] = time.monotonic()
+            # A step the session left focus in is run again (D-161): the cut attempt's capture gets .void.
+            if tracy is not None and LAB_AWAY.search(line):
+                tracy.attempts.cut()
+            if tracy is not None and (step := LAB_STEP.search(line)):
+                tracy.step_started(step.group(1))
+            if unattended and any(end in line for end in LAB_END):
+                if tracy is not None:
+                    time.sleep(tracy.delay)
+                    if tracy.busy.acquire(timeout=60):
+                        tracy.busy.release()
+                print(f"xr_editor: the graph lab is done ({line.split('graph lab: ')[-1]}); closing the editor")
+                kill_tree(process)
+                process.wait()
+                return 0
+        code = process.wait()
+        if silent.is_set():
+            print(f"xr_editor: error: no graph lab line for {LAB_SILENCE} s; the editor was closed, the run failed")
+            return 1
+        return code
+    except KeyboardInterrupt:
+        kill_tree(process)
+        return 130
+    finally:
+        if tracy is not None:
+            tracy.stop()
+
+
 def pick_runtime(requested: str, fallback: str = "off") -> tuple[str, Path | None]:
     """Name of the runtime to use ("steamvr", "meta", "off" or "sim") and its manifest.
     With "auto", fallback ("off" or "sim") is used when no runtime sees a headset."""
@@ -352,6 +478,14 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="only report the runtime that would be used")
     parser.add_argument("--engine", action="append", default=[], metavar="ARG",
                         help="argument for the engine, e.g. --engine=--gpu-profile; repeatable")
+    parser.add_argument("--godot", metavar="PATH", help="the Godot binary (a console build); default GODOT, else godot.cmd's")
+    parser.add_argument("--unattended", action="store_true",
+                        help="for graph lab runs Claude drives (D-161): the editor is closed once the lab is done or leaves "
+                             f"for Compatibility, and the run given up after {LAB_SILENCE} s without a lab line")
+    parser.add_argument("--tracy", action="store_true",
+                        help="the Tracy build of the editor (scripts/build_engine.py tracy) and a Tracy capture in every graph lab step, files beside the log")
+    parser.add_argument("--tracy-delay", type=float, default=3.0, metavar="S", help="seconds into a step before its capture (default 3)")
+    parser.add_argument("--tracy-sec", type=float, default=5.0, metavar="S", help="length of a capture (default 5)")
     parser.add_argument("--no-restart", action="store_true",
                         help="fail if an editor is already open on this project instead of closing it")
     parser.add_argument("scene", nargs="?", help="scene to open, e.g. res://benchmarks/manipulation_check.tscn")
@@ -369,7 +503,13 @@ def main() -> int:
     if native_library_in_use() and not options.check:
         print("xr_editor: another Godot editor has the plugin's native library loaded; close it first.", file=sys.stderr)
         return 1
-    godot = godot_binary()
+    godot = options.godot or (os.environ.get("GODOT") or None)
+    if godot is None and options.tracy:
+        godot = str(build_engine.EDITOR_CONSOLE)
+        if not build_engine.EDITOR_CONSOLE.is_file():
+            print(f"xr_editor: the Tracy build isn't there ({godot}); run py scripts/build_engine.py tracy", file=sys.stderr)
+            return 1
+    godot = godot or godot_binary()
     if godot is None:
         print("xr_editor: Godot 4.7 not found: put godot.cmd on PATH or set GODOT", file=sys.stderr)
         return 1
@@ -403,6 +543,8 @@ def main() -> int:
     log = logs / f"editor_{runtime}_{time.strftime('%Y-%m-%dT%H-%M-%S')}.log"
     print(f"xr_editor: starting the editor {mode}, "
           f"log {log.relative_to(REPO).as_posix()}")
+    if godot != godot_binary():
+        print(f"xr_editor: Godot binary {godot}")
 
     command = [godot, "--path", str(REPO), "--editor", "--xr-mode", "on" if manifest else "off", "--log-file", str(log)]
     command += options.engine
@@ -410,6 +552,15 @@ def main() -> int:
         command.append(options.scene)
     if plugin_args:
         command += ["--", *plugin_args]
+    tracy: TracyCapture | None = None
+    if options.tracy:
+        tracy = TracyCapture(log.with_suffix(""), options.tracy_delay, options.tracy_sec)
+        if not tracy.available():
+            print(f"xr_editor: Tracy's tools aren't in {build_engine.TRACY_TOOLS}; run py scripts/build_engine.py tools", file=sys.stderr)
+            return 1
+        print(f"xr_editor: tracy: a {options.tracy_sec:g} s capture {options.tracy_delay:g} s into every graph lab step")
+    if tracy is not None or options.unattended:
+        return run_following(command, env, tracy, options.unattended)
     try:
         return subprocess.run(command, env=env).returncode
     except KeyboardInterrupt:

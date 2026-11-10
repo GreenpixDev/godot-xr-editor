@@ -109,9 +109,14 @@ const SCALE := 0.7
 const _LOG_PREFIX := "XR Editor: "
 
 ## One viewport the process renders, and its render time summed over the frames since the last report.
+## Only an active view (one that drew or took time at a report) is read every frame: the editor has some
+## two thousand viewports, nearly all idle, and reading each of them every frame cost 2-3.5 ms of CPU a
+## frame on Quest 2 (D-163).
 class _View:
 	var rid: RID
 	var label := ""
+	var active := false
+	var frames := 0
 	var cpu := 0.0
 	var gpu := 0.0
 
@@ -144,6 +149,8 @@ var _root_stopped := false
 var _rendering_changed := false
 var _views_on := false
 var _views: Dictionary[int, _View] = {}
+## The views read every frame, rebuilt at each report: a loop over all of [member _views] is itself too slow.
+var _active_views: Array[_View] = []
 var _scene_rids: Array[RID] = []
 var _scene_mesh: BoxMesh
 var _shots := false
@@ -210,6 +217,7 @@ func _discard_measures() -> void:
 	for view: _View in _views.values():
 		view.cpu = 0.0
 		view.gpu = 0.0
+		view.frames = 0
 	_service.take_process_times()
 	var rig := _service.get("_rig") as Node
 	var manipulator := rig.find_child("XREManipulator", false, false) as XREManipulator if rig != null else null
@@ -414,9 +422,10 @@ func _measure() -> void:
 	_render_gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
 	if _views_on:
 		if _views.is_empty(): _refresh_views()
-		for view: _View in _views.values():
+		for view: _View in _active_views:
 			view.cpu += RenderingServer.viewport_get_measured_render_time_cpu(view.rid)
 			view.gpu += RenderingServer.viewport_get_measured_render_time_gpu(view.rid)
+			view.frames += 1
 	_process_time += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 	_frames += 1
 
@@ -438,7 +447,7 @@ func _report_frames() -> void:
 		roundi(Engine.get_frames_per_second()), _render_cpu / frames, _render_gpu / frames, _process_time / frames,
 		roundi(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))])
 	if _views_on:
-		_report_views(frames)
+		_report_views()
 		_refresh_views()
 	_render_cpu = 0.0
 	_render_gpu = 0.0
@@ -448,8 +457,9 @@ func _report_frames() -> void:
 
 ## Logs, for every viewport that rendered, its render time per frame since the last report and what its last frame
 ## drew: the VR view, the editor's window and views, the plugin's panels (D-157, step 1.1). Compatibility on
-## Android writes no GPU time (utilities.cpp), so its GPU column stays zero.
-func _report_views(frames: int) -> void:
+## Android writes no GPU time (utilities.cpp), so its GPU column stays zero. A view that drew for the first time is
+## made active here and logged from the next report on, over the frames it was read in.
+func _report_views() -> void:
 	for view: _View in _views.values():
 		var rid := view.rid
 		var visible_info := RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE
@@ -458,11 +468,17 @@ func _report_views(frames: int) -> void:
 		var primitives := RenderingServer.viewport_get_render_info(rid, visible_info, RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME)
 		var shadow := RenderingServer.viewport_get_render_info(rid, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
 		var canvas := RenderingServer.viewport_get_render_info(rid, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)
-		if view.cpu > 0.0 or view.gpu > 0.0 or calls > 0 or canvas > 0:
+		if not view.active:
+			view.active = calls > 0 or canvas > 0 or shadow > 0 \
+					or RenderingServer.viewport_get_measured_render_time_cpu(rid) > 0.0 \
+					or RenderingServer.viewport_get_measured_render_time_gpu(rid) > 0.0
+		elif view.cpu > 0.0 or view.gpu > 0.0 or calls > 0 or canvas > 0:
+			var read := maxi(view.frames, 1)
 			print(_LOG_PREFIX, "graph lab: view %s: render CPU %.2f ms, GPU %.2f ms, visible %d call(s) %d object(s) %d primitive(s), shadow %d call(s), canvas %d call(s)." % [
-				view.label, view.cpu / frames, view.gpu / frames, calls, objects, primitives, shadow, canvas])
+				view.label, view.cpu / read, view.gpu / read, calls, objects, primitives, shadow, canvas])
 		view.cpu = 0.0
 		view.gpu = 0.0
+		view.frames = 0
 
 
 ## Has the server measure every viewport that now exists, and forgets those that are gone.
@@ -483,6 +499,9 @@ func _refresh_views() -> void:
 		RenderingServer.viewport_set_measure_render_time(view.rid, true)
 	for id: int in _views.keys():
 		if not kept.has(id): _views.erase(id)
+	_active_views.clear()
+	for view: _View in _views.values():
+		if view.active: _active_views.append(view)
 
 
 ## The scene is loaded and, with a headset, the session has focus.

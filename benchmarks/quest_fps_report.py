@@ -38,13 +38,15 @@ from datetime import datetime
 from pathlib import Path
 
 PACKAGE = "org.godotengine.editor.v4.meta"
+# The Store editor's package, or an own build's next to it (.meta.release, D-160).
+PACKAGE_PATTERN = re.escape(PACKAGE) + r"(?:\.[a-z]+)?"
 # Seconds after the session reached FOCUSED that are left out: the editor
 # finishes loading, the game its scene.
 WARMUP_SEC = 10.0
 RESULTS = Path(__file__).resolve().parent / "results"
 
 LINE = re.compile(r"^(\d\d-\d\d) (\d\d:\d\d:\d\d\.\d+)\s+(\d+)\s+\d+\s+\w\s+(\S+?)\s*: (.*)$")
-START = re.compile(r"Start proc (\d+):" + re.escape(PACKAGE) + r":GodotXRGame/")
+START = re.compile(r"Start proc (\d+):" + PACKAGE_PATTERN + r":GodotXRGame/")
 LAUNCH = re.compile(r"Launch intent .* with parameters \[(.*)\]")
 STATE = re.compile(r"PostSessionStateChange:\[pid: (\d+)\] XR_SESSION_STATE_(\w+) -> XR_SESSION_STATE_(\w+)")
 VRAPI_FIELD = re.compile(r"([A-Za-z0-9%&/]+)=([^,]+)")

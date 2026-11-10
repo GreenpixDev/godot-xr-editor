@@ -23,24 +23,36 @@ this PC, over USB with adb (docs/decisions.md, D-018).
    into it, and at the end the mode goes off again (-d). The metrics' lists, the mode's
    state and whether the package is debuggable (per-draw -x needs that) go in
    logs/quest_<time>_gpu_info.txt.
-4. Shows the editor's output (logcat, tag godot) and keeps the whole logcat in
+4. With --perfetto (docs/performance_plan.md step 1.6, D-160): the editor built with
+   Perfetto (scripts/build_engine.py perfetto, package org.godotengine.editor.v4.meta.release,
+   next to the Store editor; installed from the build if it isn't in the headset, or always
+   with --install) and a system trace inside every graph lab step: the engine's
+   function zones (track_event, category godot; --perfetto-categories godot,godot_scripting adds
+   GDScript's, whose slices break the nesting on Quest, D-162), CPU scheduling and
+   frequencies, GPU render stages and counters where the headset offers them, into
+   logs/quest_<time>_perfetto_<n>_<step>.pftrace; the data sources the headset has go in
+   logs/quest_<time>_perfetto_info.txt. benchmarks/perfetto_steps.py makes the table.
+   --package runs another editor package instead of the Store's (every other option follows it).
+5. Shows the editor's output (logcat, tag godot) and keeps the whole logcat in
    logs/quest_<time>.log, until Ctrl+C. The engine's error that repeats every
    frame in the editor (sync_action_sets, D-004) stays out of the console.
-5. With --unattended, for runs Claude drives, worn or not (D-161): the proximity sensor
+6. With --unattended, for runs Claude drives, worn or not (D-161): the proximity sensor
    and Guardian are off from before the editor starts, so the headset may lie anywhere,
    awake, with the session focused and no boundary setup in the way. The log stops by
    itself after "graph lab: done" (and the traces under way), and the sensor and Guardian
    are on again before the script ends, also after Ctrl+C. Without it the headset is left
-   as it is (the Rider configuration). A graph lab step during which the session left focus
-   is restarted by the lab ("graph lab: away in <step>"); the GPU traces of the cut attempt
-   get .void after their name, and the step tables leave that attempt out.
+   as it is (the Rider configuration). A graph lab step during
+   which the session left focus is restarted by the lab ("graph lab: away in <step>"); the GPU
+   and Perfetto traces of the cut attempt get .void after their name, and the step tables
+   leave that attempt out.
 
-Usage: py scripts/quest.py [--scene res://...] [--engine=ARG ...] [--no-deploy] [--no-open] [--no-log] [--unattended] [--gpu-profile [--gpu-trace-delay S] [--gpu-trace-sec S] [--gpu-trace-args "-v"]] [-- arguments for the plugin in VR]
+Usage: py scripts/quest.py [--scene res://...] [--engine=ARG ...] [--package NAME] [--no-deploy] [--no-open] [--no-log] [--unattended] [--gpu-profile [--gpu-trace-delay S] [--gpu-trace-sec S] [--gpu-trace-args "-v"]] [--perfetto [--install] [--perfetto-delay S] [--perfetto-sec S]] [-- arguments for the plugin in VR]
   py scripts/quest.py
   py scripts/quest.py --scene res://benchmarks/play_check.tscn
   py scripts/quest.py --engine=--benchmark   (the editor's startup phases, in the log)
   py scripts/quest.py -- --xre-benchmark
   py scripts/quest.py --gpu-profile --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base
+  py scripts/quest.py --perfetto --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base
 Needs the Godot editor from the Horizon Store in the headset (4.7.x), USB
 debugging allowed, and adb: ADB, adb on PATH, the Android SDK's, or SideQuest's.
 Standard library only.
@@ -61,8 +73,12 @@ import threading
 import time
 from pathlib import Path
 
+import build_engine
+
 REPO = Path(__file__).resolve().parent.parent
-PACKAGE = "org.godotengine.editor.v4.meta"
+STORE_PACKAGE = "org.godotengine.editor.v4.meta"
+# The editor's package; --package and --perfetto change it (set_package).
+PACKAGE = STORE_PACKAGE
 PROJECT_MANAGER = f"{PACKAGE}/org.godotengine.editor.ProjectManager"
 REMOTE_PARENT = "/sdcard/Documents/Godot"
 REMOTE = f"{REMOTE_PARENT}/{REPO.name}"
@@ -83,6 +99,8 @@ LAB_STEP = re.compile(r"XR Editor: graph lab: ([a-z_0-9]+)\s*$")
 # The lab's last line: with --unattended the log stops there and the headset is set back (D-161).
 LAB_DONE = "XR Editor: graph lab: done"
 # The lab's line when the session left focus within a step: the step starts again (D-161).
+# Seconds without a graph lab line after which an unattended run gives up.
+LAB_SILENCE = 240
 LAB_AWAY = re.compile(r"XR Editor: graph lab: away in ([a-z_0-9]+): (.*)$")
 # The Meta runtime's broadcasts: the proximity sensor reads "worn" until told otherwise or the
 # headset restarts; automation_disable gives the sensor back.
@@ -92,6 +110,33 @@ PROXIMITY_ON = "am broadcast -a com.oculus.vrpowermanager.automation_disable"
 GUARDIAN_PAUSE = "debug.oculus.guardian_pause"
 # Printed by the engine every frame in the editor (D-004).
 NOISE = ('Condition "active_sets.is_empty()" is true', "at: sync_action_sets (")
+# Perfetto's own folder for traces: perfetto, run as the shell user, may write there.
+PERFETTO_REMOTE = "/data/misc/perfetto-traces/xre_step.pftrace"
+# A text TraceConfig; DURATION is replaced with the trace's length. Data sources the headset
+# lacks (perfetto --query lists those it has) are skipped by perfetto without an error. Quest 2
+# offers the GPU ones (.oculus) only in ovrgpuprofiler's detailed mode, that is with --gpu-profile.
+PERFETTO_CONFIG = """\
+buffers { size_kb: 131072 fill_policy: DISCARD }
+buffers { size_kb: 65536 fill_policy: DISCARD }
+data_sources { config { name: "track_event" target_buffer: 0
+  track_event_config { CATEGORIES disabled_categories: "*" } } }
+data_sources { config { name: "linux.ftrace" target_buffer: 1
+  ftrace_config { ftrace_events: "sched/sched_switch" ftrace_events: "power/cpu_frequency"
+    ftrace_events: "power/gpu_frequency" ftrace_events: "power/suspend_resume" } } }
+data_sources { config { name: "linux.process_stats" target_buffer: 1 } }
+data_sources { config { name: "gpu.renderstages.oculus" target_buffer: 1 } }
+data_sources { config { name: "gpu.counters.oculus" target_buffer: 1
+  gpu_counter_config { counter_period_ns: 1000000 } } }
+duration_ms: DURATION
+"""
+
+
+def set_package(name: str) -> None:
+    """Points every adb command of this script at the editor package [name]."""
+    global PACKAGE, PROJECT_MANAGER, SHOWN
+    PACKAGE = name
+    PROJECT_MANAGER = f"{PACKAGE}/org.godotengine.editor.ProjectManager"
+    SHOWN = re.compile(r" godot\s+: | Fatal signal |Start proc \d+:" + re.escape(PACKAGE) + "|Process " + re.escape(PACKAGE))
 
 
 def find_adb() -> str | None:
@@ -120,7 +165,7 @@ class Adb:
         return self.run("shell", command)
 
 
-def check_headset(adb: Adb) -> None:
+def check_device(adb: Adb) -> None:
     devices = [line.split("\t") for line in adb.run("devices").splitlines()[1:] if "\t" in line]
     if not devices and not os.environ.get("ANDROID_SERIAL"):
         sys.exit("quest: no headset; connect it by USB and allow USB debugging in it")
@@ -128,16 +173,35 @@ def check_headset(adb: Adb) -> None:
         sys.exit("quest: more than one device; pick one with ANDROID_SERIAL")
     if devices and devices[0][1] != "device":
         sys.exit(f"quest: the headset is {devices[0][1]}; allow USB debugging in it")
+
+
+def check_headset(adb: Adb) -> None:
     version = ""
     for line in adb.shell(f"dumpsys package {PACKAGE}").splitlines():
         if line.strip().startswith("versionName="):
             version = line.strip().removeprefix("versionName=")
             break
+    if not version and PACKAGE != STORE_PACKAGE:
+        sys.exit(f"quest: the Godot editor ({PACKAGE}) isn't installed in the headset; install its APK (--install)")
     if not version:
         sys.exit(f"quest: the Godot editor ({PACKAGE}) isn't installed in the headset; get it from the Horizon Store")
     if not version.startswith("4.7."):
         print(f"quest: warning: the headset has Godot {version}; the project is pinned to 4.7.x")
     print(f"quest: headset ready, Godot {version}")
+
+
+def is_installed(adb: Adb) -> bool:
+    return f"package:{PACKAGE}" in adb.run("shell", f"pm list packages {PACKAGE}", check=False).split()
+
+
+def install(adb: Adb, apk: Path) -> None:
+    """Installs [apk] (the package PACKAGE) and lets it reach /sdcard/Documents/Godot as the
+    Store editor does: all-files access, otherwise asked for in the headset at its first start."""
+    if not apk.is_file():
+        sys.exit(f"quest: {apk} isn't there; run py scripts/build_engine.py perfetto")
+    print(f"quest: installing {apk.name} ({PACKAGE})")
+    print(adb.run("install", "-r", str(apk)).strip().splitlines()[-1])
+    adb.run("shell", f"appops set {PACKAGE} MANAGE_EXTERNAL_STORAGE allow", check=False)
 
 
 def project_files() -> list[str]:
@@ -196,7 +260,10 @@ def deploy(adb: Adb) -> None:
 
 def open_in_vr(adb: Adb, scene: str | None, engine_args: list[str], plugin_args: list[str]) -> None:
     print("quest: closing the Godot editor in the headset (unsaved changes there are lost)")
-    adb.shell(f"am force-stop {PACKAGE}")
+    # Both editors, the Store's and the profiler build: one left running keeps the VR session,
+    # and the other then fails to create its surface.
+    for package in dict.fromkeys((PACKAGE, STORE_PACKAGE, build_engine.APK_PACKAGE)):
+        adb.shell(f"am force-stop {package}")
     # One item per line, as on Godot's command line: the scene (res://...) and
     # the engine's arguments, then after a -- line the plugin's.
     items = ([scene] if scene else []) + engine_args + (["--"] + plugin_args if plugin_args else [])
@@ -248,7 +315,7 @@ class StepAttempts:
             return
         target = path.with_name(path.name + ".void")
         path.replace(target)
-        print(f"quest: {self.label}: {target.relative_to(REPO).as_posix()} (the step was cut)")
+        print(f"{Path(sys.argv[0]).stem}: {self.label}: {target.relative_to(REPO).as_posix()} (the step was cut)")
 
 
 class GpuProfiler:
@@ -319,6 +386,73 @@ class GpuProfiler:
             self.busy.release()
 
 
+class PerfettoTracer:
+    """System traces with perfetto inside graph lab steps (docs/performance_plan.md step 1.6, D-160).
+    The editor built with profiler=perfetto writes its zones as track events through the system
+    backend: they reach a trace only while one is being recorded."""
+
+    def __init__(self, adb: Adb, stem: Path, delay: float, seconds: float, categories: list[str]) -> None:
+        self.adb = adb
+        self.stem = stem
+        self.delay = delay
+        self.seconds = seconds
+        self.count = 0
+        self.busy = threading.Lock()
+        self.attempts = StepAttempts("perfetto")
+        self.config = (PERFETTO_CONFIG.replace("DURATION", str(int(seconds * 1000)))
+                       .replace("CATEGORIES", " ".join(f'enabled_categories: "{c}"' for c in categories)))
+
+    def info(self) -> None:
+        """The headset's tracing service and its data sources, before the editor starts and once
+        it is up: track_event from the editor's process shows only while the editor runs."""
+        text = (f"# {PACKAGE}\n# trace config\n{self.config}\n## perfetto --query\n"
+                + self.adb.run("shell", "perfetto --query", check=False))
+        path = self.stem.with_name(f"{self.stem.name}_perfetto_info.txt")
+        path.write_text(text, encoding="utf-8")
+        print(f"quest: perfetto: {path.relative_to(REPO).as_posix()}")
+
+    def step_started(self, step: str) -> None:
+        threading.Thread(target=self.trace, args=(step, self.attempts.start()), daemon=True).start()
+
+    def trace(self, step: str, attempt: int) -> None:
+        time.sleep(self.delay)
+        if not self.busy.acquire(blocking=False):
+            print(f"quest: perfetto: still tracing, no trace in {step}")
+            return
+        try:
+            self.count += 1
+            if self.count == 1:
+                self.info()
+            local = self.stem.with_name(f"{self.stem.name}_perfetto_{self.count:02d}_{step}.pftrace")
+            # The config goes in on stdin: perfetto can't read files outside its own folders (SELinux).
+            result = subprocess.run([self.adb.path, "shell", f"perfetto --txt -c - -o {PERFETTO_REMOTE}"],
+                                    input=self.config, capture_output=True, text=True, errors="replace")
+            if result.returncode != 0:
+                print(f"quest: perfetto: trace in {step} failed: {(result.stderr or result.stdout).strip()[-300:]}")
+                return
+            self.adb.run("pull", PERFETTO_REMOTE, str(local))
+            self.adb.run("shell", f"rm -f {PERFETTO_REMOTE}", check=False)
+            print(f"quest: perfetto: {local.relative_to(REPO).as_posix()} ({self.seconds:g} s of {step})")
+            self.attempts.keep(attempt, local)
+        finally:
+            self.busy.release()
+
+
+def wake(adb: Adb) -> None:
+    """Wakes a sleeping headset and waits until it is awake: an editor started while it sleeps can't
+    create its surface, and the task last on screen (another editor, say) comes back instead."""
+    for attempt in range(20):
+        power = adb.run("shell", "dumpsys power", check=False)
+        if "mWakefulness=Awake" in power:
+            if attempt:
+                print("quest: unattended: the headset was asleep, woke it")
+            return
+        if attempt % 5 == 0:
+            adb.run("shell", "input keyevent KEYCODE_WAKEUP", check=False)
+        time.sleep(1)
+    sys.exit("quest: the headset doesn't wake up (dumpsys power: not Awake); press its power button and run again")
+
+
 def set_unattended(adb: Adb, unattended: bool) -> None:
     """Unattended: the proximity sensor reads "worn" and Guardian is paused, so the headset lies on a
     desk awake, keeps the session focused and opens no boundary setup (D-161). Both stay so until
@@ -331,6 +465,7 @@ def set_unattended(adb: Adb, unattended: bool) -> None:
     if paused != ("1" if unattended else "0"):
         print(f"quest: warning: Guardian pause is '{paused}'")
     if unattended:
+        wake(adb)
         print("quest: unattended: proximity sensor and Guardian off; the headset stays awake on a desk")
     else:
         print("quest: proximity sensor and Guardian on again")
@@ -341,35 +476,48 @@ def log_stem() -> Path:
     return REPO / "logs" / f"quest_{time.strftime('%Y-%m-%dT%H-%M-%S')}"
 
 
-def follow_log(adb: Adb, stem: Path, profiler: GpuProfiler | None = None, stop_after_lab: bool = False) -> int:
+def follow_log(adb: Adb, stem: Path, profiler: GpuProfiler | None = None, tracer: PerfettoTracer | None = None,
+               stop_after_lab: bool = False) -> int:
     """Writes and shows the log until Ctrl+C, or with [stop_after_lab] until the graph lab is done
-    and the trace under way is written."""
+    and the traces under way are written."""
     logs = REPO / "logs"
     logs.mkdir(exist_ok=True)
     log = stem.with_suffix(".log")
     print(f"quest: log {log.relative_to(REPO).as_posix()}; " + ("stops after the graph lab's end" if stop_after_lab else "Ctrl+C to stop"))
     process = subprocess.Popen([adb.path, "logcat", "-v", "threadtime"], stdout=subprocess.PIPE)
+    # Unattended, nobody stops a run whose lab never starts or stalls (the editor failed to start,
+    # another app holds the VR session): the log closes after LAB_SILENCE s without a lab line.
+    last_lab = time.monotonic()
     try:
         with open(log, "wb") as file:
             assert process.stdout is not None
             for raw in process.stdout:
                 file.write(raw)
                 line = raw.decode("utf-8", errors="replace").rstrip()
+                if "XR Editor: graph lab" in line:
+                    last_lab = time.monotonic()
+                elif stop_after_lab and time.monotonic() - last_lab > LAB_SILENCE:
+                    print(f"quest: error: no graph lab line for {LAB_SILENCE} s; log closed, the run failed")
+                    return 1
                 if away := LAB_AWAY.search(line):
                     print(f"quest: warning: the session left focus in step {away.group(1)} ({away.group(2)}); "
                           "the lab starts the step again. Was the headset taken off, or did it sleep (--unattended)?")
+                    for traces in (profiler, tracer):
+                        if traces is not None:
+                            traces.attempts.cut()
+                if step := LAB_STEP.search(line):
                     if profiler is not None:
-                        profiler.attempts.cut()
-                if profiler is not None and (step := LAB_STEP.search(line)):
-                    profiler.step_started(step.group(1))
+                        profiler.step_started(step.group(1))
+                    if tracer is not None:
+                        tracer.step_started(step.group(1))
                 if SHOWN.search(line) and not any(noise in line for noise in NOISE):
                     print(line[6:] if len(line) > 6 else line)
                 if stop_after_lab and LAB_DONE in line:
                     # A trace starts some seconds into a step and may still be under way.
-                    if profiler is not None:
-                        time.sleep(profiler.delay)
-                        if profiler.busy.acquire(timeout=60):
-                            profiler.busy.release()
+                    time.sleep(max(profiler.delay if profiler else 0.0, tracer.delay if tracer else 0.0))
+                    for traces in (profiler, tracer):
+                        if traces is not None and traces.busy.acquire(timeout=60):
+                            traces.busy.release()
                     print("quest: the graph lab is done; log closed")
                     break
     except KeyboardInterrupt:
@@ -402,6 +550,15 @@ def main() -> int:
     parser.add_argument("--gpu-trace-sec", type=float, default=1.0, metavar="S", help="length of a trace (default 1)")
     parser.add_argument("--gpu-trace-args", default="-v", metavar="ARGS",
                         help="more arguments of ovrgpuprofiler -t, e.g. \"-v\" (default), \"-l\", or \"-x=1,2,3,4\" for per-draw metrics")
+    parser.add_argument("--package", metavar="NAME", help=f"the editor's package (default {STORE_PACKAGE}, with --perfetto {build_engine.APK_PACKAGE})")
+    parser.add_argument("--perfetto", action="store_true",
+                        help="the Perfetto build of the editor (scripts/build_engine.py perfetto) and a system trace in every graph lab step, files beside the log")
+    parser.add_argument("--install", action="store_true", help="(re)install the Perfetto build's APK before starting")
+    parser.add_argument("--perfetto-delay", type=float, default=3.0, metavar="S", help="seconds into a step before its trace (default 3)")
+    parser.add_argument("--perfetto-sec", type=float, default=3.0, metavar="S", help="length of a trace (default 3)")
+    parser.add_argument("--perfetto-categories", default="godot", metavar="LIST",
+                        help="track event categories, comma separated (default godot: the engine's zones; "
+                             "godot_scripting adds GDScript's, whose slices break the nesting on Quest, D-162)")
     options = parser.parse_args(args)
     if options.scene and not options.scene.startswith("res://"):
         print("quest: --scene takes a res:// path", file=sys.stderr)
@@ -415,8 +572,19 @@ def main() -> int:
         print("quest: adb not found: set ADB, put adb on PATH, or install the Android SDK platform-tools", file=sys.stderr)
         return 1
     adb = Adb(path)
+    check_device(adb)
+    if options.package or options.perfetto:
+        set_package(options.package or build_engine.APK_PACKAGE)
+    if options.install or (options.perfetto and not options.package and not is_installed(adb)):
+        install(adb, build_engine.APK)
     check_headset(adb)
     stem = log_stem()
+    tracer: PerfettoTracer | None = None
+    if options.perfetto:
+        if options.no_log:
+            print("quest: --perfetto needs the log: the traces follow its lines", file=sys.stderr)
+            return 2
+        tracer = PerfettoTracer(adb, stem, options.perfetto_delay, options.perfetto_sec, options.perfetto_categories.split(","))
     if options.unattended and options.no_log:
         print("quest: --unattended needs the log: the headset is set back when the log stops", file=sys.stderr)
         return 2
@@ -439,7 +607,7 @@ def main() -> int:
         if not options.no_open:
             open_in_vr(adb, options.scene, options.engine, plugin_args)
         if not options.no_log:
-            return follow_log(adb, stem, profiler, options.unattended)
+            return follow_log(adb, stem, profiler, tracer, options.unattended)
         return 0
     finally:
         if profiler is not None:
