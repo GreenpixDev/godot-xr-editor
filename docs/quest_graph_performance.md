@@ -10,6 +10,7 @@
 - **Главный рычаг на 2026-11-01 — рендерер:** вне редактора Compatibility снижает `App` примерно на треть; граф ×2 там держит 72 fps (раздел «Mobile и Compatibility»). В редакторе проверено 2026-11-09: BlueCube 69–70 fps, ×2 65 fps, вид не проверен.
 - На большом графе упираются и GPU, и главный поток. После правок большие графы не мерились.
 - Лабораторные значения для графов ×2 и ×4 — до правок D-158.
+- **Шаги 0–4а (2026-11-10, только ПК, шлем отключён)** — [pc_steps0-4_2026-11-10.md](../benchmarks/results/pc_steps0-4_2026-11-10.md), D-164…D-168: пауза окна редактора при скрытом интерфейсе (по умолчанию), раскладка стрелок в C++, общие материалы; слияние портов — вариант, не по умолчанию. На ПК 250 блоков — 145 fps (было 68), 500 — 74 (было 39). На Quest не мерено.
 - **Итоги этапа 1 (2026-11-09)** — [stage1_summary_2026-11-09.md](../benchmarks/results/stage1_summary_2026-11-09.md): окно редактора стоит около 3 мс GPU (без него 69 fps на BlueCube); VR-редактор на Compatibility даёт 69–70 fps (вид не проверен); цена растёт с числом видимых вызовов, 17–21 мкс GPU и 2,4–4 мкс CPU на вызов; граф 100 блоков 35 fps, 500 — 7. Строки ниже про «в редакторе не проверено» для Compatibility устарели.
 
 ## Как читать числа
@@ -279,6 +280,38 @@ py scripts/xr_editor.py --fallback sim --mirror --hide-ui res://benchmarks/play_
 - Прежде чем запускать в шлеме, написать, что всё готово, и дождаться ответа «надел». Если автор сам пишет «продолжаем замеры» или «запусти», это и есть разрешение: отдельного «надел» не требовать.
 - Запускать сам, сам следить за `done`, сам закрывать приложение и собирать логи.
 - Для шагов с лучами контроллеры держать в руках: проверки идут, только пока контроллеры отслеживаются.
+
+## Прогоны шагов 0–4 (D-164…D-168)
+
+Варианты настроек на один прогон — флагом `--xre-lab-feature=key=value` (повторяется), свои шаги — `--xre-graph-lab-steps=a,b,c` (D-164); файл настроек автора не меняется. Перед прогонами — `scripts/build_gdextension.sh android` (в нём `XREGraphArrows` и `XREMeshMerger`) и проверка вида:
+
+```bash
+py scripts/quest.py --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-pose
+```
+
+Затем по прогону на вариант, каждый с `--unattended`, если шлем не на голове (D-161):
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress --xre-lab-feature=editor_window=live
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress --xre-lab-feature=graph_drawing=merged
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress --xre-lab-feature=arrow_layout=script --xre-lab-feature=graph_materials=per_part
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base
+```
+
+Разбор — `py benchmarks/quest_lab_steps.py <лог>`; сравнивать fps, App GPU и вызовы по шагам между прогонами. При Editor window Paused шаги `root_off` в `base` ничего не меняют: их сравнение — прогон с `editor_window=live`.
 
 ## Ловушки
 

@@ -1,0 +1,77 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+Vulkan 1.4.351 - Forward+ - Using Device #0: NVIDIA - NVIDIA GeForce RTX 4060
+
+XR Editor: features node_facing=on, node_volume=flat, node_back=blank, pin_place=both_faces, card_mirror=on, sign_ports=rim, graph_turn=fixed, graph_parts=whole, port_display=sphere, node_style=archetypes, node_shrink=system, node_heading=member, composite_values=split, port_shapes=off, window_shape=flat, value_input=plugs, target_input=adapter, animation_wait=finished_port, variable_input=boxes, token_tray=off, scene_create=off, card_plus=hidden, color_input=globe, axis_scale=stick, focus=front, defocus=dim, link_preview=variables, link_wires=on_focus, wire_draw=hold, link_create=wire_menu, auto_link=on, wire_bends=on, undo_selection=on, object_shortcut=on, block_palette=ring, palette_groups=sources, next_suggestions=off, block_copy=on, settings_subsections=row, antialiasing=msaa_4x, exec_arrows=running, data_arrows=at_end, arrow_style=open, select_add=grip, object_copy=both, selection_counter=on, copy_blueprint=shared, copy_outer_wires=off, collection_port=grid, collection_literal=make, collection_wire=off, scene_collection=off, select_area=brush, layout=horizon_link
+XR Editor: OpenXR is not running, VR view is off. Start the editor with --xr-mode on to enable it.
+shot_blueprint_vr: setting node_facing = on
+shot_blueprint_vr: setting node_volume = flat
+shot_blueprint_vr: setting node_back = blank
+shot_blueprint_vr: setting pin_place = both_faces
+shot_blueprint_vr: setting card_mirror = on
+shot_blueprint_vr: setting sign_ports = rim
+shot_blueprint_vr: setting graph_turn = fixed
+shot_blueprint_vr: setting graph_parts = whole
+shot_blueprint_vr: setting port_display = sphere
+shot_blueprint_vr: setting node_style = archetypes
+shot_blueprint_vr: setting node_shrink = system
+shot_blueprint_vr: setting node_heading = member
+shot_blueprint_vr: setting composite_values = split
+shot_blueprint_vr: setting port_shapes = off
+shot_blueprint_vr: setting window_shape = flat
+shot_blueprint_vr: setting value_input = plugs
+shot_blueprint_vr: setting target_input = adapter
+shot_blueprint_vr: setting animation_wait = finished_port
+shot_blueprint_vr: setting variable_input = boxes
+shot_blueprint_vr: setting token_tray = off
+shot_blueprint_vr: setting scene_create = off
+shot_blueprint_vr: setting card_plus = hidden
+shot_blueprint_vr: setting color_input = globe
+shot_blueprint_vr: setting axis_scale = stick
+shot_blueprint_vr: setting focus = front
+shot_blueprint_vr: setting defocus = dim
+shot_blueprint_vr: setting link_preview = variables
+shot_blueprint_vr: setting link_wires = on_focus
+shot_blueprint_vr: setting wire_draw = hold
+shot_blueprint_vr: setting link_create = wire_menu
+shot_blueprint_vr: setting auto_link = on
+shot_blueprint_vr: setting wire_bends = on
+shot_blueprint_vr: setting undo_selection = on
+shot_blueprint_vr: setting object_shortcut = on
+shot_blueprint_vr: setting block_palette = ring
+shot_blueprint_vr: setting palette_groups = sources
+shot_blueprint_vr: setting next_suggestions = off
+shot_blueprint_vr: setting block_copy = on
+shot_blueprint_vr: setting settings_subsections = row
+shot_blueprint_vr: setting antialiasing = msaa_4x
+shot_blueprint_vr: setting exec_arrows = running
+shot_blueprint_vr: setting data_arrows = at_end
+shot_blueprint_vr: setting arrow_style = open
+shot_blueprint_vr: setting select_add = grip
+shot_blueprint_vr: setting object_copy = both
+shot_blueprint_vr: setting selection_counter = on
+shot_blueprint_vr: setting copy_blueprint = shared
+shot_blueprint_vr: setting copy_outer_wires = off
+shot_blueprint_vr: setting collection_port = grid
+shot_blueprint_vr: setting collection_literal = make
+shot_blueprint_vr: setting collection_wire = off
+shot_blueprint_vr: setting scene_collection = off
+shot_blueprint_vr: setting select_area = brush
+XR Editor: Blueprints VR D-052 loaded from C:/Users/aniku/Projects/godot-xr-editor/.claude/worktrees/editor-visual-fixes-6a9295/
+XR Editor: Blueprint graph shown, 25 node(s), built in 120.5 ms.
+shot_blueprint_vr: graph open: process 890.75 ms mean over 120 frames
+shot_blueprint_vr: nodes by class: { "Node3D": 150, "Label3D": 120, "MeshInstance3D": 285, "SubViewport": 3, "PanelContainer": 32, "Control": 5, "HBoxContainer": 25, "Button": 107, "ColorRect": 3, "MarginContainer": 2, "Label": 22, "TextureRect": 1, "LineEdit": 6, "ScrollContainer": 2, "VBoxContainer": 11, "GridContainer": 11, "HSlider": 1, "ColorPicker": 1, "Tree": 4, "Timer": 4, "HFlowContainer": 6, "PopupPanel": 1, "AcceptDialog": 1, "ConfirmationDialog": 1, "HSplitContainer": 2, "TabContainer": 1, "CodeEdit": 1, "GraphEdit": 1, "Node": 1, "AudioStreamPlayer": 1, "XREGraphWire": 38, "MultiMeshInstance3D": 2 }
+shot_blueprint_vr: drawn objects by kind: { "Mesh ArrayMesh shader": 74, "Mesh SphereMesh shader": 49, "Label3D": 64, "Mesh ArrayMesh": 70, "Mesh CylinderMesh": 7, "Mesh TorusMesh shader": 5, "Mesh QuadMesh": 20, "MultiMeshInstance3D": 1 }
+shot_blueprint_vr: visible geometry by name: { "XREGraphWire @XREGraphWire": 32, "MeshInstance3D @MeshInstance3D": 164, "SphereMesh surfaces=1 verts=504": 1, "Label3D Symbol": 11, "Label3D @Label3D": 85, "SphereMesh surfaces=1 verts=1872": 48, "MeshInstance3D Rim": 4, "ArrayMesh surfaces=1 verts=288": 13, "ArrayMesh surfaces=1 verts=564": 17, "ArrayMesh surfaces=1 verts=48": 15, "CylinderMesh surfaces=1 verts=720": 5, "TorusMesh surfaces=1 verts=1152": 5, "Label3D Member": 5, "Label3D Verb": 5, "MeshInstance3D Icon": 11, "MeshInstance3D Circle": 7, "MeshInstance3D Head": 7, "ArrayMesh surfaces=1 verts=492": 9, "ArrayMesh surfaces=1 verts=324": 15, "ArrayMesh surfaces=1 verts=1188": 15, "ArrayMesh surfaces=1 verts=2484": 11, "Label3D Title": 4, "ArrayMesh surfaces=1 verts=168": 4, "CylinderMesh surfaces=1 verts=864": 2, "QuadMesh surfaces=1 verts=6": 2, "ArrayMesh surfaces=1 verts=300": 1, "ArrayMesh surfaces=1 verts=588": 1, "MultiMeshInstance3D @MultiMeshInstance3D": 1 }
+shot_blueprint_vr: subviewport /root/@EditorNode@19513/@EditorPlugin@19805/@Node@19806/@SubViewport@20143/XRERig/@Node3D@20538/Launcher/Viewport size (1392, 696) update 0 in tree visible false parent Launcher
+shot_blueprint_vr: subviewport /root/@EditorNode@19513/@EditorPlugin@19805/@Node@19806/@SubViewport@20143/XRERig/@Node3D@20538/FunctionsWindow/Viewport size (536, 303) update 2 in tree visible true parent FunctionsWindow
+shot_blueprint_vr: subviewport /root/@EditorNode@19513/@EditorPlugin@19805/@Node@19806/@SubViewport@20143/XRERig/@Node3D@20538/FunctionsWindow/ControlBar/Viewport size (640, 104) update 0 in tree visible false parent ControlBar
+shot_blueprint_vr: subviewport /root/@EditorNode@19513/@EditorPlugin@19805/@Node@19806/@SubViewport@20143/XRERig/@Node3D@20956/FloatingUI/VirtualKeyboard/Viewport size (1350, 660) update 0 in tree visible false parent VirtualKeyboard
+shot_blueprint_vr: subviewport /root/@EditorNode@19513/@EditorPlugin@19805/@Node@19806/@SubViewport@20143/XRERig/@Node3D@20956/FormsHome size (512, 512) update 0 in tree visible true parent @Node3D@20956
+shot_blueprint_vr: subviewport /root/@EditorNode@19513/@EditorPlugin@19805/@Node@19806/@SubViewport@20143/XRERig/@Node3D@20956/Badge/Viewport size (540, 96) update 2 in tree visible true parent Badge
+shot_blueprint_vr: visible geometry instances 428, transparent or text 289
+XR Editor: Blueprint graph closed.
+shot_blueprint_vr: graph closed: process 220.96 ms mean over 120 frames
+shot_blueprint_vr: draw calls 17, objects 17, primitives 1944
+shot_blueprint_vr: done, graph back to version 3
+ERROR: Can't use get_node() with absolute paths from outside the active scene tree.
+   at: get_node_or_null (scene/main/node.cpp:1910)
