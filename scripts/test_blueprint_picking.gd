@@ -1321,6 +1321,23 @@ func _test_detail_levels() -> void:
 	_head_at(at, 7.0)
 	_check(_canvas.get_level(1) == 3 and not card.node.visible and _canvas.distant_vertices() > 0, "level 3: the card hidden, its plate in the distant mesh")
 	_check(_hit(Vector3(at.x, at.y, card.bounds.end.z), Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 1, "level 3: a ray at the card picks it")
+	# A rebuild with the head where it was (D-173): the new cards take their levels at once, the old plates go.
+	var far_vertices := _canvas.distant_vertices()
+	_canvas.hover_actions(1, false, false, true)
+	var far_tip := _canvas.tip_text()
+	_canvas.rebuild(pair)
+	_check(not far_tip.is_empty() and _canvas.tip_text().is_empty(), "a rebuild hides the old far card's title over it: '%s', '%s'" % [far_tip, _canvas.tip_text()])
+	var rebuilt := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	_check(_canvas.get_level(1) == 3 and not rebuilt.node.visible and _canvas.distant_vertices() == far_vertices,
+			"a rebuild keeps the head's level 3 at once, the distant mesh only the new plates: %d, %d of %d" % [_canvas.get_level(1), _canvas.distant_vertices(), far_vertices])
+	var single := XREBlueprintGraph.new()
+	single.nodes = [XREBlueprintGraph.make_node(1, "ready", Vector2(-300, 0))]
+	single.upgrade()
+	_canvas.rebuild(single)
+	_check(_canvas.distant_vertices() < far_vertices, "a smaller graph's rebuild drops the old cards' plates: %d of %d" % [_canvas.distant_vertices(), far_vertices])
+	_canvas.rebuild(pair)
+	card = (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	wire = (_canvas.get("_wires") as Array)[0] as XREBlueprintCanvas.Wire
 	# Full puts everything back at once.
 	_canvas.set_detail(XREFeatureSettings.FULL, XREFeatureSettings.NORMAL)
 	_check(_canvas.get_level(1) == 0 and card.node.visible and card.mesh.layers == XRERig.VR_LAYER and card.ports.all(func(port_mesh: MeshInstance3D) -> bool: return port_mesh.layers == XRERig.VR_LAYER)

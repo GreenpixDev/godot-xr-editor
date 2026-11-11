@@ -1451,6 +1451,11 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	for wire: Wire in _wires: _free_wire(wire)
 	for link: Wire in _variable_links: _free_wire(link)
 	_cards.clear()
+	_level_queue.clear()
+	# The title over a far card (D-172) was the old card's: it goes until a ray is on a new one (D-173).
+	_tip_right = -1
+	_tip_left = -1
+	if _tip != null: _tip.visible = false
 	_wires.clear()
 	_variable_links.clear()
 	_bend_right = Vector2i(-1, -1)
@@ -1716,7 +1721,15 @@ func rebuild(graph: XREBlueprintGraph) -> void:
 	select_blocks(_selected)
 	_paint_focus()
 	_show_link_wires()
-	for card: Card in _cards: _merge_card(card)
+	# Detail by distance (D-172, D-173): the new cards take the last head's levels at once, not when it next moves,
+	# and the distant mesh drops the old cards' plates. A card that changes level is merged by its change.
+	if _detail and _faces_user:
+		_update_levels()
+		_levels_now = true
+	if _detail or _distant != null: _distant_dirty = true
+	_apply_levels()
+	for card: Card in _cards:
+		if card.level == 0: _merge_card(card)
 
 
 ## The port type a pure [param block]'s frame and icon take, -1 for none: its
