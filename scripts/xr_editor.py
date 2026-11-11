@@ -264,6 +264,38 @@ def native_library_in_use() -> bool:
     return False
 
 
+def stale_native_sources() -> list[Path]:
+    """The native sources newer than the Windows library, newest first: a merge
+    from a worktree brings C++ that this checkout's library was never built
+    from, and the scripts that use its new classes don't parse."""
+    library = NATIVE_BIN / "xre_native.windows.template_debug.x86_64.dll"
+    sources = [REPO / "gdextension" / "CMakeLists.txt", *(REPO / "gdextension" / "src").rglob("*")]
+    built = library.stat().st_mtime if library.is_file() else 0.0
+    newer = [path for path in sources if path.is_file() and path.stat().st_mtime > built]
+    return sorted(newer, key=lambda path: path.stat().st_mtime, reverse=True)
+
+
+def rebuild_native(stale: list[Path]) -> bool:
+    """Builds the Windows library with scripts/build_gdextension.sh in Git Bash.
+    Whether it built."""
+    names = ", ".join(path.relative_to(REPO).as_posix() for path in stale[:3]) + (", ..." if len(stale) > 3 else "")
+    # git is in Git's cmd\ or, in Git Bash, in mingw64\bin\; Git Bash is bin\bash.exe in Git's folder.
+    git = shutil.which("git")
+    folders = Path(git).resolve().parents if git else []
+    bash = next((folder / "bin" / "bash.exe" for folder in folders if (folder / "bin" / "bash.exe").is_file()), None)
+    if bash is None:
+        print(f"xr_editor: the native library is older than {names}; "
+              "run scripts/build_gdextension.sh (Git Bash not found)", file=sys.stderr)
+        return False
+    print(f"xr_editor: the native library is older than {names}; building it")
+    if subprocess.run([str(bash), "scripts/build_gdextension.sh"], cwd=REPO).returncode != 0:
+        print("xr_editor: scripts/build_gdextension.sh failed", file=sys.stderr)
+        return False
+    # Nothing to relink leaves the library as old as it was: it is up to date now.
+    os.utime(NATIVE_BIN / "xre_native.windows.template_debug.x86_64.dll")
+    return True
+
+
 def running_editors() -> list[int]:
     """Process ids of the Godot editors open on this project: the console
     wrapper and the editor it started, if both are there."""
@@ -502,6 +534,11 @@ def main() -> int:
         print(f"xr_editor: would close the editor already open on this project (pid {', '.join(map(str, editors))})")
     if native_library_in_use() and not options.check:
         print("xr_editor: another Godot editor has the plugin's native library loaded; close it first.", file=sys.stderr)
+        return 1
+    stale = stale_native_sources()
+    if stale and options.check:
+        print(f"xr_editor: would build the native library, older than {stale[0].relative_to(REPO).as_posix()}")
+    elif stale and not rebuild_native(stale):
         return 1
     godot = options.godot or (os.environ.get("GODOT") or None)
     if godot is None and options.tracy:

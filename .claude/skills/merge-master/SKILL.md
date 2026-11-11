@@ -35,7 +35,8 @@ disable-model-invocation: true
 В основной копии `C:/Users/aniku/Projects/godot-xr-editor` (на `master`):
 
 1. `git merge --ff-only claude/<ветка>`. Если не fast-forward — master ушёл вперёд, вернись к шагу 1. Если мешают чужие незакоммиченные правки основной копии — остановись, не делай stash и reset.
-2. Не пушь, если автор не просил.
+2. Если влитое затронуло `gdextension/src/` или добавило `class_name`: редактор основной копии закрыть, `scripts/build_gdextension.sh`, `scripts/build_gdextension.sh android`, затем `godot --headless --xr-mode off --lsp-port 6097 --path . --import`. `addons/xr_editor/bin/` в `.gitignore`: fast-forward не обновляет библиотеку, и скрипты с новыми нативными классами не разбираются — в шлеме молча не работает весь Blueprints VR (2026-11-11).
+3. Не пушь, если автор не просил.
 
 ## 4. Уборка
 
