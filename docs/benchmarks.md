@@ -20,6 +20,22 @@ py scripts/xr_editor.py [сцена] -- --xre-session-frames  # покадров
 py scripts/quest.py --scene res://benchmarks/play_check.tscn -- --xre-graph-lab [--xre-graph-lab-editor | --xre-graph-lab-game | --xre-graph-lab-compat | --xre-graph-lab-base]  # цена открытого графа по шагам (D-151, D-152, D-155): части холста; с -editor — части редактора и плагина (контроллеры держать в руках); с -game — база GPU, настройки и холст в игровом процессе, затем тот же процесс на Compatibility; с -compat — сразу Compatibility, если он не запустился сам; с -base — из чего состоит база GPU в самом редакторе, затем редактор на Compatibility. Разбор по шагам: py benchmarks/quest_lab_steps.py logs/quest_<time>.log
 ```
 
+## Тесты по одному
+
+Пока чинишь один тест, запускай его один; полный `scripts/check.sh` — в конце. Все строки запуска — в `scripts/check.sh`.
+
+```bash
+godot --headless --xr-mode off --lsp-port 6097 --path . --import  # один раз в новом worktree и после нового class_name: кэш глобальных классов
+godot --headless --xr-mode off --lsp-port 6097 --path . -s res://scripts/test_blueprint_picking.gd  # любой headless-тест scripts/test_*.gd; итог — строка `<тест>: N of M checks failed`
+godot --headless --xr-mode off --lsp-port 6097 --path . --editor --quit-after 8000 res://benchmarks/play_check.tscn -- --xre-test-blueprint-vr  # тест графа в шлеме (headless-редактор, 2–3 мин)
+godot --path . --xr-mode off -s res://scripts/test_blueprint_render.gd  # GPU-тест пикселей: с окном, не headless; check.sh его только разбирает
+XRE_SHOT_ONLY=stats godot --path . --editor --xr-mode off --log-file logs/shots.log res://benchmarks/play_check.tscn -- --xre-shot-blueprint-vr  # только часть снимков: pins, probe, keyboard, collections, functions, stats
+```
+
+- Известное на 2026-11-10: в `test_blueprint_render.gd` две проверки падают и без правок («flat panel remains upright…», «a sphere port is drawn in its type's color», D-168) — холст ставит себя по графу при `rebuild` и теряет заданный до неё `position`.
+- Проверка «a click on the globe's middle picks red» в `test_blueprint_vr` упала один раз из трёх прогонов без правок между ними (2026-11-10): повтори тест один раз и скажи о повторе в отчёте.
+- Новый пиксельный тест сначала проверяет, что граф в кадре: с пустыми снимками сравнение проходит впустую (D-168).
+
 ## Подробности основных команд
 
 ```bash
@@ -27,11 +43,11 @@ py scripts/xr_editor.py [--runtime auto|steamvr|meta|off|sim] [--fallback off|si
 scripts/check.sh                              # все скрипты парсятся и типизированы, headless-тесты инструментов, панелей, моделей контроллеров и play-mode проходят, нативная библиотека и плагин грузятся в headless-редакторе, инспектор в шлеме работает в нём; языковой сервер headless-редакторов — на порту LSP_PORT (по умолчанию 6097, не 6005), иначе Rider, подключённый к 6005, просит их разобрать скрипты worktree из .claude/ и ошибки LSP валят проверку
 scripts/build_gdextension.sh android          # нативная часть под Android arm64 для автономного шлема (NDK 29.0.14206865 в %LOCALAPPDATA%\Android\Sdk\ndk или ANDROID_NDK_ROOT)
 py scripts/quest.py [--scene res://...] [--engine=--verbose] [--no-deploy] [--no-open] [--no-log] [--unattended] [-- --xre-benchmark]  # шлем по USB: копирует проект, закрывает и открывает редактор, VR открывается сам (на сцене, если задана); лог в logs/quest_<время>.log; --unattended — прогоны ИИ, в шлеме автор или нет (D-161): датчик присутствия и Guardian выключены, лог сам останавливается после `graph lab: done`, затем оба включаются обратно
-py scripts/quest_link.py on|off [--restore]|status  # только для прогонов ИИ (D-161): шлем в Link по кабелю и обратно через adb (Air Link в шлеме выключен); off --restore возвращает датчик и Guardian
+py scripts/quest_link.py on|off [--restore]|status  # только для запусков ИИ (D-161): шлем в Link по кабелю и обратно через adb (Air Link в шлеме выключен); off --restore возвращает датчик и Guardian. Автор просит запустить ему проверку в шлеме на ПК — сначала `status`; нет `link streams: True` — `on`, затем команда XR Editor, после проверки `off --restore`
 scripts/build_gdextension.sh                  # собрать gdextension/ в addons/xr_editor/bin/ (редактор перед этим закрыть)
 py scripts/build_engine.py tracy|perfetto|tools  # Godot 4.7.2 с профайлером (D-160): редактор Windows с Tracy, APK для Quest с Perfetto, инструменты разбора
 py scripts/xr_editor.py --tracy [--tracy-delay S] [--tracy-sec S] [--unattended] ... -- --xre-graph-lab --xre-graph-lab-stress  # редактор с Tracy, запись на каждом шаге лаборатории; --godot PATH — любой другой бинарник; --unattended — прогоны ИИ (D-162): редактор закрывается после `graph lab: done` или `leaving for Compatibility`, через 240 с без строки лаборатории прогон бросается
-py benchmarks/tracy_steps.py logs/editor_<рантайм>_<время>  # зоны движка и GDScript по шагам, мс на кадр
+py benchmarks/tracy_steps.py logs/editor_<рантайм>_<время> [--zone ИМЯ ...]  # зоны движка и GDScript по шагам, мс на кадр; каждый вызов заново выгружает CSV — минуты на лог: все `--zone` одним вызовом, вывод в файл, запуск в фоне (шесть логов по очереди заняли 15–20 мин)
 py benchmarks/tracy_process.py logs/editor_<рантайм>_<время> [--summary]  # что внутри `process`: по вложенности зон, части плагина и C++ узлов
 py scripts/quest.py --perfetto [--install] [--perfetto-delay S] [--perfetto-sec S] [--perfetto-categories godot[,godot_scripting]] ... -- --xre-graph-lab --xre-graph-lab-base  # редактор с Perfetto на Quest (свой пакет рядом со Store), трасса на каждом шаге, по умолчанию только зоны движка (зоны GDScript ломают вложенность, D-162); --package NAME — другой пакет редактора
 py benchmarks/perfetto_steps.py logs/quest_<время>  # то же для трасс Perfetto; подробности — docs/profiling_builds.md

@@ -27,6 +27,20 @@
 
 `python` и `python3` — заглушки Microsoft Store: молча ничего не выполняют (вывод «Python » без ошибки).
 
+## Git Bash и инструменты Claude Code
+
+Собрано по разбору сессий 2026-11-10…11: каждая строка стоила нескольких лишних вызовов или испорченного файла.
+
+- Хук `scripts/hooks/gd_check.py` разбирает `.gd` только после Edit и Write. Правка через `sed -i`, heredoc или скрипт идёт без проверки: ошибка разбора всплывает на прогоне тестов минутами позже.
+- Сам `gd_check.py` читает JSON хука из stdin: вручную не запускать (висит до таймаута). Разбор одного файла: `godot --headless --xr-mode off --path . --check-only -s <файл>`.
+- В новом worktree хук ругается на глобальные классы (`Identifier "XRE…" not declared`), пока нет кэша классов: это не ошибка правки, лечит `godot --headless --import` (его делает `check.sh`).
+- Массовая правка скриптом (когда Edit не подходит): файл скрипта — через Write; сначала проверить все замены (`assert text.count(old) == 1` на каждую), потом писать файлы. Иначе скрипт падает посередине и оставляет половину файлов изменённой, а `str.replace` без совпадения молчит. Переименование — по списку использований, а не `sed` по `\b` (задел чужую константу с тем же именем).
+- RTK сжимает вывод `grep`, `find`, `cat`, `sed -n` в Bash («+N hidden», «(N filtered)», одно число вместо строк): Grep и Read или `rtk bypass <команда>`. `grep` в Bash с `\|` дважды молча ничего не нашёл.
+- Git Bash превращает аргумент, начинающийся с `/`, в путь Windows: `/sdcard/...` у adb, регулярка awk `'/^### /'`. Лечит `MSYS_NO_PATHCONV=1`.
+- `->` в аргументе без кавычек — перенаправление вывода: имя зоны `driver->fence_wait` создало файл `fence_wait` в корне worktree. Имена зон — в кавычках.
+- `adb` в PATH нет. `quest.py` и `quest_link.py` находят его сами (`quest.find_adb`); для ручных вызовов — `export ADB=…` из [quest_graph_performance.md](quest_graph_performance.md), «Как мерить».
+- Долгая команда (прогон, `check.sh`, разбор Tracy) — Bash с `run_in_background`, конец приходит уведомлением. Ожидание строки в логе (`until grep -q …; do sleep 5; done`) — тоже в фоне: таймаут Bash не больше 600000 мс. У Monitor `timeout_ms` — числом; строка даёт 5 минут.
+
 ## Rider MCP
 
 - Инструменты без `rootFolder` (`C:/Users/aniku/Projects/godot-xr-editor`) отвечают «Unable to determine the target project».
@@ -36,6 +50,7 @@
 
 - Предупреждения GDScript в `addons/` выключены по умолчанию; аддон включён через `debug/gdscript/warnings/directory_rules` в `project.godot` (`1`). Не удалять.
 - `load()` возвращает объект скрипта даже при ошибке парсинга; сломанный отличает `can_instantiate() == false`.
+- `Packed*Array`, взятый из `Array` или `Dictionary` в типизированную переменную, — копия: после правки положить обратно (`list[2] = colors` в `card_merge.gd`), иначе правка теряется.
 - Headless без `--xr-mode off` пытается поднять OpenXR и сыплет ошибками.
 - `*.gd.uid` коммитить; скрипты переименовывать и перемещать вместе с `.uid` (или из редактора).
 - `--log-file` не создаёт папку: без `logs/` лог молча не пишется.
