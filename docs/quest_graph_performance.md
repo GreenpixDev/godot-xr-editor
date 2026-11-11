@@ -316,6 +316,72 @@ py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --x
 
 Разбор — `py benchmarks/quest_lab_steps.py <лог>`; сравнивать fps, App GPU и вызовы по шагам между прогонами. При Editor window Paused шаги `root_off` в `base` ничего не меняют: их сравнение — прогон с `editor_window=live`.
 
+## Прогоны луча, слияния, текста и деталей (D-169…D-172)
+
+Подготовлено 2026-11-11, на шлеме не прогонялось. Числа ПК — [pc_graph_merge_text_lod_2026-11-11.md](../benchmarks/results/pc_graph_merge_text_lod_2026-11-11.md). Новые настройки раздела Graphics, у всех по умолчанию прежнее поведение: Ray picking (`ray_picking`: `each_call` / `per_frame`), Wire picking (`wire_picking`: `script` / `native`), Graph drawing (`graph_drawing`: `per_node` / `merged` / `card_merged`), Graph text (`graph_text`: `labels` / `merged`), Graph detail (`graph_detail`: `full` / `by_distance`) и Detail distance (`detail_distance`: `normal` / `near` / `far`). Перед прогонами — `scripts/build_gdextension.sh android` (в нём `XREGraphWirePicker`, `XREMeshMerger.card_state`, `XRETextMerger`) и проверка кадрирования, как выше (`--xre-graph-lab-pose`). Между прогонами — пауза не меньше минуты.
+
+`stress` — по прогону на вариант (шаги `open`, `open_big2`, `open_big4` и стрессовые графы; руки неподвижны):
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress --xre-graph-lab-steps=closed,open,open_big2,open_big4,open_graph100,open_graph250,open_graph500,open,closed
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress --xre-graph-lab-steps=closed,open,open_big2,open_big4,open_graph100,open_graph250,open_graph500,open,closed --xre-lab-feature=graph_drawing=card_merged
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress --xre-graph-lab-steps=closed,open,open_big2,open_big4,open_graph100,open_graph250,open_graph500,open,closed --xre-lab-feature=graph_drawing=card_merged --xre-lab-feature=graph_text=merged
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress --xre-graph-lab-steps=closed,open,open_big2,open_big4,open_graph100,open_graph250,open_graph500,open,closed --xre-lab-feature=graph_detail=by_distance
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-stress --xre-graph-lab-steps=closed,open,open_big2,open_big4,open_graph100,open_graph250,open_graph500,open,closed --xre-lab-feature=graph_detail=by_distance --xre-lab-feature=graph_drawing=card_merged --xre-lab-feature=graph_text=merged --xre-lab-feature=ray_picking=per_frame --xre-lab-feature=wire_picking=native
+```
+
+`base` с ×2 — CPU луча (D-169) и вызовы слияния, по прогону на вариант:
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base --xre-graph-lab-steps=closed,open,open_big2,open,open_big2,closed
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base --xre-graph-lab-steps=closed,open,open_big2,open,open_big2,closed --xre-lab-feature=ray_picking=per_frame --xre-lab-feature=wire_picking=native
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base --xre-graph-lab-steps=closed,open,open_big2,open,open_big2,closed --xre-lab-feature=graph_drawing=card_merged --xre-lab-feature=graph_text=merged
+```
+
+```bash
+py scripts/quest.py --unattended --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base --xre-graph-lab-steps=closed,open,open_big2,open,open_big2,closed --xre-lab-feature=graph_drawing=card_merged --xre-lab-feature=graph_text=merged --xre-lab-feature=ray_picking=per_frame --xre-lab-feature=wire_picking=native
+```
+
+Зоны CPU на шлеме — те же два крайних варианта `base` со сборкой Perfetto (D-160, D-162):
+
+```bash
+py scripts/quest.py --unattended --perfetto --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base --xre-graph-lab-steps=closed,open,open_big2,open,open_big2,closed
+```
+
+```bash
+py scripts/quest.py --unattended --perfetto --scene res://benchmarks/play_check.tscn -- --xre-graph-lab --xre-graph-lab-base --xre-graph-lab-steps=closed,open,open_big2,open,open_big2,closed --xre-lab-feature=graph_drawing=card_merged --xre-lab-feature=graph_text=merged --xre-lab-feature=ray_picking=per_frame --xre-lab-feature=wire_picking=native
+```
+
+Разбор: `py benchmarks/quest_lab_steps.py <лог>`, для Perfetto — `py benchmarks/perfetto_steps.py <стем>`. Что сравнивать: App GPU и fps по шагам; видимые вызовы (на ПК в sim, Mobile: ×2 580 → 436 с Card merged → 362 со слитым текстом); `process` и скрипты графа на ×2 (D-169); строки `built in` (перестройка дороже со слиянием).
+
+### Ручная проверка автором в шлеме
+
+Запуск — конфигурация Rider «XR Editor» (`py scripts/xr_editor.py --fallback sim --mirror --hide-ui`), настройки — в Settings → Graphics. Для каждого пункта — что сделать, что должно быть, что прислать (снимок или видео из шлема, при сбое — лог `logs/editor_*.log`).
+
+1. **Слияние, наведение и фокус** (Graph drawing Card merged). Навести луч на порт, «плюс», корзину, токен, кнопку ⇄ и кнопку копирования карточки; затем на другую карточку. Должно быть: часть под лучом растёт сразу, без кадра задержки и мерцания; при уходе луча возвращается; фокус (Focus Front, Defocus Dim) красит карточку как при Per node; рамка выделения и вспышка видны. Сравнить с Per node переключением настройки.
+2. **Протяжка провода** при Card merged: потянуть провод из порта; совместимые порты растут, при отпускании на порт провод встаёт, кончик провода в порту выглядит как при Per node.
+3. **Чёткость текста** (Graph text Merged). Подойти к карточке на 0,5 м и отойти на 2 м: надписи так же чёткие, края букв без зубцов и ореола, контур как у надписей Labels; сменить значение токена (клавиатура или колесо) — новый текст появляется сразу. Переключать Labels / Merged на одной карточке и сравнить.
+4. **Переключение уровней** (Graph detail By distance, Detail distance Normal). Медленно отходить от графа от 1,5 до 7 м и обратно: на ~2,4 м пропадают порты и подписи строк, на ~2,8 м карточка становится плитой с крупным заголовком, дальше ~5,6 м — цветной плитой без текста, провода — лентами. Переходы не мигают на границе (стоять на 2,3–2,5 м), при возвращении детали появляются ближе (2,05 / 2,40 / 4,75 м). Повторить с Near и Far. Сообщить, на каком расстоянии текст на самом деле перестаёт читаться.
+5. **Выбор лучом на уровнях.** На L1 луч выбирает карточку и провода, но не порты и кнопки; на L2 — только карточку; на L3 — карточку по её плите. Над дальней карточкой под лучом — подсказка с заголовком. Тянуть дальнюю карточку рукой: её уровень не меняется, пока её держат. Выбранная карточка не уходит дальше L2 (её рамка видна).
+
 ## Ловушки
 
 - `graph_lab.gd`: в старых прогонах шаг `open_viewports_off` содержал подстроку `ports_off`, поэтому скрывал 48 портов, а вьюпорты останавливал 0. Исправлено: шаг теперь `open_views_off`, есть тест. Прогоны до 2026-11-01 цену вьюпортов не мерили.
