@@ -148,6 +148,45 @@ func _test_graph_drawing() -> void:
 	_camera.size = size_before
 
 
+## Graph detail By distance (D-172): a Set card and its wire at each level, as the head sees them nearer and
+## farther, drawn up close for comparing with the mockup (build/blueprint_render_detail_L*.png).
+func _test_detail_levels() -> void:
+	var camera_before := _camera.transform
+	var size_before := _camera.size
+	var graph := XREBlueprintGraph.new()
+	graph.nodes = [XREBlueprintGraph.make_node(1, "ready", Vector2(-420, 0)), XREBlueprintGraph.make_node(2, "set_property", Vector2(0, 0))]
+	graph.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 0}]
+	graph.upgrade()
+	var canvas := XREBlueprintCanvas.new()
+	_viewport.add_child(canvas)
+	canvas.set_arrow_modes(XREFeatureSettings.OFF, XREFeatureSettings.OFF, false)
+	canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	canvas.set_port_display(XREFeatureSettings.FLAT)
+	canvas.rebuild(graph)
+	canvas.position = Vector3(-40.0, 0.0, 0.0)
+	canvas.set_detail(XREFeatureSettings.BY_DISTANCE, XREFeatureSettings.NORMAL)
+	var card := (canvas.get("_cards") as Array)[1] as XREBlueprintCanvas.Card
+	var center := canvas.to_global(card.node.position)
+	_camera.transform = Transform3D(Basis.IDENTITY, center + Vector3(-0.12, 0, 1.0))
+	_camera.size = 0.55
+	var drawn: Array[int] = []
+	for level: int in 4:
+		var head := center + Vector3(0, 0, [1.5, 2.6, 3.6, 7.0][level])
+		canvas.face_user(head)
+		canvas.settle_levels()
+		var image := await _capture("detail_L%d" % level)
+		var count := 0
+		for y: int in range(0, image.get_height(), 4):
+			for x: int in range(0, image.get_width(), 4):
+				if not image.get_pixel(x, y).is_equal_approx(image.get_pixel(0, 0)): count += 1
+		drawn.append(count)
+		_check(canvas.get_level(2) == level, "the card is at level %d: %d" % [level, canvas.get_level(2)])
+	_check(drawn[0] > 0 and drawn[1] > 0 and drawn[2] > 0 and drawn[3] > 0, "each level draws the card: %s sampled pixel(s)" % [drawn])
+	canvas.queue_free()
+	_camera.transform = camera_before
+	_camera.size = size_before
+
+
 ## Corner handles of a window over the logic veil (D-040), looked at away from everything else.
 func _test_window_handles() -> void:
 	var camera_before := _camera.position
@@ -499,6 +538,7 @@ func _run() -> void:
 	session.free()
 	fps.queue_free()
 	await _test_graph_drawing()
+	await _test_detail_levels()
 	await _test_launcher_look()
 	await _test_window_color()
 	await _test_objects_and_wire()

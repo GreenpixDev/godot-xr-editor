@@ -65,7 +65,7 @@ double box_distance(const Vector3 &p_origin, const Vector3 &p_direction, const A
 } // namespace
 
 XREGraphWirePicker::XREGraphWirePicker() :
-		mesh_name("mesh"), edge_name("edge"), pieces_name("pieces"), bends_name("bends"), knots_name("knots") {
+		mesh_name("mesh"), edge_name("edge"), pieces_name("pieces"), bends_name("bends"), knots_name("knots"), lod_name("lod") {
 }
 
 void XREGraphWirePicker::_bind_methods() {
@@ -100,7 +100,8 @@ double XREGraphWirePicker::tubes(const Array &p_wires, const Vector3 &p_origin, 
 		Object *wire = p_wires[w];
 		if (wire == nullptr) { continue; }
 		const XREGraphWire *mesh = Object::cast_to<XREGraphWire>(wire->get(mesh_name));
-		if (mesh == nullptr || !mesh->is_visible()) { continue; }
+		// A wire past level 1 of detail (D-172) is not picked.
+		if (mesh == nullptr || !mesh->is_visible() || int(wire->get(lod_name)) >= 2) { continue; }
 		const Array pieces = wire->get(pieces_name);
 		for (int64_t index = 0; index < pieces.size(); index++) {
 			const XREGraphWire *tube = Object::cast_to<XREGraphWire>(pieces[index]);
@@ -134,7 +135,8 @@ double XREGraphWirePicker::knots(const Array &p_wires, const Vector3 &p_origin, 
 		Object *wire = p_wires[w];
 		if (wire == nullptr) { continue; }
 		const XREGraphWire *mesh = Object::cast_to<XREGraphWire>(wire->get(mesh_name));
-		if (mesh == nullptr || !mesh->is_visible()) { continue; }
+		// A wire past level 1 of detail (D-172) is not picked.
+		if (mesh == nullptr || !mesh->is_visible() || int(wire->get(lod_name)) >= 2) { continue; }
 		const Array knots = wire->get(knots_name);
 		if (knots.is_empty()) { continue; }
 		const Array bends = wire->get(bends_name);

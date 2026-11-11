@@ -399,6 +399,17 @@ class Card:
 	var ports: Array[MeshInstance3D] = []
 	## Its ports drawn as one mesh of each look (Graph drawing Merged, D-168), or null.
 	var merge: XRECardMerge
+	## Graph detail By distance (D-172): its level of detail, 0 full to 3 a plate in the distant mesh, and the one
+	## its distance asks for; the frame a hand last moved it in, which keeps its level as it is.
+	var level := 0
+	var target_level := 0
+	var held_frame := -10
+	## Its plate and large title at level 2, made when it first gets there.
+	var plate: MeshInstance3D
+	var plate_titles: Array[Label3D] = []
+	var plate_color := Color.BLACK
+	## Its flat plate in the distant mesh at level 3, made once.
+	var distant_plate: Mesh
 	var sockets: Array[Socket] = []
 	## The wire of output 0 leaves the Finished socket: its block waits (D-052).
 	var waits := false
@@ -501,6 +512,8 @@ class Wire:
 	var writes := false
 	## Its colour, its arrowheads' too (D-115).
 	var color := Color.WHITE
+	## Its level of detail (D-172): its more detailed end's.
+	var lod := 0
 
 var _cards: Array[Card] = []
 var _wires: Array[Wire] = []
@@ -649,6 +662,24 @@ var _merging := false
 var _merge_whole := false
 ## Graph text Merged (D-171): a card's labels are drawn as one mesh of glyphs.
 var _merge_text := false
+## Graph detail By distance (D-172): cards lose detail with their distance from the head, by Detail distance's scale.
+var _detail := false
+var _detail_scale := 1.0
+## The cards whose level is to change, a few each frame; all at once when [member _levels_now].
+var _level_queue: Array[Card] = []
+var _levels_now := false
+## The plates of the cards at level 3 and the ribbons of their wires, one mesh (D-172).
+var _distant: MeshInstance3D
+var _distant_dirty := false
+## Where the head was when the distant mesh was made: it is made again as the cards turn, once the head moved [constant DISTANT_STEP].
+var _distant_head := Vector3.INF
+## The title over a far card under a ray (D-172), and the cards under each hand's ray.
+var _tip: Node3D
+var _tip_label: Label3D
+var _tip_right := -1
+var _tip_left := -1
+## How many cards changed their level, for the lab and the tests.
+var level_changes := 0
 ## The parts a card merge takes, gathered again for each merge.
 var _merge_parts: Array[GeometryInstance3D] = []
 ## How many card merges there have been, for the lab and the tests.
@@ -659,6 +690,27 @@ var _merge_turn := 0
 const MERGE_CHECKS := 1
 ## The canvas's process priority: after every other node's.
 const MERGE_PRIORITY := 1000000
+## Graph detail By distance (D-172, mockup «Детали графа по расстоянию»): a card goes from level n to n + 1
+## farther than LEVEL_OUT[n] from the head, in the graph's space, and back nearer than LEVEL_BACK[n]: the
+## distances at which its row labels (18 px), its title (21) and its level 2 title (42) are 0.3° high, and 0.85 of them.
+const LEVEL_OUT: Array[float] = [2.40, 2.80, 5.60]
+const LEVEL_BACK: Array[float] = [2.05, 2.40, 4.75]
+## How many cards change their level in a frame: each is merged again.
+const LEVEL_CHANGES := 6
+## The children of a card a level 1 keeps: its face, its rim, its header band, icon and title.
+const LEVEL_KEEPS: Array[StringName] = [&"Head", &"Circle", &"Icon", &"Fallback", &"Verb", &"Member", &"Title"]
+## A level 2 title's font size, and how wide it may be of the card.
+const PLATE_TITLE := 42
+const PLATE_SHARE := 236.0 / 260.0
+## A wire's ribbon at level 3, how much of it is seen, and how many of a tube's samples one of its pieces spans.
+const RIBBON := 0.008
+const RIBBON_SEEN := 0.6
+const RIBBON_SAMPLES := 8
+## How far the head moves before the distant mesh turns with the cards: at 5.6 m, about a degree.
+const DISTANT_STEP := 0.1
+## The far card's title under a ray: its font size and how far over the card, at a meter; it keeps its size in view farther.
+const LEVEL_TIP_SIZE := 21
+const LEVEL_TIP_GAP := 0.03
 ## For the tests: every card checked before each frame, and those found changed with no merge counted.
 static var check_merges := false
 static var stale_merges := 0
@@ -2484,6 +2536,7 @@ func preview_group(ids: Array[int], starts: Array[Vector3], shift: Vector3) -> v
 	for index: int in ids.size():
 		var card := _find_card(ids[index])
 		if card == null: continue
+		card.held_frame = Engine.get_process_frames()
 		card.node.position = starts[index] + shift
 		_orient(card)
 	update_wires()
@@ -2494,6 +2547,7 @@ func preview_move(id: int, point: Vector3) -> void:
 	_pick_version += 1
 	var card := _find_card(id)
 	if card == null: return
+	card.held_frame = Engine.get_process_frames()
 	card.node.position = point
 	_orient(card)
 	update_wires()
@@ -2505,6 +2559,7 @@ func preview_transform(id: int, pose: Transform3D) -> void:
 	_pick_version += 1
 	var card := _find_card(id)
 	if card == null: return
+	card.held_frame = Engine.get_process_frames()
 	card.yaw = card.block_yaw
 	card.held_face = INF
 	card.node.transform = pose
@@ -2601,6 +2656,7 @@ func face_user(head: Vector3, delta: float = 0.0, again: bool = false) -> void:
 	_boxes.face(head, _facing != XREFeatureSettings.OFF)
 	_face_cards()
 	update_wires()
+	_update_levels()
 
 
 ## Decides what each card shows the last head and turns it so (D-115): its part
@@ -2893,6 +2949,7 @@ func preview_grab(id: int, contact: Vector3, local_contact: Vector3, head: Vecto
 	_pick_version += 1
 	var card := _find_card(id)
 	if card == null: return
+	card.held_frame = Engine.get_process_frames()
 	if not _faces(card):
 		# It turns to the head about the vertical, in steps of 15° with a margin, so
 		# that it doesn't flick between two while carried; the twist steps it further.
@@ -3275,6 +3332,10 @@ func highlight_ports(type: int, want_input: bool) -> void:
 	var changed := type != _compatible_type or want_input != _compatible_input
 	_compatible_type = type
 	_compatible_input = want_input
+	if changed and _detail:
+		_update_levels()
+		_levels_now = true
+		_apply_levels()
 	_scale_ports()
 	# Out of focus, the ports a wire may end on stay as they are (D-072).
 	if changed: _paint_focus()
@@ -3323,6 +3384,7 @@ func is_port_hovered(id: int, port: int, input: bool) -> bool:
 ## the copy button grows with [param copy], the heading's switch with [param swap].
 func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1, input: bool = false, edge: int = -1, keep_box: bool = false, copy: bool = false, swap: bool = false, pin_plus: bool = false, pin_mark: int = -1, pin_row: int = -1, open: bool = false, pure: bool = false) -> void:
 	if not keep_box: _boxes.hover(-1, -1, right)
+	_hover_tip(id, right)
 	hover_plus(id if plus else -1, right)
 	_hover_copy(id if copy else -1, right)
 	_hover_function(id if open else -1, id if pure else -1, right)
@@ -3960,6 +4022,8 @@ func _intersect_ray(origin: Vector3, direction: Vector3, maximum: float) -> floa
 			_hit_delete = false
 			_hit_swap = false
 			_hit_copy = false
+		# Past level 0 a card is its face alone (D-172): its ports, buttons and tokens are not shown.
+		if card.level > 0: continue
 		for face: Node3D in card.plus_faces:
 			var plus_point := card.plus_point
 			var plus_size := Vector3.ONE * PLUS_RADIUS * face.scale.x * 2.0
@@ -4320,7 +4384,7 @@ func _intersect_wires(origin: Vector3, direction: Vector3, maximum: float) -> fl
 ## [param nearest], which is returned if none is: it notes what it hits.
 func _intersect_tubes(wires: Array[Wire], origin: Vector3, direction: Vector3, nearest: float) -> float:
 	for wire: Wire in wires:
-		if not wire.mesh.visible: continue
+		if not wire.mesh.visible or wire.lod >= 2: continue
 		for index: int in wire.pieces.size():
 			var piece := wire.pieces[index]
 			if _box_distance(origin, direction, piece.custom_aabb.grow(WIRE_HIT_RADIUS), nearest) < 0: continue
@@ -4342,7 +4406,7 @@ func _intersect_tubes(wires: Array[Wire], origin: Vector3, direction: Vector3, n
 ## [param reach] and nearer than [param nearest], which is returned if none is.
 func _intersect_knots(wires: Array[Wire], origin: Vector3, direction: Vector3, reach: float, nearest: float) -> float:
 	for wire: Wire in wires:
-		if not wire.mesh.visible: continue
+		if not wire.mesh.visible or wire.lod >= 2: continue
 		for index: int in wire.knots.size():
 			var center := wire.bends[index]
 			var along := maxf((center - origin).dot(direction) / direction.length_squared(), 0.0)
@@ -4765,7 +4829,7 @@ func _lay_arrows() -> void:
 ## them; the count after them. Grows the lists only when they are full.
 func _list_arrows(wire: Wire, execution: bool, forward: bool, listed: int) -> int:
 	var mode := _exec_arrows if execution else _data_arrows
-	if mode == XREFeatureSettings.OFF or not wire.mesh.visible: return listed
+	if mode == XREFeatureSettings.OFF or not wire.mesh.visible or wire.lod > 0: return listed
 	var code := XREGraphArrows.MODE_AT_END if mode == XREFeatureSettings.AT_END \
 			else XREGraphArrows.MODE_RUNNING if mode == XREFeatureSettings.RUNNING else XREGraphArrows.MODE_CHEVRONS
 	if forward: code |= XREGraphArrows.SPEC_FORWARD
@@ -4818,7 +4882,7 @@ func set_merge_mode(mode: StringName) -> bool:
 ## Called wherever a port's look, size, place or see-through changes; with Card merged also before each
 ## frame is drawn for every card whose parts changed since ([method _merge_changed], D-170).
 func _merge_card(card: Card) -> void:
-	if not _merging and not _merge_text:
+	if not _merging and not _merge_text and not _detail:
 		if card.merge != null:
 			card.merge.release()
 			card.merge = null
@@ -4838,6 +4902,7 @@ func _merge_card(card: Card) -> void:
 		var labels: Array[Label3D] = []
 		_card_labels(card.node, labels)
 		card.merge.set_labels(labels)
+	if _detail: card.merge.set_hidden(_level_hidden(card))
 	card.merge.merge()
 	if _watches():
 		card.merge.state = XRECardMerge.card_state(card.node, _merge_text)
@@ -4847,7 +4912,7 @@ func _merge_card(card: Card) -> void:
 
 ## Whether cards are merged again whenever anything under them changes (D-170, D-171): Card merged or the text merged.
 func _watches() -> bool:
-	return _merge_whole or _merge_text
+	return _merge_whole or _merge_text or _detail
 
 
 ## Graph text (D-171): [param merged] draws each card's labels as one mesh of glyphs, else each label itself as
@@ -4862,6 +4927,306 @@ func set_text_merging(merged: bool) -> bool:
 	_merge_text = merged
 	for card: Card in _cards: _merge_card(card)
 	return true
+
+
+## Graph detail (D-172): [param mode] a value of [constant XREFeatureSettings.GRAPH_DETAIL], [param distance] one of
+## [constant XREFeatureSettings.DETAIL_DISTANCE]. Full puts every card back as it is at once. Returns whether it changed.
+func set_detail(mode: StringName, distance: StringName) -> bool:
+	_pick_version += 1
+	var detail := mode == XREFeatureSettings.BY_DISTANCE
+	var scale := 0.75 if distance == XREFeatureSettings.NEAR else 1.35 if distance == XREFeatureSettings.FAR else 1.0
+	if detail == _detail and is_equal_approx(scale, _detail_scale): return false
+	var was := _detail
+	_detail = detail
+	_detail_scale = scale
+	if not detail:
+		_level_queue.clear()
+		for card: Card in _cards:
+			card.target_level = 0
+			if card.level != 0: _set_level(card, 0)
+		if was:
+			for card: Card in _cards: _merge_card(card)
+		_update_wire_levels()
+		_distant_dirty = true
+		_rebuild_distant()
+		return true
+	_levels_now = true
+	_update_levels()
+	_apply_levels()
+	return true
+
+
+## The level of each card, as detail by distance asks of it now (D-172).
+func get_level(id: int) -> int:
+	var card := _find_card(id)
+	return card.level if card != null else 0
+
+
+## Applies every level change asked for at once, for the tests and a rebuild.
+func settle_levels() -> void:
+	_levels_now = true
+	_apply_levels()
+
+
+## Asks each card the level its distance from the last head gives it (D-172), with the hysteresis of
+## [constant LEVEL_BACK]; changes go in the queue. A card a hand moves keeps its level; a selected card stays
+## at level 2 or nearer, for its frame; a card a wire being drawn may end on is full, for its ports.
+func _update_levels() -> void:
+	if not _detail: return
+	var head := to_local(_head_position)
+	var frame := Engine.get_process_frames()
+	for card: Card in _cards:
+		if card.held_frame >= frame - 1: continue
+		var distance := card.node.position.distance_to(head)
+		var level := card.level
+		while level < 3 and distance > LEVEL_OUT[level] * _detail_scale: level += 1
+		while level > 0 and distance < LEVEL_BACK[level - 1] * _detail_scale: level -= 1
+		if _selected.has(card.id): level = mini(level, 2)
+		if _compatible_type >= 0:
+			for index: int in card.ports.size():
+				if _compatible(card, index):
+					level = 0
+					break
+		card.target_level = level
+		if level != card.level and not _level_queue.has(card): _level_queue.append(card)
+	# Far plates turn with the cards only every DISTANT_STEP of the head: each time is a merge of them all.
+	if head.distance_squared_to(_distant_head) > DISTANT_STEP * DISTANT_STEP and _cards.any(func(card: Card) -> bool: return card.level == 3): _distant_dirty = true
+
+
+## Changes the levels of the cards in the queue: a few a frame, nearest detail first; all when [member _levels_now].
+func _apply_levels() -> void:
+	if not _level_queue.is_empty():
+		if _level_queue.size() > 1: _level_queue.sort_custom(func(a: Card, b: Card) -> bool: return a.target_level < b.target_level)
+		var count := _level_queue.size() if _levels_now else mini(LEVEL_CHANGES, _level_queue.size())
+		for step: int in count:
+			var card: Card = _level_queue.pop_front()
+			if card == null or not is_instance_valid(card.node) or card.level == card.target_level: continue
+			_set_level(card, card.target_level)
+		_update_wire_levels()
+		_lay_arrows()
+		_distant_dirty = true
+	_levels_now = false
+	if _distant_dirty: _rebuild_distant()
+
+
+## Shows [param card] at [param level] (D-172): 0 all of it; 1 without what its level 1 doesn't keep
+## ([constant LEVEL_KEEPS]); 2 its plate and large title alone; 3 nothing of its own, its plate in the distant mesh.
+func _set_level(card: Card, level: int) -> void:
+	_pick_version += 1
+	level_changes += 1
+	card.level = level
+	if level == 2 and card.plate == null: _make_plate(card)
+	if card.plate != null:
+		card.plate.visible = level == 2
+		for title: Label3D in card.plate_titles: title.visible = level == 2
+	card.node.visible = level < 3
+	_merge_card(card)
+
+
+## What [param card]'s level hides: its parts not kept at level 1, everything but its plate at level 2.
+func _level_hidden(card: Card) -> Array[GeometryInstance3D]:
+	var hidden: Array[GeometryInstance3D] = []
+	if card.level == 0 or card.level == 3: return hidden
+	for child: Node in card.node.get_children():
+		if child.has_meta(XRECardMerge.MERGED) or child == card.plate or (child is Label3D and card.plate_titles.has(child as Label3D)): continue
+		var kept := child == card.mesh or child == card.frame or LEVEL_KEEPS.has(StringName(child.name))
+		if card.level == 2:
+			# The plate alone; a selected card's frame too, which shows it at every level.
+			kept = child == card.frame and _selected.has(card.id)
+		if kept: continue
+		if child is GeometryInstance3D: hidden.append(child as GeometryInstance3D)
+		for part: Node in child.find_children("*", "GeometryInstance3D", true, false): hidden.append(part as GeometryInstance3D)
+	return hidden
+
+
+## [param card]'s level 2 (D-172): its face in its group's colour, its title twice as large in the middle, smaller
+## when it is wider than the card allows. Its header band's colour; a pure function's or an operator's result's, darker.
+func _make_plate(card: Card) -> void:
+	card.plate_color = _plate_color(card)
+	card.plate = XRERig.create_vr_mesh(card.mesh.mesh, _face_material(card.plate_color))
+	card.plate.name = "LevelPlate"
+	card.plate.transform = card.mesh.transform
+	card.node.add_child(card.plate)
+	var words: Array[Array] = []
+	var verb := card.node.get_node_or_null(^"Verb") as Label3D
+	var member := card.node.get_node_or_null(^"Member") as Label3D
+	var title := card.node.get_node_or_null(^"Title") as Label3D
+	if verb != null: words.append([verb.text, Color.WHITE])
+	if member != null: words.append([(" " if verb != null else "") + member.text, MEMBER_COLOR])
+	if words.is_empty() and title != null: words.append([title.text, Color.WHITE])
+	if words.is_empty():
+		var sign := card.node.get_node_or_null(^"Fallback") as Label3D
+		if sign != null: words.append([sign.text, Color.WHITE])
+	var total := 0.0
+	for word: Array in words: total += text_width(str(word[0]), PLATE_TITLE)
+	if total <= 0.0: return
+	var share := minf(1.0, card.width * PLATE_SHARE / total)
+	var x := -total * share * 0.5
+	var front := card.bounds.end.z + 0.0006
+	for word: Array in words:
+		var width := text_width(str(word[0]), PLATE_TITLE) * share
+		var text := label(str(word[0]).strip_edges(), PLATE_TITLE)
+		text.name = "LevelTitle"
+		text.modulate = word[1]
+		text.scale = Vector3.ONE * share
+		text.position = Vector3(x + width * 0.5 + (text_width(" ", PLATE_TITLE) * share * 0.5 if str(word[0]).begins_with(" ") else 0.0), 0, front)
+		card.node.add_child(text)
+		card.plate_titles.append(text)
+		x += width
+
+
+func _plate_color(card: Card) -> Color:
+	var head := card.node.get_node_or_null(^"Head") as GeometryInstance3D
+	if head != null and head.material_override is ShaderMaterial:
+		var tint: Variant = (head.material_override as ShaderMaterial).get_shader_parameter(&"face_tint")
+		if tint is Color: return tint
+	if card.frame_material is StandardMaterial3D and card.frame_material != _frame_material:
+		return (card.frame_material as StandardMaterial3D).albedo_color.lerp(Color("10141c"), 0.55)
+	if card.normal is ShaderMaterial:
+		var face: Variant = (card.normal as ShaderMaterial).get_shader_parameter(&"face_tint")
+		if face is Color: return face
+	return XREBlueprintIcons.BODY
+
+
+## The cards' face shader in [param color], made once for each colour.
+func _face_material(color: Color) -> Material:
+	if not _plate_materials.has(color): _plate_materials[color] = _face(_card_shader, color)
+	return _plate_materials[color]
+
+
+## Each wire's level (D-172): its more detailed end's; at level 3 its tubes are in the distant mesh, not drawn.
+func _update_wire_levels() -> void:
+	for list: Array[Wire] in [_wires, _variable_links, _scene_links]:
+		for wire: Wire in list:
+			var from := wire.from.level if wire.from != null else 3
+			var to := wire.to.level if wire.to != null else 3
+			var lod := mini(from, to) if _detail else 0
+			if wire.from == null and wire.to == null: lod = 0
+			if lod == wire.lod: continue
+			wire.lod = lod
+			for piece: XREGraphWire in wire.pieces: piece.layers = 0 if lod == 3 else XRERig.VR_LAYER
+			for knot: MeshInstance3D in wire.knots: knot.layers = 0 if lod == 3 else XRERig.VR_LAYER
+
+
+## The distant mesh (D-172): the plate of every card at level 3, its group's colour, and ribbons along the wires
+## between them, see-through; one mesh, made again when a card goes to or from level 3 or the cards turn.
+func _rebuild_distant() -> void:
+	_distant_dirty = false
+	_distant_head = to_local(_head_position)
+	var meshes: Array = []
+	var places: Array = []
+	var colors := PackedColorArray()
+	for card: Card in _cards:
+		if card.level != 3: continue
+		if card.plate_color == Color.BLACK: card.plate_color = _plate_color(card)
+		meshes.append(_distant_plate(card))
+		places.append(card.node.transform * Transform3D(Basis.IDENTITY, Vector3(0, 0, card.bounds.end.z)))
+		colors.append(card.plate_color)
+	var head := to_local(_head_position)
+	for list: Array[Wire] in [_wires, _variable_links, _scene_links]:
+		for wire: Wire in list:
+			if wire.lod != 3 or not wire.mesh.visible: continue
+			var color := wire.color
+			color.a = RIBBON_SEEN
+			for piece: XREGraphWire in wire.pieces:
+				var count := piece.get_point_count()
+				var step := RIBBON_SAMPLES
+				var index := 0
+				while index + step < count + step - 1:
+					var a := piece.get_point(index)
+					var b := piece.get_point(mini(index + step, count - 1))
+					index += step
+					if a.is_equal_approx(b): continue
+					var along := b - a
+					var across := along.cross(head - (a + b) * 0.5).normalized()
+					if across.is_zero_approx(): across = Vector3.UP
+					var normal := across.cross(along).normalized()
+					meshes.append(_ribbon_mesh())
+					places.append(Transform3D(Basis(along, across * RIBBON, normal), (a + b) * 0.5))
+					colors.append(color)
+	if meshes.is_empty():
+		if _distant != null: _distant.visible = false
+		return
+	if _distant == null:
+		_distant = XRERig.create_vr_mesh(ArrayMesh.new(), null)
+		_distant.name = "Distant"
+		add_child(_distant)
+	_distant.visible = true
+	XRECardMerge.merger().merge(_distant.mesh as ArrayMesh, meshes, places, colors, meshes.size(),
+			XRECardMerge.material_of([&"plain", Material.RENDER_PRIORITY_MAX - 1, false, BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY, BaseMaterial3D.CULL_DISABLED]))
+
+
+## How many plates and ribbons the distant mesh draws as one, for the tests: 0 when it is not shown.
+func distant_vertices() -> int:
+	return (_distant.mesh as ArrayMesh).surface_get_array_len(0) if _distant != null and _distant.visible and (_distant.mesh as ArrayMesh).get_surface_count() > 0 else 0
+
+
+## [param card]'s plate at level 3: its outline filled, flat, or its rectangle.
+static func _distant_plate(card: Card) -> Mesh:
+	if card.distant_plate != null: return card.distant_plate
+	if card.outline.size() < 3:
+		var quad := QuadMesh.new()
+		quad.size = Vector2(card.width, card.height)
+		card.distant_plate = quad
+		return quad
+	var vertices := PackedVector3Array([Vector3.ZERO])
+	var normals := PackedVector3Array([Vector3.BACK])
+	var indices := PackedInt32Array()
+	for index: int in card.outline.size():
+		vertices.append(Vector3(card.outline[index].x, card.outline[index].y, 0))
+		normals.append(Vector3.BACK)
+		indices.append_array([0, index + 1, (index + 1) % card.outline.size() + 1])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	card.distant_plate = mesh
+	return mesh
+
+
+static func _ribbon_mesh() -> QuadMesh:
+	if _ribbon == null:
+		_ribbon = QuadMesh.new()
+		_ribbon.size = Vector2.ONE
+	return _ribbon
+
+
+## Shows the title of a far card under the [param right] hand's ray, or the other's (D-172), over it; it keeps
+## its size in view as the badge does (D-043).
+func _hover_tip(id: int, right: bool) -> void:
+	if right: _tip_right = id
+	else: _tip_left = id
+	var shown := _tip_right if _tip_right >= 0 else _tip_left
+	var card := _find_card(shown) if _detail and shown >= 0 else null
+	if card == null or card.level == 0:
+		if _tip != null: _tip.visible = false
+		return
+	var words := PackedStringArray()
+	for name: NodePath in [^"Verb", ^"Member", ^"Title", ^"Fallback"]:
+		var part := card.node.get_node_or_null(name) as Label3D
+		if part != null: words.append(part.text)
+	if words.is_empty(): return
+	if _tip == null:
+		_tip = Node3D.new()
+		_tip.name = "LevelTip"
+		add_child(_tip)
+		_tip_label = label("", LEVEL_TIP_SIZE)
+		_tip_label.outline_size = 12
+		_tip_label.outline_modulate = Color(0.06, 0.07, 0.1, 0.92)
+		_tip.add_child(_tip_label)
+	_tip_label.text = " ".join(words)
+	var top := card.node.transform * Vector3(0, card.height * 0.5, card.bounds.end.z)
+	var size := maxf(top.distance_to(to_local(_head_position)), 1.0)
+	_tip.transform = Transform3D(card.node.basis.orthonormalized().scaled(Vector3.ONE * size), top + card.node.basis.y.normalized() * LEVEL_TIP_GAP * size)
+	_tip.visible = true
+
+
+## The title over a far card, for the tests: its text, empty when it is hidden.
+func tip_text() -> String:
+	return _tip_label.text if _tip != null and _tip.visible else ""
 
 
 ## The labels under [param node] a text merge may take (D-171).
@@ -4950,6 +5315,7 @@ func _enter_tree() -> void:
 
 
 func _process(_delta: float) -> void:
+	_apply_levels()
 	_merge_changed()
 
 
@@ -4972,7 +5338,7 @@ func set_arrow_layout(native: bool) -> bool:
 ## on, along its tubes [param forward] or against them; the count after them.
 func _arrows_on(arrows: MultiMesh, wire: Wire, execution: bool, forward: bool, head: Vector3, count: int) -> int:
 	var mode := _exec_arrows if execution else _data_arrows
-	if mode == XREFeatureSettings.OFF or not wire.mesh.visible: return count
+	if mode == XREFeatureSettings.OFF or not wire.mesh.visible or wire.lod > 0: return count
 	var size := 1.0 if execution else 0.8
 	var color := _arrow_color(wire)
 	var last := wire.pieces.size() - 1
@@ -6455,6 +6821,8 @@ void fragment() {
 
 
 static var _strand_shader: Shader
+static var _ribbon: QuadMesh
+var _plate_materials: Dictionary[Color, Material] = {}
 
 
 ## A collection's wire of two strands (D-143): [param outer] where the tube

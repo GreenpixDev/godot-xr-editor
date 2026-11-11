@@ -13,7 +13,7 @@ class XREGraphWire;
 /// XREBlueprintCanvas._intersect_wires, _intersect_tubes, _intersect_knots, _ray_segment and
 /// _box_distance did in GDScript, in one call over all of them, with the same arithmetic and the
 /// same ties. The canvas passes its lists of wires (its GDScript Wire objects) as they are; this
-/// reads each one's mesh, edge, pieces, bends and knots. Allocates nothing: it runs every frame.
+/// reads each one's mesh, edge, pieces, bends, knots and level of detail (D-172). Allocates nothing: it runs every frame.
 class XREGraphWirePicker : public godot::RefCounted {
 	GDCLASS(XREGraphWirePicker, godot::RefCounted);
 
@@ -42,6 +42,7 @@ private:
 	godot::StringName pieces_name;
 	godot::StringName bends_name;
 	godot::StringName knots_name;
+	godot::StringName lod_name;
 	int edge = -1;
 	int bend = -1;
 	int piece = -1;

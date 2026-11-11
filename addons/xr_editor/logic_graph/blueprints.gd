@@ -586,6 +586,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	XREBlueprintCanvas.set_sharing(document.features.get_value(XREFeatureSettings.GRAPH_MATERIALS) == XREFeatureSettings.SHARED)
 	canvas.set_merge_mode(document.features.get_value(XREFeatureSettings.GRAPH_DRAWING))
 	canvas.set_text_merging(document.features.get_value(XREFeatureSettings.GRAPH_TEXT) == XREFeatureSettings.MERGED)
+	canvas.set_detail(document.features.get_value(XREFeatureSettings.GRAPH_DETAIL), document.features.get_value(XREFeatureSettings.DETAIL_DISTANCE))
 	canvas.set_ray_cache(document.features.get_value(XREFeatureSettings.RAY_PICKING) == XREFeatureSettings.PER_FRAME)
 	canvas.set_wire_picking(document.features.get_value(XREFeatureSettings.WIRE_PICKING) == XREFeatureSettings.NATIVE)
 	canvas.set_style(document.features.get_value(XREFeatureSettings.NODE_STYLE))
@@ -3471,6 +3472,9 @@ func _feature_changed(key: StringName) -> void:
 		return
 	if key == XREFeatureSettings.GRAPH_DRAWING:
 		canvas.set_merge_mode(_document.features.get_value(key))
+		return
+	if key in [XREFeatureSettings.GRAPH_DETAIL, XREFeatureSettings.DETAIL_DISTANCE]:
+		canvas.set_detail(_document.features.get_value(XREFeatureSettings.GRAPH_DETAIL), _document.features.get_value(XREFeatureSettings.DETAIL_DISTANCE))
 		return
 	if key == XREFeatureSettings.GRAPH_TEXT:
 		canvas.set_text_merging(_document.features.get_value(key) == XREFeatureSettings.MERGED)

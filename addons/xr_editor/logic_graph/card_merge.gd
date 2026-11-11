@@ -34,6 +34,8 @@ var _parts: Array[GeometryInstance3D] = []
 ## By the look's key: the merged mesh and what is merged into it.
 var _meshes: Dictionary = {}
 var _lists: Dictionary = {}
+## Graph detail By distance (D-172): the parts the card's level hides; they leave the VR layer and are not merged.
+var _hidden: Array[GeometryInstance3D] = []
 ## Graph text Merged (D-171): the labels to merge, the merged text and what it is made from.
 var _labels: Array[Label3D] = []
 var _text: MeshInstance3D
@@ -52,6 +54,20 @@ func set_parts(parts: Array[GeometryInstance3D]) -> void:
 	for part: GeometryInstance3D in _parts:
 		if is_instance_valid(part) and not parts.has(part): _unhide(part)
 	_parts = parts
+
+
+## The parts the card's level hides (D-172), from now on; the ones before and not among them are shown again
+## (and merged again, if they are merged, by the next [method merge]).
+func set_hidden(hidden: Array[GeometryInstance3D]) -> void:
+	for part: GeometryInstance3D in _hidden:
+		if is_instance_valid(part) and not hidden.has(part): _unhide(part)
+	_hidden = hidden
+
+
+## The merger the card merges share, for other meshes made of parts (D-172).
+static func merger() -> XREMeshMerger:
+	if _merger == null: _merger = XREMeshMerger.new()
+	return _merger
 
 
 ## The labels to merge (D-171), from now on; the ones before and not among them draw themselves again.
@@ -78,6 +94,8 @@ static func card_state(node: Node3D, labels: bool) -> int:
 
 ## Merges the parts as they are now.
 func merge() -> void:
+	for part: GeometryInstance3D in _hidden:
+		if is_instance_valid(part): _hide(part)
 	for key: Array in _lists:
 		var list: Array = _lists[key]
 		(list[0] as Array).clear()
@@ -86,6 +104,7 @@ func merge() -> void:
 		list[3] = PackedFloat32Array()
 	for part: GeometryInstance3D in _parts:
 		if not is_instance_valid(part): continue
+		if _hidden.has(part): continue
 		var key := _key_of(part)
 		if key.is_empty() or not _shown(part):
 			_unhide(part)
@@ -138,7 +157,7 @@ func _merge_text() -> void:
 	_text_seen.clear()
 	var sorting := -INF
 	for label: Label3D in _labels:
-		if not is_instance_valid(label): continue
+		if not is_instance_valid(label) or _hidden.has(label): continue
 		if not _shown(label) or not mergeable(label):
 			_unhide(label)
 			continue
@@ -175,6 +194,9 @@ func get_text_mesh() -> MeshInstance3D:
 ## Gives every part back its own drawing and frees the merged meshes.
 func release() -> void:
 	_restore_parts()
+	for part: GeometryInstance3D in _hidden:
+		if is_instance_valid(part): _unhide(part)
+	_hidden.clear()
 	for label: Label3D in _labels:
 		if is_instance_valid(label): _unhide(label)
 	_labels.clear()
@@ -206,6 +228,12 @@ func get_meshes() -> Array[MeshInstance3D]:
 func _restore_parts() -> void:
 	for part: GeometryInstance3D in _parts:
 		if is_instance_valid(part): _unhide(part)
+
+
+static func _hide(part: GeometryInstance3D) -> void:
+	if part.has_meta(_LAYERS): return
+	part.set_meta(_LAYERS, part.layers)
+	part.layers = 0
 
 
 static func _unhide(part: GeometryInstance3D) -> void:
@@ -280,6 +308,11 @@ static func _color_of(part: GeometryInstance3D) -> Color:
 
 
 ## The material a merged mesh of look [param key] is drawn with, made once for each look.
+## The material of look [param key] ([method _key_of]), for other merged meshes (D-172).
+static func material_of(key: Array) -> Material:
+	return _material_of(key)
+
+
 static func _material_of(key: Array) -> Material:
 	if key[0] == &"plain":
 		if not _plain.has(key):

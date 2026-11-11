@@ -75,6 +75,16 @@ const GRAPH_DRAWING := &"graph_drawing"
 const MERGED := &"merged"
 const CARD_MERGED := &"card_merged"
 const PER_NODE := &"per_node"
+## Whether the logic graph's cards lose detail with their distance from the head (D-172, mockup «Детали графа по
+## расстоянию»): Full, every card whole, as before; By distance, without small text and ports, then a plate with a
+## large title, then a block of colour in one mesh. Detail distance scales the distances: Normal, Near, Far.
+const GRAPH_DETAIL := &"graph_detail"
+const FULL := &"full"
+const BY_DISTANCE := &"by_distance"
+const DETAIL_DISTANCE := &"detail_distance"
+const NORMAL := &"normal"
+const NEAR := &"near"
+const FAR := &"far"
 ## How the logic graph's text is drawn (D-171): Labels, each a Label3D, as before; Merged, a card's labels as one
 ## mesh of glyphs from the font's atlas, laid out as Label3D lays them, made again when one changes.
 const GRAPH_TEXT := &"graph_text"
@@ -791,6 +801,21 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [PER_NODE, MERGED, CARD_MERGED],
 		"labels": ["Per node", "Ports merged", "Card merged"],
 		"hint": "Per node: each part of a card is drawn on its own, as before. Ports merged: a card's ports are drawn as one mesh, drawn again when one changes. Card merged: all its flat parts, its face too, as one mesh of each look; fewest draw calls. They look the same.",
+	},
+	GRAPH_DETAIL: {
+		"category": Category.GRAPHICS,
+		"title": "Graph detail",
+		"values": [FULL, BY_DISTANCE],
+		"labels": ["Full", "By distance"],
+		"hint": "Full: every card whole, as before. By distance: far cards drop their small text and ports, then become plates with a large title, then blocks of colour. Fewer draw calls on large graphs.",
+	},
+	DETAIL_DISTANCE: {
+		"category": Category.GRAPHICS,
+		"requires": {GRAPH_DETAIL: [BY_DISTANCE]},
+		"title": "Detail distance",
+		"values": [NORMAL, NEAR, FAR],
+		"labels": ["Normal", "Near", "Far"],
+		"hint": "With Graph detail By distance. How far cards keep their detail. Near: they drop it sooner, frames cost less. Far: later.",
 	},
 	GRAPH_TEXT: {
 		"category": Category.GRAPHICS,

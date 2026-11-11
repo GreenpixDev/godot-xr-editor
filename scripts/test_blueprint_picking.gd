@@ -1243,6 +1243,92 @@ func _test_ray_cache() -> void:
 	_canvas.set_bends_shown(false)
 
 
+## Puts the head [param distance] in front of [param point] (the canvas's space) and settles the levels.
+func _head_at(point: Vector3, distance: float) -> void:
+	_canvas.face_user(_canvas.to_global(point + Vector3(0, 0, distance)))
+	_canvas.settle_levels()
+
+
+## Graph detail (D-172, mockup «Детали графа по расстоянию»): Full keeps every card whole; By distance gives a card
+## level 1 past 2.40 m, 2 past 2.80, 3 past 5.60, back nearer than 2.05, 2.40, 4.75, scaled by Detail distance; what
+## each level hides and what a ray picks there.
+func _test_detail_levels() -> void:
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.GRAPH_DETAIL) == XREFeatureSettings.FULL
+			and XREFeatureSettings.get_default(XREFeatureSettings.DETAIL_DISTANCE) == XREFeatureSettings.NORMAL, "cards are whole by default")
+	var pair := XREBlueprintGraph.new()
+	pair.nodes = [XREBlueprintGraph.make_node(1, "ready", Vector2(-300, 0)), XREBlueprintGraph.make_node(2, "print", Vector2(300, 0))]
+	pair.edges = [{"from": 1, "from_port": 0, "to": 2, "to_port": 0}]
+	pair.upgrade()
+	_canvas.set_style(XREFeatureSettings.ARCHETYPES)
+	_canvas.set_bends_shown(true)
+	_canvas.center_graph(pair)
+	_canvas.rebuild(pair)
+	var card := (_canvas.get("_cards") as Array)[0] as XREBlueprintCanvas.Card
+	var at := card.node.position
+	_head_at(at, 9.0)
+	_check(_canvas.get_level(1) == 0 and card.ports.all(func(port: MeshInstance3D) -> bool: return port.layers == XRERig.VR_LAYER), "Full: a card 9 m away is whole")
+	_canvas.set_detail(XREFeatureSettings.BY_DISTANCE, XREFeatureSettings.NORMAL)
+	var levels: Array[int] = []
+	for distance: float in [1.5, 2.5, 3.0, 6.0, 5.0, 4.0, 2.5, 2.2, 2.0]:
+		_head_at(at, distance)
+		levels.append(_canvas.get_level(1))
+	_check(levels == [0, 1, 2, 3, 3, 2, 2, 1, 0], "levels by distance and back with hysteresis at 1.5, 2.5, 3, 6, 5, 4, 2.5, 2.2, 2 m: %s" % [levels])
+	_canvas.set_detail(XREFeatureSettings.BY_DISTANCE, XREFeatureSettings.NEAR)
+	_head_at(at, 2.0)
+	var near := _canvas.get_level(1)
+	_canvas.set_detail(XREFeatureSettings.BY_DISTANCE, XREFeatureSettings.FAR)
+	_head_at(at, 1.0)
+	_head_at(at, 3.0)
+	_check(near == 1 and _canvas.get_level(1) == 0, "Near drops detail at 2 m, Far keeps it at 3 m: %d, %d" % [near, _canvas.get_level(1)])
+	_canvas.set_detail(XREFeatureSettings.BY_DISTANCE, XREFeatureSettings.NORMAL)
+	# Level 0: the port takes a ray at it.
+	_head_at(at, 1.0)
+	var port := _canvas.port_position(1, 0, false)
+	_check(_hit(port, Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 1 and _canvas.get_hit_port() == 0, "level 0: a ray at a port picks the port")
+	# Level 1: no ports, no buttons; the face keeps the title; the ray at the port picks the card.
+	_head_at(at, 2.6)
+	var title := card.node.get_node_or_null(^"Title") as Label3D
+	if title == null: title = card.node.get_node_or_null(^"Verb") as Label3D
+	_check(_canvas.get_level(1) == 1 and card.ports.all(func(port_mesh: MeshInstance3D) -> bool: return port_mesh.layers == 0) and (card.trash as GeometryInstance3D == null or (card.trash as GeometryInstance3D).layers == 0)
+			and card.mesh.layers == XRERig.VR_LAYER and title != null and title.layers == XRERig.VR_LAYER, "level 1: ports and buttons off the VR layer, the face and title on it")
+	_check(_hit(port, Vector3.FORWARD) >= 0 and _canvas.get_hit_port() == -1 and (_canvas.get_hit_id() == 1 or _canvas.get_hit_wire() >= 0),
+			"level 1: a ray where a port was picks no port: its wire's end or the card")
+	_check(_hit(Vector3(at.x, at.y - 0.02, card.bounds.end.z), Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 1 and _canvas.get_hit_port() == -1, "level 1: a ray at the face picks the card")
+	_canvas.hover_actions(1, false, false, true)
+	_check(not _canvas.tip_text().is_empty(), "level 1: a far card under a ray shows its title over it: %s" % _canvas.tip_text())
+	_canvas.hover_actions(-1, false, false, true)
+	_check(_canvas.tip_text().is_empty(), "and hides it when the ray leaves")
+	# The wire between two level 1 cards is picked; past level 1 it is not.
+	var wire := (_canvas.get("_wires") as Array)[0] as XREBlueprintCanvas.Wire
+	var other := (_canvas.get("_cards") as Array)[1] as XREBlueprintCanvas.Card
+	var middle := other.node.position.lerp(at, 0.5)
+	_head_at(middle, 2.6)
+	var on_wire := wire.pieces[0].get_point(XREGraphWire.SAMPLES / 2)
+	var levels_one := [_canvas.get_level(1), _canvas.get_level(2), wire.lod]
+	var picked_one := _hit(on_wire, Vector3.FORWARD) >= 0 and _canvas.get_hit_wire() >= 0
+	_head_at(middle, 3.6)
+	var levels_two := [_canvas.get_level(1), _canvas.get_level(2), wire.lod]
+	_canvas.set_wire_picking(true)
+	var picked_native := _hit(on_wire, Vector3.FORWARD) >= 0 and _canvas.get_hit_wire() >= 0
+	_canvas.set_wire_picking(false)
+	var picked_two := _hit(on_wire, Vector3.FORWARD) >= 0 and _canvas.get_hit_wire() >= 0
+	_check(levels_one == [1, 1, 1] and picked_one and levels_two == [2, 2, 2] and not picked_two and not picked_native,
+			"a wire is picked at level 1 %s, not at level 2 %s, natively too: %s %s %s" % [levels_one, levels_two, picked_one, picked_two, picked_native])
+	# Level 2: the plate and its large title; level 3: the card's own node hidden, its plate in the distant mesh, still picked.
+	_head_at(at, 3.6)
+	_check(_canvas.get_level(1) == 2 and card.plate != null and card.plate.visible and card.plate.layers == XRERig.VR_LAYER and card.mesh.layers == 0
+			and not card.plate_titles.is_empty() and card.plate_titles[0].visible, "level 2: the plate and its title alone")
+	_head_at(at, 7.0)
+	_check(_canvas.get_level(1) == 3 and not card.node.visible and _canvas.distant_vertices() > 0, "level 3: the card hidden, its plate in the distant mesh")
+	_check(_hit(Vector3(at.x, at.y, card.bounds.end.z), Vector3.FORWARD) >= 0 and _canvas.get_hit_id() == 1, "level 3: a ray at the card picks it")
+	# Full puts everything back at once.
+	_canvas.set_detail(XREFeatureSettings.FULL, XREFeatureSettings.NORMAL)
+	_check(_canvas.get_level(1) == 0 and card.node.visible and card.mesh.layers == XRERig.VR_LAYER and card.ports.all(func(port_mesh: MeshInstance3D) -> bool: return port_mesh.layers == XRERig.VR_LAYER)
+			and wire.lod == 0 and _canvas.distant_vertices() == 0, "Full again: every card whole at once, no distant mesh")
+	_canvas.set_bends_shown(false)
+	_canvas.set_style(XREFeatureSettings.CLASSIC)
+
+
 func _test_lab_enlarged() -> void:
 	var graph := XREBlueprintGraph.new()
 	graph.nodes = [
@@ -1446,6 +1532,7 @@ func _run() -> void:
 	_test_ray_reach()
 	_test_wire_picking()
 	await _test_ray_cache()
+	_test_detail_levels()
 	await _test_repeated_facing()
 	_canvas.queue_free()
 	await process_frame
