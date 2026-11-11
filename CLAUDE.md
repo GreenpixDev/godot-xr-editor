@@ -19,6 +19,7 @@ VR-редактор сцен для Godot 4.7 в виде EditorPlugin, дипл
 - [docs/benchmarks.md](docs/benchmarks.md) — замеры кадра и прочие команды.
 - [docs/quest_graph_performance.md](docs/quest_graph_performance.md) — открытый граф на Quest 2: замеры, варианты, как мерить; читать перед работой над fps графа.
 - [docs/performance_plan.md](docs/performance_plan.md) — план работ над fps больших графов и сцен (D-157).
+- [docs/performance_rules.md](docs/performance_rules.md) — правила быстрого кода: цены, приёмы, как мерить; читать перед фичей с геометрией VR-слоя, покадровым кодом или изменением `rebuild`.
 - [docs/vr_ui.md](docs/vr_ui.md) — термины интерфейса в шлеме.
 - [docs/blueprints.md](docs/blueprints.md), [docs/blueprints_vr.md](docs/blueprints_vr.md), [docs/vr_feature_map.md](docs/vr_feature_map.md) — Blueprints и карта функций.
 
@@ -62,6 +63,14 @@ py scripts/quest.py [--scene res://...] [--no-deploy]  # автономный ш
 - Готовый вид в шлеме сними `scripts/shot_blueprint_vr.gd` и сравни с макетом по элементам до отчёта.
 - Видимый элемент проверь на перекрытие другой геометрией (контур за пластиной заголовка 1 мм).
 - Ссылку на макет пиши в запись `decisions.md`.
+
+## Производительность
+
+- Фичу с видимой геометрией VR-слоя, покадровым кодом или изменением `rebuild` пиши сразу по [docs/performance_rules.md](docs/performance_rules.md).
+- До кода прикинь цену: видимые вызовы отрисовки, покадровая работа, прибавка к `rebuild`.
+- Быстрый путь дорог (новый класс C++, шейдер, вид слияния) — спроси автора до кода: сразу, вторым шагом или не делать.
+- После простой реализации — замер; выходит за ориентиры — оптимизируй до отчёта или спроси автора.
+- В отчёте — числа до и после и что осталось неоптимизированным.
 
 ## Проверка
 
