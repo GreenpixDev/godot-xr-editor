@@ -647,6 +647,8 @@ var _native_arrows := true
 var _merging := false
 ## Card merged (D-170): every flat part of a card is merged, not only its ports.
 var _merge_whole := false
+## Graph text Merged (D-171): a card's labels are drawn as one mesh of glyphs.
+var _merge_text := false
 ## The parts a card merge takes, gathered again for each merge.
 var _merge_parts: Array[GeometryInstance3D] = []
 ## How many card merges there have been, for the lab and the tests.
@@ -3216,7 +3218,7 @@ func _look_card(card: Card) -> void:
 		XREBlueprintFade.set_seen(card.sockets[index].visual, &"focus", 1.0)
 	_paint_frame(card)
 	# With Card merged, the frame's paint has merged it already if that is all.
-	if _merge_whole: _merge_if_changed(card)
+	if _watches(): _merge_if_changed(card)
 	else: _merge_card(card)
 
 
@@ -3689,7 +3691,7 @@ func _show_pins() -> void:
 			mark.visible = on_mark or port == _port_right or port == _port_left or key == _pin_row_right or key == _pin_row_left
 			mark.scale = Vector3.ONE * (HOVER_SCALE if on_mark else 1.0)
 		_place_pin_marks(card)
-	if _merge_whole:
+	if _watches():
 		for card: Card in _cards:
 			if card.pin_plus != null or not card.pin_marks.is_empty(): _merge_if_changed(card)
 
@@ -4816,14 +4818,14 @@ func set_merge_mode(mode: StringName) -> bool:
 ## Called wherever a port's look, size, place or see-through changes; with Card merged also before each
 ## frame is drawn for every card whose parts changed since ([method _merge_changed], D-170).
 func _merge_card(card: Card) -> void:
-	if not _merging:
+	if not _merging and not _merge_text:
 		if card.merge != null:
 			card.merge.release()
 			card.merge = null
 		return
 	if card.merge == null:
 		card.merge = XRECardMerge.new(card.node)
-		if not _merge_whole:
+		if _merging and not _merge_whole:
 			var parts: Array[GeometryInstance3D] = []
 			for port: MeshInstance3D in card.ports:
 				if port != null: parts.append(port)
@@ -4832,11 +4834,42 @@ func _merge_card(card: Card) -> void:
 		_merge_parts.clear()
 		_flat_parts(card.node, _merge_parts)
 		card.merge.set_parts(_merge_parts.duplicate())
+	if _merge_text:
+		var labels: Array[Label3D] = []
+		_card_labels(card.node, labels)
+		card.merge.set_labels(labels)
 	card.merge.merge()
-	if _merge_whole:
-		card.merge.state = XRECardMerge.card_state(card.node, false)
+	if _watches():
+		card.merge.state = XRECardMerge.card_state(card.node, _merge_text)
 		if check_merges: card.node.set_meta(&"merge_parts", _part_states(card.node))
 	merges += 1
+
+
+## Whether cards are merged again whenever anything under them changes (D-170, D-171): Card merged or the text merged.
+func _watches() -> bool:
+	return _merge_whole or _merge_text
+
+
+## Graph text (D-171): [param merged] draws each card's labels as one mesh of glyphs, else each label itself as
+## before. Returns whether it changed.
+func set_text_merging(merged: bool) -> bool:
+	_pick_version += 1
+	if merged == _merge_text: return false
+	for card: Card in _cards:
+		if card.merge != null:
+			card.merge.release()
+			card.merge = null
+	_merge_text = merged
+	for card: Card in _cards: _merge_card(card)
+	return true
+
+
+## The labels under [param node] a text merge may take (D-171).
+static func _card_labels(node: Node, into: Array[Label3D]) -> void:
+	for child: Node in node.get_children():
+		if child.has_meta(XRECardMerge.MERGED): continue
+		if child is Label3D: into.append(child as Label3D)
+		_card_labels(child, into)
 
 
 ## For the tests: what each node under [param node] is as a merge sees it, by its path (D-170).
@@ -4879,12 +4912,12 @@ static func _flat_parts(node: Node, into: Array[GeometryInstance3D]) -> void:
 ## last merge, which merges them again: the code that changes a part merges its card itself, this is the net under
 ## it. For the tests, with [member check_merges] every card is checked each frame and each one found is counted.
 func _merge_changed() -> void:
-	if not _merge_whole or _cards.is_empty() or not is_visible_in_tree(): return
+	if not _watches() or _cards.is_empty() or not is_visible_in_tree(): return
 	var checks := _cards.size() if check_merges else mini(MERGE_CHECKS, _cards.size())
 	for step: int in checks:
 		_merge_turn = (_merge_turn + 1) % _cards.size()
 		var card := _cards[_merge_turn]
-		if card.merge == null or not is_instance_valid(card.node) or XRECardMerge.card_state(card.node, false) == card.merge.state: continue
+		if card.merge == null or not is_instance_valid(card.node) or XRECardMerge.card_state(card.node, _merge_text) == card.merge.state: continue
 		if check_merges:
 			stale_merges += 1
 			push_warning("XREBlueprintCanvas: card %d changed with no merge after it: %s" % [card.id, _changed_parts(card)])
@@ -4894,20 +4927,20 @@ func _merge_changed() -> void:
 ## Card merged (D-170): merges [param card] again if anything under it changed since its last merge: for the
 ## code that changes its parts, which calls it where they change.
 func _merge_if_changed(card: Card) -> void:
-	if _merge_whole and card != null and card.merge != null and is_instance_valid(card.node) \
-			and XRECardMerge.card_state(card.node, false) != card.merge.state: _merge_card(card)
+	if _watches() and card != null and card.merge != null and is_instance_valid(card.node) \
+			and XRECardMerge.card_state(card.node, _merge_text) != card.merge.state: _merge_card(card)
 
 
 ## [method _merge_if_changed] of the cards of blocks [param first] and [param second], as a hover leaves one for the other.
 func _merge_ids(first: int, second: int) -> void:
-	if not _merge_whole: return
+	if not _watches(): return
 	if first >= 0: _merge_if_changed(_find_card(first))
 	if second >= 0 and second != first: _merge_if_changed(_find_card(second))
 
 
 ## [method _merge_if_changed] of every card: for what changes parts of any of them.
 func _merge_all_changed() -> void:
-	if not _merge_whole: return
+	if not _watches(): return
 	for card: Card in _cards: _merge_if_changed(card)
 
 

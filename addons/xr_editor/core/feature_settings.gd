@@ -75,6 +75,10 @@ const GRAPH_DRAWING := &"graph_drawing"
 const MERGED := &"merged"
 const CARD_MERGED := &"card_merged"
 const PER_NODE := &"per_node"
+## How the logic graph's text is drawn (D-171): Labels, each a Label3D, as before; Merged, a card's labels as one
+## mesh of glyphs from the font's atlas, laid out as Label3D lays them, made again when one changes.
+const GRAPH_TEXT := &"graph_text"
+const LABELS := &"labels"
 ## How the logic graph answers the hands' rays (D-169): Each call, every ask worked out, as before; Per frame,
 ## the same ray asked again in a frame, with nothing changed, answered as the first time. The same answers.
 const RAY_PICKING := &"ray_picking"
@@ -787,6 +791,13 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 		"values": [PER_NODE, MERGED, CARD_MERGED],
 		"labels": ["Per node", "Ports merged", "Card merged"],
 		"hint": "Per node: each part of a card is drawn on its own, as before. Ports merged: a card's ports are drawn as one mesh, drawn again when one changes. Card merged: all its flat parts, its face too, as one mesh of each look; fewest draw calls. They look the same.",
+	},
+	GRAPH_TEXT: {
+		"category": Category.GRAPHICS,
+		"title": "Graph text",
+		"values": [LABELS, MERGED],
+		"labels": ["Labels", "Merged"],
+		"hint": "Labels: each text of a card is drawn on its own, as before. Merged: all the text of a card is drawn as one mesh, made again when a text changes; fewer draw calls. It looks the same.",
 	},
 	RAY_PICKING: {
 		"category": Category.GRAPHICS,

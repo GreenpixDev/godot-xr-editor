@@ -15,6 +15,7 @@ const _LAYERS := &"merge_layers"
 const MERGED := &"merged"
 
 static var _merger: XREMeshMerger
+static var _text_merger: XRETextMerger
 static var _plain: Dictionary = {}
 static var _shaded: Dictionary = {}
 static var _shaded_shader: Shader
@@ -33,6 +34,12 @@ var _parts: Array[GeometryInstance3D] = []
 ## By the look's key: the merged mesh and what is merged into it.
 var _meshes: Dictionary = {}
 var _lists: Dictionary = {}
+## Graph text Merged (D-171): the labels to merge, the merged text and what it is made from.
+var _labels: Array[Label3D] = []
+var _text: MeshInstance3D
+var _text_labels: Array = []
+var _text_places: Array = []
+var _text_seen := PackedFloat32Array()
 
 
 func _init(node: Node3D) -> void:
@@ -45,6 +52,21 @@ func set_parts(parts: Array[GeometryInstance3D]) -> void:
 	for part: GeometryInstance3D in _parts:
 		if is_instance_valid(part) and not parts.has(part): _unhide(part)
 	_parts = parts
+
+
+## The labels to merge (D-171), from now on; the ones before and not among them draw themselves again.
+func set_labels(labels: Array[Label3D]) -> void:
+	for label: Label3D in _labels:
+		if is_instance_valid(label) and not labels.has(label): _unhide(label)
+	_labels = labels
+
+
+## Whether [param label] is drawn as Label3D draws it flat (D-171): no billboard, no fixed size, unlit, no alpha
+## cut, the default filter, no fill, a font of its own; and not one marked [code]live[/code], changed every frame.
+static func mergeable(label: Label3D) -> bool:
+	return label.billboard == BaseMaterial3D.BILLBOARD_DISABLED and not label.fixed_size and not label.shaded \
+			and label.alpha_cut == Label3D.ALPHA_CUT_DISABLED and label.texture_filter == BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS \
+			and label.horizontal_alignment != HORIZONTAL_ALIGNMENT_FILL and label.font != null and not label.text.is_empty() and not label.has_meta(&"live")
 
 
 ## A number that changes with anything under [param node] that a merge draws from, labels too with
@@ -106,11 +128,58 @@ func merge() -> void:
 		var sorting: PackedFloat32Array = list[3]
 		mesh.sorting_offset = sorting[sorting.size() - 1]
 		_merger.merge(mesh.mesh as ArrayMesh, list[0], list[1], list[2], count, _material_of(key))
+	_merge_text()
+
+
+## The labels shown as one mesh of glyphs (D-171), sorted as the frontmost of them; the others draw themselves.
+func _merge_text() -> void:
+	_text_labels.clear()
+	_text_places.clear()
+	_text_seen.clear()
+	var sorting := -INF
+	for label: Label3D in _labels:
+		if not is_instance_valid(label): continue
+		if not _shown(label) or not mergeable(label):
+			_unhide(label)
+			continue
+		if not label.has_meta(_LAYERS):
+			label.set_meta(_LAYERS, label.layers)
+			label.layers = 0
+		_text_labels.append(label)
+		_text_places.append(_place_of(label))
+		_text_seen.append(1.0 - label.transparency)
+		sorting = maxf(sorting, label.sorting_offset)
+	if _text_labels.is_empty():
+		if _text != null: _text.visible = false
+		return
+	if _text == null:
+		_text = XRERig.create_vr_mesh(ArrayMesh.new(), null)
+		_text.name = "MergedText"
+		_text.set_meta(&"painted", true)
+		_text.set_meta(MERGED, true)
+		card_node.add_child(_text)
+	if _text_merger == null: _text_merger = XRETextMerger.new()
+	_text.visible = true
+	_text.transparency = 0.0
+	for meta: StringName in [&"seen", &"unfaded", &"untop", &"unpainted"]:
+		if _text.has_meta(meta): _text.remove_meta(meta)
+	_text.sorting_offset = sorting
+	_text_merger.merge(_text.mesh as ArrayMesh, _text_labels, _text_places, _text_seen, _text_labels.size())
+
+
+## The merged text's mesh, for the tests; null when there is none.
+func get_text_mesh() -> MeshInstance3D:
+	return _text if _text != null and _text.visible else null
 
 
 ## Gives every part back its own drawing and frees the merged meshes.
 func release() -> void:
 	_restore_parts()
+	for label: Label3D in _labels:
+		if is_instance_valid(label): _unhide(label)
+	_labels.clear()
+	if is_instance_valid(_text): _text.queue_free()
+	_text = null
 	for key: Array in _meshes:
 		var mesh: MeshInstance3D = _meshes[key]
 		if is_instance_valid(mesh): mesh.queue_free()
@@ -123,6 +192,7 @@ func mesh_count() -> int:
 	var count := 0
 	for key: Array in _meshes:
 		if (_meshes[key] as MeshInstance3D).visible: count += 1
+	if _text != null and _text.visible: count += 1
 	return count
 
 
@@ -139,6 +209,7 @@ func _restore_parts() -> void:
 
 
 static func _unhide(part: GeometryInstance3D) -> void:
+	if part == null: return
 	if not part.has_meta(_LAYERS): return
 	part.layers = part.get_meta(_LAYERS)
 	part.remove_meta(_LAYERS)

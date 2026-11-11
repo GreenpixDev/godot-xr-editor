@@ -27,6 +27,8 @@ add_library(xre_native SHARED
 	src/graph_arrows.h
 	src/mesh_merger.cpp
 	src/mesh_merger.h
+	src/text_merger.cpp
+	src/text_merger.h
 )
 # Same OpenXR headers as Godot 4.7.2 (thirdparty/openxr, OpenXR SDK 1.1.54).
 # No loader is linked: every entry point comes from Godot's instance.

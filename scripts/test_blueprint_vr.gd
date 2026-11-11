@@ -299,6 +299,7 @@ func _run() -> void:
 	await _test_keyboard()
 	await _test_windows_and_ports(print_id)
 	await _test_graph_drawing(print_id)
+	await _test_graph_text(print_id)
 	_service.add_block("branch")
 	await _frames()
 	var branch_id: int = _service.blueprint.graph.nodes.back()["id"]
@@ -1352,6 +1353,42 @@ func _test_graph_drawing(id: int) -> void:
 	await _frames(30)
 	XREBlueprintCanvas.check_merges = true
 	XREBlueprintCanvas.stale_merges = checked
+
+
+## Graph text (D-171): Labels by default, each label drawing itself; Merged, a card's labels leave the VR layer
+## and one mesh of glyphs draws them, made again when a text changes.
+func _test_graph_text(id: int) -> void:
+	var features := _document.features
+	var canvas := _service.canvas
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.GRAPH_TEXT) == XREFeatureSettings.LABELS, "the graph's text is drawn by its labels by default")
+	features.set_value(XREFeatureSettings.GRAPH_TEXT, XREFeatureSettings.LABELS)
+	await _frames()
+	var card := _card(id)
+	var labels: Array[Node] = card.node.find_children("*", "Label3D", true, false)
+	_check(not labels.is_empty() and labels.all(func(label: Node) -> bool: return (label as Label3D).layers == XRERig.VR_LAYER)
+			and (card.merge == null or card.merge.get_text_mesh() == null), "Labels: each label on the VR layer, no merged text")
+	features.set_value(XREFeatureSettings.GRAPH_TEXT, XREFeatureSettings.MERGED)
+	await _frames()
+	card = _card(id)
+	var text := card.merge.get_text_mesh() if card.merge != null else null
+	var hidden := 0
+	var shown := 0
+	for label: Node in card.node.find_children("*", "Label3D", true, false):
+		var drawn := label as Label3D
+		if not drawn.is_visible_in_tree(): continue
+		if XRECardMerge.mergeable(drawn): hidden += 1 if drawn.layers == 0 else 0
+		else: shown += 1 if drawn.layers == XRERig.VR_LAYER else 0
+	_check(text != null and text.layers == XRERig.VR_LAYER and (text.mesh as ArrayMesh).get_surface_count() > 0 and hidden > 0,
+			"Merged: %d label(s) off the VR layer, %d drawn by themselves, the text one mesh of %d surface(s)" % [hidden, shown, (text.mesh as ArrayMesh).get_surface_count() if text != null else 0])
+	# A token's text changed: its card's text is made again at once.
+	var keys := canvas.token_keys(id)
+	if not keys.is_empty():
+		var merges := canvas.merges
+		var before := (text.mesh as ArrayMesh).surface_get_array_len(0)
+		canvas.preview_token(id, keys[0], 123456789.0)
+		_check(canvas.merges == merges + 1 and (text.mesh as ArrayMesh).surface_get_array_len(0) != before, "a token's new text makes its card's text again")
+		canvas.preview_token(id, keys[0], 1.0)
+	# Merged text stays on through the rest of the checks, each card checked every frame.
 
 
 func _card(id: int) -> XREBlueprintCanvas.Card:

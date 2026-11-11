@@ -114,16 +114,19 @@ func _test_graph_drawing() -> void:
 			_camera.transform = Transform3D(Basis.looking_at(canvas.global_position - head), head)
 			_camera.size = 1.2
 		var images: Array[Image] = []
-		var modes: Array[StringName] = [XREFeatureSettings.PER_NODE, XREFeatureSettings.MERGED, XREFeatureSettings.CARD_MERGED]
+		# Graph drawing, and with the text merged (D-171).
+		var modes: Array[StringName] = [XREFeatureSettings.PER_NODE, XREFeatureSettings.MERGED, XREFeatureSettings.CARD_MERGED, &"text", &"card_merged_text"]
 		for mode: StringName in modes:
-			canvas.set_merge_mode(mode)
+			canvas.set_merge_mode(XREFeatureSettings.PER_NODE if mode == &"text" else XREFeatureSettings.CARD_MERGED if mode == &"card_merged_text" else mode)
+			canvas.set_text_merging(mode in [&"text", &"card_merged_text"])
 			images.append(await _capture("drawing_%s_%s" % [["plain", "focus", "spheres", "archetypes"][look], mode]))
+		canvas.set_text_merging(false)
 		var drawn := 0
 		for y: int in range(0, images[0].get_height(), 4):
 			for x: int in range(0, images[0].get_width(), 4):
 				if not images[0].get_pixel(x, y).is_equal_approx(images[0].get_pixel(0, 0)): drawn += 1
 		_check(drawn > 200, "the graph is in view: %d sampled pixel(s) not the background" % drawn)
-		for index: int in [1, 2]:
+		for index: int in [1, 2, 3, 4]:
 			var differ := 0
 			var most := 0.0
 			var mask := Image.create(images[0].get_width(), images[0].get_height(), false, Image.FORMAT_RGB8)
