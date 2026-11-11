@@ -23,6 +23,7 @@ var _saved_display := XREFeatureSettings.ON
 var _saved_ports := XREFeatureSettings.FLAT
 var _saved_shape := XREFeatureSettings.FLAT
 var _saved_rays := XREFeatureSettings.EACH_CALL
+var _saved_drawing := XREFeatureSettings.PER_NODE
 ## The same for the parameter settings (D-052), which a headset session leaves as it set them.
 var _saved_parameters: Dictionary[StringName, StringName] = {}
 ## The editor's settings file, kept aside while the checks run.
@@ -155,6 +156,12 @@ func _run() -> void:
 	_document.features.set_value(XREFeatureSettings.RAY_PICKING, XREFeatureSettings.PER_FRAME)
 	XREBlueprintCanvas.check_ray_cache = true
 	XREBlueprintCanvas.ray_cache_misses = 0
+	# Graph drawing Card merged (D-170) all through, every card checked before each frame: a part changed with
+	# no merge of its card after it is counted.
+	_saved_drawing = _document.features.get_value(XREFeatureSettings.GRAPH_DRAWING)
+	_document.features.set_value(XREFeatureSettings.GRAPH_DRAWING, XREFeatureSettings.CARD_MERGED)
+	XREBlueprintCanvas.check_merges = true
+	XREBlueprintCanvas.stale_merges = 0
 	DirAccess.make_dir_recursive_absolute("res://build/blueprint_vr_tests")
 	_right = XRControllerTracker.new()
 	_right.name = &"right_hand"
@@ -462,6 +469,9 @@ func _run() -> void:
 	_check(XREBlueprintCanvas.ray_cache_misses == 0 and _service.canvas.ray_cache_hits > 0,
 			"Ray picking Per frame: all %d kept rays said what they say asked again, %d did not" % [_service.canvas.ray_cache_hits, XREBlueprintCanvas.ray_cache_misses])
 	XREBlueprintCanvas.check_ray_cache = false
+	_check(XREBlueprintCanvas.stale_merges == 0 and _service.canvas.merges > 0,
+			"Card merged: every changed card was merged again by what changed it, %d merges, %d found by the check" % [_service.canvas.merges, XREBlueprintCanvas.stale_merges])
+	XREBlueprintCanvas.check_merges = false
 	_service.close_graph()
 	_service.queue_free()
 	await _frames()
@@ -477,6 +487,7 @@ func _run() -> void:
 	_document.features.set_value(XREFeatureSettings.WINDOW_SHAPE, _saved_shape)
 	for key: StringName in PARAMETER_SETTINGS: _document.features.set_value(key, _saved_parameters[key])
 	_document.features.set_value(XREFeatureSettings.RAY_PICKING, _saved_rays)
+	_document.features.set_value(XREFeatureSettings.GRAPH_DRAWING, _saved_drawing)
 	_document.features.path = _saved_path
 	print("test_blueprint_vr: %d of %d checks failed" % [_failures, _checks])
 	get_tree().quit(1 if _failures > 0 else 0)
@@ -1275,6 +1286,8 @@ func _click_on(surface: XREPanelSurface, pixel: Vector2) -> void:
 func _test_graph_drawing(id: int) -> void:
 	var features := _document.features
 	var canvas := _service.canvas
+	features.set_value(XREFeatureSettings.GRAPH_DRAWING, XREFeatureSettings.PER_NODE)
+	await _frames()
 	var card := _card(id)
 	_check(XREFeatureSettings.get_default(XREFeatureSettings.GRAPH_DRAWING) == XREFeatureSettings.PER_NODE and canvas.merged_count(id) == 0
 			and card.merge == null, "per node by default: no merged meshes")
@@ -1302,8 +1315,43 @@ func _test_graph_drawing(id: int) -> void:
 	features.set_value(XREFeatureSettings.GRAPH_DRAWING, XREFeatureSettings.MERGED)
 	await _frames()
 	_check(canvas.merged_count(id) > 0, "Merged again, the ports merge again")
-	features.set_value(XREFeatureSettings.GRAPH_DRAWING, XREFeatureSettings.PER_NODE)
+	var ports_only := canvas.merged_count(id)
+	# Card merged (D-170): the face and the flat parts join the ports; labels and textured icons draw themselves.
+	features.set_value(XREFeatureSettings.GRAPH_DRAWING, XREFeatureSettings.CARD_MERGED)
 	await _frames()
+	card = _card(id)
+	var parts: Array[Node] = card.node.find_children("*", "GeometryInstance3D", true, false)
+	var flat_drawn := 0
+	var labels_drawn := true
+	for part: Node in parts:
+		var geometry := part as GeometryInstance3D
+		if part is Label3D:
+			labels_drawn = labels_drawn and geometry.layers == XRERig.VR_LAYER
+			continue
+		var textured := geometry.material_override is StandardMaterial3D and (geometry.material_override as StandardMaterial3D).albedo_texture != null
+		if part is MeshInstance3D and not part.has_meta(XRECardMerge.MERGED) and geometry.layers != 0 and geometry.is_visible_in_tree() and not textured: flat_drawn += 1
+	_check(canvas.merged_count(id) > ports_only and card.mesh.layers == 0 and flat_drawn == 0 and labels_drawn,
+			"Card merged: %d merged mesh(es) against %d of the ports, the face merged, %d flat part(s) still drawn alone, the labels draw themselves" % [canvas.merged_count(id), ports_only, flat_drawn])
+	# A part changed by what the service does merges its card again at once: a port under the ray grows.
+	var merges := canvas.merges
+	canvas.hover_actions(id, false, false, true, 0, true)
+	_check(canvas.merges == merges + 1, "a hovered port merges its card once: %d" % (canvas.merges - merges))
+	canvas.hover_actions(-1, false, false, true)
+	await _frames()
+	merges = canvas.merges
+	await _frames(10)
+	_check(canvas.merges == merges, "and not again while nothing changes: %d" % (canvas.merges - merges))
+	# Anything else changed under the card is found before the next frame, a few cards a frame (all in this test).
+	XREBlueprintCanvas.check_merges = false
+	var checked := XREBlueprintCanvas.stale_merges
+	card.trash.position += Vector3(0, 0.001, 0)
+	for frame: int in 30:
+		await get_tree().process_frame
+	_check(canvas.merges > merges, "a part moved behind the canvas's back is merged again within a few frames")
+	card.trash.position -= Vector3(0, 0.001, 0)
+	await _frames(30)
+	XREBlueprintCanvas.check_merges = true
+	XREBlueprintCanvas.stale_merges = checked
 
 
 func _card(id: int) -> XREBlueprintCanvas.Card:
@@ -5501,9 +5549,15 @@ func _test_d072() -> void:
 	var parts := card.node.find_children("*", "GeometryInstance3D", true, false).filter(func(part: Node) -> bool: return not part.has_meta(XRECardMerge.MERGED))
 	var port_offset := -INF
 	for port: MeshInstance3D in card.ports: port_offset = maxf(port_offset, port.sorting_offset)
-	for merged: Node in card.node.get_children().filter(func(child: Node) -> bool: return child.has_meta(XRECardMerge.MERGED)):
-		_check(is_equal_approx((merged as MeshInstance3D).sorting_offset, port_offset) and card.ports[seconds].layers == 0,
-				"with Front the merged ports are sorted as the frontmost port, the ports themselves off the VR layer")
+	# With Card merged (D-170) each look's mesh is sorted as the frontmost part it draws; the ports' among them.
+	var offsets: Array[float] = []
+	for part: Node in parts: offsets.append((part as GeometryInstance3D).sorting_offset)
+	var merged_offsets: Array[float] = []
+	for merged: Node in card.node.get_children().filter(func(child: Node) -> bool: return child.has_meta(XRECardMerge.MERGED) and (child as Node3D).visible):
+		merged_offsets.append((merged as MeshInstance3D).sorting_offset)
+	if not merged_offsets.is_empty():
+		_check(float(merged_offsets.max()) >= port_offset - 0.001 and merged_offsets.all(func(offset: float) -> bool: return offsets.any(func(other: float) -> bool: return absf(other - offset) < 0.001)) and card.ports[seconds].layers == 0,
+				"with Front the merged meshes are sorted as the frontmost part of each, the ports no later, the ports themselves off the VR layer: %s, %f, layers %d, all %s" % [merged_offsets, port_offset, card.ports[seconds].layers, merged_offsets.all(func(offset: float) -> bool: return offsets.any(func(other: float) -> bool: return absf(other - offset) < 0.001))])
 	var inverse := card.node.global_transform.affine_inverse()
 	var ordered := true
 	var highest := 0.0

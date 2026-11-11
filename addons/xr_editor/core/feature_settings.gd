@@ -69,8 +69,11 @@ const ARROW_LAYOUT := &"arrow_layout"
 const GRAPH_MATERIALS := &"graph_materials"
 ## How a logic graph card's parts are drawn (D-168): Per node, each by itself, as before; Merged, its ports of
 ## one look as one mesh, merged again when one changes. Per node first until a headset run shows Merged's gain.
+## Card merged (D-170): every flat part of one look — ports, rims, plus, trash, tokens' faces, the face — merged,
+## again whenever anything under the card changes.
 const GRAPH_DRAWING := &"graph_drawing"
 const MERGED := &"merged"
+const CARD_MERGED := &"card_merged"
 const PER_NODE := &"per_node"
 ## How the logic graph answers the hands' rays (D-169): Each call, every ask worked out, as before; Per frame,
 ## the same ray asked again in a frame, with nothing changed, answered as the first time. The same answers.
@@ -781,9 +784,9 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	GRAPH_DRAWING: {
 		"category": Category.GRAPHICS,
 		"title": "Graph drawing",
-		"values": [PER_NODE, MERGED],
-		"labels": ["Per node", "Merged"],
-		"hint": "Per node: each part of a card is drawn on its own, as before. Merged: a card's ports are drawn as one mesh, drawn again when one changes; fewer draw calls. They look the same.",
+		"values": [PER_NODE, MERGED, CARD_MERGED],
+		"labels": ["Per node", "Ports merged", "Card merged"],
+		"hint": "Per node: each part of a card is drawn on its own, as before. Ports merged: a card's ports are drawn as one mesh, drawn again when one changes. Card merged: all its flat parts, its face too, as one mesh of each look; fewest draw calls. They look the same.",
 	},
 	RAY_PICKING: {
 		"category": Category.GRAPHICS,

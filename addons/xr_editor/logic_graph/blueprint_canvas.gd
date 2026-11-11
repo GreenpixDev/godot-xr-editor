@@ -645,6 +645,21 @@ var _arrow_tints: Array[Color] = []
 var _native_arrows := true
 ## Graph drawing Merged (D-168): each card's ports are drawn as one mesh of each look ([XRECardMerge]).
 var _merging := false
+## Card merged (D-170): every flat part of a card is merged, not only its ports.
+var _merge_whole := false
+## The parts a card merge takes, gathered again for each merge.
+var _merge_parts: Array[GeometryInstance3D] = []
+## How many card merges there have been, for the lab and the tests.
+var merges := 0
+## The card [method _merge_changed] checked last.
+var _merge_turn := 0
+## How many cards [method _merge_changed] checks before each frame.
+const MERGE_CHECKS := 1
+## The canvas's process priority: after every other node's.
+const MERGE_PRIORITY := 1000000
+## For the tests: every card checked before each frame, and those found changed with no merge counted.
+static var check_merges := false
+static var stale_merges := 0
 var _arrows_native: XREGraphArrows
 var _arrow_pieces: Array = []
 var _arrow_specs := PackedInt32Array()
@@ -2992,6 +3007,7 @@ func _paint_frame(card: Card) -> void:
 	# A flash isn't darkened out of focus: it is there to be seen.
 	var paint := card.look.x if card.look.x == XREBlueprintFocus.TOP or (card.look.x == XREBlueprintFocus.DARK and not card.flash) else XREBlueprintFocus.PLAIN
 	card.frame.material_override = XREBlueprintFocus.variant(base, paint)
+	_merge_if_changed(card)
 
 
 ## Switches focus (D-072) to [param focus], a value of [constant XREFeatureSettings.FOCUS],
@@ -3183,7 +3199,10 @@ func _look_card(card: Card) -> void:
 	var paint := focus_paint(card.focus)
 	var seen := focus_seen(card.focus)
 	var look := Vector4i(paint, 1 if seen < 1.0 else 0, card.keep_ports, card.keep_sockets)
-	if look == card.look: return
+	if look == card.look:
+		# The buttons above may have shown or hidden.
+		_merge_if_changed(card)
+		return
 	card.look = look
 	XREBlueprintFocus.paint(card.node, paint)
 	XREBlueprintFade.set_seen(card.node, &"focus", seen)
@@ -3196,7 +3215,9 @@ func _look_card(card: Card) -> void:
 		XREBlueprintFocus.paint(card.sockets[index].visual, XREBlueprintFocus.PLAIN)
 		XREBlueprintFade.set_seen(card.sockets[index].visual, &"focus", 1.0)
 	_paint_frame(card)
-	_merge_card(card)
+	# With Card merged, the frame's paint has merged it already if that is all.
+	if _merge_whole: _merge_if_changed(card)
+	else: _merge_card(card)
 
 
 func _look_wire(wire: Wire) -> void:
@@ -3237,11 +3258,13 @@ func _paint_link(link: Wire) -> void:
 func hover_plus(id: int, right: bool) -> void:
 	if (right and _hover_right == id) or (not right and _hover_left == id): return
 	_pick_version += 1
+	var before := _hover_right if right else _hover_left
 	if right: _hover_right = id
 	else: _hover_left = id
 	for card: Card in _cards:
 		for face: Node3D in card.plus_faces:
 			face.scale = Vector3.ONE * (HOVER_SCALE if card.id == _hover_right or card.id == _hover_left else 1.0)
+	_merge_ids(before, id)
 
 
 ## Highlights only type-compatible endpoints while a connection is being made.
@@ -3308,10 +3331,12 @@ func hover_actions(id: int, plus: bool, trash: bool, right: bool, port: int = -1
 	var hovered := id if trash else -1
 	if (right and _delete_right == hovered) or (not right and _delete_left == hovered): return
 	_pick_version += 1
+	var before := _delete_right if right else _delete_left
 	if right: _delete_right = hovered
 	else: _delete_left = hovered
 	for card: Card in _cards:
 		card.trash.scale = Vector3.ONE * (HOVER_SCALE if card.id == _delete_right or card.id == _delete_left else 1.0)
+	_merge_ids(before, hovered)
 
 
 func _hover_edge(edge: int, right: bool) -> void:
@@ -3375,10 +3400,12 @@ func _hover_port(id: int, port: int, input: bool, right: bool) -> void:
 func _hover_copy(id: int, right: bool) -> void:
 	if id == (_copy_right if right else _copy_left): return
 	_pick_version += 1
+	var before := _copy_right if right else _copy_left
 	if right: _copy_right = id
 	else: _copy_left = id
 	for card: Card in _cards:
 		if card.copy != null: card.copy.scale = Vector3.ONE * (HOVER_SCALE if card.id == _copy_right or card.id == _copy_left else 1.0)
+	_merge_ids(before, id)
 
 
 ## Grows a call's open button and an Entry's pure switch under a hand's ray.
@@ -3394,15 +3421,18 @@ func _hover_function(open: int, pure: int, right: bool) -> void:
 	for card: Card in _cards:
 		if card.open != null: card.open.scale = Vector3.ONE * (HOVER_SCALE if card.id == _open_right or card.id == _open_left else 1.0)
 		if card.pure_switch != null: card.pure_switch.scale = Vector3.ONE * (1.15 if card.id == _pure_right or card.id == _pure_left else 1.0)
+	_merge_all_changed()
 
 
 func _hover_swap(id: int, right: bool) -> void:
 	if id == (_swap_right if right else _swap_left): return
 	_pick_version += 1
+	var before := _swap_right if right else _swap_left
 	if right: _swap_right = id
 	else: _swap_left = id
 	for card: Card in _cards:
 		if card.swap != null: card.swap.scale = Vector3.ONE * (HOVER_SCALE if card.id == _swap_right or card.id == _swap_left else 1.0)
+	_merge_ids(before, id)
 
 
 ## Two squares, one over the other's corner: the copy button (D-093).
@@ -3659,6 +3689,9 @@ func _show_pins() -> void:
 			mark.visible = on_mark or port == _port_right or port == _port_left or key == _pin_row_right or key == _pin_row_left
 			mark.scale = Vector3.ONE * (HOVER_SCALE if on_mark else 1.0)
 		_place_pin_marks(card)
+	if _merge_whole:
+		for card: Card in _cards:
+			if card.pin_plus != null or not card.pin_marks.is_empty(): _merge_if_changed(card)
 
 
 func _hover_pins(id: int, plus: bool, mark: int, row: int, right: bool) -> void:
@@ -4488,6 +4521,7 @@ func hide_token(id: int, key: String, hidden: bool = true) -> void:
 	_pick_version += 1
 	var socket := _socket(id, key)
 	if socket != null and socket.visual != null: socket.visual.visible = not hidden
+	_merge_ids(id, -1)
 
 
 ## Shows [param value] on the token of [param key] on block [param id] until
@@ -4496,6 +4530,7 @@ func preview_token(id: int, key: String, value: Variant, shown: String = "") -> 
 	_pick_version += 1
 	var socket := _socket(id, key)
 	if socket != null and socket.text != null: socket.text.text = shown if not shown.is_empty() else XREBlueprintTokens.text(value, key)
+	_merge_ids(id, -1)
 
 
 ## The global transform of the token of [param key] on block [param id].
@@ -4520,6 +4555,7 @@ func hover_socket(id: int, socket: int, right: bool) -> void:
 	var key := Vector2i(id, socket)
 	if key == (_socket_right if right else _socket_left): return
 	_pick_version += 1
+	var before := _socket_right if right else _socket_left
 	if right: _socket_right = key
 	else: _socket_left = key
 	for card: Card in _cards:
@@ -4531,6 +4567,7 @@ func hover_socket(id: int, socket: int, right: bool) -> void:
 			# staying dark on a card out of focus (D-114).
 			elif item.visual.name == "Member" and item.visual is Label3D: XREBlueprintFocus.recolor(item.visual as Label3D, MEMBER_HOVER if hovered else MEMBER_COLOR)
 			else: item.visual.scale = item.base_scale * (SOCKET_HOVER if hovered else 1.0)
+	_merge_ids(before.x, key.x)
 	# The wire of a Variable socket under a ray thickens, as a port's does (D-061).
 	_paint_links()
 
@@ -4751,15 +4788,33 @@ func _list_arrows(wire: Wire, execution: bool, forward: bool, listed: int) -> in
 ## Graph drawing (D-168): [param merged] draws each card's ports as one mesh of each look, else each by
 ## itself as before. Returns whether it changed.
 func set_merging(merged: bool) -> bool:
+	return set_merge_mode(XREFeatureSettings.MERGED if merged else XREFeatureSettings.PER_NODE)
+
+
+## Graph drawing (D-168, D-170) as a value of [constant XREFeatureSettings.GRAPH_DRAWING]: Per node, Merged
+## (the ports) or Card merged (every flat part of a card with a material a merge takes, faces too, merged
+## again when anything under the card changes). Returns whether it changed.
+func set_merge_mode(mode: StringName) -> bool:
 	_pick_version += 1
-	if merged == _merging: return false
-	_merging = merged
+	var merging := mode != XREFeatureSettings.PER_NODE
+	var whole := mode == XREFeatureSettings.CARD_MERGED
+	if merging == _merging and whole == _merge_whole: return false
+	if whole != _merge_whole:
+		# Another set of parts: start each card's merge again.
+		for card: Card in _cards:
+			if card.merge != null:
+				card.merge.release()
+				card.merge = null
+	_merging = merging
+	_merge_whole = whole
+	XRECardMerge.faces = whole
 	for card: Card in _cards: _merge_card(card)
 	return true
 
 
 ## Merges [param card]'s ports again as they are now, or gives them back their own drawing without merging.
-## Called wherever a port's look, size, place or see-through changes.
+## Called wherever a port's look, size, place or see-through changes; with Card merged also before each
+## frame is drawn for every card whose parts changed since ([method _merge_changed], D-170).
 func _merge_card(card: Card) -> void:
 	if not _merging:
 		if card.merge != null:
@@ -4768,11 +4823,101 @@ func _merge_card(card: Card) -> void:
 		return
 	if card.merge == null:
 		card.merge = XRECardMerge.new(card.node)
-		var parts: Array[GeometryInstance3D] = []
-		for port: MeshInstance3D in card.ports:
-			if port != null: parts.append(port)
-		card.merge.set_parts(parts)
+		if not _merge_whole:
+			var parts: Array[GeometryInstance3D] = []
+			for port: MeshInstance3D in card.ports:
+				if port != null: parts.append(port)
+			card.merge.set_parts(parts)
+	if _merge_whole:
+		_merge_parts.clear()
+		_flat_parts(card.node, _merge_parts)
+		card.merge.set_parts(_merge_parts.duplicate())
 	card.merge.merge()
+	if _merge_whole:
+		card.merge.state = XRECardMerge.card_state(card.node, false)
+		if check_merges: card.node.set_meta(&"merge_parts", _part_states(card.node))
+	merges += 1
+
+
+## For the tests: what each node under [param node] is as a merge sees it, by its path (D-170).
+static func _part_states(node: Node3D) -> Dictionary:
+	var states := {}
+	for child: Node in node.find_children("*", "Node3D", true, false):
+		if child.has_meta(XRECardMerge.MERGED): continue
+		var spatial := child as Node3D
+		var text := "shown %s at %s" % [spatial.visible, spatial.transform]
+		if child is GeometryInstance3D:
+			var geometry := child as GeometryInstance3D
+			var standard := geometry.material_override as StandardMaterial3D
+			text += " seen %s sorted %s material %s %s %s" % [geometry.transparency, geometry.sorting_offset, geometry.material_override,
+					(geometry as MeshInstance3D).mesh.get_class() if geometry is MeshInstance3D and (geometry as MeshInstance3D).mesh != null else "", standard.albedo_color if standard != null else ""]
+		states[str(node.get_path_to(child))] = text
+	return states
+
+
+## For the tests: which nodes under [param card] changed since its last merge, and how.
+func _changed_parts(card: Card) -> String:
+	var before: Dictionary = card.node.get_meta(&"merge_parts", {})
+	var now := _part_states(card.node)
+	var changes: PackedStringArray = []
+	for path: String in now:
+		if before.get(path, "") != now[path]: changes.append("%s: %s -> %s" % [path, before.get(path, "new"), now[path]])
+	for path: String in before:
+		if not now.has(path): changes.append("%s: gone" % path)
+	return "; ".join(changes.slice(0, 3))
+
+
+## The parts under [param node] a card merge may take (D-170): its meshes, not its labels, multimeshes or merged meshes.
+static func _flat_parts(node: Node, into: Array[GeometryInstance3D]) -> void:
+	for child: Node in node.get_children():
+		if child.has_meta(XRECardMerge.MERGED): continue
+		if child is MeshInstance3D: into.append(child as MeshInstance3D)
+		_flat_parts(child, into)
+
+
+## Card merged (D-170): at the end of the frame's process, one card in turn is checked for parts changed since their
+## last merge, which merges them again: the code that changes a part merges its card itself, this is the net under
+## it. For the tests, with [member check_merges] every card is checked each frame and each one found is counted.
+func _merge_changed() -> void:
+	if not _merge_whole or _cards.is_empty() or not is_visible_in_tree(): return
+	var checks := _cards.size() if check_merges else mini(MERGE_CHECKS, _cards.size())
+	for step: int in checks:
+		_merge_turn = (_merge_turn + 1) % _cards.size()
+		var card := _cards[_merge_turn]
+		if card.merge == null or not is_instance_valid(card.node) or XRECardMerge.card_state(card.node, false) == card.merge.state: continue
+		if check_merges:
+			stale_merges += 1
+			push_warning("XREBlueprintCanvas: card %d changed with no merge after it: %s" % [card.id, _changed_parts(card)])
+		_merge_card(card)
+
+
+## Card merged (D-170): merges [param card] again if anything under it changed since its last merge: for the
+## code that changes its parts, which calls it where they change.
+func _merge_if_changed(card: Card) -> void:
+	if _merge_whole and card != null and card.merge != null and is_instance_valid(card.node) \
+			and XRECardMerge.card_state(card.node, false) != card.merge.state: _merge_card(card)
+
+
+## [method _merge_if_changed] of the cards of blocks [param first] and [param second], as a hover leaves one for the other.
+func _merge_ids(first: int, second: int) -> void:
+	if not _merge_whole: return
+	if first >= 0: _merge_if_changed(_find_card(first))
+	if second >= 0 and second != first: _merge_if_changed(_find_card(second))
+
+
+## [method _merge_if_changed] of every card: for what changes parts of any of them.
+func _merge_all_changed() -> void:
+	if not _merge_whole: return
+	for card: Card in _cards: _merge_if_changed(card)
+
+
+## Last in the frame's process (D-170): after what the service and the panels changed in it.
+func _enter_tree() -> void:
+	process_priority = MERGE_PRIORITY
+
+
+func _process(_delta: float) -> void:
+	_merge_changed()
 
 
 ## How many merged meshes [param id]'s card draws (D-168), for the tests.
@@ -5268,6 +5413,7 @@ func flash_cards(ids: Array[int], lit: bool = true) -> void:
 		if not ids.has(card.id): continue
 		card.flash = lit
 		_paint_frame(card)
+		_merge_if_changed(card)
 
 
 ## A static Target wire ([method add_scene_link]): from its input port, leaving left, free towards the scene object.
@@ -5799,6 +5945,7 @@ func hide_link(ref: Dictionary, hidden: bool) -> void:
 	var card := _find_card(int(ref["card"]))
 	var socket := _link_socket(card, int(ref["port"]), int(ref["kind"])) if card != null else null
 	if socket != null: socket.visual.visible = not hidden
+	_merge_if_changed(card)
 
 
 ## The inline Get Variable (D-061) whose wire comes into input [param port] of block [param id], or -1.

@@ -89,7 +89,7 @@ func _test_graph_drawing() -> void:
 	_camera.transform = Transform3D(Basis.IDENTITY, Vector3(-40.0, 0.0, 1.0))
 	_camera.size = 0.8
 	_camera.current = true
-	for look: int in 3:
+	for look: int in 4:
 		var focused := look == 1
 		if look == 1:
 			canvas.set_focus_modes(XREFeatureSettings.FRONT, XREFeatureSettings.DIM)
@@ -101,26 +101,45 @@ func _test_graph_drawing() -> void:
 			canvas.rebuild(graph)
 			canvas.position = Vector3(-40.0, 0.0, 0.0)
 			canvas.face_user(canvas.to_global(Vector3(0.0, 0.0, 1.0)))
+		if look == 3:
+			# Archetypes, the default style, on BlueCube's graph: faces, bands, icons, tokens (D-170).
+			canvas.set_port_display(XREFeatureSettings.FLAT)
+			canvas.set_style(XREFeatureSettings.ARCHETYPES)
+			var cube: XREBlueprintGraph = load("res://benchmarks/blue_cube_blueprint_2.tres")
+			canvas.center_graph(cube)
+			canvas.rebuild(cube)
+			canvas.position = Vector3(-40.0, 0.0, 0.0)
+			var head := canvas.to_global(Vector3(0.0, 0.0, 1.5))
+			canvas.face_user(head)
+			_camera.transform = Transform3D(Basis.looking_at(canvas.global_position - head), head)
+			_camera.size = 1.2
 		var images: Array[Image] = []
-		for merged: bool in [false, true]:
-			canvas.set_merging(merged)
-			images.append(await _capture("drawing_%s_%s" % [["plain", "focus", "spheres"][look], "merged" if merged else "per_node"]))
-		var differ := 0
-		var most := 0.0
-		for y: int in images[0].get_height():
-			for x: int in images[0].get_width():
-				var a := images[0].get_pixel(x, y)
-				var b := images[1].get_pixel(x, y)
-				var delta := maxf(absf(a.r - b.r), maxf(absf(a.g - b.g), absf(a.b - b.b)))
-				most = maxf(most, delta)
-				if delta > 3.0 / 255.0: differ += 1
+		var modes: Array[StringName] = [XREFeatureSettings.PER_NODE, XREFeatureSettings.MERGED, XREFeatureSettings.CARD_MERGED]
+		for mode: StringName in modes:
+			canvas.set_merge_mode(mode)
+			images.append(await _capture("drawing_%s_%s" % [["plain", "focus", "spheres", "archetypes"][look], mode]))
 		var drawn := 0
 		for y: int in range(0, images[0].get_height(), 4):
 			for x: int in range(0, images[0].get_width(), 4):
 				if not images[0].get_pixel(x, y).is_equal_approx(images[0].get_pixel(0, 0)): drawn += 1
 		_check(drawn > 200, "the graph is in view: %d sampled pixel(s) not the background" % drawn)
-		_check(differ <= MERGE_PIXELS and canvas.merged_count(2) > 0, "%s, Merged draws as Per node: %d pixel(s) differ, at most by %.0f/255"
-				% [["as it is", "a card in focus", "sphere ports"][look], differ, most * 255.0])
+		for index: int in [1, 2]:
+			var differ := 0
+			var most := 0.0
+			var mask := Image.create(images[0].get_width(), images[0].get_height(), false, Image.FORMAT_RGB8)
+			for y: int in images[0].get_height():
+				for x: int in images[0].get_width():
+					var a := images[0].get_pixel(x, y)
+					var b := images[index].get_pixel(x, y)
+					var delta := maxf(absf(a.r - b.r), maxf(absf(a.g - b.g), absf(a.b - b.b)))
+					most = maxf(most, delta)
+					if delta > 3.0 / 255.0:
+						differ += 1
+						mask.set_pixel(x, y, Color.WHITE)
+			mask.save_png("res://build/blueprint_render_drawing_%s_%s_diff.png" % [["plain", "focus", "spheres", "archetypes"][look], modes[index]])
+			print("test_blueprint_render: %s, %s: %d pixel(s) differ, at most by %.0f/255" % [["as it is", "a card in focus", "sphere ports", "archetypes on BlueCube"][look], modes[index], differ, most * 255.0])
+			_check(differ <= MERGE_PIXELS and canvas.merged_count(2) > 0, "%s, %s draws as Per node: %d pixel(s) differ, at most by %.0f/255"
+					% [["as it is", "a card in focus", "sphere ports", "archetypes on BlueCube"][look], modes[index], differ, most * 255.0])
 	canvas.queue_free()
 	_camera.transform = camera_before
 	_camera.size = size_before

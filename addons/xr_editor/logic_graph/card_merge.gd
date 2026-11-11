@@ -4,9 +4,10 @@ extends RefCounted
 ## Graph drawing Merged (D-168): a card's parts of one look are drawn as one mesh, a child of the card. The
 ## parts stay where they are — the ray, the tests and the focus read them — but leave the VR layer while merged.
 ## A part is merged by its material: the plain unshaded overlay ([method XREBlueprintCanvas.material], any
-## priority and depth test) or the wires' shaded one ([method XREBlueprintCanvas.wire_material], without
-## growth), its colour, the part's transparency and its place going into the vertices. Other parts (textured,
-## the grids, labels) draw themselves. [method merge] again whenever a merged part changes: its card alone.
+## priority and depth test), the wires' shaded one ([method XREBlueprintCanvas.wire_material], without
+## growth) or, with Card merged (D-170), the cards' faces (their [code]face_tint[/code] shader, also over
+## everything), its colour, the part's transparency and its place going into the vertices. Other parts
+## (textured, the grids, labels) draw themselves. [method merge] again whenever a merged part changes: its card alone.
 
 ## Meta of a merged part: the layers it had.
 const _LAYERS := &"merge_layers"
@@ -18,9 +19,16 @@ static var _plain: Dictionary = {}
 static var _shaded: Dictionary = {}
 static var _shaded_shader: Shader
 static var _shaded_top_shader: Shader
+static var _face: Dictionary = {}
+static var _face_shader: Shader
+static var _face_top_shader: Shader
+## Whether cards' faces are merged too (Card merged, D-170).
+static var faces := false
 
 ## The card the parts are on.
 var card_node: Node3D
+## [method card_state] of the card when it was last merged (D-170).
+var state := 0
 var _parts: Array[GeometryInstance3D] = []
 ## By the look's key: the merged mesh and what is merged into it.
 var _meshes: Dictionary = {}
@@ -32,10 +40,18 @@ func _init(node: Node3D) -> void:
 	if _merger == null: _merger = XREMeshMerger.new()
 
 
-## The parts to merge, from now on; the ones before draw themselves again.
+## The parts to merge, from now on; the ones before and not among them draw themselves again.
 func set_parts(parts: Array[GeometryInstance3D]) -> void:
-	_restore_parts()
+	for part: GeometryInstance3D in _parts:
+		if is_instance_valid(part) and not parts.has(part): _unhide(part)
 	_parts = parts
+
+
+## A number that changes with anything under [param node] that a merge draws from, labels too with
+## [param labels] (D-170): natively, for a check each frame.
+static func card_state(node: Node3D, labels: bool) -> int:
+	if _merger == null: _merger = XREMeshMerger.new()
+	return _merger.card_state(node, labels)
 
 
 ## Merges the parts as they are now.
@@ -167,10 +183,14 @@ static func _key_of(part: GeometryInstance3D) -> Array:
 	if material is ShaderMaterial:
 		var shaded := material as ShaderMaterial
 		var shader := XREBlueprintCanvas.wire_shader()
-		if shader == null or not is_zero_approx(float(shaded.get_shader_parameter(&"grow"))): return []
-		var top: Variant = shader.get_meta(&"focus_top") if shader.has_meta(&"focus_top") else null
-		if shaded.shader == shader: return [&"shaded", shaded.render_priority, false]
-		if top != null and shaded.shader == top: return [&"shaded", shaded.render_priority, true]
+		var top: Variant = shader.get_meta(&"focus_top") if shader != null and shader.has_meta(&"focus_top") else null
+		if shader != null and (shaded.shader == shader or (top != null and shaded.shader == top)):
+			var grow: Variant = shaded.get_shader_parameter(&"grow")
+			if grow != null and not is_zero_approx(float(grow)): return []
+			return [&"shaded", shaded.render_priority, shaded.shader != shader]
+		# A card's face (D-170), as it is or over everything (Front).
+		if faces and shaded.shader != null and shaded.get_shader_parameter(&"face_tint") is Color and shaded.shader.code.contains("uniform vec4 face_tint"):
+			return [&"face", shaded.render_priority, shaded.shader.code.contains("depth_test_disabled")]
 	return []
 
 
@@ -181,7 +201,9 @@ static func _color_of(part: GeometryInstance3D) -> Color:
 		var color := (part.material_override as StandardMaterial3D).albedo_color
 		color.a *= seen
 		return color
-	var tint: Color = (part.material_override as ShaderMaterial).get_shader_parameter(&"tint")
+	var shaded := part.material_override as ShaderMaterial
+	var face: Variant = shaded.get_shader_parameter(&"face_tint")
+	var tint: Color = face if face is Color else shaded.get_shader_parameter(&"tint")
 	tint.a = seen
 	return tint
 
@@ -201,12 +223,38 @@ static func _material_of(key: Array) -> Material:
 			plain.cull_mode = key[4]
 			_plain[key] = plain
 		return _plain[key]
+	if key[0] == &"face":
+		if not _face.has(key):
+			var face := ShaderMaterial.new()
+			face.shader = _face_shader_of(key[2])
+			face.render_priority = key[1]
+			_face[key] = face
+		return _face[key]
 	if not _shaded.has(key):
 		var shaded := ShaderMaterial.new()
 		shaded.shader = _shaded_shader_of(key[2])
 		shaded.render_priority = key[1]
 		_shaded[key] = shaded
 	return _shaded[key]
+
+
+## The cards' face shader (D-170), its tint in the vertices' colour (sRGB, as a source_color uniform is),
+## see-through by its alpha; the front face full, the sides and back darker, as the canvas's.
+static func _face_shader_of(top: bool) -> Shader:
+	var shader := _face_top_shader if top else _face_shader
+	if shader != null: return shader
+	shader = Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, depth_draw_always, shadows_disabled%s;
+varying float front;
+vec3 to_linear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
+void vertex() { front = step(0.5, NORMAL.z); }
+void fragment() { ALBEDO = to_linear(COLOR.rgb) * mix(0.55, 1.0, front); ALPHA = COLOR.a; }
+""" % (", depth_test_disabled" if top else "")
+	if top: _face_top_shader = shader
+	else: _face_shader = shader
+	return shader
 
 
 ## The wires' shader, its tint in the vertices' colour (sRGB, as a source_color uniform is), see-through by its alpha.

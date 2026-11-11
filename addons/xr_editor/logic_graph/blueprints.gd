@@ -584,7 +584,7 @@ func _init(document: XREDocument, rig: XRERig, icons: XREIcons, theme: Theme = n
 	_set_arrow_modes(document.features)
 	canvas.set_arrow_layout(document.features.get_value(XREFeatureSettings.ARROW_LAYOUT) == XREFeatureSettings.NATIVE)
 	XREBlueprintCanvas.set_sharing(document.features.get_value(XREFeatureSettings.GRAPH_MATERIALS) == XREFeatureSettings.SHARED)
-	canvas.set_merging(document.features.get_value(XREFeatureSettings.GRAPH_DRAWING) == XREFeatureSettings.MERGED)
+	canvas.set_merge_mode(document.features.get_value(XREFeatureSettings.GRAPH_DRAWING))
 	canvas.set_ray_cache(document.features.get_value(XREFeatureSettings.RAY_PICKING) == XREFeatureSettings.PER_FRAME)
 	canvas.set_wire_picking(document.features.get_value(XREFeatureSettings.WIRE_PICKING) == XREFeatureSettings.NATIVE)
 	canvas.set_style(document.features.get_value(XREFeatureSettings.NODE_STYLE))
@@ -3469,7 +3469,7 @@ func _feature_changed(key: StringName) -> void:
 		canvas.set_arrow_layout(_document.features.get_value(key) == XREFeatureSettings.NATIVE)
 		return
 	if key == XREFeatureSettings.GRAPH_DRAWING:
-		canvas.set_merging(_document.features.get_value(key) == XREFeatureSettings.MERGED)
+		canvas.set_merge_mode(_document.features.get_value(key))
 		return
 	if key == XREFeatureSettings.RAY_PICKING:
 		canvas.set_ray_cache(_document.features.get_value(key) == XREFeatureSettings.PER_FRAME)

@@ -1,0 +1,93 @@
+Godot Engine v4.7.2.stable.custom_build.ed1daf0bf (2026-08-17 01:18:38 UTC) - https://godotengine.org
+Vulkan 1.4.351 - Forward Mobile - Using Device #0: NVIDIA - NVIDIA GeForce RTX 4060
+
+XR Editor: features node_facing=on, node_volume=flat, node_back=blank, pin_place=both_faces, card_mirror=on, sign_ports=rim, graph_turn=fixed, graph_parts=whole, port_display=sphere, node_style=archetypes, node_shrink=system, node_heading=member, composite_values=split, port_shapes=off, window_shape=flat, value_input=plugs, target_input=adapter, animation_wait=finished_port, variable_input=boxes, token_tray=off, scene_create=off, card_plus=hidden, color_input=globe, axis_scale=stick, focus=front, defocus=dim, link_preview=variables, link_wires=on_focus, wire_draw=hold, link_create=wire_menu, auto_link=on, wire_bends=on, undo_selection=on, object_shortcut=on, block_palette=ring, palette_groups=sources, next_suggestions=off, block_copy=on, settings_subsections=row, antialiasing=auto, editor_window=paused, arrow_layout=native, graph_materials=shared, graph_drawing=per_node, ray_picking=each_call, wire_picking=script, exec_arrows=running, data_arrows=at_end, arrow_style=open, select_add=grip, object_copy=both, selection_counter=on, copy_blueprint=shared, copy_outer_wires=off, collection_port=grid, collection_literal=make, collection_wire=off, scene_collection=off, select_area=brush, layout=horizon_link
+XR Editor: OpenXR is not running, VR view is off. Start the editor with --xr-mode on to enable it.
+XR Editor: no headset: VR view in a window, keyboard and mouse for controllers.
+XR Editor: left_hand controller model oculus_touch_v3 for /interaction_profiles/oculus/touch_controller.
+XR Editor: right_hand controller model oculus_touch_v3 for /interaction_profiles/oculus/touch_controller.
+XR Editor: Blueprints VR D-052 loaded from C:/Users/aniku/Projects/godot-xr-editor/.claude/worktrees/node-addition-improvement-c535d9/
+XR Editor: editor's 2D window hidden while in VR.
+XR Editor: graph lab: renderer mobile on vulkan
+XR Editor: feature graph_drawing = merged (this run)
+XR Editor: graph lab: feature graph_drawing=merged
+XR Editor: graph lab: closed
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (0.0, 0.0, 0.0), S: (0.0, 0.0, 0.0)] from 1.20 m, tangents 0.67 x 0.67.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: graph lab: graph scripts 0.10 ms per frame, of them facing the head 0.00 ms; ray routing 0.01 ms; manipulator 0.09 ms.
+XR Editor: graph lab: frames 163 fps, VR view render CPU 0.26 ms, GPU 1.14 ms, process 101.05 ms, 48 draw calls.
+XR Editor: graph lab: graph scripts 0.11 ms per frame, of them facing the head 0.00 ms; ray routing 0.01 ms; manipulator 0.10 ms.
+XR Editor: graph lab: frames 164 fps, VR view render CPU 0.30 ms, GPU 1.27 ms, process 12.48 ms, 48 draw calls.
+XR Editor: graph lab: view root: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 163 call(s).
+XR Editor: graph lab: view @SubViewportContainer@10230/@SubViewport@10231: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESimulator/XRESimulatorWindow: render CPU 0.30 ms, GPU 1.27 ms, visible 22 call(s) 22 object(s) 11684 primitive(s), shadow 5 call(s), canvas 21 call(s).
+XR Editor: graph lab: open
+XR Editor: Blueprint graph shown, 25 node(s), built in 187.1 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-1.433513, 0.492198, -1.119493), S: (2.419301, 1.966161, 2.895572)] from 3.45 m, tangents 0.67 x 0.67.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: graph lab: graph scripts 0.86 ms per frame, of them facing the head 0.12 ms; ray routing 0.43 ms; manipulator 0.15 ms.
+XR Editor: graph lab: frames 165 fps, VR view render CPU 0.76 ms, GPU 1.38 ms, process 98.68 ms, 325 draw calls.
+XR Editor: graph lab: view root: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 163 call(s).
+XR Editor: graph lab: view @SubViewportContainer@10230/@SubViewport@10231: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESimulator/XRESimulatorWindow: render CPU 0.76 ms, GPU 1.38 ms, visible 284 call(s) 284 object(s) 87506 primitive(s), shadow 0 call(s), canvas 21 call(s).
+XR Editor: graph lab: graph scripts 0.93 ms per frame, of them facing the head 0.13 ms; ray routing 0.47 ms; manipulator 0.17 ms.
+XR Editor: graph lab: frames 164 fps, VR view render CPU 0.80 ms, GPU 1.31 ms, process 12.91 ms, 325 draw calls.
+XR Editor: graph lab: view root: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 163 call(s).
+XR Editor: graph lab: view @SubViewportContainer@10230/@SubViewport@10231: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESimulator/XRESimulatorWindow: render CPU 0.80 ms, GPU 1.31 ms, visible 284 call(s) 284 object(s) 87522 primitive(s), shadow 0 call(s), canvas 21 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.07 ms, GPU 0.02 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: open_big2
+XR Editor: graph lab: rebuilt 50 block(s) in 117.1 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-2.154035, 0.708442, -1.392272), S: (3.837782, 1.976225, 3.466543)] from 4.60 m, tangents 0.67 x 0.67.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: graph lab: graph scripts 1.21 ms per frame, of them facing the head 0.20 ms; ray routing 0.73 ms; manipulator 0.17 ms.
+XR Editor: graph lab: frames 164 fps, VR view render CPU 1.16 ms, GPU 1.41 ms, process 49.03 ms, 553 draw calls.
+XR Editor: graph lab: view root: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 163 call(s).
+XR Editor: graph lab: view @SubViewportContainer@10230/@SubViewport@10231: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESimulator/XRESimulatorWindow: render CPU 1.16 ms, GPU 1.41 ms, visible 512 call(s) 512 object(s) 162616 primitive(s), shadow 0 call(s), canvas 21 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.07 ms, GPU 0.02 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.10 ms, GPU 0.04 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: graph scripts 1.05 ms per frame, of them facing the head 0.17 ms; ray routing 0.61 ms; manipulator 0.12 ms.
+XR Editor: graph lab: frames 165 fps, VR view render CPU 0.87 ms, GPU 1.48 ms, process 13.86 ms, 553 draw calls.
+XR Editor: graph lab: view root: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 163 call(s).
+XR Editor: graph lab: view @SubViewportContainer@10230/@SubViewport@10231: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESimulator/XRESimulatorWindow: render CPU 0.87 ms, GPU 1.48 ms, visible 512 call(s) 512 object(s) 162564 primitive(s), shadow 0 call(s), canvas 21 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.05 ms, GPU 0.02 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.12 ms, GPU 0.04 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: open
+XR Editor: graph lab: rebuilt 25 block(s) in 46.3 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-2.102321, 0.482207, -1.378592), S: (3.786126, 2.192414, 3.410897)] from 4.55 m, tangents 0.67 x 0.67.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: graph lab: graph scripts 0.69 ms per frame, of them facing the head 0.10 ms; ray routing 0.34 ms; manipulator 0.10 ms.
+XR Editor: graph lab: frames 165 fps, VR view render CPU 0.51 ms, GPU 1.14 ms, process 26.27 ms, 325 draw calls.
+XR Editor: graph lab: view root: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 163 call(s).
+XR Editor: graph lab: view @SubViewportContainer@10230/@SubViewport@10231: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESimulator/XRESimulatorWindow: render CPU 0.51 ms, GPU 1.14 ms, visible 284 call(s) 284 object(s) 87518 primitive(s), shadow 0 call(s), canvas 21 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.04 ms, GPU 0.02 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.15 ms, GPU 0.03 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: graph scripts 0.61 ms per frame, of them facing the head 0.09 ms; ray routing 0.30 ms; manipulator 0.08 ms.
+XR Editor: graph lab: frames 165 fps, VR view render CPU 0.39 ms, GPU 1.27 ms, process 11.72 ms, 325 draw calls.
+XR Editor: graph lab: view root: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 163 call(s).
+XR Editor: graph lab: view @SubViewportContainer@10230/@SubViewport@10231: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESimulator/XRESimulatorWindow: render CPU 0.39 ms, GPU 1.27 ms, visible 284 call(s) 284 object(s) 87494 primitive(s), shadow 0 call(s), canvas 21 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.03 ms, GPU 0.02 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.14 ms, GPU 0.04 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: open_big2
+XR Editor: graph lab: rebuilt 50 block(s) in 77.8 ms.
+XR Editor: graph lab: view of scene [P: (-0.6, 0.7, -0.9), S: (1.2, 0.411445, 0.6)] and graph [P: (-2.141279, 0.708279, -1.389986), S: (3.83954, 1.978224, 3.452126)] from 4.60 m, tangents 0.67 x 0.67.
+XR Editor: graph lab: stopped 0 viewport(s), 0 branch(es), 0 script(s), 0 physics script(s).
+XR Editor: graph lab: graph scripts 0.79 ms per frame, of them facing the head 0.13 ms; ray routing 0.48 ms; manipulator 0.08 ms.
+XR Editor: graph lab: frames 164 fps, VR view render CPU 0.52 ms, GPU 1.41 ms, process 35.76 ms, 553 draw calls.
+XR Editor: graph lab: view root: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 163 call(s).
+XR Editor: graph lab: view @SubViewportContainer@10230/@SubViewport@10231: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESimulator/XRESimulatorWindow: render CPU 0.52 ms, GPU 1.41 ms, visible 512 call(s) 512 object(s) 162564 primitive(s), shadow 0 call(s), canvas 21 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.03 ms, GPU 0.02 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.15 ms, GPU 0.04 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: graph scripts 0.78 ms per frame, of them facing the head 0.13 ms; ray routing 0.49 ms; manipulator 0.07 ms.
+XR Editor: graph lab: frames 165 fps, VR view render CPU 0.52 ms, GPU 1.38 ms, process 13.14 ms, 553 draw calls.
+XR Editor: graph lab: view root: render CPU 0.00 ms, GPU 0.00 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 163 call(s).
+XR Editor: graph lab: view @SubViewportContainer@10230/@SubViewport@10231: render CPU 0.00 ms, GPU 0.00 ms, visible 2 call(s) 2 object(s) 824 primitive(s), shadow 0 call(s), canvas 0 call(s).
+XR Editor: graph lab: view XRESimulator/XRESimulatorWindow: render CPU 0.52 ms, GPU 1.38 ms, visible 512 call(s) 512 object(s) 162592 primitive(s), shadow 0 call(s), canvas 21 call(s).
+XR Editor: graph lab: view Badge/Viewport: render CPU 0.03 ms, GPU 0.02 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: view FunctionsWindow/Viewport: render CPU 0.14 ms, GPU 0.04 ms, visible 0 call(s) 0 object(s) 0 primitive(s), shadow 0 call(s), canvas 10 call(s).
+XR Editor: graph lab: done.
