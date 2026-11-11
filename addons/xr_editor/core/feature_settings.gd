@@ -827,16 +827,16 @@ const DEFINITIONS: Dictionary[StringName, Dictionary] = {
 	RAY_PICKING: {
 		"category": Category.GRAPHICS,
 		"title": "Ray picking",
-		"values": [EACH_CALL, PER_FRAME],
-		"labels": ["Each call", "Per frame"],
-		"hint": "How the graph finds what a hand's ray is on. Each call: worked out every time it is asked, as before. Per frame: the same ray asked again in a frame, with nothing changed, gets the first answer; less CPU. The same answers.",
+		"values": [PER_FRAME, EACH_CALL],
+		"labels": ["Per frame", "Each call"],
+		"hint": "How the graph finds what a hand's ray is on. Per frame: the same ray asked again in a frame, with nothing changed, gets the first answer; less CPU. Each call: worked out every time it is asked, as before D-174. The same answers.",
 	},
 	WIRE_PICKING: {
 		"category": Category.GRAPHICS,
 		"title": "Wire picking",
-		"values": [SCRIPT, NATIVE],
-		"labels": ["Script", "Native"],
-		"hint": "How a ray finds the wires it passes near. Script: in GDScript, as before. Native: in the plugin's C++ part, in one call; less CPU on large graphs. The same wires.",
+		"values": [NATIVE, SCRIPT],
+		"labels": ["Native", "Script"],
+		"hint": "How a ray finds the wires it passes near. Native: in the plugin's C++ part, in one call; less CPU on large graphs. Script: in GDScript, as before D-174. The same wires.",
 	},
 	EXEC_ARROWS: {
 		"category": Category.EDITOR,

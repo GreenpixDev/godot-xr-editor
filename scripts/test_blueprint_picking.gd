@@ -1131,7 +1131,7 @@ func _picking_rays() -> Array[PackedVector3Array]:
 
 ## Wire picking (D-169): Native finds the wire, its knot, piece and point Script does, for every ray.
 func _test_wire_picking() -> void:
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.WIRE_PICKING) == XREFeatureSettings.SCRIPT, "wires are picked in GDScript by default")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.WIRE_PICKING) == XREFeatureSettings.NATIVE, "wires are picked natively by default (D-174)")
 	var big := _picking_graph()
 	_canvas.set_bends_shown(true)
 	_canvas.center_graph(big)
@@ -1160,7 +1160,7 @@ func _test_wire_picking() -> void:
 ## Ray picking (D-169): Per frame answers a ray asked again in the frame as Each call does, all it notes too, and
 ## asks again once the cards turn to another head or the graph changes.
 func _test_ray_cache() -> void:
-	_check(XREFeatureSettings.get_default(XREFeatureSettings.RAY_PICKING) == XREFeatureSettings.EACH_CALL, "rays are asked each time by default")
+	_check(XREFeatureSettings.get_default(XREFeatureSettings.RAY_PICKING) == XREFeatureSettings.PER_FRAME, "rays are answered once a frame by default (D-174)")
 	var big := _picking_graph()
 	_canvas.set_bends_shown(true)
 	_canvas.center_graph(big)
