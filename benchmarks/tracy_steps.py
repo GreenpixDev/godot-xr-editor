@@ -1,7 +1,7 @@
 """Per-step tables of the engine's and GDScript's zones from Tracy captures of a graph lab run on the PC
 (scripts/xr_editor.py --tracy; docs/performance_plan.md step 1.5, D-160; docs/profiling_builds.md).
 
-Usage: py benchmarks/tracy_steps.py logs/editor_<runtime>_<time> [--top N] [--thread ID] [--zone NAME ...]
+Usage: py benchmarks/tracy_steps.py logs/editor_<runtime>_<time> [--top N] [--thread ID] [--zone NAME ...] [--no-cache]
   logs/editor_<runtime>_<time>   the run's stem (its log without .log): its captures are
                                  logs/editor_<runtime>_<time>_tracy_<n>_<step>.tracy
 
@@ -16,6 +16,8 @@ and the own time of GDScript zones summed by script file. GDScript zones include
 from a script (system calls), under the calling script's file and line. --zone lists those zones' total time per frame across the
 steps, one column each.
 A zone's own time includes work in it that has no zone of its own (C++ without GodotProfileZone).
+The export takes from half a minute to minutes a capture; its sums are kept beside the capture
+(benchmarks/tracy_cache.py), so only the first call on a run is slow. --no-cache exports again.
 """
 from __future__ import annotations
 
@@ -29,8 +31,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import build_engine  # noqa: E402
+import tracy_cache  # noqa: E402
 
 CAPTURE = re.compile(r"_tracy_(\d+)_([a-z_0-9]+)\.tracy$")
+# Of what export returns: raise it when that changes, and the kept sums are worked out again.
+CACHE_VERSION = 1
 FRAME_ZONE = "Main::iteration"
 PLUGIN = "res://addons/xr_editor/"
 # The engine's top folders, for the summary by area; the source paths are absolute (MSVC's __FILE__).
@@ -57,7 +62,7 @@ def export(capture: Path, self_time: bool) -> dict[Key, list[int]]:
             continue
     if process.wait() != 0:
         sys.exit(f"tracy_steps: tracy-csvexport failed on {capture.name}")
-    return totals
+    return dict(totals)
 
 
 def area(file: str) -> str:
@@ -86,6 +91,7 @@ def main() -> None:
     parser.add_argument("--top", type=int, default=25)
     parser.add_argument("--thread", help="thread id to count (default: the one with Main::iteration)")
     parser.add_argument("--zone", action="append", default=[], help="a zone to compare across the steps; repeatable")
+    parser.add_argument("--no-cache", action="store_true", help="export the captures again, not the sums kept beside them")
     options = parser.parse_args()
     stem = Path(options.stem)
     if stem.suffix == ".log":
@@ -97,8 +103,8 @@ def main() -> None:
     compared: list[tuple[str, dict[str, float]]] = []
     for capture in captures:
         number, step = CAPTURE.search(capture.name).groups()
-        total = export(capture, False)
-        own = export(capture, True)
+        total = tracy_cache.cached(capture, "steps_total", CACHE_VERSION, lambda: export(capture, False), not options.no_cache)
+        own = tracy_cache.cached(capture, "steps_own", CACHE_VERSION, lambda: export(capture, True), not options.no_cache)
         frames_by_thread = {k[3]: v[0] for k, v in total.items() if k[0] == FRAME_ZONE}
         print(f"\n### {number} {step}\n")
         if not frames_by_thread:

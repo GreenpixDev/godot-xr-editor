@@ -72,6 +72,8 @@ scripts/build_gdextension.sh  сборка нативной части: Windows 
 scripts/build_engine.py    сборка неизменённого Godot 4.7.2 с профайлером вне репозитория (%LOCALAPPDATA%\xre): tracy — редактор Windows, perfetto — APK для Quest (D-160, docs/profiling_builds.md)
 benchmarks/tracy_steps.py, perfetto_steps.py  таблицы зон по шагам лаборатории из записей Tracy (xr_editor.py --tracy) и трасс Perfetto (quest.py --perfetto)
 benchmarks/tracy_process.py  состав фазы `process` по вложенности зон Tracy: части плагина, C++ узлов, симулятор и лаборатория
+benchmarks/tracy_cache.py  кэш сумм обоих скриптов рядом с захватом Tracy: экспорт CSV идёт один раз на захват (D-175)
+benchmarks/quest_series.py  серия прогонов лаборатории на шлеме (`run`: одна копия кода, повтор сорвавшегося, series.md) и сводная таблица логов (`table`) (D-175)
 docs/                      план и дневник решений (на русском)
 spikes/                    отдельные проекты спайков, не часть плагина (.gdignore): horizon_probe/ — редактор на Horizon OS (D-017), с сырыми логами; comp_layer/ — панель на композиционном слое против панели в кадре (D-156)
 ```

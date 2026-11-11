@@ -344,6 +344,15 @@ static func compat_engine_args() -> PackedStringArray:
 	return PackedStringArray(["--rendering-method", "gl_compatibility", "--rendering-driver", "opengl3"])
 
 
+## The user arguments of the editor that repeats the base steps on Compatibility: the run's own settings
+## ([constant FEATURE_FLAG] in [param user_args]) go along, or its steps would be measured with the defaults.
+static func compat_restart_args(user_args: PackedStringArray) -> PackedStringArray:
+	var args := PackedStringArray([CLI_FLAG, BASE_FLAG, COMPAT_ARG])
+	for arg: String in user_args:
+		if arg.begins_with(FEATURE_FLAG): args.append(arg)
+	return args
+
+
 ## The command line of [constant GAME_SCENE] as a game, on Compatibility if [param compat], one second a step if [param fast].
 static func game_args(compat: bool, fast: bool) -> PackedStringArray:
 	var args := PackedStringArray(["--path", ProjectSettings.globalize_path("res://"), "--scene", GAME_SCENE])
@@ -418,7 +427,7 @@ func _process(delta: float) -> void:
 		if _steps == BASE_STEPS and not OS.get_cmdline_user_args().has(FAST_FLAG):
 			print(_LOG_PREFIX, "graph lab: leaving for Compatibility.")
 			set_process(false)
-			XREStandalone.open_editor_in_vr(PackedStringArray([CLI_FLAG, BASE_FLAG, COMPAT_ARG]), _document.get_scene_root().scene_file_path, compat_engine_args())
+			XREStandalone.open_editor_in_vr(compat_restart_args(OS.get_cmdline_user_args()), _document.get_scene_root().scene_file_path, compat_engine_args())
 			return
 		print(_LOG_PREFIX, "graph lab: done.")
 		if OS.get_cmdline_user_args().has(FAST_FLAG): get_tree().quit()

@@ -1076,6 +1076,12 @@ func _test_lab_steps_and_features() -> void:
 	for bad: String in ["--xre-graph-lab-steps=open,Open-1", "--xre-graph-lab-steps=", "--xre-lab-feature=antialiasing=nine",
 			"--xre-lab-feature=no_such=on", "--xre-lab-feature=antialiasing"]:
 		_check(not XREGraphLab.flag_errors(PackedStringArray([bad])).is_empty(), "the run doesn't start with %s" % bad)
+	var restart := XREGraphLab.compat_restart_args(PackedStringArray(["--xre-graph-lab", "--xre-graph-lab-base",
+			"--xre-lab-feature=antialiasing=off", "--xre-graph-lab-steps=open", "--xre-lab-feature=exec_arrows=at_end"]))
+	_check(restart == PackedStringArray(["--xre-graph-lab", "--xre-graph-lab-base", "--xre-lab-compat",
+			"--xre-lab-feature=antialiasing=off", "--xre-lab-feature=exec_arrows=at_end"]),
+			"the editor on Compatibility gets the run's settings, not its list of steps: %s" % restart)
+	_check(XREGraphLab.lab_features(restart).size() == 2 and XREGraphLab.flag_errors(restart).is_empty(), "and reads them as the first editor did")
 	var file := OS.get_temp_dir().path_join("xre_lab_features_%d.cfg" % OS.get_process_id())
 	if FileAccess.file_exists(file): DirAccess.remove_absolute(file)
 	var store := XREFeatureSettings.new(file)

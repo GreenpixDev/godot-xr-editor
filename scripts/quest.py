@@ -41,7 +41,10 @@ this PC, over USB with adb (docs/decisions.md, D-018).
    awake, with the session focused and no boundary setup in the way. The log stops by
    itself after "graph lab: done" (and the traces under way), and the sensor and Guardian
    are on again before the script ends, also after Ctrl+C. Without it the headset is left
-   as it is (the Rider configuration). A graph lab step during
+   as it is (the Rider configuration). A headset that slept is left alone for WAKE_SETTLE s
+   after it wakes, the Link service's dialog is closed if it is on top, an editor that loses
+   its surface at start is started once more, and the editor is closed when the run ends.
+   A graph lab step during
    which the session left focus is restarted by the lab ("graph lab: away in <step>"); the GPU
    and Perfetto traces of the cut attempt get .void after their name, and the step tables
    leave that attempt out.
@@ -71,6 +74,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import build_engine
@@ -108,6 +112,17 @@ PROXIMITY_OFF = "am broadcast -a com.oculus.vrpowermanager.prox_close"
 PROXIMITY_ON = "am broadcast -a com.oculus.vrpowermanager.automation_disable"
 # 1: Guardian paused, no boundary setup when a headset lying on a desk wakes; reset by a restart.
 GUARDIAN_PAUSE = "debug.oculus.guardian_pause"
+# Seconds a headset that was asleep is left alone after it wakes, before the editor starts. While the
+# screen comes on, the shell brings up its own activities and may pause the editor's panel 0.02-0.05 s
+# after its surface is made; Vulkan then finds the surface gone (SURFACE_FAILED) and the lab never
+# starts. 2026-11-11: 6 of 16 editors started within a second of the wake failed so, 0 of 5 started
+# 15 s after it (logs quest_2026-11-11T12-10-41 ... T13-41-02).
+WAKE_SETTLE = 15
+# The engine's line when the panel's surface is gone before Vulkan connects to it.
+SURFACE_FAILED = "Couldn't create Android Surface"
+# The headset's Link service: its "Link available" dialog takes the focus from the editor's panel,
+# and the editor then stays at its start (scripts/quest_link.py).
+LINK_SERVICE = "com.meta.pclinkservice.server"
 # Printed by the engine every frame in the editor (D-004).
 NOISE = ('Condition "active_sets.is_empty()" is true', "at: sync_action_sets (")
 # Perfetto's own folder for traces: perfetto, run as the shell user, may write there.
@@ -230,7 +245,9 @@ def stage(files: list[str]) -> None:
 def remote_times(adb: Adb) -> dict[str, int]:
     """Modification times, in seconds, of the project's files in the headset,
     by path relative to the project; .godot/ is left out."""
-    listing = adb.shell(f"cd '{REMOTE}' 2>/dev/null && find . -path ./.godot -prune -o -type f -exec stat -c '%Y %n' {{}} +")
+    # No folder yet (the project's first copy to this headset): cd fails, and nothing is listed.
+    listing = adb.run("shell", f"cd '{REMOTE}' 2>/dev/null && find . -path ./.godot -prune -o -type f -exec stat -c '%Y %n' {{}} +",
+                      check=False)
     times = {}
     for line in listing.splitlines():
         stamp, _, path = line.partition(" ")
@@ -244,7 +261,7 @@ def deploy(adb: Adb) -> None:
         sys.exit("quest: the Android library is missing; run scripts/build_gdextension.sh android")
     files = project_files()
     remote = remote_times(adb)
-    if not remote and "yes" in adb.shell(f"test -f '{REMOTE}/project.godot' && echo yes"):
+    if not remote and "yes" in adb.run("shell", f"test -f '{REMOTE}/project.godot' && echo yes", check=False):
         sys.exit("quest: couldn't list the project in the headset; not copying, so nothing changed there is overwritten")
     newer_there = [path for path in files if remote.get(path, 0) > int((REPO / path).stat().st_mtime)]
     for path in newer_there:
@@ -258,12 +275,31 @@ def deploy(adb: Adb) -> None:
         print(f"quest: {summary[-1]}")
 
 
+def close_editors(adb: Adb) -> None:
+    """Both editors, the Store's and the profiler build: one left running keeps the VR session,
+    and the other then fails to create its surface."""
+    for package in dict.fromkeys((PACKAGE, STORE_PACKAGE, build_engine.APK_PACKAGE)):
+        adb.run("shell", f"am force-stop {package}", check=False)
+
+
+def top_activity(adb: Adb) -> str:
+    for line in adb.run("shell", "dumpsys activity activities", check=False).splitlines():
+        if "topResumedActivity" in line:
+            return line.strip()
+    return ""
+
+
+def close_link(adb: Adb) -> None:
+    """Stops the Link service if its dialog or its stream is on top: the editor's panel behind it
+    doesn't get the focus (2026-11-10: the lab never started)."""
+    if LINK_SERVICE in top_activity(adb):
+        adb.run("shell", f"am force-stop {LINK_SERVICE}", check=False)
+        print("quest: unattended: the Link service was on top, stopped it")
+
+
 def open_in_vr(adb: Adb, scene: str | None, engine_args: list[str], plugin_args: list[str]) -> None:
     print("quest: closing the Godot editor in the headset (unsaved changes there are lost)")
-    # Both editors, the Store's and the profiler build: one left running keeps the VR session,
-    # and the other then fails to create its surface.
-    for package in dict.fromkeys((PACKAGE, STORE_PACKAGE, build_engine.APK_PACKAGE)):
-        adb.shell(f"am force-stop {package}")
+    close_editors(adb)
     # One item per line, as on Godot's command line: the scene (res://...) and
     # the engine's arguments, then after a -- line the plugin's.
     items = ([scene] if scene else []) + engine_args + (["--"] + plugin_args if plugin_args else [])
@@ -438,12 +474,22 @@ class PerfettoTracer:
             self.busy.release()
 
 
+def is_awake(adb: Adb) -> bool:
+    return "mWakefulness=Awake" in adb.run("shell", "dumpsys power", check=False)
+
+
+def settle(seconds: float = WAKE_SETTLE) -> None:
+    """After a wake: the shell's own start is over before the editor's begins (WAKE_SETTLE)."""
+    print(f"quest: unattended: the headset was asleep; waiting {seconds:g} s for its shell before the editor starts")
+    time.sleep(seconds)
+
+
 def wake(adb: Adb) -> None:
     """Wakes a sleeping headset and waits until it is awake: an editor started while it sleeps can't
-    create its surface, and the task last on screen (another editor, say) comes back instead."""
+    create its surface, and the task last on screen (another editor, say) comes back instead.
+    Awake isn't ready yet: see settle."""
     for attempt in range(20):
-        power = adb.run("shell", "dumpsys power", check=False)
-        if "mWakefulness=Awake" in power:
+        if is_awake(adb):
             if attempt:
                 print("quest: unattended: the headset was asleep, woke it")
             return
@@ -477,9 +523,10 @@ def log_stem() -> Path:
 
 
 def follow_log(adb: Adb, stem: Path, profiler: GpuProfiler | None = None, tracer: PerfettoTracer | None = None,
-               stop_after_lab: bool = False) -> int:
+               stop_after_lab: bool = False, reopen: Callable[[], None] | None = None) -> int:
     """Writes and shows the log until Ctrl+C, or with [stop_after_lab] until the graph lab is done
-    and the traces under way are written."""
+    and the traces under way are written. With [reopen], an editor that lost its surface at start
+    (SURFACE_FAILED) is started once more with it; a second loss ends the run as failed."""
     logs = REPO / "logs"
     logs.mkdir(exist_ok=True)
     log = stem.with_suffix(".log")
@@ -488,6 +535,7 @@ def follow_log(adb: Adb, stem: Path, profiler: GpuProfiler | None = None, tracer
     # Unattended, nobody stops a run whose lab never starts or stalls (the editor failed to start,
     # another app holds the VR session): the log closes after LAB_SILENCE s without a lab line.
     last_lab = time.monotonic()
+    reopened = False
     try:
         with open(log, "wb") as file:
             assert process.stdout is not None
@@ -499,6 +547,15 @@ def follow_log(adb: Adb, stem: Path, profiler: GpuProfiler | None = None, tracer
                 elif stop_after_lab and time.monotonic() - last_lab > LAB_SILENCE:
                     print(f"quest: error: no graph lab line for {LAB_SILENCE} s; log closed, the run failed")
                     return 1
+                if reopen is not None and SURFACE_FAILED in line:
+                    if reopened:
+                        print("quest: error: the editor lost its surface at start twice; log closed, the run failed")
+                        return 1
+                    reopened = True
+                    print("quest: warning: the editor lost its surface at start (the shell paused its panel); starting it again")
+                    time.sleep(3)
+                    reopen()
+                    last_lab = time.monotonic()
                 if away := LAB_AWAY.search(line):
                     print(f"quest: warning: the session left focus in step {away.group(1)} ({away.group(2)}); "
                           "the lab starts the step again. Was the headset taken off, or did it sleep (--unattended)?")
@@ -601,18 +658,29 @@ def main() -> int:
         profiler.enable()
         if options.no_open:
             print("quest: --no-open: restart the editor in the headset for the detailed mode to take hold")
+    reopen: Callable[[], None] | None = None
     try:
         if options.unattended:
+            asleep = not is_awake(adb)
             set_unattended(adb, True)
+            if not options.no_open:
+                if asleep:
+                    settle()
+                close_link(adb)
+                reopen = lambda: open_in_vr(adb, options.scene, options.engine, plugin_args)
         if not options.no_open:
             open_in_vr(adb, options.scene, options.engine, plugin_args)
         if not options.no_log:
-            return follow_log(adb, stem, profiler, tracer, options.unattended)
+            return follow_log(adb, stem, profiler, tracer, options.unattended, reopen)
         return 0
     finally:
         if profiler is not None:
             profiler.disable()
         if options.unattended:
+            if not options.no_open:
+                # Left open, it keeps the VR session and stays above the Link dialog of the next run.
+                close_editors(adb)
+                print("quest: unattended: the editor in the headset is closed")
             set_unattended(adb, False)
 
 

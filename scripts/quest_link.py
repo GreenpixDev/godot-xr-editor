@@ -30,7 +30,7 @@ from pathlib import Path
 
 import quest
 
-LINK_SERVICE = "com.meta.pclinkservice.server"
+LINK_SERVICE = quest.LINK_SERVICE
 DIALOG = "OculusLinkAvailableDialogActivity"
 STREAMING = f"{LINK_SERVICE}/com.oculus.xrstreamingclient.MainActivity"
 PRIMARY_BUTTON = f"{LINK_SERVICE}:id/oc_dialog_primary_button"
@@ -43,13 +43,6 @@ PC_SESSION = re.compile(r"New session started in wireless mode: (\d)")
 PC_LOGS = Path(os.environ.get("LOCALAPPDATA", "")) / "Oculus"
 
 
-def top_activity(adb: quest.Adb) -> str:
-    for line in adb.run("shell", "dumpsys activity activities", check=False).splitlines():
-        if "topResumedActivity" in line:
-            return line.strip()
-    return ""
-
-
 def service_windows(adb: quest.Adb) -> list[str]:
     """The Link service's windows, the topmost first."""
     return [line.strip() for line in adb.run("shell", "dumpsys window windows", check=False).splitlines()
@@ -57,7 +50,7 @@ def service_windows(adb: quest.Adb) -> list[str]:
 
 
 def streaming(adb: quest.Adb) -> bool:
-    return STREAMING in top_activity(adb)
+    return STREAMING in quest.top_activity(adb)
 
 
 def stop_service(adb: quest.Adb) -> None:
@@ -76,7 +69,7 @@ def reconnect_usb(adb: quest.Adb) -> None:
 def wait_for(adb: quest.Adb, what: str, seconds: float) -> bool:
     limit = time.time() + seconds
     while time.time() < limit:
-        if what in top_activity(adb):
+        if what in quest.top_activity(adb):
             return True
         time.sleep(1)
     return False
@@ -141,15 +134,14 @@ def link_on(adb: quest.Adb) -> int:
         print("quest_link: Link already streams")
         return 0
     # A Godot editor left open in the headset (after quest.py --unattended) stays on top of the Link dialog.
-    for package in (quest.STORE_PACKAGE, quest.build_engine.APK_PACKAGE):
-        adb.shell(f"am force-stop {package}")
+    quest.close_editors(adb)
     stop_service(adb)
     log = pc_log()
     offset = log.stat().st_size if log else 0
     print("quest_link: reconnecting the headset's USB")
     reconnect_usb(adb)
     if not wait_for(adb, DIALOG, 30):
-        print(f"quest_link: no Link dialog; top is {top_activity(adb)}. Is Air Link off and the Meta Horizon Link app running?",
+        print(f"quest_link: no Link dialog; top is {quest.top_activity(adb)}. Is Air Link off and the Meta Horizon Link app running?",
               file=sys.stderr)
         return 1
     # The service's splash screen stays a moment after the dialog is up.
@@ -179,7 +171,7 @@ def link_on(adb: quest.Adb) -> int:
         frames = frames or (headset_frames(adb) if streaming(adb) else None)
         session = session or pc_session_since(log, offset)
     if not frames:
-        print(f"quest_link: Link doesn't stream; top is {top_activity(adb)}", file=sys.stderr)
+        print(f"quest_link: Link doesn't stream; top is {quest.top_activity(adb)}", file=sys.stderr)
         return 1
     print(f"quest_link: headset: {frames[frames.find('Glitches'):]}")
     print(f"quest_link: PC: {session or 'no new session line in the Meta service log'}")
@@ -191,14 +183,14 @@ def link_on(adb: quest.Adb) -> int:
 def link_off(adb: quest.Adb, restore: bool) -> int:
     stop_service(adb)
     time.sleep(2)
-    print(f"quest_link: Link off; top is {top_activity(adb)}")
+    print(f"quest_link: Link off; top is {quest.top_activity(adb)}")
     if restore:
         quest.set_unattended(adb, False)
     return 0
 
 
 def status(adb: quest.Adb) -> int:
-    print(f"top: {top_activity(adb)}")
+    print(f"top: {quest.top_activity(adb)}")
     print(f"usb: {adb.run('shell', 'getprop sys.usb.config', check=False).strip()}")
     print(f"guardian pause: {adb.run('shell', f'getprop {quest.GUARDIAN_PAUSE}', check=False).strip() or '0'}")
     print(f"link streams: {streaming(adb)}")

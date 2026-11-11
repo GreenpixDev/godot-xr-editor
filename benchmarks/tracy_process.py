@@ -1,7 +1,7 @@
 """What the frame's `process` phase (main/main.cpp: the scene tree's _process of every node, scripts included)
 is made of, from Tracy captures of a graph lab run on the PC (scripts/xr_editor.py --tracy; docs/profiling_builds.md).
 
-Usage: py benchmarks/tracy_process.py logs/editor_<runtime>_<time> [--top N] [--steps a,b] [--summary]
+Usage: py benchmarks/tracy_process.py logs/editor_<runtime>_<time> [--top N] [--steps a,b] [--summary] [--no-cache]
   logs/editor_<runtime>_<time>   the run's stem: its captures are logs/editor_<runtime>_<time>_tracy_<n>_<step>.tracy
 
 Unlike benchmarks/tracy_steps.py, which sums zones over the whole frame, this nests the zones of the main thread
@@ -14,6 +14,8 @@ panels' ray routing, the manipulator) beside the rest. GDScript zones come twice
 caller's file and the function in its own), so their totals overlap; own times don't. ms per frame throughout.
 Tracy's zone on every GDScript call inflates short, frequent functions: compare its numbers with its own only,
 and carry shares, not milliseconds, to the headset.
+The export takes from half a minute to minutes a capture; a step's sums are kept beside the capture
+(benchmarks/tracy_cache.py), so only the first call on a run is slow. --no-cache exports again.
 """
 from __future__ import annotations
 
@@ -27,8 +29,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import build_engine  # noqa: E402
+import tracy_cache  # noqa: E402
 
 CAPTURE = re.compile(r"_tracy_(\d+)_([a-z_0-9]+)\.tracy$")
+# Of what sums returns (GROUPS and short included): raise it when that changes.
+CACHE_VERSION = 1
 PLUGIN = "res://addons/xr_editor/"
 ENGINE_DIRS = ("editor", "scene", "servers", "modules", "core", "main", "drivers", "platform")
 # The plugin's parts, by a piece of the script's path; the first that matches wins.
@@ -95,7 +100,12 @@ def load(capture: Path) -> tuple[list[Row], int]:
     return sorted(by_thread[thread], key=lambda r: (r[0], -r[1])), frames[thread]
 
 
-def analyse(capture: Path, top: int) -> dict[str, object] | None:
+def analyse(capture: Path, top: int, use_cache: bool = True) -> dict[str, object] | None:
+    result = tracy_cache.cached(capture, "process", CACHE_VERSION, lambda: sums(capture), use_cache)
+    return None if result is None else {**result, "top": top}
+
+
+def sums(capture: Path) -> dict[str, object] | None:
     rows, frames = load(capture)
     if frames == 0:
         return None
@@ -131,7 +141,7 @@ def analyse(capture: Path, top: int) -> dict[str, object] | None:
             children[key][0] += row[1] * ms
             children[key][1] += 1
     return {"frames": frames, "frame": sum(r[1] for r in rows if r[2] == "Main::iteration") * ms, "total": process_total,
-            "own": process_own, "groups": groups, "own_by": own_by, "total_by": total_by, "children": children, "top": top}
+            "own": process_own, "groups": dict(groups), "own_by": dict(own_by), "total_by": dict(total_by), "children": dict(children)}
 
 
 def child(result: dict[str, object], script: str) -> float:
@@ -190,6 +200,7 @@ def main() -> None:
     parser.add_argument("--top", type=int, default=30)
     parser.add_argument("--steps", default="", help="only these steps, comma-separated")
     parser.add_argument("--summary", action="store_true")
+    parser.add_argument("--no-cache", action="store_true", help="export the captures again, not the sums kept beside them")
     options = parser.parse_args()
     stem = Path(options.stem)
     captures = sorted((c for c in stem.parent.glob(stem.name + "_tracy_*.tracy") if CAPTURE.search(c.name)),
@@ -204,7 +215,7 @@ def main() -> None:
         step = f"{match.group(1)} {match.group(2)}"
         if wanted and match.group(2) not in wanted:
             continue
-        result = analyse(capture, options.top)
+        result = analyse(capture, options.top, not options.no_cache)
         if result is None:
             print(f"\n### {step}\n\nNo Main::iteration zones.")
             continue
