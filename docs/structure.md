@@ -40,6 +40,7 @@ addons/xr_editor/logic_graph/ пространственные карточки 
                            прозрачность того, что заслоняет ввод (XREBlueprintFade, D-066);
                            фокусировка на карточке или ящике под лучом — светлее, остальное темнее или прозрачное (XREBlueprintFocus, D-072)
 gdextension/               C++ (GDExtension): src/, godot-cpp/ (сабмодуль), thirdparty/openxr/
+demo/                      демо-комната Blueprints: сцена, графы станций и их .generated.gd, корневой скрипт (docs/demo_room.md); собирает scripts/build_demo_room.gd
 benchmarks/                эталонные сцены (empty, xr_view_check, xr_game_check — контрольная XR-игра, xr_handoff_game — игра для замера передачи,
                            manipulation_check — ручная проверка манипуляции в шлеме, play_check — ручная проверка play-mode),
                            frametime_report.py (отчёт по замеру), quest_fps_report.py (темп кадров на автономном шлеме по логу quest.py),

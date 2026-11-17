@@ -1,0 +1,242 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://l71jik0pbfvm"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_caoc0"]
+
+[resource]
+script = ExtResource("1_caoc0")
+nodes = Array[Dictionary]([{
+"arguments": Array[Dictionary]([{
+"class_name": "Area3D",
+"name": "area",
+"type": 24
+}]),
+"id": 1,
+"kind": "signal",
+"params": {
+"policy": "ignore",
+"signal": "area_entered",
+"target": "Button"
+},
+"position": Vector2(52.11798, 30.64035),
+"vr_depth": 0.6267456
+}, {
+"id": 2,
+"kind": "set_property",
+"params": {
+"property": "text",
+"target": "Status",
+"value": "ВОЛНА…"
+},
+"position": Vector2(403.31805, 94.10327),
+"property_type": 4,
+"vr_depth": 0.43391672
+}, {
+"id": 3,
+"kind": "for_each",
+"params": {
+"targets": Array[String](["Lamps/L1", "Lamps/L2", "Lamps/L3", "Lamps/L4", "Lamps/L5"])
+},
+"position": Vector2(912.67334, -310.53943),
+"vr_depth": 0.04748845,
+"vr_scene_bends": PackedVector3Array(715.48975, -29.9646, 0.00311023)
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "Node",
+"key": "target",
+"label": "Target",
+"name": "target",
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"default": "position",
+"key": "property",
+"label": "Property",
+"literal": true,
+"name": "property",
+"provider": "property",
+"type": 4
+}, {
+"class_name": "",
+"default": Vector2(400, 240),
+"key": "value",
+"label": "Value",
+"name": "value",
+"type": 0,
+"type_of": "property"
+}, {
+"class_name": "",
+"default": 1.0,
+"key": "seconds",
+"label": "Seconds",
+"name": "seconds",
+"non_negative": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Motion",
+"class": "XREBlueprintLibrary",
+"description": "Changes [param property] of [param target] smoothly to [param value] over [param seconds], then continues. Cancelling the run kills the Tween; what has changed stays.",
+"extra": 0,
+"icon": "",
+"keywords": "move animate interpolate slide fade",
+"name": "tween_property",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": ["Node"],
+"then": "Finished",
+"title": "Tween Property",
+"vararg": false
+},
+"id": 4,
+"kind": "call",
+"params": {
+"property": "light_energy",
+"seconds": 0.12,
+"target": "Lamps/L1",
+"value": 1.5
+},
+"position": Vector2(1652.0713, -304.96002),
+"property_type": 3,
+"vr_depth": -0.046284556
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "Node",
+"key": "target",
+"label": "Target",
+"name": "target",
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"default": "position",
+"key": "property",
+"label": "Property",
+"literal": true,
+"name": "property",
+"provider": "property",
+"type": 4
+}, {
+"class_name": "",
+"default": Vector2(400, 240),
+"key": "value",
+"label": "Value",
+"name": "value",
+"type": 0,
+"type_of": "property"
+}, {
+"class_name": "",
+"default": 1.0,
+"key": "seconds",
+"label": "Seconds",
+"name": "seconds",
+"non_negative": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Motion",
+"class": "XREBlueprintLibrary",
+"description": "Changes [param property] of [param target] smoothly to [param value] over [param seconds], then continues. Cancelling the run kills the Tween; what has changed stays.",
+"extra": 0,
+"icon": "",
+"keywords": "move animate interpolate slide fade",
+"name": "tween_property",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": ["Node"],
+"then": "Finished",
+"title": "Tween Property",
+"vararg": false
+},
+"id": 5,
+"kind": "call",
+"params": {
+"property": "light_energy",
+"seconds": 0.3,
+"target": "Lamps/L1",
+"value": 0.0
+},
+"position": Vector2(2074.4805, 148.20694),
+"property_type": 3,
+"vr_depth": 0.032199323
+}, {
+"id": 6,
+"kind": "set_property",
+"params": {
+"property": "text",
+"target": "Status",
+"value": "ГОТОВО"
+},
+"position": Vector2(1936.2515, 368.07324),
+"property_type": 4,
+"vr_depth": 0.21178806
+}])
+edges = Array[Dictionary]([{
+"from": 1,
+"from_port": 0,
+"to": 2,
+"to_port": 0
+}, {
+"from": 2,
+"from_port": 0,
+"to": 3,
+"to_port": 0
+}, {
+"from": 3,
+"from_port": 0,
+"to": 4,
+"to_port": 0
+}, {
+"from": 3,
+"from_port": 1,
+"to": 4,
+"to_port": 1
+}, {
+"from": 4,
+"from_port": 0,
+"to": 5,
+"to_port": 0
+}, {
+"from": 3,
+"from_port": 1,
+"to": 5,
+"to_port": 1
+}, {
+"from": 3,
+"from_port": 3,
+"to": 6,
+"to_port": 0
+}])
+host_path = NodePath("Station3")
+scene_path = "res://demo/blueprint_room.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.9638535, 0, -0.26643285, 0, 0.99999994, 0, 0.26643288, 0, 0.9638534, 0.28943104, 1.1513658, -0.67461914)
+vr_center = Vector2(950, 210)

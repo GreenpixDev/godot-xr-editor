@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://dacryx7hyh1ub"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_6kdt3"]
+
+[resource]
+script = ExtResource("1_6kdt3")
+nodes = Array[Dictionary]([{
+"arguments": Array[Dictionary]([]),
+"id": 1,
+"kind": "signal",
+"params": {
+"policy": "parallel",
+"signal": "ready",
+"target": "."
+},
+"position": Vector2(941.47296, 162.0936),
+"vr_depth": -0.8027502
+}])
+host_path = NodePath("Station4/Button/Cap")
+scene_path = "res://demo/blueprint_room.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.8865534, 0, -0.46262625, 0, 1, 0, 0.46262625, 0, 0.8865534, 0.4374707, 1.2454104, 0.20960832)
+vr_center = Vector2(80, 100)

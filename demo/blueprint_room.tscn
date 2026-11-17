@@ -1,0 +1,549 @@
+[gd_scene format=3 uid="uid://4vhlx3k0g2n6"]
+
+[ext_resource type="Script" uid="uid://ddbrus7ghd5uy" path="res://demo/blueprint_room.gd" id="1_40mqx"]
+[ext_resource type="Script" uid="uid://0oug1csleppi" path="res://demo/station_switch.generated.gd" id="2_0bsxx"]
+[ext_resource type="Script" uid="uid://uafs8lqhrtxi" path="res://demo/station_door.generated.gd" id="3_2pqun"]
+[ext_resource type="Script" uid="uid://7itps8mbugin" path="res://demo/station_wave.generated.gd" id="4_bkjet"]
+
+[sub_resource type="Environment" id="Environment_wpb53"]
+background_mode = 1
+background_color = Color(0.03, 0.035, 0.05, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.45, 0.5, 0.65, 1)
+ambient_light_energy = 0.6
+tonemap_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_7wocr"]
+albedo_color = Color(0.16, 0.17, 0.2, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_0bsxx"]
+size = Vector2(8, 8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2pqun"]
+albedo_color = Color(0.55, 0.55, 0.58, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bkjet"]
+size = Vector3(3.2, 0.05, 0.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4whx0"]
+albedo_color = Color(0.3, 0.3, 0.33, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_vyq67"]
+size = Vector3(0.05, 0.725, 0.05)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_op5nh"]
+albedo_color = Color(0.3, 0.3, 0.33, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_akvb6"]
+size = Vector3(0.05, 0.725, 0.05)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_s8wey"]
+albedo_color = Color(0.3, 0.3, 0.33, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_b0ir2"]
+size = Vector3(0.05, 0.725, 0.05)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2x5j2"]
+albedo_color = Color(0.3, 0.3, 0.33, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_x7r2a"]
+size = Vector3(0.05, 0.725, 0.05)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pslxi"]
+albedo_color = Color(0.25, 0.25, 0.3, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_lym11"]
+top_radius = 0.055
+bottom_radius = 0.055
+height = 0.02
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_cgghf"]
+radius = 0.04
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_y5w3s"]
+albedo_color = Color(0.9, 0.15, 0.15, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_ilyhd"]
+top_radius = 0.035
+bottom_radius = 0.035
+height = 0.03
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ojv83"]
+albedo_color = Color(0.35, 0.35, 0.4, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_s1i4b"]
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.25
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wsqbr"]
+albedo_color = Color(0.9, 0.85, 0.7, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_o1h5l"]
+radius = 0.045
+height = 0.09
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_puylh"]
+albedo_color = Color(0.25, 0.25, 0.3, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_tv4re"]
+top_radius = 0.055
+bottom_radius = 0.055
+height = 0.02
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_6kw00"]
+radius = 0.04
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_agtws"]
+albedo_color = Color(0.9, 0.15, 0.15, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_ku15d"]
+top_radius = 0.035
+bottom_radius = 0.035
+height = 0.03
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_5vkov"]
+albedo_color = Color(0.35, 0.35, 0.4, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_r852x"]
+size = Vector3(0.03, 0.4, 0.03)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_777gp"]
+albedo_color = Color(0.35, 0.35, 0.4, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lqigf"]
+albedo_color = Color(0.35, 0.35, 0.4, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_3qcic"]
+size = Vector3(0.43, 0.03, 0.03)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6wmhq"]
+albedo_color = Color(0.15, 0.58, 0.77, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_d5jrt"]
+size = Vector3(0.37, 0.4, 0.02)
+
+[sub_resource type="Animation" id="Animation_88onq"]
+length = 0.6
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Door:position:x")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.6),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [-0.4, 0.0]
+}
+
+[sub_resource type="Animation" id="Animation_6xj52"]
+length = 0.6
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Door:position:x")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.6),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [0.0, -0.4]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_6fme1"]
+_data = {
+&"close": SubResource("Animation_88onq"),
+&"open": SubResource("Animation_6xj52")
+}
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_st1qt"]
+albedo_color = Color(0.25, 0.25, 0.3, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_morea"]
+top_radius = 0.055
+bottom_radius = 0.055
+height = 0.02
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_iuwyg"]
+radius = 0.04
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mcvyh"]
+albedo_color = Color(0.9, 0.15, 0.15, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_kmvtj"]
+top_radius = 0.035
+bottom_radius = 0.035
+height = 0.03
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kuk6o"]
+albedo_color = Color(0.65, 0.1625, 0.13, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_j7rbf"]
+radius = 0.035
+height = 0.07
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_geq6j"]
+albedo_color = Color(0.65, 0.42249995, 0.097500004, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_f1t7h"]
+radius = 0.035
+height = 0.07
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_qyh6r"]
+albedo_color = Color(0.61749995, 0.61749995, 0.19500001, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_f345o"]
+radius = 0.035
+height = 0.07
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bdof8"]
+albedo_color = Color(0.1625, 0.585, 0.26, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_nrlix"]
+radius = 0.035
+height = 0.07
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ifclh"]
+albedo_color = Color(0.19500001, 0.3575, 0.65, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_fqfh0"]
+radius = 0.035
+height = 0.07
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8b2x2"]
+albedo_color = Color(0.25, 0.25, 0.3, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_bovmd"]
+top_radius = 0.055
+bottom_radius = 0.055
+height = 0.02
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_s7ops"]
+radius = 0.04
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_qb22h"]
+albedo_color = Color(0.9, 0.15, 0.15, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_lcdgd"]
+top_radius = 0.035
+bottom_radius = 0.035
+height = 0.03
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_j2uv8"]
+albedo_color = Color(0.35, 0.35, 0.4, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_g5mxs"]
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.25
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xbyln"]
+albedo_color = Color(0.9, 0.85, 0.7, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_kgqxh"]
+radius = 0.045
+height = 0.09
+
+[node name="BlueprintRoom" type="Node3D" unique_id=1368623362]
+script = ExtResource("1_40mqx")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2061324002]
+environment = SubResource("Environment_wpb53")
+
+[node name="Moon" type="DirectionalLight3D" parent="." unique_id=421938152]
+transform = Transform3D(0.90630776, -0.34618863, 0.24240388, 0, 0.57357645, 0.81915206, -0.42261827, -0.74240386, 0.5198368, 0, 0, 0)
+light_color = Color(0.7, 0.78, 1, 1)
+light_energy = 0.25
+
+[node name="Floor" type="MeshInstance3D" parent="." unique_id=304297582]
+material_override = SubResource("StandardMaterial3D_7wocr")
+mesh = SubResource("PlaneMesh_0bsxx")
+
+[node name="Table" type="MeshInstance3D" parent="." unique_id=1134551682]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, -0.8)
+material_override = SubResource("StandardMaterial3D_2pqun")
+mesh = SubResource("BoxMesh_bkjet")
+
+[node name="Legs" type="Node3D" parent="." unique_id=1643004161]
+
+[node name="Leg0" type="MeshInstance3D" parent="Legs" unique_id=1320891016]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.3625, -0.5)
+material_override = SubResource("StandardMaterial3D_4whx0")
+mesh = SubResource("BoxMesh_vyq67")
+
+[node name="Leg1" type="MeshInstance3D" parent="Legs" unique_id=2147028649]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.3625, -0.5)
+material_override = SubResource("StandardMaterial3D_op5nh")
+mesh = SubResource("BoxMesh_akvb6")
+
+[node name="Leg2" type="MeshInstance3D" parent="Legs" unique_id=1763681259]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.3625, -1.1)
+material_override = SubResource("StandardMaterial3D_s8wey")
+mesh = SubResource("BoxMesh_b0ir2")
+
+[node name="Leg3" type="MeshInstance3D" parent="Legs" unique_id=2078145751]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.3625, -1.1)
+material_override = SubResource("StandardMaterial3D_2x5j2")
+mesh = SubResource("BoxMesh_x7r2a")
+
+[node name="Station1" type="Node3D" parent="." unique_id=955662035]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.2, 0.775, -0.8)
+script = ExtResource("2_0bsxx")
+metadata/_xre_blueprint = "res://demo/station_switch.tres"
+
+[node name="ButtonBase" type="MeshInstance3D" parent="Station1" unique_id=1146738737]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0.2)
+material_override = SubResource("StandardMaterial3D_pslxi")
+mesh = SubResource("CylinderMesh_lym11")
+
+[node name="Button" type="Area3D" parent="Station1" unique_id=712058251]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, 0.2)
+
+[node name="Shape" type="CollisionShape3D" parent="Station1/Button" unique_id=1620275309]
+shape = SubResource("SphereShape3D_cgghf")
+
+[node name="Cap" type="MeshInstance3D" parent="Station1/Button" unique_id=28312293]
+material_override = SubResource("StandardMaterial3D_y5w3s")
+mesh = SubResource("CylinderMesh_ilyhd")
+
+[node name="Sign" type="Label3D" parent="Station1" unique_id=438253241]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.004, 0.33)
+pixel_size = 0.0012
+modulate = Color(0.85, 0.92, 1, 1)
+text = "1 · ВЫКЛЮЧАТЕЛЬ
+событие, переменная, ветвление"
+font_size = 40
+outline_size = 6
+
+[node name="Stand" type="MeshInstance3D" parent="Station1" unique_id=1139627619]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.125, -0.1)
+material_override = SubResource("StandardMaterial3D_ojv83")
+mesh = SubResource("CylinderMesh_s1i4b")
+
+[node name="Bulb" type="MeshInstance3D" parent="Station1" unique_id=273380726]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -0.1)
+material_override = SubResource("StandardMaterial3D_wsqbr")
+mesh = SubResource("SphereMesh_o1h5l")
+
+[node name="Lamp" type="OmniLight3D" parent="Station1" unique_id=1146091599]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.38, -0.1)
+light_color = Color(1, 0.85, 0.55, 1)
+light_energy = 0.0
+omni_range = 0.9
+
+[node name="Status" type="Label3D" parent="Station1" unique_id=298129942]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.07, 0.1)
+pixel_size = 0.0015
+modulate = Color(0.85, 0.92, 1, 1)
+text = "ВЫКЛ"
+font_size = 48
+outline_size = 6
+
+[node name="Station2" type="Node3D" parent="." unique_id=135414798]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.4, 0.775, -0.8)
+script = ExtResource("3_2pqun")
+metadata/_xre_blueprint = "res://demo/station_door.tres"
+
+[node name="ButtonBase" type="MeshInstance3D" parent="Station2" unique_id=1961873776]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0.2)
+material_override = SubResource("StandardMaterial3D_puylh")
+mesh = SubResource("CylinderMesh_tv4re")
+
+[node name="Button" type="Area3D" parent="Station2" unique_id=158240829]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, 0.2)
+
+[node name="Shape" type="CollisionShape3D" parent="Station2/Button" unique_id=157388722]
+shape = SubResource("SphereShape3D_6kw00")
+
+[node name="Cap" type="MeshInstance3D" parent="Station2/Button" unique_id=795315825]
+material_override = SubResource("StandardMaterial3D_agtws")
+mesh = SubResource("CylinderMesh_ku15d")
+
+[node name="Sign" type="Label3D" parent="Station2" unique_id=2079369763]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.004, 0.33)
+pixel_size = 0.0012
+modulate = Color(0.85, 0.92, 1, 1)
+text = "2 · ДВЕРЬ
+ждёт конца анимации"
+font_size = 40
+outline_size = 6
+
+[node name="PostLeft" type="MeshInstance3D" parent="Station2" unique_id=109687003]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.2, 0.2, -0.1)
+material_override = SubResource("StandardMaterial3D_5vkov")
+mesh = SubResource("BoxMesh_r852x")
+
+[node name="PostRight" type="MeshInstance3D" parent="Station2" unique_id=451846338]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.2, 0.2, -0.1)
+material_override = SubResource("StandardMaterial3D_777gp")
+mesh = SubResource("BoxMesh_r852x")
+
+[node name="Lintel" type="MeshInstance3D" parent="Station2" unique_id=554320068]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.415, -0.1)
+material_override = SubResource("StandardMaterial3D_lqigf")
+mesh = SubResource("BoxMesh_3qcic")
+
+[node name="Door" type="MeshInstance3D" parent="Station2" unique_id=1051628955]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, -0.13)
+material_override = SubResource("StandardMaterial3D_6wmhq")
+mesh = SubResource("BoxMesh_d5jrt")
+
+[node name="Status" type="Label3D" parent="Station2" unique_id=1416246248]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.07, 0.1)
+pixel_size = 0.0015
+modulate = Color(0.85, 0.92, 1, 1)
+text = "ЗАКРЫТО"
+font_size = 48
+outline_size = 6
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Station2" unique_id=16424501]
+libraries/ = SubResource("AnimationLibrary_6fme1")
+
+[node name="Station3" type="Node3D" parent="." unique_id=1932352424]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.4, 0.775, -0.8)
+script = ExtResource("4_bkjet")
+metadata/_xre_blueprint = "res://demo/station_wave.tres"
+
+[node name="ButtonBase" type="MeshInstance3D" parent="Station3" unique_id=696322728]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0.2)
+material_override = SubResource("StandardMaterial3D_st1qt")
+mesh = SubResource("CylinderMesh_morea")
+
+[node name="Button" type="Area3D" parent="Station3" unique_id=1188702262]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, 0.2)
+
+[node name="Shape" type="CollisionShape3D" parent="Station3/Button" unique_id=1074286115]
+shape = SubResource("SphereShape3D_iuwyg")
+
+[node name="Cap" type="MeshInstance3D" parent="Station3/Button" unique_id=1845851505]
+material_override = SubResource("StandardMaterial3D_mcvyh")
+mesh = SubResource("CylinderMesh_kmvtj")
+
+[node name="Sign" type="Label3D" parent="Station3" unique_id=689618763]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.004, 0.33)
+pixel_size = 0.0012
+modulate = Color(0.85, 0.92, 1, 1)
+text = "3 · ВОЛНА
+один цикл, пять ламп"
+font_size = 40
+outline_size = 6
+
+[node name="Status" type="Label3D" parent="Station3" unique_id=1447325310]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.07, 0.1)
+pixel_size = 0.0015
+modulate = Color(0.85, 0.92, 1, 1)
+text = "ГОТОВО"
+font_size = 48
+outline_size = 6
+
+[node name="Lamps" type="Node3D" parent="Station3" unique_id=998132126]
+
+[node name="L1" type="OmniLight3D" parent="Station3/Lamps" unique_id=1732497075]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.32, 0.32, -0.1)
+light_color = Color(1, 0.25, 0.2, 1)
+light_energy = 0.0
+omni_range = 0.6
+
+[node name="B1" type="MeshInstance3D" parent="Station3/Lamps" unique_id=1704891768]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.32, 0.25, -0.1)
+material_override = SubResource("StandardMaterial3D_kuk6o")
+mesh = SubResource("SphereMesh_j7rbf")
+
+[node name="L2" type="OmniLight3D" parent="Station3/Lamps" unique_id=2033585953]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.16, 0.32, -0.1)
+light_color = Color(1, 0.65, 0.15, 1)
+light_energy = 0.0
+omni_range = 0.6
+
+[node name="B2" type="MeshInstance3D" parent="Station3/Lamps" unique_id=27114406]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.16, 0.25, -0.1)
+material_override = SubResource("StandardMaterial3D_geq6j")
+mesh = SubResource("SphereMesh_f1t7h")
+
+[node name="L3" type="OmniLight3D" parent="Station3/Lamps" unique_id=1543582898]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.32, -0.1)
+light_color = Color(0.95, 0.95, 0.3, 1)
+light_energy = 0.0
+omni_range = 0.6
+
+[node name="B3" type="MeshInstance3D" parent="Station3/Lamps" unique_id=1391044684]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, -0.1)
+material_override = SubResource("StandardMaterial3D_qyh6r")
+mesh = SubResource("SphereMesh_f345o")
+
+[node name="L4" type="OmniLight3D" parent="Station3/Lamps" unique_id=1197369904]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.16, 0.32, -0.1)
+light_color = Color(0.25, 0.9, 0.4, 1)
+light_energy = 0.0
+omni_range = 0.6
+
+[node name="B4" type="MeshInstance3D" parent="Station3/Lamps" unique_id=1024564289]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.16, 0.25, -0.1)
+material_override = SubResource("StandardMaterial3D_bdof8")
+mesh = SubResource("SphereMesh_nrlix")
+
+[node name="L5" type="OmniLight3D" parent="Station3/Lamps" unique_id=240788396]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.32, 0.32, -0.1)
+light_color = Color(0.3, 0.55, 1, 1)
+light_energy = 0.0
+omni_range = 0.6
+
+[node name="B5" type="MeshInstance3D" parent="Station3/Lamps" unique_id=411359478]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.32, 0.25, -0.1)
+material_override = SubResource("StandardMaterial3D_ifclh")
+mesh = SubResource("SphereMesh_fqfh0")
+
+[node name="Station4" type="Node3D" parent="." unique_id=840519167]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2, 0.775, -0.8)
+
+[node name="ButtonBase" type="MeshInstance3D" parent="Station4" unique_id=1823575973]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0.2)
+material_override = SubResource("StandardMaterial3D_8b2x2")
+mesh = SubResource("CylinderMesh_bovmd")
+
+[node name="Button" type="Area3D" parent="Station4" unique_id=1891959337]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, 0.2)
+
+[node name="Shape" type="CollisionShape3D" parent="Station4/Button" unique_id=1460555150]
+shape = SubResource("SphereShape3D_s7ops")
+
+[node name="Cap" type="MeshInstance3D" parent="Station4/Button" unique_id=599448787]
+material_override = SubResource("StandardMaterial3D_qb22h")
+mesh = SubResource("CylinderMesh_lcdgd")
+metadata/_xre_blueprint = "res://demo/cap_blueprint.tres"
+
+[node name="Sign" type="Label3D" parent="Station4" unique_id=365709429]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.004, 0.33)
+pixel_size = 0.0012
+modulate = Color(0.85, 0.92, 1, 1)
+text = "4 · ВАШ ХОД
+соберите эту станцию сами"
+font_size = 40
+outline_size = 6
+
+[node name="Stand" type="MeshInstance3D" parent="Station4" unique_id=1478425260]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.125, -0.1)
+material_override = SubResource("StandardMaterial3D_j2uv8")
+mesh = SubResource("CylinderMesh_g5mxs")
+
+[node name="Bulb" type="MeshInstance3D" parent="Station4" unique_id=1708107150]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -0.1)
+material_override = SubResource("StandardMaterial3D_xbyln")
+mesh = SubResource("SphereMesh_kgqxh")
+
+[node name="Lamp" type="OmniLight3D" parent="Station4" unique_id=1768208056]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.38, -0.1)
+light_color = Color(1, 0.85, 0.55, 1)
+light_energy = 0.0
+omni_range = 0.9
+
+[node name="Status" type="Label3D" parent="Station4" unique_id=1519463432]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.07, 0.1)
+pixel_size = 0.0015
+modulate = Color(0.85, 0.92, 1, 1)
+text = "?"
+font_size = 48
+outline_size = 6

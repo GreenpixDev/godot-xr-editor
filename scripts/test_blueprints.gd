@@ -96,6 +96,7 @@ func _run() -> void:
 	await _test_restart_tween_and_errors()
 	await _test_animation_wait()
 	await _test_demo()
+	await _test_demo_room()
 	_test_migration()
 	await _test_calls()
 	_test_makers_and_time()
@@ -830,6 +831,59 @@ func _test_demo() -> void:
 	root.add_child(scene)
 	_check(errors.size() == 1 and errors[0].begins_with("2:Missing property"), "missing property produces a block-specific error without unsafe access")
 	scene.queue_free()
+	await process_frame
+
+
+## Presses the button of [param station] of the demo room the way a hand does, with the room's poke tip.
+func _press_station(room: Node, station: String, done: Callable) -> void:
+	room.call(&"poke", room.get_node(station + "/Button"))
+	await _wait_until(done, 3000)
+	# The tip leaves the button before the next press.
+	await create_timer(0.3).timeout
+
+
+func _test_demo_room() -> void:
+	var room := (load("res://demo/blueprint_room.tscn") as PackedScene).instantiate()
+	root.add_child(room)
+	await process_frame
+	var lamp := room.get_node("Station1/Lamp") as OmniLight3D
+	var switch_status := room.get_node("Station1/Status") as Label3D
+	_check(lamp.light_energy == 0.0 and switch_status.text == "ВЫКЛ", "demo room: the lamp starts dark")
+	await _press_station(room, "Station1", func() -> bool: return switch_status.text == "ВКЛ")
+	_check(is_equal_approx(lamp.light_energy, 1.0) and switch_status.text == "ВКЛ", "demo room: poking the button lights the lamp: %s %s" % [lamp.light_energy, switch_status.text])
+	await _press_station(room, "Station1", func() -> bool: return switch_status.text == "ВЫКЛ")
+	_check(lamp.light_energy == 0.0 and switch_status.text == "ВЫКЛ", "demo room: poking it again puts the lamp out: %s %s" % [lamp.light_energy, switch_status.text])
+
+	var door := room.get_node("Station2/Door") as Node3D
+	var door_status := room.get_node("Station2/Status") as Label3D
+	await _press_station(room, "Station2", func() -> bool: return door_status.text == "ОТКРЫТО")
+	_check(is_equal_approx(door.position.x, -0.4) and door_status.text == "ОТКРЫТО", "demo room: the door slides open and the label follows: %s %s" % [door.position.x, door_status.text])
+	await _press_station(room, "Station2", func() -> bool: return door_status.text == "ЗАКРЫТО")
+	_check(is_equal_approx(door.position.x, 0.0) and door_status.text == "ЗАКРЫТО", "demo room: and closes again: %s %s" % [door.position.x, door_status.text])
+
+	var wave_status := room.get_node("Station3/Status") as Label3D
+	var lamps: Array[OmniLight3D] = []
+	for index: int in 5:
+		lamps.append(room.get_node("Station3/Lamps/L%d" % (index + 1)) as OmniLight3D)
+	var peaks: Array[float] = [0.0, 0.0, 0.0, 0.0, 0.0]
+	var peak_times: Array[int] = [0, 0, 0, 0, 0]
+	room.call(&"poke", room.get_node("Station3/Button"))
+	var started := Time.get_ticks_msec()
+	while wave_status.text != "ГОТОВО" or Time.get_ticks_msec() - started < 300:
+		await process_frame
+		for index: int in 5:
+			if lamps[index].light_energy > peaks[index]:
+				peaks[index] = lamps[index].light_energy
+				peak_times[index] = Time.get_ticks_msec()
+		if Time.get_ticks_msec() - started > 8000:
+			break
+	var in_order := true
+	for index: int in 4:
+		in_order = in_order and peak_times[index] < peak_times[index + 1]
+	_check(wave_status.text == "ГОТОВО" and peaks.all(func(peak: float) -> bool: return is_equal_approx(peak, 1.5)) and in_order, "demo room: the wave runs the lamps in turn and ends: %s %s %s" % [wave_status.text, peaks, peak_times])
+	_check(lamps.all(func(light: OmniLight3D) -> bool: return light.light_energy == 0.0), "demo room: every lamp is dark after the wave")
+	_check(room.get_node("Station4").get_script() == null and room.get_node("Station4/Button") is Area3D, "demo room: the fourth station is left for the guest to build")
+	room.queue_free()
 	await process_frame
 
 

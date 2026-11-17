@@ -27,6 +27,10 @@ godot.cmd --path . --xr-mode off res://benchmarks/blueprint_door.tscn
 
 В чистом проекте с выключенным OpenXR достаточно F6.
 
+## Демо-комната
+
+`demo/blueprint_room.tscn`: стол с четырьмя станциями (выключатель, дверь, волна ламп, пустая станция для гостя), собранный скриптом `scripts/build_demo_room.gd`. Сценарий показа, чек-лист и ограничения — [demo_room.md](demo_room.md).
+
 ## Установка в другой проект
 
 Скопировать **только `addons/blueprints/` целиком**, вместе с `.gd.uid`, в другой проект Godot 4.7.x. Включить **Blueprints 2D** в Project → Project Settings → Plugins. Папка `addons/xr_editor/` и GDExtension не нужны. При желании скопировать `benchmarks/blueprint_door.*` для демонстрации.

@@ -1,0 +1,292 @@
+[gd_resource type="Resource" script_class="XREBlueprintGraph" format=3 uid="uid://3bv6ebdkikkt"]
+
+[ext_resource type="Script" uid="uid://y12ylv65tc8b" path="res://addons/blueprints/graph.gd" id="1_4mna8"]
+
+[resource]
+script = ExtResource("1_4mna8")
+nodes = Array[Dictionary]([{
+"arguments": Array[Dictionary]([{
+"class_name": "Area3D",
+"name": "area",
+"type": 24
+}]),
+"id": 1,
+"kind": "signal",
+"params": {
+"policy": "restart",
+"signal": "area_entered",
+"target": "Button"
+},
+"position": Vector2(-68.61206, -151.82822),
+"vr_depth": 0.12847096,
+"vr_links": ["target"]
+}, {
+"id": 3,
+"kind": "operator",
+"params": {
+"a": false,
+"op": "not"
+},
+"position": Vector2(303.47308, 116.60475),
+"vr_depth": 0.05468619
+}, {
+"id": 4,
+"kind": "set_variable",
+"params": {
+"value": false,
+"variable": "requested_open"
+},
+"position": Vector2(488.5066, -100.15164),
+"vr_depth": 0.1731149
+}, {
+"id": 6,
+"kind": "branch",
+"params": {
+"condition": true
+},
+"position": Vector2(988.4914, -3.609604),
+"vr_depth": 0.4899137
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "AnimationPlayer",
+"key": "target",
+"label": "Target",
+"name": "player",
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"default": &"open",
+"key": "animation",
+"label": "Animation",
+"literal": true,
+"name": "animation",
+"provider": "animation",
+"type": 21
+}, {
+"class_name": "",
+"default": false,
+"key": "wait",
+"label": "Wait",
+"literal": true,
+"name": "wait",
+"type": 1
+}, {
+"class_name": "",
+"default": 30.0,
+"key": "timeout",
+"label": "Timeout",
+"name": "timeout",
+"positive": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Animation",
+"class": "XREBlueprintLibrary",
+"description": "Plays [param animation] of an AnimationPlayer. With [param wait] the chain continues only after it finishes: an interruption, the player leaving the scene or [param timeout] seconds of real time stop the chain with an error. A looping animation can't be waited for.",
+"extra": 0,
+"icon": "",
+"keywords": "anim clip open close",
+"name": "play_animation",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": ["AnimationPlayer"],
+"then": "Then",
+"title": "Play Animation",
+"vararg": false
+},
+"id": 7,
+"kind": "call",
+"params": {
+"animation": "open",
+"target": "AnimationPlayer",
+"timeout": 30.0,
+"wait": true
+},
+"position": Vector2(1570.0806, 61.047516),
+"vr_depth": 0.9063332
+}, {
+"id": 8,
+"kind": "set_property",
+"params": {
+"property": "text",
+"target": "Status",
+"value": "ОТКРЫТО"
+},
+"position": Vector2(1274.534, 50.180145),
+"property_type": 4,
+"vr_depth": 1.4298489
+}, {
+"function": {
+"advanced_shown": false,
+"args": Array[Dictionary]([{
+"class_name": "AnimationPlayer",
+"key": "target",
+"label": "Target",
+"name": "player",
+"target": true,
+"type": 24
+}, {
+"class_name": "",
+"default": &"open",
+"key": "animation",
+"label": "Animation",
+"literal": true,
+"name": "animation",
+"provider": "animation",
+"type": 21
+}, {
+"class_name": "",
+"default": false,
+"key": "wait",
+"label": "Wait",
+"literal": true,
+"name": "wait",
+"type": 1
+}, {
+"class_name": "",
+"default": 30.0,
+"key": "timeout",
+"label": "Timeout",
+"name": "timeout",
+"positive": true,
+"type": 3
+}, {
+"class_name": "XREBlueprintRun",
+"default": null,
+"key": "",
+"label": "Run",
+"name": "run",
+"run": true,
+"type": 24
+}]),
+"awaits": true,
+"category": "Animation",
+"class": "XREBlueprintLibrary",
+"description": "Plays [param animation] of an AnimationPlayer. With [param wait] the chain continues only after it finishes: an interruption, the player leaving the scene or [param timeout] seconds of real time stop the chain with an error. A looping animation can't be waited for.",
+"extra": 0,
+"icon": "",
+"keywords": "anim clip open close",
+"name": "play_animation",
+"pure": false,
+"return": 0,
+"return_class": "",
+"returns": false,
+"scope": "static",
+"script": "res://addons/blueprints/library.gd",
+"targets": ["AnimationPlayer"],
+"then": "Then",
+"title": "Play Animation",
+"vararg": false
+},
+"id": 9,
+"kind": "call",
+"params": {
+"animation": "close",
+"target": "AnimationPlayer",
+"timeout": 30.0,
+"wait": true
+},
+"position": Vector2(1355.417, 264.23593),
+"vr_depth": 0.8691971
+}, {
+"id": 10,
+"kind": "set_property",
+"params": {
+"property": "text",
+"target": "Status",
+"value": "ЗАКРЫТО"
+},
+"position": Vector2(1180.6754, 294.89557),
+"property_type": 4,
+"vr_depth": 1.4259942
+}, {
+"id": 11,
+"kind": "get_variable",
+"params": {
+"variable": "requested_open"
+},
+"position": Vector2(3.4730835, 156.60475),
+"vr_depth": 0.05468619,
+"vr_inline": true
+}, {
+"id": 12,
+"kind": "get_variable",
+"params": {
+"variable": "requested_open"
+},
+"position": Vector2(818.7705, 98.73888),
+"vr_depth": 0.5889941,
+"vr_inline": true
+}])
+edges = Array[Dictionary]([{
+"from": 1,
+"from_port": 0,
+"to": 4,
+"to_port": 0
+}, {
+"from": 3,
+"from_port": 0,
+"to": 4,
+"to_port": 1
+}, {
+"from": 4,
+"from_port": 0,
+"to": 6,
+"to_port": 0
+}, {
+"from": 6,
+"from_port": 0,
+"to": 7,
+"to_port": 0
+}, {
+"from": 7,
+"from_port": 0,
+"to": 8,
+"to_port": 0
+}, {
+"from": 6,
+"from_port": 1,
+"to": 9,
+"to_port": 0
+}, {
+"from": 9,
+"from_port": 0,
+"to": 10,
+"to_port": 0
+}, {
+"from": 11,
+"from_port": 0,
+"to": 3,
+"to_port": 0
+}, {
+"from": 12,
+"from_port": 0,
+"to": 6,
+"to_port": 1
+}])
+variables = Array[Dictionary]([{
+"name": "requested_open",
+"value": false,
+"vr_depth": -0.31015682,
+"vr_position": Vector2(-269.92712, 194.76074)
+}])
+host_path = NodePath("Station2")
+scene_path = "res://demo/blueprint_room.tscn"
+vr_placed = true
+vr_workspace = Transform3D(0.8196734, 0, 0.57283115, 0, 1, 0, -0.5728312, 0, 0.81967336, -0.5050313, 1.054728, -0.9150528)
+vr_center = Vector2(1027, 220)

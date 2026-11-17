@@ -581,9 +581,16 @@ func _shot_collections(head: Vector3, host: Node3D) -> void:
 
 
 func _run() -> void:
+	# XRE_SHOT_SCENE names the scene to shoot in, for when the editor reopens another one.
+	var wanted := OS.get_environment("XRE_SHOT_SCENE")
+	var asked := false
 	for frame: int in 600:
 		await get_tree().process_frame
-		if _document.get_scene_root() != null and not EditorInterface.get_resource_filesystem().is_scanning(): break
+		if _document.get_scene_root() != null and not EditorInterface.get_resource_filesystem().is_scanning():
+			if wanted.is_empty() or _document.get_scene_root().scene_file_path == wanted: break
+			if not asked:
+				asked = true
+				EditorInterface.open_scene_from_path(wanted)
 	var scene := _document.get_scene_root() as Node3D
 	if scene == null:
 		printerr("shot_blueprint_vr: no scene")
@@ -625,7 +632,7 @@ func _run() -> void:
 	var host_name := OS.get_environment("XRE_SHOT_HOST") if OS.has_environment("XRE_SHOT_HOST") else "GreenCube"
 	var host := scene.get_node_or_null(NodePath(host_name)) as Node3D
 	if host == null:
-		printerr("shot_blueprint_vr: no " + host_name)
+		printerr("shot_blueprint_vr: no %s in %s (%s)" % [host_name, scene.name, scene.scene_file_path])
 		get_tree().quit(1)
 		return
 	# Standing about where the user stood: a step back from the table, eyes at 1.6 m.

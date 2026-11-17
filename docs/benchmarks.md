@@ -29,6 +29,7 @@ godot --headless --xr-mode off --lsp-port 6097 --path . --import  # один р�
 godot --headless --xr-mode off --lsp-port 6097 --path . -s res://scripts/test_blueprint_picking.gd  # любой headless-тест scripts/test_*.gd; итог — строка `<тест>: N of M checks failed`
 godot --headless --xr-mode off --lsp-port 6097 --path . --editor --quit-after 8000 res://benchmarks/play_check.tscn -- --xre-test-blueprint-vr  # тест графа в шлеме (headless-редактор, 2–3 мин)
 godot --path . --xr-mode off -s res://scripts/test_blueprint_render.gd  # GPU-тест пикселей: с окном, не headless; check.sh его только разбирает
+XRE_SHOT_SCENE=res://demo/blueprint_room.tscn XRE_SHOT_HOST=Station3 godot --path . --editor --xr-mode off --log-file logs/shots.log res://demo/blueprint_room.tscn -- --xre-shot-blueprint-vr  # снимки графа другой сцены и объекта: XRE_SHOT_SCENE открывает сцену явно (редактор мог открыть прежнюю), XRE_SHOT_HOST — объект
 XRE_SHOT_ONLY=stats godot --path . --editor --xr-mode off --log-file logs/shots.log res://benchmarks/play_check.tscn -- --xre-shot-blueprint-vr  # только часть снимков: pins, probe, keyboard, collections, functions, stats
 ```
 
