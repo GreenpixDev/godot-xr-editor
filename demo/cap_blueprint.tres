@@ -5,16 +5,21 @@
 [resource]
 script = ExtResource("1_6kdt3")
 nodes = Array[Dictionary]([{
-"arguments": Array[Dictionary]([]),
+"arguments": Array[Dictionary]([{
+"class_name": "Area3D",
+"name": "area",
+"type": 24
+}]),
 "id": 1,
 "kind": "signal",
 "params": {
-"policy": "parallel",
-"signal": "ready",
-"target": "."
+"policy": "restart",
+"signal": "area_entered",
+"target": ".."
 },
 "position": Vector2(941.47296, 162.0936),
-"vr_depth": -0.8027502
+"vr_depth": -0.8027502,
+"vr_links": ["target"]
 }])
 host_path = NodePath("Station4/Button/Cap")
 scene_path = "res://demo/blueprint_room.tscn"
